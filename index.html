@@ -5253,10 +5253,11 @@ function renderLeaveBand(){
   const leaveChip = (l, withRange)=>{
     const bg = STAFF_COLORS[l.staff] || "#fde68a";
     const fg = textColorFor(bg);
+    const display = (typeof getStaffDisplayName === 'function') ? getStaffDisplayName(l.staff) : l.staff;
     const range = l.start===l.end ? l.start.slice(5) : `${l.start.slice(5)}〜${l.end.slice(5)}`;
-    const tooltip = `${l.staff} ${l.type} ${range}${l.memo?'\n'+l.memo:''}`;
+    const tooltip = `${display} ${l.type} ${range}${l.memo?'\n'+l.memo:''}`;
     const rangeHtml = withRange ? ` <span class="lb-range">${range}</span>` : "";
-    return `<span class="leave-badge" data-leave-id="${l.id}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}"><span class="lb-staff">${escapeHtml(l.staff)}</span><span class="lb-type">${escapeHtml(l.type)}</span>${rangeHtml}</span>`;
+    return `<span class="leave-badge" data-leave-id="${l.id}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}"><span class="lb-staff">${escapeHtml(display)}</span><span class="lb-type">${escapeHtml(l.type)}</span>${rangeHtml}</span>`;
   };
 
   // 休暇スタッフチップ (出社チップと同じく選択可能に)
