@@ -4927,12 +4927,35 @@ function refreshMyEventsBtn(){
   const btn = document.getElementById("myEventsBtn");
   if(!btn) return;
   const me = getMyself();
-  if(myEventsOnly){
-    btn.classList.add("primary");
-    btn.textContent = me ? `👤 ${me}のみ` : "👤 マイ (自分未設定)";
+  const myColor = me && STAFF_COLORS[me];
+  // ボタン色: 自分のスタッフ色で「地蔵に色」 (フィルタONで濃く・OFFで枠だけ)
+  if(myColor){
+    if(myEventsOnly){
+      // フィルタON: スタッフ色で塗る (text白)
+      btn.style.background = myColor;
+      btn.style.color = textColorFor(myColor);
+      btn.style.borderColor = myColor;
+      btn.style.fontWeight = "700";
+    } else {
+      // フィルタOFF: 薄塗り + スタッフ色枠 (text黒)
+      btn.style.background = myColor + "22"; // 13%透過
+      btn.style.color = "var(--text)";
+      btn.style.borderColor = myColor;
+      btn.style.fontWeight = "600";
+    }
   } else {
-    btn.classList.remove("primary");
-    btn.textContent = "👤 マイ";
+    // 未設定: グレー
+    btn.style.background = "";
+    btn.style.color = "";
+    btn.style.borderColor = "";
+    btn.style.fontWeight = "";
+  }
+  btn.classList.remove("primary");
+  // テキスト
+  if(myEventsOnly){
+    btn.textContent = me ? `🙋 ${me}のみ` : "🙋 マイ (自分未設定)";
+  } else {
+    btn.textContent = me ? `🙋 ${me}` : "🙋 マイ";
   }
 }
 function toggleMyEventsOnly(){
