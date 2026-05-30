@@ -9132,7 +9132,9 @@ document.getElementById("bukken-search").oninput = (e)=>{
 };
 document.getElementById("bukken-reload").onclick = ()=>fetchBukkenMaster({force:true});
 document.getElementById("bukken-close").onclick = closeBukken;
-document.getElementById("bukkenBtn").onclick = openBukken;
+// 🏠物件マスタボタンは削除済 (v51)。要素なしなら何もしない (エラー回避)
+const __bukkenBtnEl = document.getElementById("bukkenBtn");
+if(__bukkenBtnEl) __bukkenBtnEl.onclick = openBukken;
 bukkenModal.onclick = e=>{ if(e.target===bukkenModal) closeBukken(); };
 
 // ===== 予定モーダル: タイトル入力で物件サジェスト =====
