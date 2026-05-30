@@ -9819,6 +9819,8 @@ setTimeout(()=>{
   const s = loadGasSettings();
   if(s.url && s.token){
     fetchBukkenMaster({silent:true});
+    // staffMaster も並行取得 (キャッシュ有効ならスキップ)
+    fetchStaffMaster({silent:true});
   }
 }, 3000);
 
