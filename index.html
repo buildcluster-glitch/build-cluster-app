@@ -5234,6 +5234,7 @@ function renderLeaveBand(){
   const staffChip = (s)=>{
     const bg = STAFF_COLORS[s] || "#e5e7eb";
     const fg = textColorFor(bg);
+    const display = (typeof getStaffDisplayName === 'function') ? getStaffDisplayName(s) : s;
     const {counts, total} = computeTodayBreakdown(s);
     const short = fmtBreakdown(counts);
     const subHtml = total > 0
@@ -5242,11 +5243,11 @@ function renderLeaveBand(){
     const isSelected = selectedStaffFilter.has(s);
     const cls = ["staff-chip"];
     if(isSelected) cls.push("selected");
-    else if(hasFilter) cls.push("dimmed"); // フィルタ中で未選択のスタッフは薄く
+    else if(hasFilter) cls.push("dimmed");
     const tooltip = hasFilter
-      ? `${s} ${isSelected?"(選択中・クリックで解除)":"(クリックで追加)"}\n今日の予定 ${total}件\n${fmtBreakdownFull(counts)}`
-      : `${s} (クリックで絞り込み)\n今日の予定 ${total}件\n${fmtBreakdownFull(counts)}`;
-    return `<span class="${cls.join(' ')}" data-staff-filter="${escapeHtml(s)}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}">${escapeHtml(s)}${subHtml}</span>`;
+      ? `${display} ${isSelected?"(選択中・クリックで解除)":"(クリックで追加)"}\n今日の予定 ${total}件\n${fmtBreakdownFull(counts)}`
+      : `${display} (クリックで絞り込み)\n今日の予定 ${total}件\n${fmtBreakdownFull(counts)}`;
+    return `<span class="${cls.join(' ')}" data-staff-filter="${escapeHtml(s)}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}">${escapeHtml(display)}${subHtml}</span>`;
   };
   // コンパクト休暇バッジ: 担当色背景 + フルネーム + 種別
   const leaveChip = (l, withRange)=>{
