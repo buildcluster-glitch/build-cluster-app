@@ -7498,6 +7498,7 @@ function denormalizeEventForCloud_(ev){
     importance: Array.isArray(ev.importance) ? ev.importance : (ev.importance ? [ev.importance] : []),
     color: ev.color || '',
     memo: ev.memo || '',
+    comments: Array.isArray(ev.comments) ? ev.comments : [],
     createdBy: ev.createdBy || getMyself() || '',
     createdAt: ev.createdAt || new Date().toISOString(),
     updatedAt: ev.updatedAt || new Date().toISOString(),
