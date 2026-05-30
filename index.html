@@ -7248,6 +7248,12 @@ document.getElementById('cloudSyncBtn').onclick = ()=>openAllSettings('cloud');
 // ===========================================================
 const allSettingsModal = document.getElementById('allSettingsModal');
 function openAllSettings(focus){
+  // 自分: 最新メンバーリストを fetch してから描画
+  if(cloudSync.url){
+    cloudSyncPull({replace:false}).then(()=>renderAllMyselfSelect()).catch(()=>{});
+  }
+  renderAllMyselfSelect();
+
   // Drive (gas)
   const gs = loadGasSettings();
   document.getElementById('all-gas-url').value = gs.url || '';
