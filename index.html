@@ -7296,7 +7296,33 @@ function closeAllSettings(){ allSettingsModal.classList.remove('show'); }
 allSettingsModal.onclick = e=>{ if(e.target===allSettingsModal) closeAllSettings(); };
 document.getElementById('all-settings-cancel').onclick = closeAllSettings;
 
+function renderAllMyselfSelect(){
+  const sel = document.getElementById("all-myself-select");
+  if(!sel) return;
+  const members = (typeof getEffectiveMembers === 'function') ? getEffectiveMembers() : STAFF;
+  const cur = (typeof getMyself === 'function') ? getMyself() : '';
+  const cloudSet = new Set(state.cloudMembers||[]);
+  sel.innerHTML = `<option value="">(未設定)</option>` +
+    members.map(s=>{
+      const src = cloudSet.has(s) ? '☁' : '📋';
+      return `<option value="${escapeHtml(s)}" ${cur===s?'selected':''}>${escapeHtml(s)} ${src}</option>`;
+    }).join("");
+}
+// 「メンバー追加・削除…」ボタン: 既存の自分設定モーダルを開く
+document.getElementById('all-open-member-edit').onclick = ()=>{
+  closeAllSettings();
+  if(typeof openMyself === 'function') openMyself();
+};
+
 document.getElementById('all-settings-save').onclick = ()=>{
+  // 0. 自分 (myself)
+  const newMe = document.getElementById('all-myself-select').value;
+  const oldMe = (typeof getMyself === 'function') ? getMyself() : '';
+  if(newMe !== oldMe){
+    if(typeof setMyself === 'function') setMyself(newMe);
+    if(typeof refreshMyEventsBtn === 'function') refreshMyEventsBtn();
+  }
+
   // 1. Drive GAS
   const gasUrl = document.getElementById('all-gas-url').value.trim();
   const gasToken = document.getElementById('all-gas-token').value.trim();
