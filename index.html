@@ -9346,10 +9346,15 @@ document.getElementById("myself-cancel").onclick = closeMyself;
 document.getElementById("myself-save").onclick = ()=>{
   const v = document.getElementById("myself-select").value;
   setMyself(v);
+  // フィルタON/OFFも保存
+  const filterCb = document.getElementById("myself-filter-on");
+  if(filterCb) setMyEventsOnly(filterCb.checked);
   closeMyself();
-  // 自分タブに切替
+  // タスクビュー側にも反映
   taskFilterAssignee = v || "全員";
-  renderTaskView();
+  if(typeof renderTaskView === "function") renderTaskView();
+  // 全体再描画(フィルタ反映)
+  render();
 };
 myselfModal.onclick = e=>{ if(e.target===myselfModal) closeMyself(); };
 
