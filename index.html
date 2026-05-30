@@ -9668,11 +9668,12 @@ function renderMemberList(){
   box.innerHTML = members.map(s=>{
     const isMaster = masterSet.has(s);
     const src = isMaster ? '🌐' : '📋';
+    const display = getStaffDisplayName(s);
     const tag = isMaster
       ? `<span style="font-size:10px;color:var(--muted);padding:2px 6px">staffMaster</span>`
       : `<span style="font-size:10px;color:#f59e0b;padding:2px 6px">ローカル(STAFF配列)</span>`;
     return `<div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#f9fafb;border-radius:4px">
-      <span style="flex:1;font-size:13px">${src} ${escapeHtml(s)}</span>
+      <span style="flex:1;font-size:13px">${src} ${escapeHtml(display)}</span>
       ${tag}
     </div>`;
   }).join("");
