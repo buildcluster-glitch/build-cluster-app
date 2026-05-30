@@ -7359,10 +7359,8 @@ document.getElementById('cloudSyncBtn').onclick = ()=>openAllSettings('cloud');
 // ===========================================================
 const allSettingsModal = document.getElementById('allSettingsModal');
 function openAllSettings(focus){
-  // 自分: 最新メンバーリストを fetch してから描画
-  if(cloudSync.url){
-    cloudSyncPull({replace:false}).then(()=>renderAllMyselfSelect()).catch(()=>{});
-  }
+  // 自分: master_sync staffMaster をバックグラウンド取得 (キャッシュ優先)
+  fetchStaffMaster({silent:true}).then(()=>renderAllMyselfSelect()).catch(()=>{});
   renderAllMyselfSelect();
 
   // Drive (gas)
