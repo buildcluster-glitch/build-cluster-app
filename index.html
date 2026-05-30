@@ -2700,6 +2700,17 @@
         <label>メモ</label>
         <textarea id="ev-memo" placeholder="物件名・号室・備考など"></textarea>
       </div>
+
+      <!-- 💬 コメント (チャット + リアクション) -->
+      <fieldset class="ev-comments-fs" id="ev-comments-fs" style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:8px;background:#f9fafb">
+        <legend style="padding:0 8px;font-weight:700;font-size:13px;color:#1f2937">💬 コメント <span id="ev-comments-count" style="font-weight:400;color:var(--muted);font-size:11px"></span></legend>
+        <div id="ev-comments-list" style="display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto;margin-bottom:8px"></div>
+        <div class="comment-input-row" style="display:flex;gap:6px;align-items:flex-start">
+          <textarea id="ev-comment-input" placeholder="メッセージを入力 (Enter=送信 / Shift+Enter=改行)" rows="1" style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;resize:vertical;min-height:32px"></textarea>
+          <button class="btn primary" id="ev-comment-send" style="font-size:12px;padding:6px 12px;align-self:stretch">送信</button>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">送信者は「<span id="ev-comment-author-name">(自分未設定)</span>」になります</div>
+      </fieldset>
     </div>
     <div class="modal-footer">
       <button class="btn danger" id="ev-delete" style="display:none">削除</button>
