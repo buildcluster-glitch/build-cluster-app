@@ -6282,6 +6282,9 @@ function attachChipHover(el, ev){
 
 function attachDragOrClick(el, ev){
   el.ondblclick = (e)=>{ e.stopPropagation(); openEventModal(ev); };
+  // 直前のクリック時刻 (ダブルクリック保護用)
+  let __lastClickAt = 0;
+  el.addEventListener('click', ()=>{ __lastClickAt = Date.now(); });
   el.onpointerdown = (pdEv)=>{
     // 時刻バッジクリック → ステッパー表示 (ドラッグはしない)
     const timeAnchor = pdEv.target.closest('.chip-time, .time');
@@ -6294,6 +6297,8 @@ function attachDragOrClick(el, ev){
       return;
     }
     if(pdEv.button !== undefined && pdEv.button !== 0) return; // 左ボタンのみ
+    // ダブルクリック保護: 直前のクリックから400ms以内ならドラッグ禁止
+    const blockDrag = (Date.now() - __lastClickAt) < DRAG_BLOCK_AFTER_CLICK_MS;
     pdEv.preventDefault();
     const startX = pdEv.clientX;
     const startY = pdEv.clientY;
@@ -6308,7 +6313,7 @@ function attachDragOrClick(el, ev){
     const onMove = (mvEv)=>{
       const dx = mvEv.clientX - startX;
       const dy = mvEv.clientY - startY;
-      if(!started && Math.hypot(dx,dy) > DRAG_THRESHOLD){
+      if(!started && !blockDrag && Math.hypot(dx,dy) > DRAG_THRESHOLD){
         // ドラッグ開始
         started = true;
         el.classList.add("dragging-source");
