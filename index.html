@@ -9648,7 +9648,8 @@ function renderMyselfOptions(){
   sel.innerHTML = `<option value="">(未設定)</option>` +
     members.map(s=>{
       const src = masterSet.has(s) ? '🌐' : '📋'; // master_sync由来 / ローカル
-      return `<option value="${escapeHtml(s)}" ${cur===s?'selected':''}>${escapeHtml(s)} ${src}</option>`;
+      const display = getStaffDisplayName(s); // 表示はスペース付き
+      return `<option value="${escapeHtml(s)}" ${cur===s?'selected':''}>${escapeHtml(display)} ${src}</option>`;
     }).join("");
 }
 // メンバー一覧表示 (master_syncから取得した一覧を表示・編集はGASエディタ側)
