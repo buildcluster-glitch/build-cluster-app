@@ -4006,12 +4006,15 @@ function saveCachedStaffMaster(members){
   }catch(e){}
 }
 
+// 名前を詰め表記に正規化 (例: "山田 裕貴" → "山田裕貴")
+// master_sync staffMaster は氏名にスペース入り・STAFF 配列は詰め表記なので統一する
+function normalizeStaffName(s){ return String(s==null?'':s).replace(/\s+/g,''); }
+
 async function fetchStaffMaster(opts={}){
   if(__staffMasterInFlight) return __staffMasterInFlight;
   const s = loadGasSettings();
   if(!s.url || !s.token){
     if(!opts.silent) console.warn('[staffMaster] GAS URL/token 未設定');
-    // キャッシュがあれば返す
     const cached = loadCachedStaffMaster();
     return cached ? cached.members : null;
   }
@@ -4032,25 +4035,38 @@ async function fetchStaffMaster(opts={}){
       const res = await fetch(fetchUrl, {method:'GET', redirect:'follow'});
       if(!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      // master_sync のレスポンス: { ok:true, value:"[{name,tel,color,active},...]" } (valueはJSON文字列)
+      if(data.ok === false) throw new Error(data.error || 'ok:false');
       if(data.error) throw new Error(data.error);
-      // レスポンス形式は柔軟に受ける: {members:[...]} / {value:[...]} / {staffMaster:[...]} / 直接配列
-      let members = null;
-      if(Array.isArray(data)) members = data;
-      else if(Array.isArray(data.members)) members = data.members;
-      else if(Array.isArray(data.value)) members = data.value;
-      else if(Array.isArray(data.staffMaster)) members = data.staffMaster;
-      else if(data.value && typeof data.value === 'string'){
-        try{ const v = JSON.parse(data.value); if(Array.isArray(v)) members = v; }catch(e){}
+      let raw = data.value;
+      if(typeof raw === 'string'){
+        try{ raw = JSON.parse(raw); }catch(e){ throw new Error('value JSON.parse失敗: '+e.message); }
       }
-      if(!members) throw new Error('レスポンスから members 配列を取得できず: '+JSON.stringify(data).slice(0,200));
-      // 文字列化 (オブジェクトなら .name)
-      members = members.map(m=>typeof m === 'string' ? m : (m && (m.name||m.staff||''))).filter(Boolean);
-      saveCachedStaffMaster(members);
-      if(!opts.silent) console.log(`[staffMaster] loaded ${members.length} 名`);
+      // フォールバック: value以外のキーで来た場合 (互換性)
+      if(!Array.isArray(raw)){
+        if(Array.isArray(data)) raw = data;
+        else if(Array.isArray(data.members)) raw = data.members;
+        else if(Array.isArray(data.staffMaster)) raw = data.staffMaster;
+      }
+      if(!Array.isArray(raw)) throw new Error('レスポンスから配列を取得できず: '+JSON.stringify(data).slice(0,200));
+
+      // フィルタ: active !== false / 詳細オブジェクトのまま保持 (色も持つ)
+      const fullObjects = raw
+        .filter(m => m && m.active !== false)
+        .map(m => ({
+          name:        normalizeStaffName(m.name),  // 詰め表記 (内部用)
+          displayName: String(m.name||''),          // 元の表記 (将来表示用)
+          color:       m.color || '',
+          tel:         m.tel || '',
+        }))
+        .filter(m => m.name);
+
+      const members = fullObjects.map(m => m.name);
+      saveCachedStaffMaster(members, fullObjects);
+      if(!opts.silent) console.log(`[staffMaster] loaded ${members.length}名:`, members);
       return members;
     }catch(err){
       console.warn('[staffMaster] fetch失敗:', err.message);
-      // フォールバック: キャッシュ
       const cached = loadCachedStaffMaster();
       return cached ? cached.members : null;
     }finally{
@@ -4058,6 +4074,21 @@ async function fetchStaffMaster(opts={}){
     }
   })();
   return __staffMasterInFlight;
+}
+
+// 詳細(色・電話)込みのスタッフリスト取得 (キャッシュから)
+function getStaffMasterDetails(){
+  const cached = loadCachedStaffMaster();
+  if(!cached) return [];
+  return Array.isArray(cached.full) ? cached.full : [];
+}
+// 特定スタッフの色を取得 (master_sync優先、なければ既存STAFF_COLORS)
+function getStaffColor(name){
+  const norm = normalizeStaffName(name);
+  const details = getStaffMasterDetails();
+  const found = details.find(m => m.name === norm);
+  if(found && found.color) return found.color;
+  return STAFF_COLORS[norm] || STAFF_COLORS[name] || '#e5e7eb';
 }
 
 async function fetchBukkenMaster(opts={}){
