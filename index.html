@@ -7022,6 +7022,10 @@ async function cloudSyncPull({ replace=false }={}){
     if(!state.cloudLogs) state.cloudLogs = [];
     cloudMergeById_(state.cloudLogs,         (data.logs||[]).map(normalizeCloudLog_),        pendingLogIds);
   }
+  // メンバーリストはサーバー優先で常に上書き (state.cloudMembers)
+  if(Array.isArray(data.members)){
+    state.cloudMembers = data.members.map(m=>typeof m === 'string' ? m : (m.name||'')).filter(Boolean);
+  }
   cloudSync.lastSyncAt = new Date().toISOString();
   saveCloudSyncConfig();
   saveState();
