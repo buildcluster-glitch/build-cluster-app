@@ -6172,7 +6172,8 @@ function showTimeStepperPopup(ev, anchorEl, target /* "start"|"end" */){
 }
 
 // ===== ドラッグ移動 =====
-const DRAG_THRESHOLD = 5; // px
+const DRAG_THRESHOLD = 12; // px (ダブルクリック中の小さなブレで誤ドラッグしないよう余裕を持たせる)
+const DRAG_BLOCK_AFTER_CLICK_MS = 400; // 直前のクリックから400ms以内のpointerdownはドラッグ完全禁止 (=ダブルクリック保護)
 // ===== イベントチップ ホバー詳細ポップアップ =====
 let __chipTipEl = null;
 let __chipTipTimer = null;
