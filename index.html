@@ -9872,6 +9872,15 @@ setTimeout(()=>{
   }
 }, 3000);
 
+// ========== Service Worker 登録 (PWA: オフラインキャッシュ + ホーム画面追加) ==========
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg=>console.log('[PWA] SW登録成功 scope:', reg.scope))
+      .catch(err=>console.warn('[PWA] SW登録失敗:', err.message));
+  });
+}
+
 
 // =========================================================================
 // === 📦 在庫管理 IIFE 移植コード (在庫アプリJS約2200行 / 名前空間完全分離) ===
