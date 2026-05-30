@@ -7680,7 +7680,8 @@ function renderAllMyselfSelect(){
   sel.innerHTML = `<option value="">(未設定)</option>` +
     members.map(s=>{
       const src = masterSet.has(s) ? '🌐' : '📋';
-      return `<option value="${escapeHtml(s)}" ${cur===s?'selected':''}>${escapeHtml(s)} ${src}</option>`;
+      const display = (typeof getStaffDisplayName === 'function') ? getStaffDisplayName(s) : s;
+      return `<option value="${escapeHtml(s)}" ${cur===s?'selected':''}>${escapeHtml(display)} ${src}</option>`;
     }).join("");
 }
 // 「メンバー追加・削除…」ボタン: 既存の自分設定モーダルを開く
