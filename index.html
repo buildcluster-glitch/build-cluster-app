@@ -9720,8 +9720,14 @@ if(state.events.length===0 && state.leaves.length===0){
 }
 
 render();
-// 初回表示時は今日の位置に自動スクロール
-scrollToToday();
+// 初回表示時は今日の位置に自動スクロール (render後のレイアウトが安定するまで待つ)
+requestAnimationFrame(()=>{
+  requestAnimationFrame(()=>{
+    scrollToToday();
+    // 念のためもう1回 (チップ高さ調整など2フレ目に走るものがあるため)
+    setTimeout(scrollToToday, 250);
+  });
+});
 // 自動同期セットアップ（focus / visibility / 5分ポーリング）
 setupAutoSync();
 // 起動時に1回サイレント同期(設定済みなら)
