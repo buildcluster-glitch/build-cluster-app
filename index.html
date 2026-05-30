@@ -2790,6 +2790,16 @@
     <div class="modal-header">⚙ 全体設定 — クラウド連携3種</div>
     <div class="modal-body" style="display:flex;flex-direction:column;gap:18px">
 
+      <!-- セクション0: 自分 (個人設定) -->
+      <fieldset style="border:2px solid var(--accent);border-radius:8px;padding:12px;margin:0;background:#eff6ff">
+        <legend style="padding:0 8px;font-weight:700;color:var(--accent)">👤 あなたは？ (このPC専用)</legend>
+        <div class="field" style="margin-bottom:6px">
+          <select id="all-myself-select" style="padding:8px;font-size:14px;font-weight:600"></select>
+          <div style="font-size:10px;color:var(--muted);margin-top:4px">☁=クラウド同期由来 / 📋=ローカル定義</div>
+        </div>
+        <button class="btn" id="all-open-member-edit" style="font-size:11px;padding:4px 10px">👥 メンバー追加・削除…</button>
+      </fieldset>
+
       <!-- セクション1: Drive同期 (台帳取り込み) -->
       <fieldset style="border:1px solid var(--border);border-radius:8px;padding:12px;margin:0">
         <legend style="padding:0 8px;font-weight:700;color:#1f2937">🔄 Drive 台帳取り込み (master_sync)</legend>
