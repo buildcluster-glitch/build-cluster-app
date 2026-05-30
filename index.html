@@ -4141,6 +4141,14 @@ function getStaffColor(name){
   if(found && found.color) return found.color;
   return STAFF_COLORS[norm] || STAFF_COLORS[name] || '#e5e7eb';
 }
+// 表示用名前 (master_syncのスペース付き表記 e.g. "山田 裕貴")
+function getStaffDisplayName(name){
+  const norm = normalizeStaffName(name);
+  const details = getStaffMasterDetails();
+  const found = details.find(m => m.name === norm);
+  if(found && found.displayName) return found.displayName;
+  return name; // fallback: そのまま (STAFF配列の詰め表記)
+}
 
 async function fetchBukkenMaster(opts={}){
   // 既に進行中の fetch があれば共有
