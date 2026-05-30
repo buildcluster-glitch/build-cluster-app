@@ -6637,8 +6637,16 @@ function openEventModal(ev, defaults){
   // staff selector (色ドット付き)
   const sSel = document.getElementById("ev-staff");
   sSel.innerHTML = `<option value="">（未指定）</option>` +
-    STAFF.map(s=>`<option value="${s}" ${ev&&ev.staff===s?"selected":""} style="color:${STAFF_COLORS[s]};font-weight:600">● ${s}</option>`).join("");
+    STAFF.map(s=>{
+      const display = (typeof getStaffDisplayName === 'function') ? getStaffDisplayName(s) : s;
+      return `<option value="${s}" ${ev&&ev.staff===s?"selected":""} style="color:${STAFF_COLORS[s]};font-weight:600">● ${escapeHtml(display)}</option>`;
+    }).join("");
   if(defaults && defaults.staff) sSel.value = defaults.staff;
+  else if(!ev){
+    // 新規予定: リーダーも「自分」をデフォルト
+    const me = getMyself();
+    if(me && STAFF.includes(me)) sSel.value = me;
+  }
 
   // category selector (色ドット付き)
   const cSel = document.getElementById("ev-category");
