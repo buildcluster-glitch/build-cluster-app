@@ -7214,7 +7214,131 @@ document.getElementById('cs-pull-now').onclick = async ()=>{
     alert('取得失敗: ' + err.message);
   }
 };
-document.getElementById('cloudSyncBtn').onclick = openCloudSyncModal;
+document.getElementById('cloudSyncBtn').onclick = ()=>openAllSettings('cloud');
+
+// ===========================================================
+// ⚙ 全体設定モーダル: Drive + Cloud Sync + 在庫 を1画面で
+// ===========================================================
+const allSettingsModal = document.getElementById('allSettingsModal');
+function openAllSettings(focus){
+  // Drive (gas)
+  const gs = loadGasSettings();
+  document.getElementById('all-gas-url').value = gs.url || '';
+  document.getElementById('all-gas-token').value = gs.token || '';
+  document.getElementById('all-gas-months').value = gs.months || 6;
+  document.getElementById('all-gas-auto').checked = gs.autoSync !== false;
+
+  // Cloud Sync (cs)
+  document.getElementById('all-cs-url').value = cloudSync.url || '';
+  document.getElementById('all-cs-auto').checked = cloudSync.autoSync !== false;
+  const csN = (state.cloudPending||[]).length;
+  document.getElementById('all-cs-status').textContent = cloudSync.url
+    ? `✓ 設定済 / 未送信 ${csN}件${cloudSync.lastSyncAt?' / 最終'+new Date(cloudSync.lastSyncAt).toLocaleTimeString('ja-JP'):''}`
+    : '未設定';
+
+  // Inventory (inv): localStorageから直接読む (IIFEのため)
+  let invUrl = '', invAuto = true;
+  try{
+    const raw = localStorage.getItem('zaiko_sync_v1');
+    if(raw){
+      const d = JSON.parse(raw);
+      invUrl = d.url || '';
+      invAuto = d.autoSync !== false;
+    }
+  }catch(e){}
+  document.getElementById('all-inv-url').value = invUrl;
+  document.getElementById('all-inv-auto').checked = invAuto;
+  document.getElementById('all-inv-status').textContent = invUrl ? '✓ 設定済' : '未設定';
+
+  allSettingsModal.classList.add('show');
+  // フォーカス対象セクションへスクロール
+  if(focus){
+    setTimeout(()=>{
+      const el = document.getElementById('all-'+focus.replace('cloud','cs').replace('drive','gas').replace('inv','inv')+'-url');
+      if(el){ el.scrollIntoView({behavior:'smooth',block:'center'}); el.focus(); }
+    }, 100);
+  }
+}
+function closeAllSettings(){ allSettingsModal.classList.remove('show'); }
+allSettingsModal.onclick = e=>{ if(e.target===allSettingsModal) closeAllSettings(); };
+document.getElementById('all-settings-cancel').onclick = closeAllSettings;
+
+document.getElementById('all-settings-save').onclick = ()=>{
+  // 1. Drive GAS
+  const gasUrl = document.getElementById('all-gas-url').value.trim();
+  const gasToken = document.getElementById('all-gas-token').value.trim();
+  const gasMonths = Math.max(1, Math.min(24, parseInt(document.getElementById('all-gas-months').value,10) || 6));
+  const gasAuto = document.getElementById('all-gas-auto').checked;
+  saveGasSettings({ url:gasUrl, token:gasToken, months:gasMonths, autoSync:gasAuto });
+
+  // 2. Cloud Sync
+  cloudSync.url = document.getElementById('all-cs-url').value.trim();
+  cloudSync.autoSync = document.getElementById('all-cs-auto').checked;
+  saveCloudSyncConfig();
+  if(cloudSync.url && cloudSync.autoSync){
+    runCloudOpenSync();
+    startCloudPolling();
+  } else {
+    stopCloudPolling();
+    setCloudSyncIcon('');
+  }
+
+  // 3. 在庫: localStorage直書き (IIFE内のsyncは次回リロードで反映)
+  const invUrl = document.getElementById('all-inv-url').value.trim();
+  const invAuto = document.getElementById('all-inv-auto').checked;
+  let invConfigChanged = false;
+  try{
+    const prev = JSON.parse(localStorage.getItem('zaiko_sync_v1')||'{}');
+    if(prev.url !== invUrl || prev.autoSync !== invAuto){
+      invConfigChanged = true;
+      const merged = { ...prev, url:invUrl, autoSync:invAuto };
+      localStorage.setItem('zaiko_sync_v1', JSON.stringify(merged));
+    }
+  }catch(e){
+    localStorage.setItem('zaiko_sync_v1', JSON.stringify({url:invUrl, autoSync:invAuto}));
+    invConfigChanged = true;
+  }
+
+  closeAllSettings();
+  if(invConfigChanged){
+    if(confirm('在庫設定を変更しました。今すぐページをリロードして反映しますか？')){
+      location.reload();
+    }
+  }
+};
+
+// 接続テスト (3つ全部)
+document.getElementById('all-settings-test').onclick = async ()=>{
+  const results = [];
+  // Drive
+  const gu = document.getElementById('all-gas-url').value.trim();
+  const gt = document.getElementById('all-gas-token').value.trim();
+  if(gu){
+    try{
+      const r = await fetch(`${gu}?action=ping${gt?'&token='+encodeURIComponent(gt):''}`,{cache:'no-store'});
+      results.push(r.ok ? '🔄 Drive: ✓ 接続OK' : `🔄 Drive: ✗ HTTP ${r.status}`);
+    }catch(e){ results.push('🔄 Drive: ✗ '+e.message); }
+  } else results.push('🔄 Drive: ⊘ URL未入力');
+  // Cloud Sync
+  const cu = document.getElementById('all-cs-url').value.trim();
+  if(cu){
+    try{
+      const r = await fetch(cu,{cache:'no-store'});
+      const d = await r.json();
+      results.push(d.error ? `☁ Cloud: ✗ ${d.error}` : `☁ Cloud: ✓ events:${(d.events||[]).length}/properties:${(d.properties||[]).length}`);
+    }catch(e){ results.push('☁ Cloud: ✗ '+e.message); }
+  } else results.push('☁ Cloud: ⊘ URL未入力');
+  // Inventory
+  const iu = document.getElementById('all-inv-url').value.trim();
+  if(iu){
+    try{
+      const r = await fetch(iu,{cache:'no-store'});
+      const d = await r.json();
+      results.push(d.error ? `📦 在庫: ✗ ${d.error}` : `📦 在庫: ✓ items:${(d.items||[]).length}/orders:${(d.orders||[]).length}`);
+    }catch(e){ results.push('📦 在庫: ✗ '+e.message); }
+  } else results.push('📦 在庫: ⊘ URL未入力');
+  alert(results.join('\n'));
+};
 
 // ===== ポーリング =====
 let cloudPollTimer = null;
