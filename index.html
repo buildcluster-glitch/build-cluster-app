@@ -6549,6 +6549,10 @@ function openEventModal(ev, defaults){
   document.getElementById("ev-start").value = ev?.start || defaults?.start || "09:00";
   document.getElementById("ev-end").value   = ev?.end   || defaults?.end   || "10:00";
   document.getElementById("ev-memo").value  = ev?.memo  || defaults?.memo  || "";
+  // 💬 コメント描画 (新規予定なら空)
+  __evCommentsCache = (ev?.comments && Array.isArray(ev.comments)) ? ev.comments : [];
+  renderEvComments();
+  document.getElementById("ev-comment-author-name").textContent = getMyself() || "(自分未設定)";
   // 直行/直帰
   const commute = ev?.commute || "";
   document.getElementById("ev-commute-go").checked   = commute.includes("直行");
