@@ -47,7 +47,7 @@ const NUMERIC_KEYS = new Set([]);
 // 真偽値
 const BOOL_KEYS = new Set(['allday']);
 // JSON配列として扱う列 (シートには JSON文字列で保存)
-const JSON_ARRAY_KEYS = new Set(['participants','importance']);
+const JSON_ARRAY_KEYS = new Set(['participants','importance','comments']);
 // 日付のみ (yyyy-MM-dd で返す)
 const DATE_KEYS = new Set(['date']);
 // 日時 (yyyy-MM-ddTHH:mm で返す)
