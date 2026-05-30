@@ -7036,6 +7036,15 @@ function scrollToToday(){
     body.scrollLeft = 0;
   }
 }
+// 今日の位置スクロール: render後のレイアウト確定に追いつくため複数回リトライ
+function scrollToTodayRobust(){
+  // 即時 + 50ms + 200ms + 500ms + 1000ms に複数試行
+  // HOUR_PX 自動計算やチップ重複解消などが完了するまで断続的にスクロール
+  scrollToToday();
+  [50, 200, 500, 1000, 1500].forEach(delay => {
+    setTimeout(scrollToToday, delay);
+  });
+}
 function navigate(dir){
   if(currentView==="task" || currentView==="repair" || currentView==="resto") return; // タスク/修繕/原状回復ビューでは日付ナビ無効
   // ‹/› は常に月単位ジャンプ → 次月/前月の1日へ
