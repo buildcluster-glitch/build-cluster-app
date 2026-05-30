@@ -6227,7 +6227,14 @@ function showChipTip(ev, mouseX, mouseY){
   }
   // メモ
   const memoHtml = ev.memo ? `<div class="tt-memo">📝 ${escapeHtml(ev.memo)}</div>` : "";
-  tip.innerHTML = titleHtml + rows.join("") + memoHtml;
+  // 💬 コメント (直近2件まで・件数も)
+  let commentsHtml = '';
+  if(ev.comments && ev.comments.length){
+    const recent = ev.comments.slice(-2);
+    const preview = recent.map(c=>`<div style="font-size:11px;color:#374151;margin-top:2px"><b style="color:#1f2937">${escapeHtml(c.author||'?')}:</b> ${escapeHtml((c.text||'').slice(0,60))}${(c.text||'').length>60?'…':''}</div>`).join('');
+    commentsHtml = `<div class="tt-memo" style="border-top:1px dashed var(--border);margin-top:6px;padding-top:6px"><b style="font-size:11px">💬 コメント ${ev.comments.length}件</b>${preview}</div>`;
+  }
+  tip.innerHTML = titleHtml + rows.join("") + memoHtml + commentsHtml;
   // 位置決め(マウス右下、ウィンドウ範囲チェック)
   const margin = 14;
   tip.style.left = "0px"; tip.style.top = "0px";
