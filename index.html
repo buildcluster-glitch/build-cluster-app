@@ -1817,7 +1817,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v58 💬</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v59</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5122,10 +5122,11 @@ function refreshMyEventsBtn(){
   }
   btn.classList.remove("primary");
   // テキスト
+  const meDisplay = me ? ((typeof getStaffDisplayName === 'function') ? getStaffDisplayName(me) : me) : '';
   if(myEventsOnly){
-    btn.textContent = me ? `👤 ${me}のみ` : "👤 マイ (自分未設定)";
+    btn.textContent = me ? `👤 ${meDisplay}のみ` : "👤 マイ (自分未設定)";
   } else {
-    btn.textContent = me ? `👤 ${me}` : "👤 マイ";
+    btn.textContent = me ? `👤 ${meDisplay}` : "👤 マイ";
   }
 }
 function toggleMyEventsOnly(){
