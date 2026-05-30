@@ -10106,9 +10106,12 @@ if(state.events.length===0 && state.leaves.length===0){
 }
 
 render();
+console.log("[init] after render, scheduling scrollToTodayRobust");
 // 初回表示時は今日の位置に自動スクロール (render後のレイアウトが安定するまで複数回試行)
 requestAnimationFrame(()=>{
+  console.log("[init] rAF1 fired");
   requestAnimationFrame(()=>{
+    console.log("[init] rAF2 fired, calling scrollToTodayRobust");
     scrollToTodayRobust();
   });
 });
