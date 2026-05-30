@@ -6456,6 +6456,156 @@ function isEventForStaff(ev, staff){
 
 // ===== モーダル：予定 =====
 const eventModal = document.getElementById("eventModal");
+// ===========================================================
+// 💬 イベントコメント (チャット + リアクション)
+// 編集中の予定のコメント配列をモーダル内でローカル管理し、保存時に ev.comments に反映
+// ===========================================================
+let __evCommentsCache = [];
+const COMMENT_REACTIONS = ['👍','✅','👀','❓','💪','🙏','🎉','⚠️'];
+
+function evCommentTimeFmt(iso){
+  if(!iso) return '';
+  const d = new Date(iso); if(isNaN(d)) return iso;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const sameDay = d >= today;
+  const pad = n => String(n).padStart(2,'0');
+  if(sameDay) return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function renderEvComments(){
+  const list = document.getElementById("ev-comments-list");
+  const count = document.getElementById("ev-comments-count");
+  if(!list) return;
+  const me = getMyself();
+  const comments = __evCommentsCache || [];
+  count.textContent = comments.length ? `(${comments.length}件)` : '';
+  if(!comments.length){
+    list.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:8px;text-align:center">まだコメントなし</div>';
+    return;
+  }
+  list.innerHTML = comments.map((c,idx)=>{
+    const isMine = c.author === me && me;
+    const reactionsHtml = Object.entries(c.reactions||{})
+      .filter(([_, users]) => Array.isArray(users) && users.length > 0)
+      .map(([emoji, users])=>{
+        const on = me && users.includes(me) ? 'on' : '';
+        return `<button class="reaction-btn ${on}" data-c-idx="${idx}" data-react="${escapeHtml(emoji)}" title="${escapeHtml(users.join(', '))}">${emoji}<span class="r-count">${users.length}</span></button>`;
+      }).join('');
+    return `<div class="ev-comment-card ${isMine?'mine':''}">
+      ${isMine ? `<button class="ev-comment-del" data-del-c="${idx}" title="削除">✕</button>` : ''}
+      <div class="ev-comment-head">
+        <span class="ev-comment-author">${escapeHtml(c.author||'?')}</span>
+        <span class="ev-comment-time">${escapeHtml(evCommentTimeFmt(c.at))}</span>
+      </div>
+      <div class="ev-comment-text">${escapeHtml(c.text||'')}</div>
+      <div class="ev-comment-reactions">
+        ${reactionsHtml}
+        <button class="reaction-add" data-add-react="${idx}" title="リアクション追加">+</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  // リアクショントグル
+  list.querySelectorAll('[data-react]').forEach(btn=>{
+    btn.onclick = (e)=>{
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.cIdx,10);
+      const emoji = btn.dataset.react;
+      toggleEvCommentReaction(idx, emoji);
+    };
+  });
+  // 追加ピッカー
+  list.querySelectorAll('[data-add-react]').forEach(btn=>{
+    btn.onclick = (e)=>{
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.addReact,10);
+      openReactionPicker(btn, idx);
+    };
+  });
+  // 削除
+  list.querySelectorAll('[data-del-c]').forEach(btn=>{
+    btn.onclick = (e)=>{
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.delC,10);
+      if(!confirm('このコメントを削除しますか？')) return;
+      __evCommentsCache.splice(idx,1);
+      renderEvComments();
+    };
+  });
+}
+
+function openReactionPicker(anchorBtn, commentIdx){
+  // 既存のピッカーを消す
+  document.querySelectorAll('.reaction-picker').forEach(el=>el.remove());
+  const picker = document.createElement('div');
+  picker.className = 'reaction-picker';
+  picker.innerHTML = COMMENT_REACTIONS.map(em => `<button data-em="${em}">${em}</button>`).join('');
+  document.body.appendChild(picker);
+  const rect = anchorBtn.getBoundingClientRect();
+  picker.style.left = `${rect.left}px`;
+  picker.style.top = `${rect.bottom + 4}px`;
+  picker.querySelectorAll('button').forEach(b=>{
+    b.onclick = ()=>{
+      toggleEvCommentReaction(commentIdx, b.dataset.em);
+      picker.remove();
+    };
+  });
+  setTimeout(()=>{
+    document.addEventListener('click', function close(e){
+      if(!picker.contains(e.target)){
+        picker.remove();
+        document.removeEventListener('click', close);
+      }
+    });
+  }, 10);
+}
+
+function toggleEvCommentReaction(commentIdx, emoji){
+  const me = getMyself();
+  if(!me){ alert('リアクションするには自分を設定してください'); return; }
+  const c = __evCommentsCache[commentIdx];
+  if(!c) return;
+  if(!c.reactions) c.reactions = {};
+  if(!c.reactions[emoji]) c.reactions[emoji] = [];
+  const arr = c.reactions[emoji];
+  const i = arr.indexOf(me);
+  if(i >= 0) arr.splice(i,1);
+  else arr.push(me);
+  // 空配列なら削除
+  if(arr.length === 0) delete c.reactions[emoji];
+  renderEvComments();
+}
+
+function addEvComment(){
+  const input = document.getElementById("ev-comment-input");
+  const text = input.value.trim();
+  if(!text) return;
+  const me = getMyself();
+  if(!me){ alert('送信者を設定してください (👤マイから)'); return; }
+  __evCommentsCache.push({
+    id: 'c_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,5),
+    author: me,
+    text: text,
+    at: new Date().toISOString(),
+    reactions: {}
+  });
+  input.value = '';
+  renderEvComments();
+  // 自動でリスト末尾までスクロール
+  const list = document.getElementById("ev-comments-list");
+  if(list) list.scrollTop = list.scrollHeight;
+}
+
+// 送信ボタン & Enter キー
+document.getElementById("ev-comment-send").onclick = addEvComment;
+document.getElementById("ev-comment-input").addEventListener("keydown", (e)=>{
+  if(e.key === 'Enter' && !e.shiftKey){
+    e.preventDefault();
+    addEvComment();
+  }
+});
+
 function openEventModal(ev, defaults){
   editingEventId = ev ? ev.id : null;
   document.getElementById("eventModalTitle").textContent = ev ? "予定を編集" : "予定を追加";
