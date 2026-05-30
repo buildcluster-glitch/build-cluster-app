@@ -6722,6 +6722,7 @@ document.getElementById("ev-save").onclick = ()=>{
     ...(allday ? {freeTop} : {}),
     color: document.querySelector('input[name="ev-color"]:checked').value, // 空文字="担当色を使う"
     memo: document.getElementById("ev-memo").value,
+    comments: Array.isArray(__evCommentsCache) ? __evCommentsCache : [],
     updatedAt: new Date().toISOString(),
   };
   if(editingEventId){
