@@ -9264,6 +9264,9 @@ function openMyself(){
   }
   renderMyselfOptions();
   renderMemberList();
+  // フィルタON/OFFを反映
+  const filterCb = document.getElementById("myself-filter-on");
+  if(filterCb) filterCb.checked = myEventsOnly;
   myselfModal.classList.add("show");
 }
 function renderMyselfOptions(){
