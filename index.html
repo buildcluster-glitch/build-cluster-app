@@ -3980,6 +3980,85 @@ async function pushAttendanceToGAS(){
 // 自社工事管理アプリの GAS Web App から GET ?token= で {ok, master, bukken, settings, fetchedAt}
 const BUKKEN_TTL_MS = 30 * 60 * 1000; // 30分キャッシュ
 let __bukkenInFlight = null;
+// ===========================================================
+// 👤 スタッフマスタ取得: master_sync GAS の get-shared-config (key=staffMaster)
+// 積算アプリと共有する単一情報源
+// ===========================================================
+const STAFF_MASTER_CACHE_KEY = 'buildcluster_staffMaster_v1';
+const STAFF_MASTER_TTL_MS = 60 * 60 * 1000; // 1時間
+let __staffMasterInFlight = null;
+
+function loadCachedStaffMaster(){
+  try{
+    const raw = localStorage.getItem(STAFF_MASTER_CACHE_KEY);
+    if(!raw) return null;
+    const d = JSON.parse(raw);
+    if(!d || !Array.isArray(d.members)) return null;
+    return d;
+  }catch(e){ return null; }
+}
+function saveCachedStaffMaster(members){
+  try{
+    localStorage.setItem(STAFF_MASTER_CACHE_KEY, JSON.stringify({
+      members, fetchedAt: new Date().toISOString()
+    }));
+  }catch(e){}
+}
+
+async function fetchStaffMaster(opts={}){
+  if(__staffMasterInFlight) return __staffMasterInFlight;
+  const s = loadGasSettings();
+  if(!s.url || !s.token){
+    if(!opts.silent) console.warn('[staffMaster] GAS URL/token 未設定');
+    // キャッシュがあれば返す
+    const cached = loadCachedStaffMaster();
+    return cached ? cached.members : null;
+  }
+  // キャッシュ判定 (1時間)
+  if(!opts.force){
+    const cached = loadCachedStaffMaster();
+    if(cached){
+      const age = Date.now() - new Date(cached.fetchedAt).getTime();
+      if(age < STAFF_MASTER_TTL_MS){
+        if(!opts.silent) console.log(`[staffMaster] cache hit (age=${Math.round(age/1000)}s, count=${cached.members.length})`);
+        return cached.members;
+      }
+    }
+  }
+  const fetchUrl = `${s.url}?action=get-shared-config&key=staffMaster&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+  __staffMasterInFlight = (async ()=>{
+    try{
+      const res = await fetch(fetchUrl, {method:'GET', redirect:'follow'});
+      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if(data.error) throw new Error(data.error);
+      // レスポンス形式は柔軟に受ける: {members:[...]} / {value:[...]} / {staffMaster:[...]} / 直接配列
+      let members = null;
+      if(Array.isArray(data)) members = data;
+      else if(Array.isArray(data.members)) members = data.members;
+      else if(Array.isArray(data.value)) members = data.value;
+      else if(Array.isArray(data.staffMaster)) members = data.staffMaster;
+      else if(data.value && typeof data.value === 'string'){
+        try{ const v = JSON.parse(data.value); if(Array.isArray(v)) members = v; }catch(e){}
+      }
+      if(!members) throw new Error('レスポンスから members 配列を取得できず: '+JSON.stringify(data).slice(0,200));
+      // 文字列化 (オブジェクトなら .name)
+      members = members.map(m=>typeof m === 'string' ? m : (m && (m.name||m.staff||''))).filter(Boolean);
+      saveCachedStaffMaster(members);
+      if(!opts.silent) console.log(`[staffMaster] loaded ${members.length} 名`);
+      return members;
+    }catch(err){
+      console.warn('[staffMaster] fetch失敗:', err.message);
+      // フォールバック: キャッシュ
+      const cached = loadCachedStaffMaster();
+      return cached ? cached.members : null;
+    }finally{
+      __staffMasterInFlight = null;
+    }
+  })();
+  return __staffMasterInFlight;
+}
+
 async function fetchBukkenMaster(opts={}){
   // 既に進行中の fetch があれば共有
   if(__bukkenInFlight) return __bukkenInFlight;
