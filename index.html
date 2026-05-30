@@ -9203,12 +9203,15 @@ function getEffectiveMembers(){
   return merged;
 }
 function openMyself(){
-  // 開いた時にクラウドから最新メンバーを取りに行く (URL設定済かつ取得済の場合)
-  if(cloudSync.url && (!state.cloudMembers || state.cloudMembers.length===0)){
-    // 初回のみpull試行 (バックグラウンド・失敗してもOK)
-    cloudSyncPull({replace:false}).then(()=>renderMyselfOptions()).catch(()=>{});
+  // 開いた時にクラウドから最新メンバーを取りに行く (URL設定済の場合は毎回)
+  if(cloudSync.url){
+    cloudSyncPull({replace:false}).then(()=>{
+      renderMyselfOptions();
+      renderMemberList();
+    }).catch(()=>{});
   }
   renderMyselfOptions();
+  renderMemberList();
   myselfModal.classList.add("show");
 }
 function renderMyselfOptions(){
@@ -9223,6 +9226,66 @@ function renderMyselfOptions(){
       return `<option value="${escapeHtml(s)}" ${cur===s?'selected':''}>${escapeHtml(s)} ${src}</option>`;
     }).join("");
 }
+// メンバー一覧 (削除可能リスト)
+function renderMemberList(){
+  const box = document.getElementById("member-list");
+  if(!box) return;
+  const members = getEffectiveMembers();
+  const cloudSet = new Set(state.cloudMembers||[]);
+  if(!members.length){
+    box.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px">メンバーなし</div>';
+    return;
+  }
+  box.innerHTML = members.map(s=>{
+    const isCloud = cloudSet.has(s);
+    const src = isCloud ? '☁' : '📋';
+    const delBtn = isCloud
+      ? `<button class="btn" data-del-member="${escapeHtml(s)}" style="font-size:11px;padding:2px 6px;color:var(--danger)">削除</button>`
+      : `<span style="font-size:10px;color:var(--muted);padding:2px 6px">ローカル(削除不可)</span>`;
+    return `<div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#f9fafb;border-radius:4px">
+      <span style="flex:1;font-size:13px">${src} ${escapeHtml(s)}</span>
+      ${delBtn}
+    </div>`;
+  }).join("");
+  box.querySelectorAll('[data-del-member]').forEach(b=>{
+    b.onclick = ()=>{
+      const name = b.dataset.delMember;
+      if(!confirm(`「${name}」をクラウドメンバーから削除しますか？\n(過去ログは残ります・他端末でも消えます)`)) return;
+      const newList = (state.cloudMembers||[]).filter(x=>x!==name);
+      state.cloudMembers = newList;
+      // setMembers アクションでサーバーに反映
+      if(typeof queueCloudOp === 'function' && cloudSync.url){
+        queueCloudOp('setMembers', newList);
+      }
+      renderMyselfOptions();
+      renderMemberList();
+    };
+  });
+}
+// メンバー追加
+document.getElementById('member-add-btn').onclick = ()=>{
+  const input = document.getElementById('member-add-input');
+  const name = input.value.trim();
+  if(!name) return;
+  if(!cloudSync.url){
+    alert('クラウド同期URLが未設定です。先に ⚙設定 でURLを保存してください。');
+    return;
+  }
+  const current = state.cloudMembers || [];
+  if(current.includes(name)){
+    alert('既に存在します');
+    return;
+  }
+  const newList = [...current, name];
+  state.cloudMembers = newList;
+  queueCloudOp('setMembers', newList);
+  input.value = '';
+  renderMyselfOptions();
+  renderMemberList();
+};
+document.getElementById('member-add-input').onkeydown = (e)=>{
+  if(e.key === 'Enter') document.getElementById('member-add-btn').click();
+};
 function closeMyself(){ myselfModal.classList.remove("show"); }
 document.getElementById("myself-cancel").onclick = closeMyself;
 document.getElementById("myself-save").onclick = ()=>{
