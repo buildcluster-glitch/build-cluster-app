@@ -6663,8 +6663,15 @@ function openEventModal(ev, defaults){
   // チェック順を __pickOrder で管理し、先頭が常にリーダー。
   const partsWrap = document.getElementById("ev-participants");
   // 初期チェック集合: 既存ev のリーダー+参加者を合算（リーダー先頭）
+  // 新規予定の場合は「自分」を初期チェック
   const initialChecked = [];
-  if(ev?.staff) initialChecked.push(ev.staff);
+  if(ev?.staff){
+    initialChecked.push(ev.staff);
+  } else if(!ev){
+    // 新規予定: getMyself() を初期チェック (設定済なら)
+    const me = getMyself();
+    if(me && STAFF.includes(me)) initialChecked.push(me);
+  }
   (ev?.participants || []).forEach(p=>{
     if(p && !initialChecked.includes(p)) initialChecked.push(p);
   });
@@ -6672,9 +6679,10 @@ function openEventModal(ev, defaults){
   let __pickOrder = [...initialChecked]; // チェック順、先頭がリーダー
   partsWrap.innerHTML = STAFF.map(s=>{
     const isChecked = checkedSet.has(s);
+    const display = (typeof getStaffDisplayName === 'function') ? getStaffDisplayName(s) : s;
     return `<label class="${isChecked?"checked":""}" data-staff="${s}">
       <input type="checkbox" value="${s}" ${isChecked?"checked":""}>
-      <span class="p-dot" style="background:${STAFF_COLORS[s]}"></span>${s}
+      <span class="p-dot" style="background:${STAFF_COLORS[s]}"></span>${escapeHtml(display)}
     </label>`;
   }).join("");
   // リーダー表示の更新（is-leader class + sSel value 同期）
