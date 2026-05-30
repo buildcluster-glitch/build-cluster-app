@@ -9362,13 +9362,11 @@ function getEffectiveMembers(){
   return [...STAFF];
 }
 function openMyself(){
-  // 開いた時にクラウドから最新メンバーを取りに行く (URL設定済の場合は毎回)
-  if(cloudSync.url){
-    cloudSyncPull({replace:false}).then(()=>{
-      renderMyselfOptions();
-      renderMemberList();
-    }).catch(()=>{});
-  }
+  // 開いた時に master_sync GAS から最新スタッフマスタを取得 (silent)
+  fetchStaffMaster({silent:true}).then(()=>{
+    renderMyselfOptions();
+    renderMemberList();
+  }).catch(()=>{});
   renderMyselfOptions();
   renderMemberList();
   // フィルタON/OFFを反映
