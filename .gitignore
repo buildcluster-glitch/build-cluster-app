@@ -1,0 +1,15 @@
+# clasp metadata (公開しても致命的ではないが念のため除外)
+backend/.clasp.json
+backend/.claspignore
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 開発時の一時ファイル
+_inv-ported.js
+*.tmp
+*.log
