@@ -2536,8 +2536,18 @@
         <select id="myself-select"></select>
         <div style="font-size:10px;color:var(--muted);margin-top:4px">☁=クラウド同期由来 / 📋=ローカル定義</div>
       </div>
+      <fieldset style="border:1px solid var(--border);border-radius:6px;padding:10px;margin:8px 0;background:#f9fafb">
+        <legend style="font-size:12px;padding:0 6px;color:#1f2937;font-weight:700">📌 自分フィルタ</legend>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+          <input type="checkbox" id="myself-filter-on">
+          <span>自分が関わる予定だけ表示する</span>
+        </label>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5">
+          ONにすると staff/参加者 に自分が含まれる予定のみ表示。担当別ビューでも自分の列のみになります。
+        </div>
+      </fieldset>
       <div style="font-size:11px;color:var(--muted);margin:8px 0">
-        ここで設定した名前がタスクの「自分」判定・👤マイフィルタに使われます。<br>
+        ここで設定した名前がタスクの「自分」判定にも使われます。<br>
         他人のタスクは✅完了ボタンが押せなくなります。
       </div>
 
