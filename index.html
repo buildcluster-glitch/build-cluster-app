@@ -9181,12 +9181,33 @@ taskTrashModal.onclick = e=>{ if(e.target===taskTrashModal) closeTaskTrash(); };
 
 // ===== 自分設定モーダル =====
 const myselfModal = document.getElementById("myselfModal");
+// 実効メンバーリスト: クラウド > STAFF (重複除去・クラウド優先順)
+function getEffectiveMembers(){
+  const cloud = (state.cloudMembers||[]).filter(Boolean);
+  const merged = [...cloud];
+  STAFF.forEach(s=>{ if(!merged.includes(s)) merged.push(s); });
+  return merged;
+}
 function openMyself(){
-  const sel = document.getElementById("myself-select");
-  sel.innerHTML = `<option value="">(未設定)</option>` +
-    STAFF.map(s=>`<option value="${s}">${s}</option>`).join("");
-  sel.value = getMyself();
+  // 開いた時にクラウドから最新メンバーを取りに行く (URL設定済かつ取得済の場合)
+  if(cloudSync.url && (!state.cloudMembers || state.cloudMembers.length===0)){
+    // 初回のみpull試行 (バックグラウンド・失敗してもOK)
+    cloudSyncPull({replace:false}).then(()=>renderMyselfOptions()).catch(()=>{});
+  }
+  renderMyselfOptions();
   myselfModal.classList.add("show");
+}
+function renderMyselfOptions(){
+  const sel = document.getElementById("myself-select");
+  if(!sel) return;
+  const members = getEffectiveMembers();
+  const cur = getMyself();
+  const cloudSet = new Set(state.cloudMembers||[]);
+  sel.innerHTML = `<option value="">(未設定)</option>` +
+    members.map(s=>{
+      const src = cloudSet.has(s) ? '☁' : '📋';
+      return `<option value="${escapeHtml(s)}" ${cur===s?'selected':''}>${escapeHtml(s)} ${src}</option>`;
+    }).join("");
 }
 function closeMyself(){ myselfModal.classList.remove("show"); }
 document.getElementById("myself-cancel").onclick = closeMyself;
