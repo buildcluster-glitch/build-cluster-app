@@ -5628,7 +5628,7 @@ function renderCalendar(){
         const titleClass = isMulti ? "chip-title multi-line" : "chip-title single-line";
         const timeBox = isAnytime ? "" : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;
         // 参加者バッジは title 外(チップ直下)に独立行として配置
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${titleHtml}${commuteIcon}${memoIcon}</span>${timeBox}${staffBadges}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${titleHtml}${commuteIcon}${memoIcon}${commentBadge}</span>${timeBox}${staffBadges}`;
         if(impList.length){ el.classList.add("imp-flag"); if(impTopClass) el.classList.add(impTopClass); }
         el.title = fullTooltip;
       } else if(isFree){
@@ -5639,7 +5639,7 @@ function renderCalendar(){
         const titleClass = isMulti ? "chip-title multi-line" : "chip-title single-line";
         el.classList.add("event-chip");
         const timeBox = isAnytime ? "" : `<span class="chip-time">終日</span>`;
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${titleHtml}${commuteIcon}${memoIcon}</span>${timeBox}${staffBadges}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${titleHtml}${commuteIcon}${memoIcon}${commentBadge}</span>${timeBox}${staffBadges}`;
         if(impList.length){ el.classList.add("imp-flag"); if(impTopClass) el.classList.add(impTopClass); }
         el.title = fullTooltip;
       } else {
