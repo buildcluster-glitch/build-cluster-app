@@ -7437,6 +7437,12 @@ function cloudMergeById_(localArr, serverArr, pendingIds){
 
 // サーバーからの行を CL クライアント形式に正規化
 function normalizeCloudEvent_(x){
+  // comments: サーバーからは JSON 配列で来る (api.gsがparseしてくれる)。文字列なら parse
+  let comments = [];
+  if(Array.isArray(x.comments)) comments = x.comments;
+  else if(typeof x.comments === 'string' && x.comments){
+    try{ const p = JSON.parse(x.comments); if(Array.isArray(p)) comments = p; }catch(e){}
+  }
   return {
     id: x.id,
     date: (x.date||'').slice(0,10),
@@ -7453,6 +7459,7 @@ function normalizeCloudEvent_(x){
     importance: Array.isArray(x.importance) ? x.importance : (x.importance ? [x.importance] : []),
     color: x.color || '',
     memo: x.memo || '',
+    comments,
     createdBy: x.createdBy || '',
     createdAt: x.createdAt || '',
     updatedAt: x.updatedAt || '',
