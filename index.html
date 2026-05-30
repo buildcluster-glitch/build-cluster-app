@@ -2551,15 +2551,16 @@
       </div>
 
       <fieldset style="border:1px solid var(--border);border-radius:6px;padding:10px;margin:8px 0">
-        <legend style="font-size:12px;padding:0 6px;color:#1f2937;font-weight:700">ユーザー追加・削除 (クラウド同期)</legend>
+        <legend style="font-size:12px;padding:0 6px;color:#1f2937;font-weight:700">スタッフ一覧 (master_sync staffMaster)</legend>
         <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
-          <input id="member-add-input" placeholder="新しいメンバー名" style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px">
-          <button class="btn" id="member-add-btn" style="font-size:12px;padding:5px 10px">＋追加</button>
+          <input id="member-add-input" style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;display:none">
+          <button class="btn" id="member-add-btn" style="font-size:12px;padding:5px 10px">🔄 再取得</button>
         </div>
         <div id="member-list" style="display:flex;flex-direction:column;gap:3px;max-height:200px;overflow-y:auto"></div>
-        <div style="font-size:10px;color:var(--muted);margin-top:6px">
-          ⚠️ ここでの追加・削除はクラウド同期に反映されます (1.5秒後)。<br>
-          全端末で共有されるので、ハードコード版より柔軟に管理できます。
+        <div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5">
+          このリストは <b>積算アプリと共通の staffMaster</b> (master_sync GAS) から取得します。<br>
+          メンバーの追加・編集は積算アプリ側の staffMaster で行ってください。<br>
+          ⚠️ Drive GAS の URL/Token が未設定だとローカル STAFF にフォールバックします。
         </div>
       </fieldset>
     </div>
