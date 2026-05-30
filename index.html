@@ -9379,73 +9379,65 @@ function renderMyselfOptions(){
   if(!sel) return;
   const members = getEffectiveMembers();
   const cur = getMyself();
-  const cloudSet = new Set(state.cloudMembers||[]);
+  const cached = loadCachedStaffMaster();
+  const masterSet = new Set(cached && cached.members ? cached.members : []);
   sel.innerHTML = `<option value="">(未設定)</option>` +
     members.map(s=>{
-      const src = cloudSet.has(s) ? '☁' : '📋';
+      const src = masterSet.has(s) ? '🌐' : '📋'; // master_sync由来 / ローカル
       return `<option value="${escapeHtml(s)}" ${cur===s?'selected':''}>${escapeHtml(s)} ${src}</option>`;
     }).join("");
 }
-// メンバー一覧 (削除可能リスト)
+// メンバー一覧表示 (master_syncから取得した一覧を表示・編集はGASエディタ側)
 function renderMemberList(){
   const box = document.getElementById("member-list");
   if(!box) return;
   const members = getEffectiveMembers();
-  const cloudSet = new Set(state.cloudMembers||[]);
+  const cached = loadCachedStaffMaster();
+  const masterSet = new Set(cached && cached.members ? cached.members : []);
+  const fetchedAt = cached ? cached.fetchedAt : null;
   if(!members.length){
     box.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px">メンバーなし</div>';
     return;
   }
   box.innerHTML = members.map(s=>{
-    const isCloud = cloudSet.has(s);
-    const src = isCloud ? '☁' : '📋';
-    const delBtn = isCloud
-      ? `<button class="btn" data-del-member="${escapeHtml(s)}" style="font-size:11px;padding:2px 6px;color:var(--danger)">削除</button>`
-      : `<span style="font-size:10px;color:var(--muted);padding:2px 6px">ローカル(削除不可)</span>`;
+    const isMaster = masterSet.has(s);
+    const src = isMaster ? '🌐' : '📋';
+    const tag = isMaster
+      ? `<span style="font-size:10px;color:var(--muted);padding:2px 6px">staffMaster</span>`
+      : `<span style="font-size:10px;color:#f59e0b;padding:2px 6px">ローカル(STAFF配列)</span>`;
     return `<div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#f9fafb;border-radius:4px">
       <span style="flex:1;font-size:13px">${src} ${escapeHtml(s)}</span>
-      ${delBtn}
+      ${tag}
     </div>`;
   }).join("");
-  box.querySelectorAll('[data-del-member]').forEach(b=>{
-    b.onclick = ()=>{
-      const name = b.dataset.delMember;
-      if(!confirm(`「${name}」をクラウドメンバーから削除しますか？\n(過去ログは残ります・他端末でも消えます)`)) return;
-      const newList = (state.cloudMembers||[]).filter(x=>x!==name);
-      state.cloudMembers = newList;
-      // setMembers アクションでサーバーに反映
-      if(typeof queueCloudOp === 'function' && cloudSync.url){
-        queueCloudOp('setMembers', newList);
-      }
+}
+
+// 「+追加」ボタン: master_syncのstaffMasterは積算アプリ側マスタなので、ここからの追加はしない
+document.getElementById('member-add-btn').onclick = ()=>{
+  alert('メンバー追加は積算アプリ側の staffMaster で行ってください。\nこのアプリは master_sync GAS から get-shared-config(key=staffMaster) で読取専用です。');
+};
+document.getElementById('member-add-input').onkeydown = (e)=>{ if(e.key==='Enter') e.preventDefault(); };
+// 「+追加」ボタンの見た目を「🔄 再取得」に変更してクリックでforce fetch
+(function(){
+  const btn = document.getElementById('member-add-btn');
+  const input = document.getElementById('member-add-input');
+  if(!btn) return;
+  btn.textContent = '🔄 再取得';
+  btn.title = 'master_sync から staffMaster を強制再取得';
+  if(input){ input.style.display = 'none'; }
+  btn.onclick = async ()=>{
+    btn.disabled = true;
+    btn.textContent = '取得中…';
+    try{
+      const m = await fetchStaffMaster({force:true});
+      btn.textContent = '🔄 再取得';
+      if(m){ alert(`✅ ${m.length}名を取得`); }
+      else { alert('❌ 取得失敗 (URL/token確認)'); }
       renderMyselfOptions();
       renderMemberList();
-    };
-  });
-}
-// メンバー追加
-document.getElementById('member-add-btn').onclick = ()=>{
-  const input = document.getElementById('member-add-input');
-  const name = input.value.trim();
-  if(!name) return;
-  if(!cloudSync.url){
-    alert('クラウド同期URLが未設定です。先に ⚙設定 でURLを保存してください。');
-    return;
-  }
-  const current = state.cloudMembers || [];
-  if(current.includes(name)){
-    alert('既に存在します');
-    return;
-  }
-  const newList = [...current, name];
-  state.cloudMembers = newList;
-  queueCloudOp('setMembers', newList);
-  input.value = '';
-  renderMyselfOptions();
-  renderMemberList();
-};
-document.getElementById('member-add-input').onkeydown = (e)=>{
-  if(e.key === 'Enter') document.getElementById('member-add-btn').click();
-};
+    }finally{ btn.disabled = false; }
+  };
+})();
 function closeMyself(){ myselfModal.classList.remove("show"); }
 document.getElementById("myself-cancel").onclick = closeMyself;
 document.getElementById("myself-save").onclick = ()=>{
