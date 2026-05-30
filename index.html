@@ -6612,26 +6612,8 @@ document.getElementById("todayBtn").onclick = ()=>{
   render();
   scrollToToday();
 };
-// 👤 マイ ボタン: 左クリック=フィルタトグル / 右クリック・Shift+クリック=自分変更
-document.getElementById("myEventsBtn").onclick = (e)=>{
-  if(e.shiftKey){ openMyself(); return; }
-  toggleMyEventsOnly();
-};
-document.getElementById("myEventsBtn").oncontextmenu = (e)=>{
-  e.preventDefault();
-  openMyself();
-};
-// タッチデバイス向け: 長押し (500ms) で自分変更モーダル
-let myEventsLongPressTimer = null;
-document.getElementById("myEventsBtn").addEventListener('touchstart', ()=>{
-  myEventsLongPressTimer = setTimeout(()=>{
-    myEventsLongPressTimer = null;
-    openMyself();
-  }, 500);
-}, {passive:true});
-document.getElementById("myEventsBtn").addEventListener('touchend', ()=>{
-  if(myEventsLongPressTimer){ clearTimeout(myEventsLongPressTimer); myEventsLongPressTimer = null; }
-}, {passive:true});
+// 👤 マイ ボタン: 左クリックで設定モーダルを開く (フィルタON/OFFはモーダル内で操作)
+document.getElementById("myEventsBtn").onclick = ()=>openMyself();
 
 // 「今日」位置にスクロール（垂直=現在時刻付近、水平=月ビューで今日の列）
 function scrollToToday(){
