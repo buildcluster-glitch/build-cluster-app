@@ -7412,10 +7412,11 @@ function renderAllMyselfSelect(){
   if(!sel) return;
   const members = (typeof getEffectiveMembers === 'function') ? getEffectiveMembers() : STAFF;
   const cur = (typeof getMyself === 'function') ? getMyself() : '';
-  const cloudSet = new Set(state.cloudMembers||[]);
+  const cached = (typeof loadCachedStaffMaster === 'function') ? loadCachedStaffMaster() : null;
+  const masterSet = new Set(cached && cached.members ? cached.members : []);
   sel.innerHTML = `<option value="">(未設定)</option>` +
     members.map(s=>{
-      const src = cloudSet.has(s) ? '☁' : '📋';
+      const src = masterSet.has(s) ? '🌐' : '📋';
       return `<option value="${escapeHtml(s)}" ${cur===s?'selected':''}>${escapeHtml(s)} ${src}</option>`;
     }).join("");
 }
