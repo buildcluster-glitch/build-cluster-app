@@ -7044,12 +7044,13 @@ function scrollToToday(){
     body.scrollLeft = 0;
   }
 }
-// 今日の位置スクロール: render後のレイアウト確定に追いつくため複数回リトライ
+// 今日の位置スクロール: render後のレイアウト確定 + 非同期fetchの再描画にも追従
+// fetchBukkenMaster (3000ms) / fetchStaffMaster なども再render してスクロールがリセットされるので、
+// それ以降のタイミングまでリトライ
 function scrollToTodayRobust(){
-  // 即時 + 50ms + 200ms + 500ms + 1000ms に複数試行
-  // HOUR_PX 自動計算やチップ重複解消などが完了するまで断続的にスクロール
   scrollToToday();
-  [50, 200, 500, 1000, 1500].forEach(delay => {
+  // 0〜5秒の間に多段リトライ。bukken/staffMaster fetch完了後の再描画も拾う
+  [50, 200, 500, 1000, 1500, 2500, 3500, 4500].forEach(delay => {
     setTimeout(scrollToToday, delay);
   });
 }
