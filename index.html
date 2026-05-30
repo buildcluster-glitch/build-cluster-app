@@ -9348,12 +9348,18 @@ taskTrashModal.onclick = e=>{ if(e.target===taskTrashModal) closeTaskTrash(); };
 
 // ===== 自分設定モーダル =====
 const myselfModal = document.getElementById("myselfModal");
-// 実効メンバーリスト: STAFF順を優先 → クラウドにしかない名前を後ろに追加
+// 実効メンバーリスト: master_sync staffMaster(キャッシュ) を優先 → なければSTAFF
+// 順序は staffMaster の並び順をそのまま採用 (積算アプリと共通)
 function getEffectiveMembers(){
-  const cloud = (state.cloudMembers||[]).filter(Boolean);
-  const merged = [...STAFF];
-  cloud.forEach(c=>{ if(!merged.includes(c)) merged.push(c); });
-  return merged;
+  const cached = loadCachedStaffMaster();
+  if(cached && cached.members && cached.members.length){
+    // staffMaster優先・STAFFにしかない名前を末尾に追加(欠落防止)
+    const merged = [...cached.members];
+    STAFF.forEach(s=>{ if(!merged.includes(s)) merged.push(s); });
+    return merged;
+  }
+  // staffMaster未取得 → STAFFのみ
+  return [...STAFF];
 }
 function openMyself(){
   // 開いた時にクラウドから最新メンバーを取りに行く (URL設定済の場合は毎回)
