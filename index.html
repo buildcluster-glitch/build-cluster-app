@@ -5589,6 +5589,10 @@ function renderCalendar(){
       ].filter(Boolean).join("\n");
       // コメントアイコン(メモあり時のみ)
       const memoIcon = ev.memo ? `<span class="chip-memo" title="📝 ${escapeHtml(ev.memo)}">📝</span>` : "";
+      // 💬コメント数バッジ (チャット)
+      const commentCount = (ev.comments && ev.comments.length) || 0;
+      const commentBadge = commentCount > 0
+        ? `<span class="chip-comment-badge" title="💬 コメント ${commentCount}件">💬${commentCount}</span>` : "";
       // 直行/直帰バッジ
       const commuteIcon = ev.commute
         ? `<span class="chip-commute" title="${escapeHtml(ev.commute)}">${ev.commute==="直行直帰"?"🚗⇄":ev.commute==="直行"?"🚗→":"→🏠"}</span>`
