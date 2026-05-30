@@ -2770,6 +2770,81 @@
   </div>
 </div>
 
+<!-- ⚙ 全体設定モーダル: 3つのGAS URLを1画面に統合 -->
+<div class="modal-overlay" id="allSettingsModal">
+  <div class="modal" style="max-width:640px;max-height:90vh;overflow-y:auto">
+    <div class="modal-header">⚙ 全体設定 — クラウド連携3種</div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:18px">
+
+      <!-- セクション1: Drive同期 (台帳取り込み) -->
+      <fieldset style="border:1px solid var(--border);border-radius:8px;padding:12px;margin:0">
+        <legend style="padding:0 8px;font-weight:700;color:#1f2937">🔄 Drive 台帳取り込み (master_sync)</legend>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">
+          Dropboxの物件マスタ・修繕台帳・原状回復台帳をアプリに取り込む既存GAS
+        </div>
+        <div class="field">
+          <label>GAS Web App URL</label>
+          <input id="all-gas-url" type="text" placeholder="https://script.google.com/macros/s/.../exec">
+        </div>
+        <div class="field">
+          <label>Token (master_syncで設定したもの)</label>
+          <input id="all-gas-token" type="text" placeholder="共有トークン">
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label style="font-size:12px"><input type="checkbox" id="all-gas-auto" checked> 自動同期 (5分ごと)</label>
+          <span style="font-size:11px;color:var(--muted)">取得期間:</span>
+          <input id="all-gas-months" type="number" value="6" min="1" max="24" style="width:60px;padding:2px 6px">
+          <span style="font-size:11px;color:var(--muted)">ヶ月</span>
+        </div>
+      </fieldset>
+
+      <!-- セクション2: クラウド同期 (予定/休暇) -->
+      <fieldset style="border:1px solid var(--border);border-radius:8px;padding:12px;margin:0">
+        <legend style="padding:0 8px;font-weight:700;color:#1f2937">☁ 予定/休暇 同期 (工事カレンダーDB)</legend>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">
+          新規追加した予定・休暇をスタッフ間で共有する新スプシ。<code style="font-size:10px">backend/deploy.sh</code> で発行
+        </div>
+        <div class="field">
+          <label>GAS Web App URL</label>
+          <input id="all-cs-url" type="text" placeholder="https://script.google.com/macros/s/.../exec">
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label style="font-size:12px"><input type="checkbox" id="all-cs-auto" checked> 自動同期 (1.5秒+30秒)</label>
+          <span id="all-cs-status" style="font-size:11px;color:var(--muted);margin-left:auto"></span>
+        </div>
+      </fieldset>
+
+      <!-- セクション3: 在庫管理 -->
+      <fieldset style="border:1px solid var(--border);border-radius:8px;padding:12px;margin:0">
+        <legend style="padding:0 8px;font-weight:700;color:#1f2937">📦 在庫管理 同期 (zaiko)</legend>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">
+          品目・発注・棚卸データの同期。既存の在庫管理アプリ用GASを流用可能
+        </div>
+        <div class="field">
+          <label>GAS Web App URL</label>
+          <input id="all-inv-url" type="text" placeholder="https://script.google.com/macros/s/.../exec">
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label style="font-size:12px"><input type="checkbox" id="all-inv-auto" checked> 自動同期</label>
+          <span id="all-inv-status" style="font-size:11px;color:var(--muted);margin-left:auto"></span>
+        </div>
+      </fieldset>
+
+      <div style="font-size:11px;color:var(--muted);background:#f3f4f6;padding:8px 10px;border-radius:6px;line-height:1.5">
+        💡 <strong>注意</strong>: 在庫設定の変更はページリロード後に反映されます。<br>
+        💡 各URLは個別の GAS ですので、混同しないでください。
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="all-settings-test">🔌 接続テスト (全3つ)</button>
+      <span style="flex:1"></span>
+      <button class="btn" id="all-settings-cancel">キャンセル</button>
+      <button class="btn primary" id="all-settings-save">全て保存</button>
+    </div>
+  </div>
+</div>
+
 <!-- 工事最終確認モーダル -->
 <div class="modal-overlay" id="checkModal">
   <div class="modal">
