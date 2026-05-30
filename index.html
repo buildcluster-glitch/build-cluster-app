@@ -7022,16 +7022,24 @@ function scrollToToday(){
   }else{
     body.scrollTop = 0;
   }
-  // 水平: 月ビューで今日の列をビュー左に
+  // 水平: 月ビューで今日の列がビュー内に入るようスクロール
   if(currentView==="month"){
     const todayStr = fmtDate(now);
-    const todayCol = body.querySelector(`.day-col[data-col-key="date-${todayStr}"]`);
-    if(todayCol){
-      const colRect = todayCol.getBoundingClientRect();
-      const bodyRect = body.getBoundingClientRect();
-      const targetLeft = colRect.left - bodyRect.left + body.scrollLeft - TIME_COL_W - 4;
-      body.scrollLeft = Math.max(0, targetLeft);
+    // ヘッダ・グリッド両方探す
+    let todayEl = body.querySelector(`.day-col[data-col-key="date-${todayStr}"]`)
+               || body.querySelector(`.day-col-header[data-col-key="date-${todayStr}"]`);
+    if(!todayEl){
+      console.log("[scrollToToday] today col not found for", todayStr);
+      return;
     }
+    // calBody基準の left を算出
+    const colRect = todayEl.getBoundingClientRect();
+    const bodyRect = body.getBoundingClientRect();
+    const colLeftInBody = colRect.left - bodyRect.left + body.scrollLeft;
+    // 時間列分のオフセットを引いて少し余白 (今日が左から少し奥に来る位置)
+    const targetLeft = Math.max(0, colLeftInBody - TIME_COL_W - 8);
+    body.scrollLeft = targetLeft;
+    console.log("[scrollToToday] →", targetLeft, "px (today:", todayStr, "colLeft:", colLeftInBody, ")");
   }else{
     body.scrollLeft = 0;
   }
