@@ -3998,10 +3998,12 @@ function loadCachedStaffMaster(){
     return d;
   }catch(e){ return null; }
 }
-function saveCachedStaffMaster(members){
+function saveCachedStaffMaster(members, full){
   try{
     localStorage.setItem(STAFF_MASTER_CACHE_KEY, JSON.stringify({
-      members, fetchedAt: new Date().toISOString()
+      members,
+      full: Array.isArray(full) ? full : null,
+      fetchedAt: new Date().toISOString()
     }));
   }catch(e){}
 }
