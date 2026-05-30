@@ -34,6 +34,7 @@ const API_SHEETS = {
     'id','date','startTime','endTime','allday','timeMode',
     'title','category','contractor','staff','participants',
     'commute','importance','color','memo',
+    'comments',
     'createdBy','createdAt','updatedAt'
   ],
   properties: ['id','name','address','propertyType','contractor','note','updatedAt'],
