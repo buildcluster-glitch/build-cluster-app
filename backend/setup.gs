@@ -23,6 +23,7 @@ const SHEETS = {
       'id','date','startTime','endTime','allday','timeMode',
       'title','category','contractor','staff','participants',
       'commute','importance','color','memo',
+      'comments',
       'createdBy','createdAt','updatedAt'
     ],
     freezeRows: 1,
