@@ -2528,17 +2528,31 @@
 
 <!-- 自分設定モーダル -->
 <div class="modal-overlay" id="myselfModal">
-  <div class="modal" style="max-width:380px">
+  <div class="modal" style="max-width:480px">
     <div class="modal-header">👤 自分を選択</div>
     <div class="modal-body">
       <div class="field">
         <label>あなたは？（このPC専用設定）</label>
         <select id="myself-select"></select>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">☁=クラウド同期由来 / 📋=ローカル定義</div>
       </div>
-      <div style="font-size:11px;color:var(--muted);margin-top:8px">
-        ここで設定した名前がタスクの「自分」判定に使われます。<br>
+      <div style="font-size:11px;color:var(--muted);margin:8px 0">
+        ここで設定した名前がタスクの「自分」判定・👤マイフィルタに使われます。<br>
         他人のタスクは✅完了ボタンが押せなくなります。
       </div>
+
+      <fieldset style="border:1px solid var(--border);border-radius:6px;padding:10px;margin:8px 0">
+        <legend style="font-size:12px;padding:0 6px;color:#1f2937;font-weight:700">ユーザー追加・削除 (クラウド同期)</legend>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+          <input id="member-add-input" placeholder="新しいメンバー名" style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px">
+          <button class="btn" id="member-add-btn" style="font-size:12px;padding:5px 10px">＋追加</button>
+        </div>
+        <div id="member-list" style="display:flex;flex-direction:column;gap:3px;max-height:200px;overflow-y:auto"></div>
+        <div style="font-size:10px;color:var(--muted);margin-top:6px">
+          ⚠️ ここでの追加・削除はクラウド同期に反映されます (1.5秒後)。<br>
+          全端末で共有されるので、ハードコード版より柔軟に管理できます。
+        </div>
+      </fieldset>
     </div>
     <div class="modal-footer">
       <button class="btn" id="myself-cancel">キャンセル</button>
