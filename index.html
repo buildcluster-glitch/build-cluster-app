@@ -5840,7 +5840,7 @@ function renderCalendar(){
         const titleClass = isMulti ? "chip-title multi-line" : "chip-title single-line";
         el.classList.add("event-chip");
         const timeBox = isAnytime ? "" : `<span class="chip-time">終日</span>`;
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${titleHtml}${commuteIcon}${memoIcon}${commentBadge}</span>${timeBox}${staffBadges}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${titleHtml}${commuteIcon}${memoIcon}${commentBadge}</span>${timeBox}${__linkInfoHtml}${staffBadges}`;
         if(impList.length){ el.classList.add("imp-flag"); if(impTopClass) el.classList.add(impTopClass); }
         el.title = fullTooltip;
       } else {
