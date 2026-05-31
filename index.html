@@ -5816,9 +5816,9 @@ function renderCalendar(){
             return `<span class="chip-staff-tag${isLeader?' is-leader':''}" style="background:${sc};color:${textColorFor(sc)}" title="${escapeHtml(s)}${isLeader?' (リーダー)':''}">${escapeHtml(s.slice(0,1))}</span>`;
           }).join("")}</div>`
         : "";
-      // 🔗 連携情報行 (チップ共通) - 重い/着工/最終確認/入居
+      // 🔗 連携情報行 (チップ共通) - 重い/着工/最終確認/入居。タイトル箱の中に2行目として配置
       const __linkInfoHtml = __linkInfo
-        ? `<div class="chip-link-info" style="font-size:9px;line-height:12px;opacity:.85;margin:1px 4px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(__linkInfo)}</div>`
+        ? `<span class="chip-link-info" style="display:block;font-size:9px;line-height:12px;opacity:.85;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(__linkInfo)}</span>`
         : "";
       if(isMonth){
         // 改行ありなら全行表示(multi-line)、なければ1行省略(single-line)
