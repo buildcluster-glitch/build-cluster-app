@@ -4770,6 +4770,7 @@ function openCheckModal(ck){
     apptBox.style.display = "";
     document.getElementById("ck-response-date").value = ck.responseDate || "";
     document.getElementById("ck-response-time").value = ck.responseTime || "";
+    if(typeof populateRespTimeOptions_ === 'function') populateRespTimeOptions_();
     wfSel.value = ck.workflowStatus || "";
     document.getElementById("ck-appt-result").textContent = "";
     const updBtn = document.getElementById("ck-appt-update");
