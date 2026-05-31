@@ -6563,10 +6563,11 @@ function showRepairQuickPop(r, anchorEl){
   };
   pop.querySelector('#qp-close-btn').onclick = closeQuickPop;
 
+  // 開いた直後のclickイベント (capture)で即閉じしないよう少し遅延
   setTimeout(()=>{
     document.addEventListener('click', __quickPopOutsideClick, true);
     document.addEventListener('keydown', __quickPopKey);
-  }, 50);
+  }, 200);
 }
 
 function attachRepairChipHover(el, r){
