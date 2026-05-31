@@ -6580,6 +6580,61 @@ function showRepairQuickPop(r, anchorEl){
 // workflowStatus 色マップ (グローバル・showRepairQuickPop等から参照)
 const wfBgMap = {"アポ・手配 未":"#ec4899","アポ・手配 済":"#eab308","待機":"#3b82f6","長期連絡なし":"#9ca3af"};
 
+// ===========================================================
+// 🌴 休暇情報を master_sync GAS の shared-config に push
+// クラ助・他アプリが「誰が今日休みか」を読めるようにする
+// 仕様: key='staffAvailability', value=JSON文字列
+//   { leaves:[{staff,start,end,type,memo}], updatedAt }
+//   - type !== '当番' のものだけ (当番は勤務)
+//   - 過去1ヶ月〜未来3ヶ月の範囲のみ (古いものは省く)
+// ===========================================================
+let __availPushTimer = null;
+function scheduleAvailabilityPush(){
+  if(__availPushTimer) clearTimeout(__availPushTimer);
+  __availPushTimer = setTimeout(pushStaffAvailability_, 1500);
+}
+async function pushStaffAvailability_(){
+  __availPushTimer = null;
+  const s = loadGasSettings();
+  if(!s.url || !s.token){
+    console.log('[availability] GAS URL/token 未設定 → push スキップ');
+    return;
+  }
+  const today = new Date();
+  const minDate = new Date(today.getTime() - 30*24*3600*1000);
+  const maxDate = new Date(today.getTime() + 90*24*3600*1000);
+  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const minStr = fmt(minDate), maxStr = fmt(maxDate);
+
+  // 当番(勤務)以外で範囲内の休暇のみ
+  const filtered = (state.leaves||[]).filter(l =>
+    l.type !== '当番' &&
+    l.end >= minStr && l.start <= maxStr
+  ).map(l => ({
+    staff: normalizeStaffName(l.staff||''), // 詰め表記で統一
+    start: l.start, end: l.end, type: l.type, memo: l.memo||''
+  }));
+
+  const payload = { leaves: filtered, updatedAt: new Date().toISOString() };
+  try{
+    const res = await fetch(s.url, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'save-shared-config',
+        key: 'staffAvailability',
+        value: JSON.stringify(payload),
+        token: s.token
+      }),
+    });
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if(!data.ok && data.ok !== undefined) throw new Error(data.error||'save失敗');
+    console.log(`[availability] push成功: ${filtered.length}件の休暇`);
+  }catch(err){
+    console.warn('[availability] push失敗:', err.message);
+  }
+}
+
 function attachRepairChipHover(el, r){
   el.removeAttribute("title");
   // ホバー350ms → クイック編集ポップ自動オープン (自動クローズなし・外側クリックかEscで閉じる)
