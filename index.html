@@ -6345,6 +6345,215 @@ function showRepairTip(r, mouseX, mouseY){
   if(x < 8) x = 8; if(y < 8) y = 8;
   tip.style.left = x + "px"; tip.style.top = y + "px";
 }
+// 🔧 修繕アポ クイック編集ポップオーバー
+let __quickPopEl = null;
+function closeQuickPop(){
+  if(__quickPopEl){ __quickPopEl.remove(); __quickPopEl = null; }
+  document.removeEventListener('click', __quickPopOutsideClick, true);
+  document.removeEventListener('keydown', __quickPopKey);
+}
+function __quickPopOutsideClick(e){
+  if(!__quickPopEl) return;
+  if(__quickPopEl.contains(e.target)) return;
+  // chip自身のクリックは無視 (再オープン防止)
+  if(e.target.closest('[data-repair-id]')) return;
+  closeQuickPop();
+}
+function __quickPopKey(e){
+  if(e.key === 'Escape') closeQuickPop();
+}
+function showRepairQuickPop(r, anchorEl){
+  closeQuickPop();
+  const pop = document.createElement('div');
+  pop.className = 'quick-pop';
+  const contShort = shortenCompany(r.contractor||"");
+  const cont = contractorInfo(contShort) || contractorInfo(r.contractor);
+  const contBadge = cont ? `<span style="background:${cont.color};color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700">${escapeHtml(cont.name)}</span>` : '';
+  const wfBadge = `<span style="background:${wfBgMap[r.workflowStatus||""]||"#ec4899"};color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700">${escapeHtml(r.workflowStatus||"アポ・手配 未")}</span>`;
+  // worker buttons
+  const me = getMyself();
+  const workerBtns = ['<button data-worker="" class="' + (!r.worker?'on':'') + '"><span class="qp-dot" style="background:#cbd5e1"></span>未設定</button>']
+    .concat(STAFF.map(s=>{
+      const display = (typeof getStaffDisplayName === 'function') ? getStaffDisplayName(s) : s;
+      const on = r.worker === s ? 'on' : '';
+      return `<button data-worker="${escapeHtml(s)}" class="${on}" style="${on?`background:${STAFF_COLORS[s]}22;border-color:${STAFF_COLORS[s]}`:''}"><span class="qp-dot" style="background:${STAFF_COLORS[s]}"></span>${escapeHtml(display)}</button>`;
+    })).join('');
+
+  // comments rendering
+  const renderComments = ()=>{
+    const cs = r.comments || [];
+    if(!cs.length) return '<div style="font-size:11px;color:var(--muted);text-align:center;padding:6px">まだコメント無し</div>';
+    return cs.map((c,idx)=>{
+      const isMine = c.author === me;
+      const time = (function(iso){
+        if(!iso) return '';
+        const d = new Date(iso); if(isNaN(d)) return iso;
+        const today = new Date(); today.setHours(0,0,0,0);
+        const pad = n=>String(n).padStart(2,'0');
+        if(d >= today) return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        return `${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      })(c.at);
+      const reactionsHtml = Object.entries(c.reactions||{})
+        .filter(([_, u]) => Array.isArray(u) && u.length > 0)
+        .map(([em, users])=>{
+          const on = me && users.includes(me) ? 'on' : '';
+          return `<button class="reaction-btn ${on}" data-react="${escapeHtml(em)}" data-cidx="${idx}" title="${escapeHtml(users.join(', '))}" style="font-size:10px;padding:0 5px">${em}<span class="r-count">${users.length}</span></button>`;
+        }).join('');
+      return `<div class="ev-comment-card ${isMine?'mine':''}" style="padding:4px 6px;font-size:11px;position:relative">
+        ${isMine ? `<button class="ev-comment-del" data-delc="${idx}" style="font-size:11px;display:inline">✕</button>` : ''}
+        <div class="ev-comment-head" style="font-size:10px"><span class="ev-comment-author">${escapeHtml(c.author||'?')}</span><span class="ev-comment-time">${escapeHtml(time)}</span></div>
+        <div class="ev-comment-text" style="font-size:11px">${escapeHtml(c.text||'')}</div>
+        <div class="ev-comment-reactions" style="margin-top:2px">${reactionsHtml}<button class="reaction-add" data-addr="${idx}" style="font-size:10px;padding:0 5px">+</button></div>
+      </div>`;
+    }).join('');
+  };
+
+  pop.innerHTML = `
+    <div class="qp-title">🔧 ${escapeHtml(r.name)}${r.room?' '+escapeHtml(r.room):''} ${contBadge} ${wfBadge}</div>
+    <div class="qp-sec">
+      <div class="qp-label">🔨 作業担当者</div>
+      <div class="qp-worker-pick">${workerBtns}</div>
+    </div>
+    <div class="qp-sec">
+      <div class="qp-label">💬 コメント <span id="qp-comment-count" style="text-transform:none;color:var(--muted);font-weight:400"></span></div>
+      <div class="qp-comments-list" id="qp-comments-list">${renderComments()}</div>
+      <div class="qp-comment-input">
+        <textarea id="qp-comment-input" rows="1" placeholder="メッセージ (Enter送信)"></textarea>
+        <button id="qp-comment-send">送信</button>
+      </div>
+    </div>
+    <div class="qp-actions">
+      <button class="qp-detail" id="qp-open-detail">✎ 詳細編集</button>
+      <button class="qp-close" id="qp-close-btn">閉じる</button>
+    </div>
+  `;
+  document.body.appendChild(pop);
+  __quickPopEl = pop;
+  // 位置: チップの下に配置
+  const rect = anchorEl.getBoundingClientRect();
+  pop.style.left = '0px'; pop.style.top = '0px';
+  const popRect = pop.getBoundingClientRect();
+  let x = rect.left;
+  let y = rect.bottom + 6;
+  if(x + popRect.width > window.innerWidth - 8) x = window.innerWidth - popRect.width - 8;
+  if(y + popRect.height > window.innerHeight - 8) y = rect.top - popRect.height - 6;
+  if(x < 8) x = 8; if(y < 8) y = 8;
+  pop.style.left = x + 'px'; pop.style.top = y + 'px';
+
+  // 担当者変更
+  pop.querySelector('.qp-worker-pick').onclick = (e)=>{
+    const btn = e.target.closest('[data-worker]');
+    if(!btn) return;
+    const newWorker = btn.dataset.worker;
+    r.worker = newWorker;
+    saveState();
+    render();
+    // ボタン状態更新
+    pop.querySelectorAll('[data-worker]').forEach(b=>{
+      const isOn = b.dataset.worker === newWorker;
+      b.classList.toggle('on', isOn);
+      if(isOn && newWorker){
+        b.style.background = STAFF_COLORS[newWorker]+'22';
+        b.style.borderColor = STAFF_COLORS[newWorker];
+      } else {
+        b.style.background = ''; b.style.borderColor = '';
+      }
+    });
+  };
+  // コメント送信
+  const sendBtn = pop.querySelector('#qp-comment-send');
+  const inputEl = pop.querySelector('#qp-comment-input');
+  const refreshComments = ()=>{
+    pop.querySelector('#qp-comments-list').innerHTML = renderComments();
+    wireCommentInteractions();
+  };
+  const wireCommentInteractions = ()=>{
+    pop.querySelectorAll('[data-delc]').forEach(b=>{
+      b.onclick = ()=>{
+        if(!confirm('コメント削除？')) return;
+        r.comments.splice(parseInt(b.dataset.delc,10),1);
+        saveState();
+        refreshComments();
+        render();
+      };
+    });
+    pop.querySelectorAll('[data-react]').forEach(b=>{
+      b.onclick = ()=>{
+        const me2 = getMyself(); if(!me2){ alert('自分を設定してください'); return; }
+        const idx = parseInt(b.dataset.cidx,10);
+        const em = b.dataset.react;
+        const c = r.comments[idx]; if(!c) return;
+        if(!c.reactions) c.reactions = {};
+        if(!c.reactions[em]) c.reactions[em] = [];
+        const i = c.reactions[em].indexOf(me2);
+        if(i>=0) c.reactions[em].splice(i,1); else c.reactions[em].push(me2);
+        if(c.reactions[em].length===0) delete c.reactions[em];
+        saveState();
+        refreshComments();
+      };
+    });
+    pop.querySelectorAll('[data-addr]').forEach(b=>{
+      b.onclick = ()=>{
+        const me2 = getMyself(); if(!me2){ alert('自分を設定してください'); return; }
+        const idx = parseInt(b.dataset.addr,10);
+        const c = r.comments[idx]; if(!c) return;
+        const rEmojis = ['👍','✅','👀','❓','💪','🙏','🎉','⚠️'];
+        const picker = document.createElement('div');
+        picker.className = 'reaction-picker';
+        picker.innerHTML = rEmojis.map(em=>`<button data-em="${em}">${em}</button>`).join('');
+        document.body.appendChild(picker);
+        const rect2 = b.getBoundingClientRect();
+        picker.style.left = rect2.left + 'px';
+        picker.style.top = (rect2.bottom + 4) + 'px';
+        picker.querySelectorAll('button').forEach(pb=>{
+          pb.onclick = ()=>{
+            if(!c.reactions) c.reactions = {};
+            if(!c.reactions[pb.dataset.em]) c.reactions[pb.dataset.em] = [];
+            if(!c.reactions[pb.dataset.em].includes(me2)) c.reactions[pb.dataset.em].push(me2);
+            saveState();
+            picker.remove();
+            refreshComments();
+          };
+        });
+        setTimeout(()=>document.addEventListener('click', function close(e){
+          if(!picker.contains(e.target)){ picker.remove(); document.removeEventListener('click', close); }
+        }), 10);
+      };
+    });
+  };
+  wireCommentInteractions();
+
+  const send = ()=>{
+    const text = inputEl.value.trim();
+    if(!text) return;
+    if(!me){ alert('送信者を設定してください'); return; }
+    if(!r.comments) r.comments = [];
+    r.comments.push({
+      id: 'c_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,5),
+      author: me, text, at: new Date().toISOString(), reactions:{}
+    });
+    inputEl.value = '';
+    saveState();
+    refreshComments();
+    render();
+  };
+  sendBtn.onclick = send;
+  inputEl.addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); send(); }
+  });
+  // 詳細編集ボタン
+  pop.querySelector('#qp-open-detail').onclick = ()=>{
+    closeQuickPop();
+    openRepairSheet(r.id);
+  };
+  pop.querySelector('#qp-close-btn').onclick = closeQuickPop;
+
+  setTimeout(()=>{
+    document.addEventListener('click', __quickPopOutsideClick, true);
+    document.addEventListener('keydown', __quickPopKey);
+  }, 50);
+}
+
 function attachRepairChipHover(el, r){
   el.removeAttribute("title"); // ネイティブtooltip抑制
   let lastX = 0, lastY = 0;
