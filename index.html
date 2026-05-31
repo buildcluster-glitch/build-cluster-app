@@ -6376,6 +6376,7 @@ function showRepairQuickPop(r, anchorEl){
   closeQuickPop();
   const pop = document.createElement('div');
   pop.className = 'quick-pop';
+  pop.dataset.repairId = r.id; // どの修繕案件用かのマーク (再ホバーで2重open防止)
   const contShort = shortenCompany(r.contractor||"");
   const cont = contractorInfo(contShort) || contractorInfo(r.contractor);
   const contBadge = cont ? `<span style="background:${cont.color};color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700">${escapeHtml(cont.name)}</span>` : '';
