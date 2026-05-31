@@ -5645,12 +5645,14 @@ function renderCalendar(){
         ? chipHeight
         : Math.max(18, ((timeToMin(ev.end)-timeToMin(ev.start))/60)*HOUR_PX - 2);
       // 月: 同時刻スタックを実高さで計算しオーバーラップ回避
+      // ⚠ 終日(isFree) は常に baseTop=0 で集まりやすいので、ALL view で安全側に倒す
       let top;
-      if(isMonth){
-        const stackKey = c.key + "|" + baseTop;
+      const useStacking = isMonth || isFree;
+      if(useStacking){
+        const stackKey = c.key + "|" + baseTop + (isFree ? "|allday" : "");
         const offset = __stackOffset.get(stackKey) || 0;
         top = baseTop + offset;
-        __stackOffset.set(stackKey, offset + chipHeight + 6); // 行間 6px
+        __stackOffset.set(stackKey, offset + chipHeight + 10); // 行間 10px (6→10)
       }else{
         top = baseTop;
       }
