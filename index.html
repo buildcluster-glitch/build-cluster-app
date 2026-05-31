@@ -4900,10 +4900,12 @@ async function pushAppointmentToGAS(driveFileId, fields){
   if(!driveFileId) throw new Error("driveFileId がありません(Drive同期由来の物件のみ更新可)");
   showSyncIndicator("アポ情報を書き戻し中...");
   try{
-    const body = { action:"task-update-appointment", token:s.token, driveFileId };
+    // master_sync の dispatch は kind で判定 (2026-05-31〜): "appointment"=日時/WF/status等
+    const body = { action:"task-update-appointment", kind:"appointment", token:s.token, driveFileId };
     if(fields.responseDate   !== undefined) body.responseDate   = fields.responseDate;
     if(fields.responseTime   !== undefined) body.responseTime   = fields.responseTime;
     if(fields.workflowStatus !== undefined) body.workflowStatus = fields.workflowStatus;
+    if(fields.status         !== undefined) body.status         = fields.status;
     const res = await fetch(s.url, {
       method:"POST",
       headers:{"Content-Type":"text/plain;charset=utf-8"},
