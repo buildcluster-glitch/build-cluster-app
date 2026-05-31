@@ -7325,12 +7325,45 @@ function openEventModal(ev, defaults){
     const ad = a.checkDate || "9999", bd = b.checkDate || "9999";
     return ad.localeCompare(bd);
   });
+  // 🔧 checkに紐づく restoration の 内装/清掃 外注タスクから最早着工日を取得
+  function getEarliestVendorStart(ck){
+    if(!ck.extDriveFileId) return null;
+    const resto = (state.restorations||[]).find(r=>r.extDriveFileId === ck.extDriveFileId);
+    if(!resto) return null;
+    const cand = [];
+    (resto.tasks||[]).forEach(t=>{
+      if(t.category !== "outsource") return;
+      const nm = `${t.name||""} ${t.contractor||""}`;
+      // 内装 or 清掃 を含むタスクのみ (それ以外の業者はスルー)
+      const isInternal = /内装|クロス|床/.test(nm);
+      const isCleaning = /清掃|ハウス|FKK/i.test(nm);
+      if(!isInternal && !isCleaning) return;
+      if(!t.periodStart) return;
+      cand.push({
+        category: isCleaning ? "清掃" : "内装",
+        vendor: shortenCompany(t.contractor||""),
+        start: t.periodStart,
+      });
+    });
+    if(!cand.length) return null;
+    // 最早日 (periodStart は ISO/YYYY-MM-DD想定)
+    cand.sort((a,b)=>String(a.start).localeCompare(String(b.start)));
+    return cand[0];
+  }
   fromCheckSel.innerHTML = `<option value="">― 選択するとタイトル/元請けを自動入力 ―</option>` +
     checkOpts.map(ck=>{
       const dateLabel = ck.checkDate ? ck.checkDate.slice(5).replace("-","/") : "日付未定";
       const vol = ck.workVolume && ck.workVolume!=="無" ? ` [${ck.workVolume}]` : "";
       const cont = ck.contractor ? ` (${shortenCompany(ck.contractor)})` : "";
-      return `<option value="${ck.id}">${escapeHtml(`${dateLabel} ${ck.title}${cont}${vol}`)}</option>`;
+      // 内装/清掃 着工日(早い方)
+      const ev = getEarliestVendorStart(ck);
+      let vendorStr = "";
+      if(ev){
+        const d = parseDate(ev.start);
+        const md = !isNaN(d) ? `${d.getMonth()+1}/${d.getDate()}` : ev.start;
+        vendorStr = ` ／ ${ev.category}（${ev.vendor||"?"}）${md}〜`;
+      }
+      return `<option value="${ck.id}">${escapeHtml(`${dateLabel} ${ck.title}${cont}${vol}${vendorStr}`)}</option>`;
     }).join("");
   fromCheckSel.value = "";
   fromCheckSel.onchange = ()=>{
