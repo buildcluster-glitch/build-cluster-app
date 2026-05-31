@@ -8352,6 +8352,8 @@ async function saveRepairSheet(){
   }
   closeRepairSheet();
   renderRepairView();
+  // カレンダー側のチップ色もリアルタイム更新
+  render();
 }
 document.getElementById("rs-cancel").onclick = closeRepairSheet;
 document.getElementById("rs-save").onclick = saveRepairSheet;
