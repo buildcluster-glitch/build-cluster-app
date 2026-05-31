@@ -5422,7 +5422,7 @@ function renderCalendar(){
     });
   });
 
-  // 終日帯（有給）
+  // 休日帯 (旧:終日帯) — 有給/休暇/会社休日 + 終日予定 + 修繕アポ無時刻
   const allday = document.getElementById("alldayBand");
   allday.style.gridTemplateColumns = gridTemplate;
   let alldayHtml = `<div class="time-col-header" style="display:flex;align-items:center;justify-content:center;color:#6b7280;font-size:11px">終日</div>`;
