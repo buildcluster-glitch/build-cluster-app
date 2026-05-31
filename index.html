@@ -6616,24 +6616,73 @@ async function pushStaffAvailability_(){
   }));
 
   const payload = { leaves: filtered, updatedAt: new Date().toISOString() };
+  const body = JSON.stringify({
+    action: 'save-shared-config',
+    key: 'staffAvailability',
+    value: JSON.stringify(payload),
+    token: s.token,
+    savedBy: 'calendar-app'
+  });
   try{
+    // Content-Type: text/plain 明示 (CORS preflight回避・GAS推奨パターン)
     const res = await fetch(s.url, {
       method: 'POST',
-      body: JSON.stringify({
-        action: 'save-shared-config',
-        key: 'staffAvailability',
-        value: JSON.stringify(payload),
-        token: s.token
-      }),
+      headers: {'Content-Type': 'text/plain;charset=utf-8'},
+      body: body,
     });
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    console.log('[availability] HTTP status:', res.status);
+    if(!res.ok){
+      const txt = await res.text();
+      throw new Error(`HTTP ${res.status}: ${txt.slice(0,200)}`);
+    }
     const data = await res.json();
+    console.log('[availability] response:', data);
     if(!data.ok && data.ok !== undefined) throw new Error(data.error||'save失敗');
     console.log(`[availability] push成功: ${filtered.length}件の休暇`);
   }catch(err){
     console.warn('[availability] push失敗:', err.message);
   }
 }
+
+// 🩺 デバッグ用 probe: コンソールで window.probeAvailability() 実行で動作確認
+window.probeAvailability = async function(){
+  const s = loadGasSettings();
+  console.log('URL:', s.url, '/ token len:', (s.token||'').length);
+
+  // 1. save テスト
+  const probeBody = JSON.stringify({
+    action: 'save-shared-config',
+    key: 'staffAvailability__probe',
+    value: JSON.stringify({ping:'ok', t:new Date().toISOString()}),
+    token: s.token,
+    savedBy: 'probe'
+  });
+  console.log('--- SAVE test ---');
+  try{
+    const r1 = await fetch(s.url, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: probeBody});
+    console.log('save status:', r1.status);
+    const t1 = await r1.text();
+    console.log('save body:', t1);
+  }catch(e){ console.error('save error:', e.message); }
+
+  // 2. read テスト
+  console.log('--- READ test ---');
+  try{
+    const r2 = await fetch(`${s.url}?action=get-shared-config&key=staffAvailability__probe&token=${encodeURIComponent(s.token)}`, {cache:'no-store'});
+    console.log('read status:', r2.status);
+    const t2 = await r2.text();
+    console.log('read body:', t2);
+  }catch(e){ console.error('read error:', e.message); }
+
+  // 3. 本番 key も read
+  console.log('--- READ staffAvailability ---');
+  try{
+    const r3 = await fetch(`${s.url}?action=get-shared-config&key=staffAvailability&token=${encodeURIComponent(s.token)}`, {cache:'no-store'});
+    console.log('read status:', r3.status);
+    const t3 = await r3.text();
+    console.log('read body:', t3);
+  }catch(e){ console.error('read error:', e.message); }
+};
 
 function attachRepairChipHover(el, r){
   el.removeAttribute("title");
