@@ -5708,7 +5708,10 @@ function renderCalendar(){
       const __staffN = (ev.participants||[]).length + (ev.staff?1:0);
       const __staffRows = __staffN >= 2 ? (__staffN >= 7 ? 2 : 1) : 0;
       // 1行 = 28px(text 17px + padding 上下6+6)。明示改行のみ高さ追加
-      const chipHeight = (lineCount === 1 ? 28 : lineCount * 18 + 14) + __staffRows * 24;
+      // 連携情報行(重い/着工/最終確認/入居)があるなら +14px
+      const __linkInfo = getEventLinkInfo_(ev);
+      const __linkRow = __linkInfo ? 14 : 0;
+      const chipHeight = (lineCount === 1 ? 28 : lineCount * 18 + 14) + __staffRows * 24 + __linkRow;
       // 月ビュー/終日 はチップ高さ、それ以外は duration に応じた縦長ブロック
       const height = (isMonth || isFree)
         ? chipHeight
