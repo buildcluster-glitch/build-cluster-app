@@ -6362,8 +6362,11 @@ function closeQuickPop(){
   document.removeEventListener('click', __quickPopOutsideClick, true);
   document.removeEventListener('keydown', __quickPopKey);
 }
+let __quickPopOpenedAt = 0;
 function __quickPopOutsideClick(e){
   if(!__quickPopEl) return;
+  // ポップを開いた直後の300ms間は閉じない (click event のレース防止)
+  if(Date.now() - __quickPopOpenedAt < 300) return;
   if(__quickPopEl.contains(e.target)) return;
   // chip自身のクリックは無視 (再オープン防止)
   if(e.target.closest('[data-repair-id]')) return;
@@ -6440,6 +6443,7 @@ function showRepairQuickPop(r, anchorEl){
   `;
   document.body.appendChild(pop);
   __quickPopEl = pop;
+  __quickPopOpenedAt = Date.now();
   // 位置: チップの下に配置
   const rect = anchorEl.getBoundingClientRect();
   pop.style.left = '0px'; pop.style.top = '0px';
