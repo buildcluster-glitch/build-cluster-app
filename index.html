@@ -5409,7 +5409,8 @@ function renderCalendar(){
   const allday = document.getElementById("alldayBand");
   allday.style.gridTemplateColumns = gridTemplate;
   let alldayHtml = `<div class="time-col-header" style="display:flex;align-items:center;justify-content:center;color:#6b7280;font-size:11px">終日</div>`;
-  const wfBgMap = {"アポ・手配 未":"#ec4899","アポ・手配 済":"#eab308","待機":"#3b82f6","長期連絡なし":"#9ca3af"};
+  // wfBgMap はグローバル定義 (showRepairQuickPop等から参照されるため)
+  // const は外で window.wfBgMap で公開済
   const dayRepairsForGrid = []; // 時間グリッドに配置する修繕アポ {r, hh, mm, colKey}
   cols.forEach(c=>{
     const colLeaves = state.leaves.filter(c.filterLeave);
