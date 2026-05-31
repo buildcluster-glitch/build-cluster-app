@@ -3231,9 +3231,14 @@ function shortenCompany(name){
 const HOUR_START = 9;   // 表示開始
 const HOUR_END   = 18;  // 表示終了（18以降は「工事最終確認」セクション）
 // HOUR_PX は localStorage で永続化、月列幅は列ごと個別管理(セッション限定)
-const HOUR_PX_DEFAULT = 220;
+const HOUR_PX_DEFAULT = 130;  // 旧220 → 130 (1時間あたり ≒ 4チップ分。詰まる時は自動拡大)
 const MONTH_COL_DEFAULT = 220;
 let HOUR_PX = parseInt(localStorage.getItem("buildcluster_schedule_hour_px"),10) || HOUR_PX_DEFAULT;
+// v88 マイグレーション: 旧デフォルト 220 のまま保存されてた場合 → 新デフォルトに置き換え
+if(HOUR_PX === 220){
+  HOUR_PX = HOUR_PX_DEFAULT;
+  localStorage.setItem("buildcluster_schedule_hour_px", String(HOUR_PX));
+}
 // 月ビュー用: 列ごとの個別幅を保持 (Map<colKey, px>)。保存しない (リロードでリセット)
 const colWidths = new Map();
 let MONTH_COL_WIDTH = MONTH_COL_DEFAULT; // 後方互換（未使用箇所のため残す）
