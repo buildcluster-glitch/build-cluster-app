@@ -7617,10 +7617,10 @@ function renderYearStats(year){
     html += `<tr><td class="ys-month-label">${m}月<br><span style="font-size:9px;color:var(--muted);font-weight:400">休日${refHoliday}</span></td>`;
     STAFF.forEach(s=>{
       CATS.forEach(c=>{
-        // 全て leaves から実数集計
         const v = countLeaveDays(s, year, m, c.key);
         totals[s][c.key] += v;
-        html += `<td class="${v===0?'ys-zero':''}">${v||""}</td>`;
+        const bg = c.color && v>0 ? `style="background:${c.color}"` : '';
+        html += `<td class="${v===0?'ys-zero':''}" ${bg}>${v||""}</td>`;
       });
     });
     html += `</tr>`;
