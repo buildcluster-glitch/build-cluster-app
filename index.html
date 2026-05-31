@@ -7599,7 +7599,10 @@ function renderYearStats(year){
   html += `</tr><tr>`;
   STAFF.forEach(()=>{
     CATS.forEach(c=>{
-      html += `<th class="ys-cat-header">${c.key}</th>`;
+      const bg = c.color ? `style="background:${c.color}"` : '';
+      const title = c.key === '年休' ? 'title="5日取得義務分"' : '';
+      const label = c.key === '年休' ? '年休<sup style="font-size:8px;color:#dc2626">★5日</sup>' : c.key;
+      html += `<th class="ys-cat-header" ${bg} ${title}>${label}</th>`;
     });
   });
   html += `</tr></thead><tbody>`;
