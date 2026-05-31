@@ -5816,6 +5816,10 @@ function renderCalendar(){
             return `<span class="chip-staff-tag${isLeader?' is-leader':''}" style="background:${sc};color:${textColorFor(sc)}" title="${escapeHtml(s)}${isLeader?' (リーダー)':''}">${escapeHtml(s.slice(0,1))}</span>`;
           }).join("")}</div>`
         : "";
+      // 🔗 連携情報行 (チップ共通) - 重い/着工/最終確認/入居
+      const __linkInfoHtml = __linkInfo
+        ? `<div class="chip-link-info" style="font-size:9px;line-height:12px;opacity:.85;margin:1px 4px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(__linkInfo)}</div>`
+        : "";
       if(isMonth){
         // 改行ありなら全行表示(multi-line)、なければ1行省略(single-line)
         const isMulti = lineCount > 1;
@@ -5825,7 +5829,7 @@ function renderCalendar(){
         const titleClass = isMulti ? "chip-title multi-line" : "chip-title single-line";
         const timeBox = isAnytime ? "" : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;
         // 参加者バッジは title 外(チップ直下)に独立行として配置
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${titleHtml}${commuteIcon}${memoIcon}${commentBadge}</span>${timeBox}${staffBadges}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${titleHtml}${commuteIcon}${memoIcon}${commentBadge}</span>${timeBox}${__linkInfoHtml}${staffBadges}`;
         if(impList.length){ el.classList.add("imp-flag"); if(impTopClass) el.classList.add(impTopClass); }
         el.title = fullTooltip;
       } else if(isFree){
