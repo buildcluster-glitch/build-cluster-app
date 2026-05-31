@@ -9141,6 +9141,32 @@ function restoSave(){
   if(restoDetailId) restoPushProgressDebounced(restoDetailId);
 }
 
+// === 原状回復 詳細を「カレンダー上のダイアログ」として表示 ===
+// 詳細ビュー(#restoDetailMode)をダイアログ内へ移設して再利用する(編集/写真/進捗プッシュはそのまま動く)
+let restoDetailAsModal = false;
+function openRestoDialog(id){
+  restoDetailId = id;
+  restoTaskStatusFilter = null;
+  restoDetailAsModal = true;
+  const dm = document.getElementById("restoDetailMode");
+  document.getElementById("restoDialogHost").appendChild(dm);
+  dm.style.display = "";
+  const back = document.getElementById("restoBack");
+  if(back){ back.dataset.modalLabel = "1"; back.textContent = "✕ 閉じる"; }
+  renderRestoDetail();
+  document.getElementById("restoDialog").classList.add("show");
+}
+function closeRestoDialog(){
+  const dm = document.getElementById("restoDetailMode");
+  dm.style.display = "none";
+  document.getElementById("restoView").appendChild(dm); // 元の場所へ戻す
+  const back = document.getElementById("restoBack");
+  if(back && back.dataset.modalLabel){ back.textContent = "‹ 一覧"; delete back.dataset.modalLabel; }
+  document.getElementById("restoDialog").classList.remove("show");
+  restoDetailAsModal = false;
+  restoDetailId = null;
+}
+
 function renderRestoView(){
   if(restoDetailId){
     document.getElementById("restoListMode").style.display = "none";
