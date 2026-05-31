@@ -5493,6 +5493,26 @@ function renderCalendar(){
       if(l) openLeaveModal(l);
     };
   });
+  // 🏖 休日帯セル → ダブルクリックで休暇登録モーダル (日付プリセット)
+  allday.querySelectorAll(".allday-cell").forEach(cell=>{
+    cell.ondblclick = (e)=>{
+      // 既存チップ上のダブルクリックは無視 (チップ自身のhandlerが優先)
+      if(e.target.closest("[data-leave-id], [data-repair-id], .event")) return;
+      const date = cell.dataset.alldayDate || "";
+      const staff = cell.dataset.alldayStaff || "";
+      openLeaveModal(null, { start: date, end: date, staff });
+    };
+  });
+  // 🏖 休日ラベル (左カラム) クリック → 休暇登録モーダル
+  const alldayLabel = allday.querySelector(".allday-label-header");
+  if(alldayLabel){
+    alldayLabel.onclick = ()=>{
+      // 現在表示中の最初の日付をデフォルトに
+      const firstCol = allday.querySelector("[data-allday-date]");
+      const date = firstCol ? firstCol.dataset.alldayDate : "";
+      openLeaveModal(null, { start: date, end: date });
+    };
+  }
   // 修繕アポチップ → クイックポップオーバー (担当者・コメント編集)
   // 詳細編集 (元GAS書戻し可能)はポップ内の「✎ 詳細編集」ボタンから
   allday.querySelectorAll("[data-repair-id]").forEach(el=>{
