@@ -4996,16 +4996,21 @@ document.getElementById("ck-delete").onclick = async ()=>{
   // checkDateあり → 未定/対象外に移動（日付クリア）
   if(!confirm("最終確認日をクリアして「確認日未定/対象外」に移動しますか？")) return;
   pushHistory();
-  // gas-sync 由来なら GAS にも空を書き戻し
-  if(ck.source==="gas-sync" && ck.extDriveFileId){
-    try{
-      await pushFinalDateToGAS(ck.extDriveFileId, "");
-    }catch(e){
-      if(!confirm(`GASへの書き戻しに失敗: ${e.message}\nローカルのみ反映しますか？`)) return;
-    }
-  }
-  state.checks = state.checks.map(x => x.id===editingCheckId ? {...x, checkDate:"", updatedAt:new Date().toISOString()} : x);
+  const oldDate = ck.checkDate || "";
+  // ⚡ 先にローカル反映+render → GAS往復を待たない
+  const targetId = editingCheckId;
+  state.checks = state.checks.map(x => x.id===targetId ? {...x, checkDate:"", updatedAt:new Date().toISOString()} : x);
   saveState(); closeCheckModal(); render();
+  // gas-sync 由来なら GAS にも空を書き戻し(バックグラウンド)
+  if(ck.source==="gas-sync" && ck.extDriveFileId){
+    pushFinalDateToGAS(ck.extDriveFileId, "").catch(e=>{
+      console.warn("[final-date clear] push failed:", e);
+      if(confirm(`Drive書き戻しに失敗: ${e.message}\n元の日付(${oldDate})に戻しますか？`)){
+        state.checks = state.checks.map(x => x.id===targetId ? {...x, checkDate:oldDate} : x);
+        saveState(); render();
+      }
+    });
+  }
 };
 
 function colsPerDay(){
