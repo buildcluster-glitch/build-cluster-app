@@ -3825,22 +3825,25 @@ function attachCheckDragOrClick(el, ck){
       if(newDate===target_ck.checkDate && newStaff===target_ck.staff){
         render(); return;
       }
-      // gas-sync ならGAS書き戻し（checkDateが変わった場合のみ）
-      if(target_ck.source==="gas-sync" && target_ck.extDriveFileId && newDate!==target_ck.checkDate){
-        try{
-          await pushFinalDateToGAS(target_ck.extDriveFileId, newDate);
-        }catch(e){
-          if(!confirm(`GASへの書き戻しに失敗: ${e.message}\nローカルのみ反映しますか？`)){
-            render(); return;
-          }
-        }
-      }
+      // ⚡ Optimistic UI: 先にローカル反映+render → GAS往復(10〜60秒)を待たない
+      const oldDate = target_ck.checkDate;
+      const needsGasPush = target_ck.source==="gas-sync" && target_ck.extDriveFileId && newDate!==oldDate;
       pushHistory();
       target_ck.checkDate = newDate;
       target_ck.staff = newStaff;
       target_ck.updatedAt = new Date().toISOString();
       saveState();
       render();
+      // GAS書き戻しは非同期(失敗時のみ revert 確認)
+      if(needsGasPush){
+        pushFinalDateToGAS(target_ck.extDriveFileId, newDate).catch(e=>{
+          console.warn("[D&D final-date] push failed:", e);
+          if(confirm(`Drive書き戻しに失敗:\n${e.message}\n\n元の日付(${oldDate})に戻しますか？`)){
+            const t = state.checks.find(c=>c.id===target_ck.id);
+            if(t){ t.checkDate = oldDate; saveState(); render(); }
+          }
+        });
+      }
     };
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
