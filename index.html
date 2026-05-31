@@ -9077,13 +9077,42 @@ function renderRestoList(){
     listEl.innerHTML = `<div class="resto-empty">🏠 原状回復案件がありません<br><small>${all.length===0?"🔄 Drive同期で取り込まれます":"フィルタ条件に一致なし"}</small></div>`;
     return;
   }
-  // clientCat でグループ化
+  // グループ化:
+  //  1) 山一地所/みどり不動産/自社工事 は専用カテゴリで集約
+  //  2) それ以外で client (元請け名) が判明している → その元請け名で個別グループ
+  //  3) client が空 → "その他(未指定)"
   const groups = {};
-  items.forEach(p=>{ const cat = p.clientCat || "その他"; (groups[cat]=groups[cat]||[]).push(p); });
-  const tagColors = {"山一地所":"#7c3aed","みどり不動産":"#16a34a","自社工事":"#f59e0b","その他":"#64748b"};
-  listEl.innerHTML = RESTO_CLIENT_CATS.filter(c=>groups[c]).map(cat=>{
+  items.forEach(p=>{
+    const cat = p.clientCat || "その他";
+    if(cat==="山一地所" || cat==="みどり不動産" || cat==="自社工事"){
+      (groups[cat] = groups[cat] || []).push(p);
+    }else{
+      const k = (p.client||"").trim() || "その他(未指定)";
+      (groups[k] = groups[k] || []).push(p);
+    }
+  });
+  // 表示順: 固定3カテゴリ → その他元請け(件数多い順) → "その他(未指定)"
+  const FIXED = ["山一地所","みどり不動産","自社工事"];
+  const dynamicKeys = Object.keys(groups)
+    .filter(k => !FIXED.includes(k) && k !== "その他(未指定)")
+    .sort((a,b) => groups[b].length - groups[a].length);
+  const orderedKeys = [
+    ...FIXED.filter(k => groups[k]),
+    ...dynamicKeys,
+    ...(groups["その他(未指定)"] ? ["その他(未指定)"] : []),
+  ];
+  // 元請け名→色 (固定3カテゴリは指定色、それ以外はハッシュベース)
+  const tagColors = {"山一地所":"#7c3aed","みどり不動産":"#16a34a","自社工事":"#f59e0b","その他(未指定)":"#64748b"};
+  function clientColorFor(name){
+    if(tagColors[name]) return tagColors[name];
+    // 元請け名から決定的な色 (#色相 0-360)
+    let h = 0;
+    for(const ch of name) h = (h*31 + ch.charCodeAt(0)) >>> 0;
+    return `hsl(${h%360},55%,45%)`;
+  }
+  listEl.innerHTML = orderedKeys.map(cat=>{
     const rows = groups[cat].map(renderRestoCard).join("");
-    return `<div class="resto-group-header"><span class="gh-tag" style="background:${tagColors[cat]||"#64748b"}">${escapeHtml(cat)}</span><span class="gh-count">${groups[cat].length}件</span></div>${rows}`;
+    return `<div class="resto-group-header"><span class="gh-tag" style="background:${clientColorFor(cat)}">${escapeHtml(cat)}</span><span class="gh-count">${groups[cat].length}件</span></div>${rows}`;
   }).join("");
   listEl.querySelectorAll(".resto-card").forEach(c=>{
     c.onclick = ()=>{ restoDetailId = c.dataset.id; restoTaskStatusFilter = null; renderRestoView(); };
