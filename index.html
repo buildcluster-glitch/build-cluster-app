@@ -6580,21 +6580,16 @@ function showRepairQuickPop(r, anchorEl){
 
 function attachRepairChipHover(el, r){
   el.removeAttribute("title");
-  // ホバー → 250msでクイック編集ポップオーバー (チップ-ポップ間を移動可能・離れて400ms猶予)
-  let openTimer = null;
-  el.addEventListener("mouseenter", ()=>{
-    if(openTimer) clearTimeout(openTimer);
-    // 既にこのチップ用に開いてればスキップ
-    if(__quickPopEl && __quickPopEl.dataset.repairId === r.id) return;
-    openTimer = setTimeout(()=>{
-      openTimer = null;
-      showRepairQuickPop(r, el);
-    }, 250);
+  // ホバー = 軽量情報tooltip (見るだけ・350ms遅延)
+  let lastX = 0, lastY = 0;
+  el.addEventListener("mouseenter", (e)=>{
+    lastX = e.clientX; lastY = e.clientY;
+    if(__chipTipTimer) clearTimeout(__chipTipTimer);
+    __chipTipTimer = setTimeout(()=>{ showRepairTip(r, lastX, lastY); }, 350);
   });
-  el.addEventListener("mouseleave", ()=>{
-    if(openTimer){ clearTimeout(openTimer); openTimer = null; }
-    // 既にポップ開いてるなら、ポップ側のmouseleaveに任せる(ここでは閉じない)
-  });
+  el.addEventListener("mousemove", (e)=>{ lastX = e.clientX; lastY = e.clientY; });
+  el.addEventListener("mouseleave", ()=>{ hideChipTip(); });
+  el.addEventListener("pointerdown", ()=>{ hideChipTip(); });
 }
 
 function attachChipHover(el, ev){
