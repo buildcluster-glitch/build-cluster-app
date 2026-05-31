@@ -3656,7 +3656,7 @@ function renderChecks(){
       <div style="flex:1"></div>
       <button class="nav-btn" id="syncCheckBtn" title="master_sync GAS から最終確認日を取得">🔄 Drive同期</button>
       <button class="nav-btn" id="gasSettingsBtn" title="GAS URL/Token 設定">⚙</button>
-      <button class="nav-btn" id="addCheckBtn">＋追加</button>
+      <!-- ＋追加ボタン削除 (2026-05-31): 工事最終確認は台帳から自動取得のため手動登録不要 -->
     </div>
     <div class="checks-columns" style="grid-template-columns:${currentView==="month" ? buildMonthColTemplate(cols) : `${TIME_COL_W}px repeat(${colCount}, minmax(0, 1fr))`}">
       <div class="checks-col-time"></div>
