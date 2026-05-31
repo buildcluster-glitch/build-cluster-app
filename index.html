@@ -6209,7 +6209,7 @@ function renderMonth(){
       const cat = catInfo(ev.category);
       const catDot = cat ? `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${cat.color};margin-right:3px;vertical-align:middle"></span>` : "";
       const tooltipCat = cat ? `[${cat.name}] ` : "";
-      return `<div class="month-event" data-ev-id="${ev.id}" style="background:${bg};color:${fg}" title="${tooltipCat}${escapeHtml(ev.title)} (${escapeHtml(tooltipStaff)})">${catDot}${ev.start}${badge} ${escapeHtml(ev.title)}</div>`;
+      return `<div class="month-event" data-ev-id="${ev.id}" style="background:${bg};color:${fg};${extraStyle}" title="${tooltipCat}${escapeHtml(ev.title)} (${escapeHtml(tooltipStaff)})">${catDot}${ev.start}${badge} ${escapeHtml(ev.title)}</div>`;
     }).join("");
     const moreHtml = moreCount>0 ? `<div class="month-more">他 ${moreCount} 件</div>` : "";
     return `<div class="month-cell ${cls.join(" ")}" data-date="${dStr}">
