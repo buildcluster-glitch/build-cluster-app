@@ -6571,6 +6571,9 @@ function showRepairQuickPop(r, anchorEl){
   }, 200);
 }
 
+// workflowStatus 色マップ (グローバル・showRepairQuickPop等から参照)
+const wfBgMap = {"アポ・手配 未":"#ec4899","アポ・手配 済":"#eab308","待機":"#3b82f6","長期連絡なし":"#9ca3af"};
+
 function attachRepairChipHover(el, r){
   el.removeAttribute("title");
   // ホバー350ms → クイック編集ポップ自動オープン (自動クローズなし・外側クリックかEscで閉じる)
