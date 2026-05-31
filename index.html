@@ -5892,7 +5892,7 @@ function renderCalendar(){
           : "";
         const commuteInline = ev.commute ? ` <span class="chip-commute" style="font-size:9px;padding:0 3px">${ev.commute==="直行直帰"?"🚗⇄":ev.commute==="直行"?"🚗→":"→🏠"}</span>` : "";
         el.innerHTML = isShort
-          ? `<div class="title">${inlineCatPrefix}${escapeHtml(titleFirstLine)}${commuteInline}${showStaff&&staffList.length?` <span style="opacity:.8">/${multi?staffList.length+"名":escapeHtml(staffList[0].slice(0,2))}</span>`:""}${__linkInfoHtml}</div>`
+          ? `<div class="title">${inlineCatPrefix}${escapeHtml(titleFirstLine)}${commuteInline}${showStaff&&staffList.length?` <span style="opacity:.8">/${multi?staffList.length+"名":escapeHtml(staffList[0].slice(0,2))}</span>`:""}${progIcon}${__linkInfoHtml}</div>`
           : `<div class="time">${ev.start}〜${ev.end}${commuteInline}</div>
              <div class="title">${inlineCatPrefix}${titleHtmlMulti}${progIcon}${__linkInfoHtml}</div>
              ${showStaff ? (multi ? participantsHtml : (ev.staff ? `<div class="staff">${staffShortLabel}</div>`:"")) : ""}`;
