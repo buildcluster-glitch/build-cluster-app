@@ -5642,6 +5642,44 @@ function renderCalendar(){
   const __isMonth = currentView==="month";
   // 同時刻スタック用: 各 baseTop ごとに次のオフセット(累積高さ)を記録
   const __stackOffset = new Map();   // key: `${colKey}|${baseTop}` → next y
+  // 🔗 イベント連携情報: タイトル中の物件名で原状回復データを引き当て、重い/着工/最終確認/入居を取得
+  // チップ描画の各分岐(月/終日/通常)から利用する
+  const __restoByName = new Map();
+  (state.restorations||[]).forEach(r=>{
+    if(r?.name) __restoByName.set(String(r.name).trim(), r);
+  });
+  function getEventLinkInfo_(ev){
+    const t = String(ev?.title||"").trim();
+    if(!t) return "";
+    let r = null;
+    for(const [name, rs] of __restoByName){
+      if(t.includes(name)){ r = rs; break; }
+    }
+    if(!r) return "";
+    const parts = [];
+    if(r.workVolume && r.workVolume !== "無") parts.push(r.workVolume);
+    // 内装/清掃 最早着工
+    const vendors = (r.tasks||[]).filter(t2=>{
+      if(t2.category !== "outsource" || !t2.periodStart) return false;
+      const nm = `${t2.name||""} ${t2.contractor||""}`;
+      return /内装|クロス|床/.test(nm) || /清掃|ハウス|FKK/i.test(nm);
+    }).sort((a,b)=>String(a.periodStart).localeCompare(String(b.periodStart)));
+    if(vendors[0]){
+      const d = parseDate(vendors[0].periodStart);
+      const md = !isNaN(d) ? `${d.getMonth()+1}/${d.getDate()}` : vendors[0].periodStart;
+      const cat = /清掃|ハウス|FKK/i.test(`${vendors[0].name||""} ${vendors[0].contractor||""}`) ? "清掃" : "内装";
+      parts.push(`${cat}${md}〜`);
+    }
+    if(r.finalDate){
+      const d = parseDate(r.finalDate);
+      if(!isNaN(d)) parts.push(`最終確認${d.getMonth()+1}/${d.getDate()}`);
+    }
+    if(r.moveinDate){
+      const d = parseDate(r.moveinDate);
+      if(!isNaN(d)) parts.push(`入居${d.getMonth()+1}/${d.getDate()}`);
+    }
+    return parts.join(" ／ ");
+  }
   cols.forEach(c=>{
     const dayCol = grid.querySelector(`.day-col[data-col-key="${c.key}"]`);
     const subCols = dayCol.querySelectorAll(".sub-col");
