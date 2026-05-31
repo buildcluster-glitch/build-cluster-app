@@ -4497,6 +4497,8 @@ function restoSyncTasks(existingTasks, serverTasks){
       qty, unit: st.unit || "",
       amount: Number(st.amount) || 0,
       schedule: schedule || (kept?.schedule || ""),
+      periodStart: st.periodStart || kept?.periodStart || "",
+      periodEnd: st.periodEnd || kept?.periodEnd || "",
       status: kept?.status || (cat==="outsource" ? "wip" : "todo"),
       doneAt: kept?.doneAt || null,
       statusBy: kept?.statusBy || "", statusAt: kept?.statusAt || null,
