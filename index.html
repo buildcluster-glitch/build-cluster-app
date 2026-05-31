@@ -8587,6 +8587,8 @@ function openRepairSheet(id){
   document.getElementById("rs-reqdate").value  = r.requestDate || "";
   document.getElementById("rs-respdate").value = r.responseDate || "";
   document.getElementById("rs-resptime").value = r.responseTime || "";
+  // datalist 候補を populate (15分刻み + 共通パターン)
+  populateRespTimeOptions_();
   document.getElementById("rs-cust").value     = r.customerName || "";
   document.getElementById("rs-tel").value      = r.customerTel || "";
   document.getElementById("rs-reqdesc").value  = r.requestDesc || "";
