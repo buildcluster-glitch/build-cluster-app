@@ -5379,7 +5379,7 @@ function renderLeaveBand(){
   band.innerHTML = `
     <div class="band-row">
       <span class="sec sec-attend">
-        <span class="sec-title">🏢 出社 ${present.length}/${STAFF.length}</span>
+        <span class="sec-title">🏢 出社 ${present.length}名 / 全${STAFF.length}名</span>
         ${present.length===0 ? '<span class="leave-empty">誰もいません</span>' : present.map(staffChip).join('')}
         ${filterHint}
       </span>
