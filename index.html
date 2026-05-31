@@ -7242,6 +7242,28 @@ function openEventModal(ev, defaults){
     }
     updateLeaderUI();
   };
+  // 👥 全員ON/OFF トグル: 全員選択 → 全解除(リーダー以外) → 全員選択 のループ
+  const allBtn = document.getElementById("ev-parts-all");
+  if(allBtn){
+    allBtn.onclick = ()=>{
+      const cbs = Array.from(partsWrap.querySelectorAll("input[type='checkbox']"));
+      const allOn = cbs.every(cb => cb.checked);
+      const turnOn = !allOn; // 全員チェック済なら全解除、それ以外は全員ON
+      cbs.forEach(cb=>{
+        cb.checked = turnOn;
+        cb.closest("label").classList.toggle("checked", turnOn);
+      });
+      // 全解除でリーダーも外す
+      if(!turnOn && sSel.value){
+        sSel.value = "";
+      }
+      updateLeaderUI();
+      // フィードバック: ボタン文言を一瞬切り替え
+      const orig = allBtn.textContent;
+      allBtn.textContent = turnOn ? `✅ ${cbs.length}名` : "⬜ 全解除";
+      setTimeout(()=>{ allBtn.textContent = orig; }, 900);
+    };
+  }
 
   document.getElementById("ev-title").value = ev?.title || defaults?.title || "";
   document.getElementById("ev-date").value  = ev?.date  || defaults?.date || fmtDate(currentDate);
