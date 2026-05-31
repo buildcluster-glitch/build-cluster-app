@@ -4545,12 +4545,15 @@ function extractRestorations(properties, existing){
       layout: p.floor_plan || p.layout || prev?.layout || "",
       orderDate: normalizeDate(p.orderDate || p.document_date),
       moveout: p.move_out_month || prev?.moveout || "",
-      moveinDate: normalizeDate(p.movein),
+      moveinDate: normalizeDate(p.movein) || prev?.moveinDate || "",
       finalDate: normalizeDate(p.finalDate),
       completeDate: normalizeDate(p.completeDate) || prev?.completeDate || "",
       pic: p.pic || p.person_in_charge || prev?.pic || "",
       extDriveFileId: p.driveFileId || prev?.extDriveFileId || "",
       extEstimateId: p.estimateId || prev?.extEstimateId || "",
+      // 🛠 工事ボリューム (v1.4.218 互換): 軽/普/重/激重 等のレベル
+      workVolume: p.workloadStatus?.level || p.workVolume || prev?.workVolume || "",
+      workloadStatus: p.workloadStatus || prev?.workloadStatus || null,
       tasks: prev ? prev.tasks : [],
       comments: prev ? prev.comments : [],
     };
