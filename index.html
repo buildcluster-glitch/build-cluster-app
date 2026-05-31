@@ -6262,6 +6262,71 @@ function showChipTip(ev, mouseX, mouseY){
   tip.style.left = x + "px";
   tip.style.top  = y + "px";
 }
+// 🔧 修繕アポチップ用リッチtooltip
+function showRepairTip(r, mouseX, mouseY){
+  const tip = ensureChipTip();
+  const contShort = shortenCompany(r.contractor||"");
+  const cont = contractorInfo(contShort) || contractorInfo(r.contractor);
+  const wfBar = (typeof wfBgMap === 'object' && wfBgMap[r.workflowStatus||""]) || "#ec4899";
+  const wfLabel = r.workflowStatus || "アポ・手配 未";
+  const worker = (r.worker||"").trim();
+  const workerColor = worker ? (STAFF_COLORS[worker] || "#9ca3af") : null;
+  tip.style.borderLeftColor = workerColor || wfBar;
+
+  const titleHtml = `<div class="tt-title">🔧 ${escapeHtml(r.name||"(物件不明)")}${r.room?" "+escapeHtml(r.room):""}</div>`;
+  const rows = [];
+  // バッジ (元請け + workflowStatus)
+  let badges = '';
+  if(cont) badges += `<span class="tt-badge" style="background:${cont.color};color:#fff">${escapeHtml(cont.name)}</span>`;
+  badges += `<span class="tt-badge" style="background:${wfBar};color:#fff">${escapeHtml(wfLabel)}</span>`;
+  if(r.status) badges += `<span class="tt-badge" style="background:#e5e7eb;color:#374151">${escapeHtml(r.status)}</span>`;
+  rows.push(`<div class="tt-row"><span class="tt-key"></span><span class="tt-val">${badges}</span></div>`);
+  // 対応予定
+  if(r.responseDate || r.responseTime){
+    const dt = `${r.responseDate||"日付未"}${r.responseTime?" "+r.responseTime:""}`;
+    rows.push(`<div class="tt-row"><span class="tt-key">📅</span><span class="tt-val">${escapeHtml(dt)}</span></div>`);
+  }
+  // 連絡者
+  if(r.contactPerson){
+    rows.push(`<div class="tt-row"><span class="tt-key">📞</span><span class="tt-val">連絡者: <b>${escapeHtml(r.contactPerson)}</b></span></div>`);
+  }
+  // 作業担当者
+  if(worker){
+    const wd = getStaffDisplayName ? getStaffDisplayName(worker) : worker;
+    rows.push(`<div class="tt-row"><span class="tt-key">🔨</span><span class="tt-val"><span class="tt-staff is-leader" style="background:${workerColor};color:${textColorFor(workerColor)}">${escapeHtml(wd)} ★</span></span></div>`);
+  }
+  // お客様
+  if(r.customerName){
+    rows.push(`<div class="tt-row"><span class="tt-key">👤</span><span class="tt-val">${escapeHtml(r.customerName)}${r.customerTel?` (${escapeHtml(r.customerTel)})`:''}</span></div>`);
+  }
+  // 依頼内容
+  const requestHtml = r.requestDesc ? `<div class="tt-memo">📝 依頼: ${escapeHtml(r.requestDesc)}</div>` : "";
+  const memoHtml = r.creatorMemo ? `<div class="tt-memo" style="border-top:1px dashed var(--border);margin-top:6px;padding-top:6px">🗒 メモ: ${escapeHtml(r.creatorMemo)}</div>` : "";
+  tip.innerHTML = titleHtml + rows.join("") + requestHtml + memoHtml + `<div style="font-size:10px;color:var(--muted);margin-top:6px;border-top:1px solid var(--border);padding-top:4px">クリック: 編集シート / ドラッグ不可</div>`;
+  // 位置決め
+  const margin = 14;
+  tip.style.left = "0px"; tip.style.top = "0px";
+  tip.classList.add("is-show");
+  const rect = tip.getBoundingClientRect();
+  let x = mouseX + margin, y = mouseY + margin;
+  if(x + rect.width  > window.innerWidth - 8)  x = mouseX - rect.width - margin;
+  if(y + rect.height > window.innerHeight - 8) y = mouseY - rect.height - margin;
+  if(x < 8) x = 8; if(y < 8) y = 8;
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+function attachRepairChipHover(el, r){
+  el.removeAttribute("title"); // ネイティブtooltip抑制
+  let lastX = 0, lastY = 0;
+  el.addEventListener("mouseenter", (e)=>{
+    lastX = e.clientX; lastY = e.clientY;
+    if(__chipTipTimer) clearTimeout(__chipTipTimer);
+    __chipTipTimer = setTimeout(()=>{ showRepairTip(r, lastX, lastY); }, 350);
+  });
+  el.addEventListener("mousemove", (e)=>{ lastX = e.clientX; lastY = e.clientY; });
+  el.addEventListener("mouseleave", ()=>{ hideChipTip(); });
+  el.addEventListener("pointerdown", ()=>{ hideChipTip(); });
+}
+
 function attachChipHover(el, ev){
   // ネイティブ title は重複表示防止のため抑制（カスタムポップアップに統合）
   el.removeAttribute("title");
