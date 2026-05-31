@@ -9175,6 +9175,7 @@ function renderRestoCard(p){
         <span class="rc-progress-label">${progressLabel}</span>
         <div class="rc-bar"><div class="rc-bar-inner" style="width:${pr.pct}%"></div></div>
         ${finalStr?`<span class="rc-final" title="最終確認日">📅 ${finalStr}</span>`:""}
+        ${delayBadgeHtml}
         ${moveinStr?`<span class="rc-movein" title="入居日" style="font-size:11px;color:#475569;font-weight:600;flex-shrink:0">🏠 ${moveinStr}</span>`:""}
         ${p.moveout?`<span class="rc-moveout" title="退去月">退去 ${escapeHtml(p.moveout)}</span>`:""}
         <span class="rc-pill ${st}">${RESTO_STATUS_LABEL[st]}</span>
