@@ -5822,6 +5822,11 @@ function renderCalendar(){
       ].filter(Boolean).join("\n");
       // コメントアイコン(メモあり時のみ)
       const memoIcon = ev.memo ? `<span class="chip-memo" title="📝 ${escapeHtml(ev.memo)}">📝</span>` : "";
+      // 📋 原状回復 進捗アイコン: ひもづく物件がある時のみ。押下でカレンダー上に進捗ダイアログ
+      const __progResto = getEventResto_(ev);
+      const progIcon = __progResto
+        ? `<span class="chip-prog" data-resto-id="${escapeHtml(String(__progResto.id))}" role="button" title="📋 原状回復の進捗を表示">📋</span>`
+        : "";
       // 💬コメント数バッジ (チャット)
       const commentCount = (ev.comments && ev.comments.length) || 0;
       const commentBadge = commentCount > 0
