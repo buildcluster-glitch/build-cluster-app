@@ -5900,6 +5900,18 @@ function renderCalendar(){
       }
       attachDragOrClick(el, ev);
       attachChipHover(el, ev);
+      // 📋 進捗アイコン: 押下でカレンダー上に原状回復の進捗ダイアログを開く。
+      //   チップ本体のドラッグ/編集(ダブルクリック)を誤発火させないよう pointerdown/mousedown を握り潰す。
+      const __progBtn = el.querySelector(".chip-prog");
+      if(__progBtn){
+        const __stop = e2=>{ e2.stopPropagation(); };
+        __progBtn.addEventListener("pointerdown", __stop, true);
+        __progBtn.addEventListener("mousedown", __stop, true);
+        __progBtn.addEventListener("click", e2=>{
+          e2.stopPropagation(); e2.preventDefault();
+          if(__progBtn.dataset.restoId) openRestoDialog(__progBtn.dataset.restoId);
+        });
+      }
       // 月ビューの通常イベントは hour-cell に append（セル単位スクロール）
       // 月ビュー終日 & その他ビューは従来通り sub-col に絶対配置
       if(isMonth && !isFree){
