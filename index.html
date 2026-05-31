@@ -9164,8 +9164,9 @@ function renderRestoCard(p){
   if(volLevel && volLevel !== "無"){
     const bg = volColors[volLevel] || "#6b7280";
     const heavyN = p.workloadStatus?.heavyItems?.length || 0;
+    // ツールチップには件数を残すが、表示は「軽/重」だけ
     const tip = `工事ボリューム: ${volLevel}${heavyN?` (重い品目 ${heavyN}件)`:""}`;
-    volBadgeHtml = `<span class="rc-vol" title="${escapeHtml(tip)}" style="background:${bg};color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;flex-shrink:0">${escapeHtml(volLevel)}${heavyN?`×${heavyN}`:""}</span>`;
+    volBadgeHtml = `<span class="rc-vol" title="${escapeHtml(tip)}" style="background:${bg};color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;flex-shrink:0">${escapeHtml(volLevel)}</span>`;
   }
   return `
     <div class="resto-card st-${st}" data-id="${p.id}">
