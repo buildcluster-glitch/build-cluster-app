@@ -3960,7 +3960,13 @@ function renderCheckCard(ck, today){
       ${staffBadge}
       ${volBadge}
       ${apptBadge}
-      <span class="status-sm ${statusCls}">${escapeHtml(ck.status||"清掃完了")}</span>
+      ${/* 着工/受注（工事指示有） は表示スキップ ─ デフォの「清掃完了」も非表示 */""}
+      ${(()=>{
+        const HIDDEN_STATUSES = ["着工","受注","受注（工事指示有）","施工指示あり","工事指示済","清掃完了"];
+        const s = ck.status || "";
+        if(!s || HIDDEN_STATUSES.includes(s)) return "";
+        return `<span class="status-sm ${statusCls}">${escapeHtml(s)}</span>`;
+      })()}
       ${checkDateHtml}
       ${delayHtml}
       ${moveInHtml}
