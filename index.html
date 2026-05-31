@@ -3769,14 +3769,18 @@ function attachCheckDragOrClick(el, ck){
         if(el._pendingClickTimer) clearTimeout(el._pendingClickTimer);
         el._pendingClickTimer = setTimeout(()=>{
           el._pendingClickTimer = null;
-          // 1. extDriveFileId/extEstimateId/title で原状回復案件を探す
-          const resto = ck.extDriveFileId
-            ? (state.restorations||[]).find(r=>r.extDriveFileId === ck.extDriveFileId)
-            : null
-            || (ck.extEstimateId
-                ? (state.restorations||[]).find(r=>r.extEstimateId === ck.extEstimateId)
-                : null)
-            || (state.restorations||[]).find(r=>r.name && ck.title && r.name === ck.title.replace(/\s+\d+$/,'').trim());
+          // 1. extDriveFileId → extEstimateId → title(フル→号室除去) の順で原状回復案件を探す
+          //    ※旧コードは ?: と || の優先順位の罠で、extDriveFileId がある時に
+          //      後続の title フォールバックが実行されず詳細へ飛べなかった (2026-06-01修正)
+          const _restos = state.restorations || [];
+          const _ckFull = ck.title ? ck.title.trim() : "";
+          const _ckNorm = _ckFull.replace(/\s+\d+$/, "").trim();
+          const resto =
+            (ck.extDriveFileId && _restos.find(r=>r.extDriveFileId === ck.extDriveFileId)) ||
+            (ck.extEstimateId  && _restos.find(r=>r.extEstimateId  === ck.extEstimateId )) ||
+            (_ckFull           && _restos.find(r=>r.name === _ckFull)) ||
+            (_ckNorm           && _restos.find(r=>r.name === _ckNorm)) ||
+            null;
           if(resto){
             // 原状回復ビューに切り替え + 詳細表示
             restoDetailId = resto.id;
