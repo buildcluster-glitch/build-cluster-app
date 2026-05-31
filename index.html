@@ -2779,13 +2779,16 @@
 <!-- 有給年間集計モーダル -->
 <div class="modal-overlay" id="yearStatsModal">
   <div class="modal" style="max-width:1100px">
-    <div class="modal-header">
-      📊 有給年間集計
+    <div class="modal-header" style="flex-wrap:wrap">
+      <span>📊 年間休日集計表</span>
+      <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px">(BC policy: 日曜祝日固定 + 月3日 + 有給5日義務)</span>
       <div style="flex:1"></div>
       <select id="ys-year" style="font-size:14px;padding:4px 8px;border-radius:6px;border:1px solid var(--border-strong)"></select>
     </div>
     <div class="modal-body" id="ys-body" style="overflow:auto"></div>
-    <div class="modal-footer">
+    <div class="modal-footer" style="flex-wrap:wrap;gap:6px">
+      <span style="font-size:11px;color:var(--muted)">凡例: <strong style="background:#fef3c7;padding:1px 4px;border-radius:2px">年休★5日</strong>=取得義務 / 半休=有給(AM/PM)を0.5換算 / 当番=休みではない</span>
+      <span style="flex:1"></span>
       <button class="btn" id="ys-close">閉じる</button>
     </div>
   </div>
