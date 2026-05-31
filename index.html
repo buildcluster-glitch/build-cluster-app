@@ -5475,7 +5475,8 @@ function renderCalendar(){
       if(l) openLeaveModal(l);
     };
   });
-  // 修繕アポチップ → 修繕ビューに切替えて該当案件を絞り込み
+  // 修繕アポチップ → クイックポップオーバー (担当者・コメント編集)
+  // 詳細編集 (元GAS書戻し可能)はポップ内の「✎ 詳細編集」ボタンから
   allday.querySelectorAll("[data-repair-id]").forEach(el=>{
     const r = (state.repairs||[]).find(x=>x.id===el.dataset.repairId);
     if(r) attachRepairChipHover(el, r);
@@ -5483,7 +5484,12 @@ function renderCalendar(){
       e.stopPropagation();
       const r2 = (state.repairs||[]).find(x=>x.id===el.dataset.repairId);
       if(!r2) return;
-      openRepairSheet(r2.id);
+      showRepairQuickPop(r2, el);
+    };
+    el.ondblclick = (e)=>{
+      e.stopPropagation();
+      const r2 = (state.repairs||[]).find(x=>x.id===el.dataset.repairId);
+      if(r2) openRepairSheet(r2.id);
     };
   });
 
