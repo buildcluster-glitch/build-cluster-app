@@ -694,6 +694,13 @@
     box-shadow:0 12px 40px rgba(0,0,0,.18);
     max-height:90vh;overflow:auto;
   }
+  /* 原状回復 進捗ダイアログ: 詳細ビューを移設して表示するため幅広・縦フレックス */
+  .modal.modal-resto{
+    max-width:780px;width:100%;height:86vh;max-height:86vh;
+    display:flex;flex-direction:column;overflow:hidden;padding:10px 14px;
+  }
+  #restoDialogHost{flex:1;min-height:0;display:flex;flex-direction:column}
+  #restoDialogHost .resto-detail-mode{flex:1;min-height:0;display:flex;flex-direction:column}
   .modal-header{padding:14px 18px;border-bottom:1px solid var(--border);font-weight:700}
   .modal-body{padding:14px 18px;display:flex;flex-direction:column;gap:10px}
   .modal-footer{padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
