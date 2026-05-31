@@ -7380,6 +7380,7 @@ document.getElementById("lv-save").onclick = ()=>{
   }
   saveState(); closeLeaveModal(); render();
   scheduleAttendancePush();
+  scheduleAvailabilityPush(); // 🌴 master_sync (クラ助等)へ休暇情報を共有
 };
 document.getElementById("lv-delete").onclick = ()=>{
   if(!editingLeaveId) return;
@@ -7388,6 +7389,7 @@ document.getElementById("lv-delete").onclick = ()=>{
   state.leaves = state.leaves.filter(l=>l.id!==editingLeaveId);
   saveState(); closeLeaveModal(); render();
   scheduleAttendancePush();
+  scheduleAvailabilityPush(); // 🌴 master_sync (クラ助等)へ休暇情報を共有
 };
 
 // ===== ナビ =====
