@@ -1845,7 +1845,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v73</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v74</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -6572,16 +6572,21 @@ function showRepairQuickPop(r, anchorEl){
 
 function attachRepairChipHover(el, r){
   el.removeAttribute("title");
-  // ホバー = 軽量情報tooltip (見るだけ・350ms遅延)
-  let lastX = 0, lastY = 0;
-  el.addEventListener("mouseenter", (e)=>{
-    lastX = e.clientX; lastY = e.clientY;
-    if(__chipTipTimer) clearTimeout(__chipTipTimer);
-    __chipTipTimer = setTimeout(()=>{ showRepairTip(r, lastX, lastY); }, 350);
+  // ホバー350ms → クイック編集ポップ自動オープン (自動クローズなし・外側クリックかEscで閉じる)
+  let openTimer = null;
+  el.addEventListener("mouseenter", ()=>{
+    if(openTimer) clearTimeout(openTimer);
+    // 既に同じ案件のポップが開いてればスキップ
+    if(__quickPopEl && __quickPopEl.dataset.repairId === r.id) return;
+    openTimer = setTimeout(()=>{
+      openTimer = null;
+      showRepairQuickPop(r, el);
+    }, 350);
   });
-  el.addEventListener("mousemove", (e)=>{ lastX = e.clientX; lastY = e.clientY; });
-  el.addEventListener("mouseleave", ()=>{ hideChipTip(); });
-  el.addEventListener("pointerdown", ()=>{ hideChipTip(); });
+  el.addEventListener("mouseleave", ()=>{
+    // 開く前にカーソルが離れたらキャンセル (ポップが開いてればそのまま残す)
+    if(openTimer){ clearTimeout(openTimer); openTimer = null; }
+  });
 }
 
 function attachChipHover(el, ev){
