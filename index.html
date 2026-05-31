@@ -9136,6 +9136,22 @@ function renderRestoCard(p){
   // 🏠 入居日
   let moveinStr = "";
   if(p.moveinDate){ const d=parseDate(p.moveinDate); if(!isNaN(d)) moveinStr = `${d.getMonth()+1}/${d.getDate()}`; }
+  // ⚠ 当初最終確認日との差分(遅延/前倒し)バッジ
+  let delayBadgeHtml = "";
+  if(p.finalDate && p.originalFinalDate && p.finalDate !== p.originalFinalDate){
+    const c = parseDate(p.finalDate), o = parseDate(p.originalFinalDate);
+    if(!isNaN(c) && !isNaN(o)){
+      const days = Math.round((c - o)/86400000);
+      if(days !== 0){
+        const isDelay = days > 0;
+        const label = isDelay ? `⚠ ${days}日遅延` : `⏪ ${-days}日前倒し`;
+        const bg = isDelay ? "#fee2e2" : "#dcfce7";
+        const fg = isDelay ? "#991b1b" : "#166534";
+        const tip = `当初 ${o.getMonth()+1}/${o.getDate()} → 現在 ${c.getMonth()+1}/${c.getDate()}`;
+        delayBadgeHtml = `<span class="rc-delay" title="${escapeHtml(tip)}" style="background:${bg};color:${fg};font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;flex-shrink:0">${label}</span>`;
+      }
+    }
+  }
   // 🛠 工事ボリューム(重/軽 等)バッジ — workVolume または workloadStatus.level
   const volLevel = p.workVolume || p.workloadStatus?.level || "";
   const volColors = {
