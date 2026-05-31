@@ -9126,16 +9126,37 @@ function renderRestoCard(p){
   const progressLabel = pr.total
     ? `自社 <b>${pr.done}/${pr.total}</b>（${pr.pct}%）`
     : "自社工事 <b>未登録</b>";
+  // 📅 最終確認日
   let finalStr = "";
   if(p.finalDate){ const d=parseDate(p.finalDate); if(!isNaN(d)) finalStr = `${d.getMonth()+1}/${d.getDate()}`; }
+  // 🏠 入居日
+  let moveinStr = "";
+  if(p.moveinDate){ const d=parseDate(p.moveinDate); if(!isNaN(d)) moveinStr = `${d.getMonth()+1}/${d.getDate()}`; }
+  // 🛠 工事ボリューム(重/軽 等)バッジ — workVolume または workloadStatus.level
+  const volLevel = p.workVolume || p.workloadStatus?.level || "";
+  const volColors = {
+    "激重":"#dc2626","激":"#dc2626",
+    "重":"#ea580c",
+    "普":"#eab308","普通":"#eab308","中":"#eab308",
+    "軽":"#16a34a","小":"#16a34a",
+  };
+  let volBadgeHtml = "";
+  if(volLevel && volLevel !== "無"){
+    const bg = volColors[volLevel] || "#6b7280";
+    const heavyN = p.workloadStatus?.heavyItems?.length || 0;
+    const tip = `工事ボリューム: ${volLevel}${heavyN?` (重い品目 ${heavyN}件)`:""}`;
+    volBadgeHtml = `<span class="rc-vol" title="${escapeHtml(tip)}" style="background:${bg};color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;flex-shrink:0">${escapeHtml(volLevel)}${heavyN?`×${heavyN}`:""}</span>`;
+  }
   return `
     <div class="resto-card st-${st}" data-id="${p.id}">
       <div class="rc-row">
         <div class="rc-name">${escapeHtml(p.name)} <span class="rc-room">${roomStr}</span></div>
+        ${volBadgeHtml}
         <span class="rc-progress-label">${progressLabel}</span>
         <div class="rc-bar"><div class="rc-bar-inner" style="width:${pr.pct}%"></div></div>
-        ${finalStr?`<span class="rc-final">📅 ${finalStr}</span>`:""}
-        ${p.moveout?`<span class="rc-moveout">退去 ${escapeHtml(p.moveout)}</span>`:""}
+        ${finalStr?`<span class="rc-final" title="最終確認日">📅 ${finalStr}</span>`:""}
+        ${moveinStr?`<span class="rc-movein" title="入居日" style="font-size:11px;color:#475569;font-weight:600;flex-shrink:0">🏠 ${moveinStr}</span>`:""}
+        ${p.moveout?`<span class="rc-moveout" title="退去月">退去 ${escapeHtml(p.moveout)}</span>`:""}
         <span class="rc-pill ${st}">${RESTO_STATUS_LABEL[st]}</span>
       </div>
       ${(p.client||p.layout||p.address)?`<div class="rc-sub">${escapeHtml(p.client||"")}${p.layout?" ・ "+escapeHtml(p.layout):""}${p.address?" ・ "+escapeHtml(p.address):""}</div>`:""}
