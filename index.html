@@ -9809,7 +9809,13 @@ function restoUploadToDrive(base64Data, propName, roomNo){
 // 原状回復 ビュー イベント
 document.getElementById("restoSearch").oninput = (e)=>{ restoSearch=e.target.value; renderRestoList(); };
 document.getElementById("restoReload").onclick = ()=>syncChecksFromGAS();
-document.getElementById("restoBack").onclick = ()=>{ restoDetailId=null; renderRestoView(); };
+document.getElementById("restoBack").onclick = ()=>{
+  if(restoDetailAsModal){ closeRestoDialog(); return; } // ダイアログ表示中は閉じる
+  restoDetailId=null; renderRestoView();
+};
+// ダイアログ: 背景クリック / Esc で閉じる
+document.getElementById("restoDialog").onclick = (e)=>{ if(e.target.id==="restoDialog") closeRestoDialog(); };
+document.addEventListener("keydown",(e)=>{ if(e.key==="Escape" && restoDetailAsModal) closeRestoDialog(); });
 document.getElementById("rdArchiveBtn").onclick = restoToggleArchive;
 document.getElementById("rdCommentAdd").onclick = restoAddComment;
 document.getElementById("rdTrashToggle").onclick = ()=>{
