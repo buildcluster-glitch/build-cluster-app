@@ -5715,9 +5715,9 @@ function renderCalendar(){
         : "";
       const isAnytime = ev.timeMode === "anytime";
       const cont = contractorInfo(ev.contractor);
-      // チップ背景 = 手動色 > リーダー色(ev.staff) > デフォルト
-      const chipBg = ev.color || STAFF_COLORS[ev.staff] || "#3b82f6";
-      const chipFg = textColorFor(chipBg);
+      // チップ背景 = 手動色 > リーダー色(ev.staff) > 透明(リーダー未指定時)
+      const chipBg = noLeader ? "transparent" : (ev.color || STAFF_COLORS[ev.staff]);
+      const chipFg = noLeader ? "#0f172a" : textColorFor(chipBg);
       // カテゴリプレフィクスの色 = 元請け色 > カテゴリ色 > 半透明白
       const catBoxBg = cont ? cont.color : (cat ? cat.color : null);
       const catBoxFg = catBoxBg ? textColorFor(catBoxBg) : chipFg;
