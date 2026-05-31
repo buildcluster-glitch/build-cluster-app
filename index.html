@@ -5689,10 +5689,15 @@ function renderCalendar(){
       // fixChipOverlaps が baseTop を参照して HOUR_PX を逆算するため記録
       el.dataset.baseTop = String(baseTop);
       el.dataset.startMin = String(isFree ? 0 : (timeToMin(ev.start) - HOUR_START*60));
-      const bg = ev.color || STAFF_COLORS[ev.staff] || "#3b82f6";
-      const fg = textColorFor(bg);
+      // リーダー(ev.staff)も手動色(ev.color)も無い → 背景透明 + 点線枠で「未指定」を明示
+      const noLeader = !ev.color && !STAFF_COLORS[ev.staff];
+      const bg = noLeader ? "transparent" : (ev.color || STAFF_COLORS[ev.staff]);
+      const fg = noLeader ? "#0f172a" : textColorFor(bg);
       el.style.background = bg;
       el.style.color = fg;
+      if(noLeader){
+        el.style.border = "1px dashed #94a3b8";
+      }
       el.style.setProperty("--chip-bg", fg === "#ffffff" ? "rgba(255,255,255,.22)" : "rgba(0,0,0,.08)");
       const isShort = height < 32;
       const showStaff = currentView !== "staff"; // 担当別ビューでは列で分かるので省略
