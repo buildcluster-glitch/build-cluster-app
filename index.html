@@ -4901,24 +4901,28 @@ document.getElementById("ck-save").onclick = async ()=>{
     externalRef: existing?.externalRef,
     updatedAt: new Date().toISOString(),
   };
-  // gas-sync 由来で checkDate が変わった場合 → GAS に書き戻し
+  // gas-sync 由来で checkDate が変わった場合 → GAS に書き戻し(バックグラウンド)
   const oldDate = existing?.checkDate || "";
   const newDate = data.checkDate || "";
-  if(data.source==="gas-sync" && data.extDriveFileId && oldDate !== newDate){
-    try{
-      await pushFinalDateToGAS(data.extDriveFileId, newDate);
-    }catch(e){
-      if(!confirm(`GASへの書き戻しに失敗しました:\n${e.message}\n\nローカルのみ保存しますか？`)){
-        return;
-      }
-    }
-  }
+  const needsGasPush = data.source==="gas-sync" && data.extDriveFileId && oldDate !== newDate;
+  // ⚡ 先にローカル反映+render → GAS往復(10〜20秒)を待たない (Optimistic UI)
   if(editingCheckId){
     state.checks = state.checks.map(x=>x.id===editingCheckId?data:x);
   }else{
     state.checks.push(data);
   }
   saveState(); closeCheckModal(); render();
+  // GAS書き戻しは非同期で(失敗時のみトースト+revert確認)
+  if(needsGasPush){
+    pushFinalDateToGAS(data.extDriveFileId, newDate).catch(e=>{
+      console.warn("[final-date] push failed:", e);
+      if(confirm(`Drive書き戻しに失敗しました:\n${e.message}\n\nローカル変更を元に戻しますか？`)){
+        // revert: 元の日付に戻す
+        state.checks = state.checks.map(x => x.id===data.id ? {...x, checkDate:oldDate} : x);
+        saveState(); render();
+      }
+    });
+  }
 };
 
 // 修繕アポ情報を GAS に書き戻し (v1.4.251 task-update-appointment)
