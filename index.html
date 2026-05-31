@@ -3677,7 +3677,9 @@ function renderChecks(){
   `;
   wrap.innerHTML = html;
 
-  document.getElementById("addCheckBtn").onclick = ()=>openCheckModal(null);
+  // ＋追加ボタンは廃止 (2026-05-31)。残コードのnullガード
+  const addCheckBtn = document.getElementById("addCheckBtn");
+  if(addCheckBtn) addCheckBtn.onclick = ()=>openCheckModal(null);
   document.getElementById("gasSettingsBtn").onclick = ()=>openGasSettings();
   document.getElementById("syncCheckBtn").onclick = ()=>syncChecksFromGAS();
   wrap.querySelectorAll("[data-check-id]").forEach(el=>{
