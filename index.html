@@ -7802,16 +7802,12 @@ async function cloudSyncPull({ replace=false }={}){
 // id基準マージ: pending保護 + 削除伝播
 function cloudMergeById_(localArr, serverArr, pendingIds){
   pendingIds = pendingIds || new Set();
-  const serverIds = new Set(serverArr.filter(x=>x && x.id).map(x=>x.id));
   const serverMap = new Map(serverArr.filter(x=>x && x.id).map(x=>[x.id, x]));
-  // 1. サーバーから消えた行をローカルからも削除 (pending保護)
-  for(let i = localArr.length - 1; i >= 0; i--){
-    const lid = localArr[i].id;
-    if(lid && !serverIds.has(lid) && !pendingIds.has(lid)){
-      localArr.splice(i, 1);
-    }
-  }
-  // 2. 既存ローカル行をサーバー値で更新 (pending保護)
+  // ⚠️ 自動削除は廃止: 「サーバーに無いローカル行」は触らず保持する
+  //   (Phase1 段階では削除伝播より「データ消失防止」を優先)
+  //   明示的に削除したい場合はチップの削除ボタン → queueCloudOp('deleteEvent') で行う
+  //
+  // 1. 既存ローカル行をサーバー値で更新 (pending保護)
   for(let i=0; i<localArr.length; i++){
     const lid = localArr[i].id;
     if(serverMap.has(lid)){
@@ -7821,7 +7817,7 @@ function cloudMergeById_(localArr, serverArr, pendingIds){
       serverMap.delete(lid);
     }
   }
-  // 3. サーバー側のみの行を追加 (pending deleteは復活させない)
+  // 2. サーバー側にしかない行を追加 (pending deleteは復活させない)
   serverMap.forEach((v, id) => {
     if(!pendingIds.has(id)){
       localArr.push(v);
