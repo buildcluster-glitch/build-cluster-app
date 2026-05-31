@@ -7177,65 +7177,54 @@ function openEventModal(ev, defaults){
   updateContractorVis();
 
   // participants (多人数参加)
-  // 「最初にチェックした人 = リーダー(ev-staff)」連動。
-  // チェック順を __pickOrder で管理し、先頭が常にリーダー。
+  // リーダー(ev-staff)は明示設定のみ。参加者をチェックしても自動でリーダーにはならない。
+  // 「リーダーなし・複数人参加」の予定にも対応 (例: 全員参加の事務作業など)
   const partsWrap = document.getElementById("ev-participants");
-  // 初期チェック集合: 既存ev のリーダー+参加者を合算（リーダー先頭）
-  // 新規予定の場合は「自分」を初期チェック
-  const initialChecked = [];
-  if(ev?.staff){
-    initialChecked.push(ev.staff);
-  } else if(!ev){
-    // 新規予定: getMyself() を初期チェック (設定済なら)
+  // 初期チェック集合: 既存予定 → リーダー+参加者の和集合 / 新規 → 自分のみ
+  const initialChecked = new Set();
+  if(ev?.staff) initialChecked.add(ev.staff);
+  (ev?.participants || []).forEach(p => p && initialChecked.add(p));
+  if(!ev){
     const me = getMyself();
-    if(me && STAFF.includes(me)) initialChecked.push(me);
+    if(me && STAFF.includes(me)) initialChecked.add(me);
   }
-  (ev?.participants || []).forEach(p=>{
-    if(p && !initialChecked.includes(p)) initialChecked.push(p);
-  });
-  const checkedSet = new Set(initialChecked);
-  let __pickOrder = [...initialChecked]; // チェック順、先頭がリーダー
   partsWrap.innerHTML = STAFF.map(s=>{
-    const isChecked = checkedSet.has(s);
+    const isChecked = initialChecked.has(s);
     const display = (typeof getStaffDisplayName === 'function') ? getStaffDisplayName(s) : s;
     return `<label class="${isChecked?"checked":""}" data-staff="${s}">
       <input type="checkbox" value="${s}" ${isChecked?"checked":""}>
       <span class="p-dot" style="background:${STAFF_COLORS[s]}"></span>${escapeHtml(display)}
     </label>`;
   }).join("");
-  // リーダー表示の更新（is-leader class + sSel value 同期）
+  // リーダーUI更新: sSel.value が真実の値・空ならリーダーなし
   const updateLeaderUI = ()=>{
-    const leader = __pickOrder[0] || "";
+    const leader = sSel.value || "";
     partsWrap.querySelectorAll("label").forEach(lbl=>{
-      lbl.classList.toggle("is-leader", lbl.dataset.staff === leader);
+      lbl.classList.toggle("is-leader", !!leader && lbl.dataset.staff === leader);
     });
-    sSel.value = leader;
   };
   updateLeaderUI();
+  // 参加者チェック ON/OFF → リーダーには触らない (自動昇格しない)
+  // ただしリーダー本人を外したらリーダーをクリア
   partsWrap.querySelectorAll("input").forEach(cb=>{
     cb.onchange = ()=>{
       const lbl = cb.closest("label");
       lbl.classList.toggle("checked", cb.checked);
-      const name = cb.value;
-      if(cb.checked){
-        if(!__pickOrder.includes(name)) __pickOrder.push(name);
-      } else {
-        __pickOrder = __pickOrder.filter(n=>n!==name);
+      if(!cb.checked && sSel.value === cb.value){
+        sSel.value = ""; // リーダー本人を外した → リーダー解除
       }
       updateLeaderUI();
     };
   });
-  // リーダー手動切替: ev-staff プルダウンを変えたら __pickOrder の先頭に移動
+  // リーダー手動切替: プルダウンを変えたら、未チェックなら自動でチェック
   sSel.onchange = ()=>{
     const v = sSel.value;
-    if(!v) return;
-    // 未チェックなら自動でチェック扱いに
-    if(!__pickOrder.includes(v)){
+    if(v){
       const cb = partsWrap.querySelector(`input[value="${v}"]`);
-      if(cb){ cb.checked = true; cb.closest("label").classList.add("checked"); }
-      __pickOrder.unshift(v);
-    } else {
-      __pickOrder = [v, ...__pickOrder.filter(n=>n!==v)];
+      if(cb && !cb.checked){
+        cb.checked = true;
+        cb.closest("label").classList.add("checked");
+      }
     }
     updateLeaderUI();
   };
