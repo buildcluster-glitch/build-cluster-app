@@ -10548,6 +10548,8 @@ setTimeout(()=>{
     fetchBukkenMaster({silent:true});
     // staffMaster も並行取得 (キャッシュ有効ならスキップ)
     fetchStaffMaster({silent:true});
+    // 🌴 休暇情報を起動時に1回 push (クラ助が最新参照できるよう)
+    setTimeout(pushStaffAvailability_, 500);
   }
 }, 3000);
 
