@@ -8576,6 +8576,25 @@ document.getElementById("repairReload").onclick = ()=>syncChecksFromGAS();
 // ===== 修繕案件 編集シート(モーダル) =====
 const repairSheet = document.getElementById("repairSheet");
 let editingRepairId = null;
+// 対応予定時間 datalist 候補生成
+// 8:00 〜 18:00 の 15分刻み + 共通の自由テキスト (午前中・午後・夕方・終日)
+function populateRespTimeOptions_(){
+  const dl = document.getElementById('rs-resptime-list');
+  if(!dl) return;
+  if(dl.dataset.populated) return; // 一度生成すれば固定
+  const opts = [];
+  // 8:00 〜 18:00 / 15分刻み
+  for(let h = 8; h <= 18; h++){
+    for(let m = 0; m < 60; m += 15){
+      opts.push(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
+    }
+  }
+  // 共通フリーパターン
+  opts.push('午前中','午後','夕方','終日','時間調整中');
+  dl.innerHTML = opts.map(v=>`<option value="${v}">`).join('');
+  dl.dataset.populated = '1';
+}
+
 function openRepairSheet(id){
   const r = state.repairs.find(x=>x.id===id);
   if(!r) return;
