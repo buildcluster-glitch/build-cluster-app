@@ -1940,7 +1940,11 @@
       <div class="field-row">
         <div class="field"><label>依頼日</label><input id="rs-reqdate" type="date" readonly></div>
         <div class="field"><label>対応予定日</label><input id="rs-respdate" type="date"></div>
-        <div class="field" style="max-width:120px"><label>対応予定時間</label><input id="rs-resptime" placeholder="10:00"></div>
+        <div class="field" style="max-width:200px"><label>対応予定時間</label>
+          <input id="rs-resptime" list="rs-resptime-list" placeholder="10:00 / 午前中 / 14時頃" autocomplete="off">
+          <datalist id="rs-resptime-list"></datalist>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px">▼で15分刻みから選択 / 自由入力可</div>
+        </div>
       </div>
       <div class="field-row">
         <div class="field"><label>お客様</label><input id="rs-cust" readonly></div>
