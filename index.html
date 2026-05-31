@@ -5425,7 +5425,7 @@ function renderCalendar(){
   // 休日帯 (旧:終日帯) — 有給/休暇/会社休日 + 終日予定 + 修繕アポ無時刻
   const allday = document.getElementById("alldayBand");
   allday.style.gridTemplateColumns = gridTemplate;
-  let alldayHtml = `<div class="time-col-header" style="display:flex;align-items:center;justify-content:center;color:#6b7280;font-size:11px">終日</div>`;
+  let alldayHtml = `<div class="time-col-header allday-label-header" style="display:flex;flex-direction:column;align-items:center;justify-content:center;color:#6b7280;font-size:11px;cursor:pointer" title="クリック: その列の日付で休暇/有給を登録"><span style="font-weight:700;color:#0f172a">🏖 休日</span><span style="font-size:9px;opacity:.7">/終日</span></div>`;
   // wfBgMap はグローバル定義 (showRepairQuickPop等から参照されるため)
   // const は外で window.wfBgMap で公開済
   const dayRepairsForGrid = []; // 時間グリッドに配置する修繕アポ {r, hh, mm, colKey}
