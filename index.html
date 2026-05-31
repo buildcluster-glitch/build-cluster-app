@@ -5483,7 +5483,7 @@ function renderCalendar(){
         }
       });
     }
-    alldayHtml += `<div class="allday-cell ${c.cellCls}">${inner}</div>`;
+    alldayHtml += `<div class="allday-cell ${c.cellCls}" data-allday-date="${c.contextDate||''}" data-allday-staff="${c.contextStaff||''}" title="ダブルクリック: 休暇/有給を登録">${inner}</div>`;
   });
   allday.innerHTML = alldayHtml;
   allday.querySelectorAll("[data-leave-id]").forEach(el=>{
