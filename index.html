@@ -7710,12 +7710,38 @@ function scrollToToday(){
 // 今日の位置スクロール: render後のレイアウト確定 + 非同期fetchの再描画にも追従
 // fetchBukkenMaster (3000ms) / fetchStaffMaster なども再render してスクロールがリセットされるので、
 // それ以降のタイミングまでリトライ
+let _scrollToTodayTimers = [];
+function _cancelScrollToToday(){
+  _scrollToTodayTimers.forEach(clearTimeout);
+  _scrollToTodayTimers = [];
+}
 function scrollToTodayRobust(){
+  _cancelScrollToToday();
   scrollToToday();
+  const body = document.getElementById("calBody");
+  // ユーザーが自分でスクロール操作したら、以降の自動スクロール(リトライ)を即中止し横取りを防ぐ。
+  // wheel/touchmove/カーソルキーは「ユーザー操作」のみ発火するので、プログラム的scrollと区別できる。
+  function detach(){
+    if(!body) return;
+    body.removeEventListener("wheel", onUserScroll);
+    body.removeEventListener("touchmove", onUserScroll);
+    window.removeEventListener("keydown", onUserScrollKey);
+  }
+  function onUserScroll(){ _cancelScrollToToday(); detach(); }
+  function onUserScrollKey(e){
+    if(["ArrowDown","ArrowUp","PageDown","PageUp","Home","End"," "].includes(e.key)) onUserScroll();
+  }
+  if(body){
+    body.addEventListener("wheel", onUserScroll, {passive:true});
+    body.addEventListener("touchmove", onUserScroll, {passive:true});
+    window.addEventListener("keydown", onUserScrollKey);
+  }
   // 0〜5秒の間に多段リトライ。bukken/staffMaster fetch完了後の再描画も拾う
   [50, 200, 500, 1000, 1500, 2500, 3500, 4500].forEach(delay => {
-    setTimeout(scrollToToday, delay);
+    _scrollToTodayTimers.push(setTimeout(scrollToToday, delay));
   });
+  // 念のため最後にリスナを後始末
+  _scrollToTodayTimers.push(setTimeout(detach, 4600));
 }
 function navigate(dir){
   if(currentView==="task" || currentView==="repair" || currentView==="resto") return; // タスク/修繕/原状回復ビューでは日付ナビ無効
