@@ -406,6 +406,15 @@
     width:16px;height:16px;justify-content:center;cursor:help;
     box-shadow:0 0 0 1.5px rgba(255,255,255,.7);
   }
+  /* 📋 原状回復 進捗アイコン: クリックでダイアログを開く(ポインタ強調) */
+  .event-chip .chip-prog,
+  .chip-prog{
+    display:inline-flex;align-items:center;font-size:11px;flex-shrink:0;
+    color:#1d4ed8;background:#dbeafe;border-radius:50%;
+    width:16px;height:16px;justify-content:center;cursor:pointer;margin-left:2px;
+    box-shadow:0 0 0 1.5px rgba(255,255,255,.7);
+  }
+  .chip-prog:hover{background:#bfdbfe;transform:scale(1.12)}
   .event-chip .chip-commute{
     display:inline-flex;align-items:center;font-size:10px;flex-shrink:0;
     background:#cffafe;color:#0e7490;border-radius:6px;
