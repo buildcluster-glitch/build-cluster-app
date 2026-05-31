@@ -5775,6 +5775,10 @@ function renderCalendar(){
         attachRepairChipHover(el, r); // リッチtooltip
         el.onclick = (ev)=>{
           ev.stopPropagation();
+          showRepairQuickPop(r, el);
+        };
+        el.ondblclick = (ev)=>{
+          ev.stopPropagation();
           openRepairSheet(r.id);
         };
         cell.appendChild(el);
