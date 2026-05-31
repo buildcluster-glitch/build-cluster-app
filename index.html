@@ -604,6 +604,34 @@
   /* allday-cell内のバッジは縮まないように */
   .allday-cell .leave-badge{flex-shrink:0}
   .allday-cell.today{background:var(--today)}
+  /* 🔧 修繕アポ クイック編集ポップオーバー (担当者変更+コメント) */
+  .quick-pop{
+    position:fixed;z-index:9999;background:#fff;border:1px solid var(--border-strong);
+    border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.25);padding:12px;
+    min-width:320px;max-width:420px;font-size:13px;color:var(--text);
+    max-height:80vh;overflow-y:auto;
+  }
+  .quick-pop .qp-title{font-weight:700;font-size:14px;margin-bottom:8px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .quick-pop .qp-sec{margin-top:10px;border-top:1px solid #f1f5f9;padding-top:8px}
+  .quick-pop .qp-sec:first-of-type{border-top:0;padding-top:0}
+  .quick-pop .qp-label{font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
+  .quick-pop .qp-worker-pick{display:flex;flex-wrap:wrap;gap:4px}
+  .quick-pop .qp-worker-pick button{
+    border:2px solid transparent;background:#f1f5f9;color:#64748b;
+    padding:4px 10px;border-radius:14px;font-size:11px;font-weight:600;cursor:pointer;
+    display:inline-flex;align-items:center;gap:4px;
+  }
+  .quick-pop .qp-worker-pick button.on{border-color:#0f172a;font-weight:800}
+  .quick-pop .qp-worker-pick .qp-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+  .quick-pop .qp-comments-list{max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;margin-bottom:6px}
+  .quick-pop .qp-comment-input{display:flex;gap:4px}
+  .quick-pop .qp-comment-input textarea{flex:1;padding:5px 7px;border:1px solid var(--border);border-radius:5px;font-size:12px;resize:vertical;min-height:28px}
+  .quick-pop .qp-comment-input button{padding:4px 10px;border:0;background:var(--accent);color:#fff;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer}
+  .quick-pop .qp-actions{display:flex;gap:6px;margin-top:10px;padding-top:8px;border-top:1px solid #f1f5f9}
+  .quick-pop .qp-actions button{flex:1;padding:6px;border-radius:6px;border:0;font-size:12px;cursor:pointer;font-weight:600}
+  .quick-pop .qp-actions .qp-detail{background:#e0e7ff;color:var(--accent)}
+  .quick-pop .qp-actions .qp-close{background:#f3f4f6;color:#64748b}
+
   /* 💬 イベントコメント (チャット + リアクション) */
   .ev-comment-card{background:#fff;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;position:relative}
   .ev-comment-card.mine{background:#eff6ff;border-color:#bfdbfe}
