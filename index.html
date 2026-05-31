@@ -9736,6 +9736,7 @@ function restoToggleArchive(){
     p.completeDate = fmtDate(new Date());
   }
   restoSave();
+  if(restoDetailAsModal){ closeRestoDialog(); return; } // ダイアログ表示中はダイアログを閉じる
   restoDetailId = null; // 一覧に戻る
   renderRestoView();
 }
