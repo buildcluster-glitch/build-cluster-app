@@ -3796,10 +3796,8 @@ function attachCheckDragOrClick(el, ck){
             (_ckNorm           && _restos.find(r=>r.name === _ckNorm)) ||
             null;
           if(resto){
-            // 原状回復ビューに切り替え + 詳細表示
-            restoDetailId = resto.id;
-            currentView = "resto";
-            render();
+            // カレンダーを残したまま、原状回復の進捗をダイアログ(ポップアップ)で表示
+            openRestoDialog(resto.id);
             return;
           }
           // 2. 修繕案件を探す (resto と同じく優先順位の罠を回避)
