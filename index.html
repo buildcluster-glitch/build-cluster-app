@@ -6563,6 +6563,19 @@ function showRepairQuickPop(r, anchorEl){
     document.addEventListener('click', __quickPopOutsideClick, true);
     document.addEventListener('keydown', __quickPopKey);
   }, 50);
+  // ホバー閉じ: ポップから離れて400ms以内に戻ってこなければ閉じる
+  let leaveTimer = null;
+  pop.addEventListener('mouseenter', ()=>{
+    if(leaveTimer){ clearTimeout(leaveTimer); leaveTimer = null; }
+  });
+  pop.addEventListener('mouseleave', ()=>{
+    if(leaveTimer) clearTimeout(leaveTimer);
+    leaveTimer = setTimeout(()=>{
+      // 元チップにマウスが戻ってればキープ
+      if(anchorEl && anchorEl.matches(':hover')) return;
+      closeQuickPop();
+    }, 400);
+  });
 }
 
 function attachRepairChipHover(el, r){
