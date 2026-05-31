@@ -3748,18 +3748,48 @@ function attachCheckDragOrClick(el, ck){
       document.removeEventListener("pointercancel", onUp);
       if(lastTargetCol) lastTargetCol.classList.remove("drop-hilite");
       if(!started){
-        // 単純クリック: gas-sync で URL設定済なら工事タスクマネージャーを新タブで開く
+        // 単純クリック: 関連する原状回復/修繕案件があれば詳細ビューを開く (TM外部URLより優先)
         // dblclick との競合回避のため 250ms 待ってからオープン
-        const taskUrl = loadGasSettings().taskManagerUrl;
-        if(ck.source==="gas-sync" && ck.extEstimateId && taskUrl){
-          if(el._pendingClickTimer) clearTimeout(el._pendingClickTimer);
-          el._pendingClickTimer = setTimeout(()=>{
-            el._pendingClickTimer = null;
+        if(el._pendingClickTimer) clearTimeout(el._pendingClickTimer);
+        el._pendingClickTimer = setTimeout(()=>{
+          el._pendingClickTimer = null;
+          // 1. extDriveFileId/extEstimateId/title で原状回復案件を探す
+          const resto = ck.extDriveFileId
+            ? (state.restorations||[]).find(r=>r.extDriveFileId === ck.extDriveFileId)
+            : null
+            || (ck.extEstimateId
+                ? (state.restorations||[]).find(r=>r.extEstimateId === ck.extEstimateId)
+                : null)
+            || (state.restorations||[]).find(r=>r.name && ck.title && r.name === ck.title.replace(/\s+\d+$/,'').trim());
+          if(resto){
+            // 原状回復ビューに切り替え + 詳細表示
+            restoDetailId = resto.id;
+            currentView = "resto";
+            render();
+            return;
+          }
+          // 2. 修繕案件を探す
+          const repair = ck.extDriveFileId
+            ? (state.repairs||[]).find(r=>r.extDriveFileId === ck.extDriveFileId)
+            : null
+            || (ck.extEstimateId
+                ? (state.repairs||[]).find(r=>r.extEstimateId === ck.extEstimateId)
+                : null);
+          if(repair){
+            openRepairSheet(repair.id);
+            return;
+          }
+          // 3. フォールバック: 外部の工事タスクマネージャーURL (旧運用)
+          const taskUrl = loadGasSettings().taskManagerUrl;
+          if(ck.source==="gas-sync" && ck.extEstimateId && taskUrl){
             const sep = taskUrl.includes("?") ? "&" : "?";
             const url = `${taskUrl}${sep}estimateId=${encodeURIComponent(ck.extEstimateId)}`;
             window.open(url, "_blank", "noopener");
-          }, 250);
-        }
+            return;
+          }
+          // 4. 何も該当しなければ編集モーダル
+          openCheckModal(ck);
+        }, 250);
         return;
       }
       el.classList.remove("dragging-source");
