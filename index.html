@@ -7544,27 +7544,36 @@ document.getElementById("ys-close").onclick = closeYearStats;
 yearStatsModal.onclick = e=>{ if(e.target===yearStatsModal) closeYearStats(); };
 
 function renderYearStats(year){
-  // 各スタッフ・各月の集計
-  // leave type の分類:
-  //   有給        → "有給"  カウント=日数
-  //   半休        → "半休"  カウント=0.5
-  //   年休        → "年休"  カウント=日数  (有給(年休))
-  //  ※会社休日(年間休日)は state.companyHolidays または COMPANY_HOLIDAYS から
+  // 集計カテゴリ (BC policy 準拠)
+  //   年休  = 5日取得義務分 (type="年休")              → 1日カウント
+  //   有給  = 義務分以外 (type="有給")                 → 1日カウント
+  //   半休  = 0.5日扱い (type="半休" or "有給(AM)" or "有給(PM)") → 0.5
+  //   会社休日 = 全社共通休日 (companyPeriods) + 個別取得
+  //   ⚠ 当番は休みではない → 集計対象外
+  // 5日義務 = 年休カラムが進捗バーで強調表示
   const months = Array.from({length:12},(_,i)=>i+1);
   const monthDays = (y,m)=> new Date(y,m,0).getDate();
-  function countLeaveDays(staff, year, month, type){
+  // 半休として扱う type のセット (有給(AM/PM) も 0.5 として集計)
+  const HALF_DAY_TYPES = new Set(["半休","有給(AM)","有給(PM)"]);
+  function countLeaveDays(staff, year, month, category){
     const mStart = `${year}-${pad(month)}-01`;
     const mEnd   = `${year}-${pad(month)}-${pad(monthDays(year,month))}`;
-    let sum = state.leaves.filter(l=>l.staff===staff && l.type===type)
+    // category に応じてどの type を集計対象にするか決める
+    const matchType = (t)=>{
+      if(category === "半休") return HALF_DAY_TYPES.has(t);
+      return t === category;
+    };
+    let sum = state.leaves.filter(l=>l.staff===staff && matchType(l.type))
       .reduce((acc,l)=>{
         if(l.end < mStart || l.start > mEnd) return acc;
         const s = l.start < mStart ? mStart : l.start;
         const e = l.end   > mEnd   ? mEnd   : l.end;
         const days = (parseDate(e) - parseDate(s))/(1000*60*60*24) + 1;
-        return acc + (type==="半休" ? days*0.5 : days);
+        const factor = HALF_DAY_TYPES.has(l.type) ? 0.5 : 1;
+        return acc + days * factor;
       }, 0);
     // 会社休日: 会社休日マスタ(companyPeriods) からも加算（全員共通）
-    if(type==="会社休日"){
+    if(category==="会社休日"){
       (state.companyPeriods||[]).forEach(p=>{
         if(p.end < mStart || p.start > mEnd) return;
         const s = p.start < mStart ? mStart : p.start;
@@ -7578,10 +7587,11 @@ function renderYearStats(year){
   // テーブル構築
   const CATS = [
     {key:"会社休日", color:""},
-    {key:"年休",     color:""},  // 有給(年休)
+    {key:"年休",     color:"#fef3c7"},  // 5日義務分・薄黄背景で目立たせる
     {key:"有給",     color:""},
     {key:"半休",     color:""},
   ];
+  const NENKYU_MANDATORY = 5; // 年休取得義務
   let html = `<table class="ys-table"><thead><tr><th class="ys-staff" rowspan="2">月</th>`;
   STAFF.forEach(s=>{
     html += `<th colspan="${CATS.length}" style="background:${STAFF_COLORS[s]};color:${textColorFor(STAFF_COLORS[s])}">${s}</th>`;
