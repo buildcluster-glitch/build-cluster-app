@@ -5706,6 +5706,15 @@ function renderCalendar(){
     }
     return parts.join(" ／ ");
   }
+  // イベントタイトルにひもづく原状回復物件を返す(なければnull)。📋進捗アイコン用。
+  function getEventResto_(ev){
+    const t = String(ev?.title||"").trim();
+    if(!t) return null;
+    for(const [name, rs] of __restoByName){
+      if(t.includes(name)) return rs;
+    }
+    return null;
+  }
   cols.forEach(c=>{
     const dayCol = grid.querySelector(`.day-col[data-col-key="${c.key}"]`);
     const subCols = dayCol.querySelectorAll(".sub-col");
