@@ -3086,16 +3086,24 @@
       <div class="field">
         <label>種別</label>
         <select id="lv-type">
-          <option value="有給">有給</option>
-          <option value="半休">半休（0.5日）</option>
-          <option value="年休">有給(年休)</option>
-          <option value="会社休日">会社休日（取得）</option>
-          <option value="休暇">休暇</option>
-          <option value="出張">出張</option>
-          <option value="研修">研修</option>
-          <option value="別件">別件（外出/その他）</option>
-          <option value="体調不良">体調不良</option>
-          <option value="当番">🔄 当番（週次ローテ）</option>
+          <optgroup label="計画有給 (5日取得義務分)">
+            <option value="年休">年休 (年5日義務分)</option>
+          </optgroup>
+          <optgroup label="その他有給">
+            <option value="有給">有給 (病欠/通院/忌引き等)</option>
+            <option value="有給(AM)">有給(AM) — 0.5日</option>
+            <option value="有給(PM)">有給(PM) — 0.5日</option>
+            <option value="半休">半休 (旧表記・0.5日)</option>
+          </optgroup>
+          <optgroup label="その他">
+            <option value="会社休日">会社休日 (取得)</option>
+            <option value="休暇">休暇 (無給)</option>
+            <option value="出張">出張</option>
+            <option value="研修">研修</option>
+            <option value="別件">別件 (外出/その他)</option>
+            <option value="体調不良">体調不良</option>
+            <option value="当番">🔄 当番 (週次ローテ・休みではない)</option>
+          </optgroup>
         </select>
       </div>
       <div class="field">
