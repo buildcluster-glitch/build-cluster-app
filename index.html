@@ -5448,12 +5448,13 @@ function renderCalendar(){
   });
   // 修繕アポチップ → 修繕ビューに切替えて該当案件を絞り込み
   allday.querySelectorAll("[data-repair-id]").forEach(el=>{
+    const r = (state.repairs||[]).find(x=>x.id===el.dataset.repairId);
+    if(r) attachRepairChipHover(el, r);
     el.onclick = (e)=>{
       e.stopPropagation();
-      const r = (state.repairs||[]).find(x=>x.id===el.dataset.repairId);
-      if(!r) return;
-      // カレンダーから直接編集シートを開く(ビュー切替なし)
-      openRepairSheet(r.id);
+      const r2 = (state.repairs||[]).find(x=>x.id===el.dataset.repairId);
+      if(!r2) return;
+      openRepairSheet(r2.id);
     };
   });
 
