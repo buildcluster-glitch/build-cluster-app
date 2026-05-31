@@ -6198,8 +6198,11 @@ function renderMonth(){
       `<div class="month-leave" data-leave-id="${l.id}" title="${escapeHtml(l.memo||"")}">${escapeHtml(l.staff)} ${escapeHtml(l.type)}</div>`
     ).join("");
     const eventsHtml = showEvents.map(ev=>{
-      const bg = ev.color || STAFF_COLORS[ev.staff] || "#3b82f6";
-      const fg = textColorFor(bg);
+      // リーダー未指定 → 透明背景+点線
+      const noLeader = !ev.color && !STAFF_COLORS[ev.staff];
+      const bg = noLeader ? "transparent" : (ev.color || STAFF_COLORS[ev.staff]);
+      const fg = noLeader ? "#0f172a" : textColorFor(bg);
+      const extraStyle = noLeader ? "border:1px dashed #94a3b8;" : "";
       const staffList = eventStaffList(ev);
       const badge = staffList.length>=2 ? ` 👥${staffList.length}` : "";
       const tooltipStaff = staffList.join("/") || "未指定";
