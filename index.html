@@ -368,7 +368,13 @@
     font-weight:600;flex:1;min-width:0;line-height:1.4;font-size:12px;
     word-break:break-word;overflow:hidden;
     display:flex;align-items:center;gap:6px;
+    flex-wrap:wrap;  /* 🔗 chip-link-info を2行目に折り返すため */
     min-height:28px;
+  }
+  /* 🔗 連携情報行 (重い/着工/最終確認/入居) → 強制的に独立行 */
+  .event-chip .chip-title > .chip-link-info{
+    flex-basis:100%;width:100%;display:block;
+    white-space:normal;  /* タイトル箱内で折返し可 */
   }
   /* 単行モード(改行なし) — 自然折返しを禁止して1行省略 */
   .event-chip .chip-title.single-line{
