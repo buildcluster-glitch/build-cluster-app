@@ -4547,6 +4547,7 @@ function extractRestorations(properties, existing){
       moveout: p.move_out_month || prev?.moveout || "",
       moveinDate: normalizeDate(p.movein) || prev?.moveinDate || "",
       finalDate: normalizeDate(p.finalDate),
+      originalFinalDate: normalizeDate(p.originalFinalDate || p.originalFinalCheckDate) || prev?.originalFinalDate || "",
       completeDate: normalizeDate(p.completeDate) || prev?.completeDate || "",
       pic: p.pic || p.person_in_charge || prev?.pic || "",
       extDriveFileId: p.driveFileId || prev?.extDriveFileId || "",
