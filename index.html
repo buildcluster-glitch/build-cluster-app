@@ -3788,13 +3788,14 @@ function attachCheckDragOrClick(el, ck){
             render();
             return;
           }
-          // 2. 修繕案件を探す
-          const repair = ck.extDriveFileId
-            ? (state.repairs||[]).find(r=>r.extDriveFileId === ck.extDriveFileId)
-            : null
-            || (ck.extEstimateId
-                ? (state.repairs||[]).find(r=>r.extEstimateId === ck.extEstimateId)
-                : null);
+          // 2. 修繕案件を探す (resto と同じく優先順位の罠を回避)
+          const _repairs = state.repairs || [];
+          const repair =
+            (ck.extDriveFileId && _repairs.find(r=>r.extDriveFileId === ck.extDriveFileId)) ||
+            (ck.extEstimateId  && _repairs.find(r=>r.extEstimateId  === ck.extEstimateId )) ||
+            (_ckFull           && _repairs.find(r=>r.name === _ckFull)) ||
+            (_ckNorm           && _repairs.find(r=>r.name === _ckNorm)) ||
+            null;
           if(repair){
             openRepairSheet(repair.id);
             return;
