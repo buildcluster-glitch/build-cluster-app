@@ -7631,34 +7631,55 @@ function renderYearStats(year){
   STAFF.forEach(s=>{
     CATS.forEach(c=>{
       const v = totals[s][c.key];
-      html += `<td>${v||""}</td>`;
+      const bg = c.color && v>0 ? `style="background:${c.color}"` : '';
+      html += `<td ${bg}>${v||""}</td>`;
     });
+  });
+  html += `</tr>`;
+
+  // 🌟 年休5日義務 進捗バー (BC policy)
+  html += `<tr class="ys-nenkyu-progress-row" style="background:#fef9c3"><td class="ys-month-label" style="font-weight:700;color:#92400e">年休5日義務</td>`;
+  STAFF.forEach(s=>{
+    const nenkyu = totals[s]["年休"];
+    const pct = Math.min(100, (nenkyu / NENKYU_MANDATORY) * 100);
+    const achieved = nenkyu >= NENKYU_MANDATORY;
+    const barColor = achieved ? "#16a34a" : (nenkyu > 0 ? "#f59e0b" : "#cbd5e1");
+    const label = achieved ? `✅ ${nenkyu}/${NENKYU_MANDATORY}` : `${nenkyu}/${NENKYU_MANDATORY}`;
+    html += `<td colspan="${CATS.length}" style="padding:4px 8px">
+      <div style="display:flex;align-items:center;gap:6px;font-size:11px">
+        <div style="flex:1;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${barColor};transition:width .3s"></div>
+        </div>
+        <span style="font-weight:700;color:${achieved?'#16a34a':(nenkyu>0?'#92400e':'#9ca3af')};min-width:36px;text-align:right">${label}</span>
+      </div>
+    </td>`;
   });
   html += `</tr>`;
 
   // 年間付与日数(編集可)
   html += `<tr class="ys-quota-row"><td class="ys-month-label">年間付与</td>`;
   STAFF.forEach(s=>{
-    html += `<td colspan="${CATS.length}"><input class="ys-quota-input" data-staff="${s}" type="number" min="0" value="${STAFF_QUOTA[s]||0}"></td>`;
+    html += `<td colspan="${CATS.length}"><input class="ys-quota-input" data-staff="${s}" type="number" min="0" value="${STAFF_QUOTA[s]||0}">日</td>`;
   });
   html += `</tr>`;
 
-  // 残日数 = 付与 - 有給 - 半休(0.5換算は既に)
+  // 残日数 = 付与 - (年休 + 有給 + 半休)
+  // BC policy: 年休も付与から差し引き (5日義務分も有給扱い)
   html += `<tr class="ys-remain-row"><td class="ys-month-label">残日数</td>`;
   STAFF.forEach(s=>{
     const quota = STAFF_QUOTA[s]||0;
-    const used = totals[s]["有給"] + totals[s]["半休"];
+    const used = totals[s]["年休"] + totals[s]["有給"] + totals[s]["半休"];
     const remain = quota - used;
     const warn = remain < 0 ? "warn" : "";
     html += `<td colspan="${CATS.length}" class="${warn}">${remain.toFixed(1).replace(/\.0$/,"")}日</td>`;
   });
   html += `</tr>`;
 
-  // 合計休日数 (会社休日 + 有給 + 半休)
+  // 合計休日数 (会社休日 + 年休 + 有給 + 半休)
   html += `<tr class="ys-sum-row"><td class="ys-month-label">合計休日数</td>`;
   STAFF.forEach(s=>{
     const sum = totals[s]["会社休日"] + totals[s]["年休"] + totals[s]["有給"] + totals[s]["半休"];
-    html += `<td colspan="${CATS.length}">${sum.toFixed(1).replace(/\.0$/,"")}</td>`;
+    html += `<td colspan="${CATS.length}">${sum.toFixed(1).replace(/\.0$/,"")}日</td>`;
   });
   html += `</tr>`;
 
