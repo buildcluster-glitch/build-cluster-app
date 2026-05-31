@@ -3034,8 +3034,9 @@
             <input type="date" id="ck-response-date">
           </div>
           <div class="field">
-            <label style="font-size:11px">対応予定時刻 (自由入力)</label>
-            <input type="text" id="ck-response-time" placeholder="例: 10:00 / 午前中 / 14時頃">
+            <label style="font-size:11px">対応予定時刻</label>
+            <input type="text" id="ck-response-time" list="rs-resptime-list" placeholder="10:00 / 午前中 / 14時頃" autocomplete="off">
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">▼で15分刻みから選択</div>
           </div>
           <div class="field">
             <label style="font-size:11px">アポ状態</label>
