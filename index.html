@@ -5737,6 +5737,7 @@ function renderCalendar(){
         el.dataset.repairId = r.id;
         el.title = tipLines;
         el.innerHTML = `<span class="chip-title single-line" style="background:${wColor};color:${wFg}">${tagHtml}${escapeHtml(label)}</span><span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>`;
+        attachRepairChipHover(el, r); // リッチtooltip
         el.onclick = (ev)=>{
           ev.stopPropagation();
           openRepairSheet(r.id);
