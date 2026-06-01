@@ -5694,10 +5694,19 @@ function renderCalendar(){
   const __stackOffset = new Map();   // key: `${colKey}|${baseTop}` → next y
   // 🔗 イベント連携情報: タイトル中の物件名で原状回復データを引き当て、重い/着工/最終確認/入居を取得
   // チップ描画の各分岐(月/終日/通常)から利用する
-  const __restoByName = new Map();
+  // 長い名前(name+room)から先に試すため、ペアを長さ降順で保持
+  const __restoMatchList = [];
   (state.restorations||[]).forEach(r=>{
-    if(r?.name) __restoByName.set(String(r.name).trim(), r);
+    if(!r?.name) return;
+    const n = String(r.name).trim();
+    const room = String(r.room||"").trim();
+    if(room){
+      __restoMatchList.push({ key: `${n} ${room}`, resto: r });
+      __restoMatchList.push({ key: `${n}${room}`, resto: r });
+    }
+    __restoMatchList.push({ key: n, resto: r });
   });
+  __restoMatchList.sort((a,b)=>b.key.length - a.key.length); // 長い順
   // 工事ボリュームのバッジ色
   const __VOL_COLORS = {
     "激重":"#dc2626","激":"#dc2626",
