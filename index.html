@@ -5750,8 +5750,8 @@ function renderCalendar(){
       htmlParts.push(`<span style="background:${bg};color:#fff;padding:0 5px;border-radius:4px;font-weight:700">${escapeHtml(r.workVolume)}</span>`);
       textParts.push(r.workVolume);
     }
-    // 🛠 自社工事進捗 % (inhouse タスクの完了率)
-    const inhouseTasks = (r.tasks||[]).filter(t2=>t2.category==="inhouse");
+    // 🛠 自社工事進捗 % (inhouse タスクの完了率) — 諸経費系は除外
+    const inhouseTasks = (r.tasks||[]).filter(t2=>t2.category==="inhouse" && !isExcludedRestoTask(t2));
     if(inhouseTasks.length){
       const doneN = inhouseTasks.filter(t2=>t2.status==="done").length;
       const pct = Math.round(doneN/inhouseTasks.length*100);
