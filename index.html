@@ -3009,6 +3009,19 @@
         </div>
       </fieldset>
 
+      <!-- セクション4: 動作設定 -->
+      <fieldset style="border:1px solid var(--border);border-radius:8px;padding:12px;margin:0">
+        <legend style="padding:0 8px;font-weight:700;color:#1f2937">🎛 動作設定</legend>
+        <div class="field" style="margin:0">
+          <label style="font-weight:600;margin-bottom:4px;display:block">工事最終確認カード ダブルクリック動作</label>
+          <select id="all-check-dblclick" style="padding:6px;font-size:13px;width:100%">
+            <option value="staff-picker">🚗 現地担当スタッフ色ピッカー(デフォ)</option>
+            <option value="edit-modal">✏️ 編集モーダル(従来)</option>
+          </select>
+          <div style="font-size:10px;color:var(--muted);margin-top:4px">シングルクリックは常に「原状回復進捗ダイアログ」を開きます</div>
+        </div>
+      </fieldset>
+
       <div style="font-size:11px;color:var(--muted);background:#f3f4f6;padding:8px 10px;border-radius:6px;line-height:1.5">
         💡 <strong>注意</strong>: 在庫設定の変更はページリロード後に反映されます。<br>
         💡 各URLは個別の GAS ですので、混同しないでください。
