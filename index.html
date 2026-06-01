@@ -1232,6 +1232,16 @@
     background:#fff;border:1px solid var(--border);border-radius:5px;padding:1px 7px}
   .rd-kv .k{color:var(--muted)}
   .rd-kv .v{color:var(--text);font-weight:600}
+  /* 🟢 完了ボタン (詳細最下部) */
+  .rd-archive-section{margin:18px 0 12px;padding:12px;text-align:center;border-top:1px dashed var(--border)}
+  .rd-archive-btn{background:#16a34a;color:#fff;border:none;border-radius:8px;
+    padding:12px 32px;font-size:15px;font-weight:700;cursor:pointer;
+    box-shadow:0 2px 6px rgba(22,163,74,.3);transition:all .15s}
+  .rd-archive-btn:hover{background:#15803d;box-shadow:0 4px 10px rgba(22,163,74,.4);transform:translateY(-1px)}
+  .rd-archive-btn:active{transform:translateY(0);box-shadow:0 1px 3px rgba(22,163,74,.3)}
+  /* アーカイブ済(完了取消し)時はグレー */
+  .rd-archive-btn.archived{background:#94a3b8;box-shadow:0 2px 6px rgba(0,0,0,.15)}
+  .rd-archive-btn.archived:hover{background:#64748b}
   /* 🛠 自社工事進捗バー (rdJishaProgress) */
   .rd-jisha-progress{margin:4px 0 6px}
   .rd-jp-row{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--border);border-radius:7px;padding:5px 10px}
