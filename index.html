@@ -4127,7 +4127,7 @@ function renderCheckCard(ck, today){
         if(!s || HIDDEN_STATUSES.includes(s)) return "";
         return `<span class="status-sm ${statusCls}">${escapeHtml(s)}</span>`;
       })()}
-      ${checkDateHtml}
+      ${extrasHtml}
       ${delayHtml}
       ${moveInHtml}
     </div>
