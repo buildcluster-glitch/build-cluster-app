@@ -4071,11 +4071,28 @@ function renderCheckCard(ck, today){
     const m = parseDate(ck.moveInDate);
     if(!isNaN(m)) moveInHtml = `<span class="ck-movein">入居 ${m.getMonth()+1}/${m.getDate()}</span>`;
   }
-  // 確認日チップ（カードがどの列に入ったかわかるよう常時表示）
+  // 確認日チップは列ヘッダで分かるので非表示 (v1.9.1〜) — 遅延バッジは継続表示
   let checkDateHtml = "";
-  if(ck.checkDate){
-    const c = parseDate(ck.checkDate);
-    if(!isNaN(c)) checkDateHtml = `<span class="ck-checkdate">確認 ${c.getMonth()+1}/${c.getDate()}</span>`;
+  // 🔑 鍵交換 / 🦠 除菌 バッジ: 関連 resto のタスクから検出
+  let extrasHtml = "";
+  const linkedResto = (state.restorations||[]).find(r=>
+    (ck.extDriveFileId && r.extDriveFileId === ck.extDriveFileId) ||
+    (ck.extEstimateId  && r.extEstimateId  === ck.extEstimateId)
+  );
+  if(linkedResto){
+    const ts = linkedResto.tasks || [];
+    const findTasks = (re)=>ts.filter(t=>re.test(String(t.name||"")));
+    const keyTasks = findTasks(/鍵|シリンダー/);
+    const disinfectTasks = findTasks(/除菌|消毒/);
+    const badge = (label, tasks, color) => {
+      if(!tasks.length) return "";
+      const allDone = tasks.every(t=>t.status==="done");
+      const cnt = `${tasks.filter(t=>t.status==="done").length}/${tasks.length}`;
+      const bg = allDone ? "#16a34a" : color;
+      const tip = tasks.map(t=>`${t.status==="done"?"✅":"⏳"} ${t.name}`).join("\n");
+      return `<span class="badge-sm" title="${escapeHtml(tip)}" style="background:${bg};color:#fff;font-weight:700">${label} ${cnt}</span>`;
+    };
+    extrasHtml = badge("🔑鍵", keyTasks, "#0891b2") + badge("🦠除菌", disinfectTasks, "#7c3aed");
   }
   // 当初最終確認日との差分（遅延 or 前倒し）
   let delayHtml = "";
