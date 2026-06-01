@@ -3796,6 +3796,25 @@ function showCheckStaffPicker(el, ck){
       <button class="qp-close" data-role="close">閉じる</button>
     </div>`;
   document.body.appendChild(pop);
+  // 🪧 位置調整: 下に出すスペースがなければ上に出す、右はみ出しはクランプ
+  requestAnimationFrame(()=>{
+    const popRect = pop.getBoundingClientRect();
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const margin = 8;
+    // 縦: カード下に出すと vh を超える → 上に出す。それでも溢れるなら上端から margin
+    let top = rect.bottom + 4;
+    if(top + popRect.height + margin > vh){
+      top = rect.top - popRect.height - 4;
+      if(top < margin) top = Math.max(margin, vh - popRect.height - margin);
+    }
+    // 横: 右端はみ出しはクランプ
+    let left = rect.left;
+    if(left + popRect.width + margin > vw) left = vw - popRect.width - margin;
+    if(left < margin) left = margin;
+    pop.style.top = top + "px";
+    pop.style.left = left + "px";
+    pop.style.visibility = "visible";
+  });
   // スタッフボタン
   pop.querySelectorAll("[data-staff]").forEach(btn=>{
     btn.onclick = ()=>{
