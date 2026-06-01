@@ -4097,26 +4097,28 @@ function renderCheckCard(ck, today){
   }
   // 確認日チップは列ヘッダで分かるので非表示 (v1.9.1〜) — 遅延バッジは継続表示
   let checkDateHtml = "";
-  // 🔑 鍵交換 / 🦠 除菌 バッジ: 関連 resto のタスクから検出
+  // 🔑 鍵交換日 / 🦠 除菌 バッジ: 関連 resto から取得 (v1.10.8〜 直接フィールド優先)
   let extrasHtml = "";
   const linkedResto = (state.restorations||[]).find(r=>
     (ck.extDriveFileId && r.extDriveFileId === ck.extDriveFileId) ||
     (ck.extEstimateId  && r.extEstimateId  === ck.extEstimateId)
   );
   if(linkedResto){
-    const ts = linkedResto.tasks || [];
-    const findTasks = (re)=>ts.filter(t=>re.test(String(t.name||"")));
-    const keyTasks = findTasks(/鍵|シリンダー/);
-    const disinfectTasks = findTasks(/除菌|消毒/);
-    const badge = (label, tasks, color) => {
-      if(!tasks.length) return "";
-      const allDone = tasks.every(t=>t.status==="done");
-      const cnt = `${tasks.filter(t=>t.status==="done").length}/${tasks.length}`;
-      const bg = allDone ? "#16a34a" : color;
-      const tip = tasks.map(t=>`${t.status==="done"?"✅":"⏳"} ${t.name}`).join("\n");
-      return `<span class="badge-sm" title="${escapeHtml(tip)}" style="background:${bg};color:#fff;font-weight:700">${label} ${cnt}</span>`;
-    };
-    extrasHtml = badge("🔑鍵", keyTasks, "#0891b2") + badge("🦠除菌", disinfectTasks, "#7c3aed");
+    // 🔑 鍵交換日 (業者名は出さず日付のみ)
+    if(linkedResto.keyChangeDate){
+      const d = parseDate(linkedResto.keyChangeDate);
+      if(!isNaN(d)){
+        const md = `${d.getMonth()+1}/${d.getDate()}`;
+        const tip = linkedResto.keyContractor ? `鍵業者: ${linkedResto.keyContractor} / 交換日: ${md}` : `鍵交換日: ${md}`;
+        extrasHtml += `<span class="badge-sm" title="${escapeHtml(tip)}" style="background:#0891b2;color:#fff;font-weight:700">🔑${md}</span>`;
+      }
+    }
+    // 🦠 除菌有無 (true→有/false→無)
+    if(linkedResto.disinfectDone === true){
+      extrasHtml += `<span class="badge-sm" title="除菌 実施" style="background:#16a34a;color:#fff;font-weight:700">🦠有</span>`;
+    } else if(linkedResto.disinfectDone === false){
+      extrasHtml += `<span class="badge-sm" title="除菌 なし" style="background:#94a3b8;color:#fff;font-weight:700">🦠無</span>`;
+    }
   }
   // 当初最終確認日との差分（遅延 or 前倒し）
   let delayHtml = "";
