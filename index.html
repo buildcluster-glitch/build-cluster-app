@@ -1250,7 +1250,11 @@
   .rd-group-sum{font-size:11px;color:var(--muted);font-weight:500}
   /* タスク行 (コンパクト) */
   .rtask{background:#fff;border:1px solid var(--border);border-radius:7px;padding:4px 8px;margin-bottom:3px}
-  .rtask.done{opacity:.6}
+  /* 完了タスク: 透過 + タスク名と詳細に取消線 (一覧に残す方針 v1.7) */
+  .rtask.done{opacity:.6;background:#f0fdf4}
+  .rtask.done .rt-name,
+  .rtask.done .rt-qty,
+  .rtask.done .rt-sub{text-decoration:line-through;text-decoration-color:#16a34a;text-decoration-thickness:1.5px}
   .rtask.reduced{background:#faf5ff;border-color:#e9d5ff}
   .rtask .rt-top{display:flex;align-items:center;gap:7px}
   .rtask .rt-check{flex-shrink:0;width:22px;height:22px;border-radius:50%;border:2px solid #d1d5db;background:#fff;
