@@ -4753,12 +4753,19 @@ function extractRestorations(properties, existing){
       keyContractor: p.keyContractor || p.keyCon || prev?.keyContractor || "",    // 鍵業者
       disinfectDone: typeof p.disinfectDone === "boolean" ? p.disinfectDone : (prev?.disinfectDone ?? null), // 除菌有無
       vacancyDate: normalizeDate(p.vacancyDate) || prev?.vacancyDate || "",       // 退去予定日
-      // 🔑 鍵交換日: 直接フィールド優先、無ければ tasks[] から鍵関連の最早 periodStart を導出
+      // 🔑 鍵交換日 (v1.10.2〜 見積アプリ指示の lookup 順):
+      //   1) ho.keyChangeDate (物件レベル新設フィールド) ← 最優先
+      //   2) 鍵タスク行の keyDate (task新設フィールド)   ← 次点
+      //   3) 鍵タスク行の periodStart (旧汎用フィールド)  ← 後方互換fallback
+      //   4) 前回ローカル値
       keyChangeDate: normalizeDate(p.keyChangeDate) || (function(){
-        const ks = (p.tasks||[]).filter(t=>/鍵|シリンダー/.test(String(t.workName||t.name||"")) && t.periodStart);
+        const ks = (p.tasks||[]).filter(t=>/鍵|シリンダー/.test(String(t.workName||t.name||"")));
         if(!ks.length) return "";
-        ks.sort((a,b)=>String(a.periodStart).localeCompare(String(b.periodStart)));
-        return normalizeDate(ks[0].periodStart);
+        // keyDate 持ちを最優先、無ければ periodStart
+        const withDate = ks.filter(t=>t.keyDate || t.periodStart);
+        if(!withDate.length) return "";
+        withDate.sort((a,b)=>String(a.keyDate||a.periodStart).localeCompare(String(b.keyDate||b.periodStart)));
+        return normalizeDate(withDate[0].keyDate || withDate[0].periodStart);
       })() || prev?.keyChangeDate || "",
       tasks: prev ? prev.tasks : [],
       comments: prev ? prev.comments : [],
