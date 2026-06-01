@@ -3747,13 +3747,79 @@ function renderChecks(){
   });
 }
 
+// ===== 現地担当スタッフ色ピッカー (チェックカード ダブルクリック起動) =====
+// 設定: localStorage.buildcluster_check_dblclick で動作切替可
+//   "staff-picker"(デフォルト): 現地担当スタッフ色ピッカー
+//   "edit-modal": 従来の編集モーダル
+function getCheckDblclickMode(){
+  return localStorage.getItem("buildcluster_check_dblclick") || "staff-picker";
+}
+function showCheckStaffPicker(el, ck){
+  // 既存ポップを閉じる
+  document.querySelectorAll(".quick-pop.ck-staff-pop").forEach(p=>p.remove());
+  const pop = document.createElement("div");
+  pop.className = "quick-pop ck-staff-pop";
+  const rect = el.getBoundingClientRect();
+  pop.style.left = Math.min(rect.left, window.innerWidth - 360) + "px";
+  pop.style.top = (rect.bottom + 4) + "px";
+  const current = ck.staff || "";
+  pop.innerHTML = `
+    <div class="qp-title">🚗 現地担当を選択 <span style="font-size:11px;color:#64748b;font-weight:400">${escapeHtml(ck.title||"")}</span></div>
+    <div class="qp-sec">
+      <div class="qp-label">スタッフ</div>
+      <div class="qp-worker-pick" id="ckStaffPickerList">
+        <button data-staff="" class="${current?"":"on"}" style="background:#f3f4f6;color:#64748b"><span class="qp-dot" style="background:#cbd5e1"></span>未指定</button>
+        ${STAFF.map(s=>{
+          const sc = STAFF_COLORS[s] || "#9ca3af";
+          const on = current === s;
+          return `<button data-staff="${escapeHtml(s)}" class="${on?"on":""}" style="background:${sc};color:${textColorFor(sc)}"><span class="qp-dot" style="background:${textColorFor(sc)==='#ffffff'?'rgba(255,255,255,.6)':'rgba(0,0,0,.3)'}"></span>${escapeHtml(s)}</button>`;
+        }).join("")}
+      </div>
+    </div>
+    <div class="qp-actions">
+      <button class="qp-detail" data-role="open-modal">✏️ 詳細編集</button>
+      <button class="qp-close" data-role="close">閉じる</button>
+    </div>`;
+  document.body.appendChild(pop);
+  // スタッフボタン
+  pop.querySelectorAll("[data-staff]").forEach(btn=>{
+    btn.onclick = ()=>{
+      const newStaff = btn.dataset.staff;
+      pushHistory();
+      const target = state.checks.find(c=>c.id===ck.id);
+      if(target){
+        target.staff = newStaff;
+        target.updatedAt = new Date().toISOString();
+        saveState();
+        render();
+      }
+      pop.remove();
+    };
+  });
+  pop.querySelector('[data-role="open-modal"]').onclick = ()=>{ pop.remove(); openCheckModal(ck); };
+  pop.querySelector('[data-role="close"]').onclick = ()=>pop.remove();
+  // 外側クリックで閉じる
+  const closeOnOutside = (ev)=>{
+    if(!pop.contains(ev.target)){
+      pop.remove();
+      document.removeEventListener("pointerdown", closeOnOutside, true);
+    }
+  };
+  setTimeout(()=>document.addEventListener("pointerdown", closeOnOutside, true), 50);
+}
+
 // ===== チェックカードのドラッグ移動 =====
 function attachCheckDragOrClick(el, ck){
   el.ondblclick = (e)=>{
     e.stopPropagation();
     // 待機中のシングルクリック(iframe open)があればキャンセル
     if(el._pendingClickTimer){ clearTimeout(el._pendingClickTimer); el._pendingClickTimer = null; }
-    openCheckModal(ck);
+    // 設定で挙動切替: staff-picker(デフォ) or edit-modal
+    if(getCheckDblclickMode() === "edit-modal"){
+      openCheckModal(ck);
+    } else {
+      showCheckStaffPicker(el, ck);
+    }
   };
   el.onpointerdown = (pdEv)=>{
     if(pdEv.button !== undefined && pdEv.button !== 0) return;
