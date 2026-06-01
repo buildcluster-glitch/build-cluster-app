@@ -9225,9 +9225,15 @@ let restoTaskStatusFilter = null;  // 詳細内ステータス絞込
 
 const RESTO_STATUS_LABEL = {todo:"未対応", wip:"進行中", done:"完了"};
 
-function restoActiveTasks(p){ return (p.tasks||[]).filter(t=>t.category!=="reduced"); }
+// 🚫 表示・進捗カウントから除外する諸経費系タスク名 (運搬費/廃棄物/現場管理諸経費 等)
+const RESTO_EXCLUDED_TASK_NAMES = /資材機材運搬費|産業廃棄物運搬処分|現場管理諸経費|諸経費|運搬処分|運搬費/;
+function isExcludedRestoTask(t){
+  return RESTO_EXCLUDED_TASK_NAMES.test(String(t?.name||""));
+}
+
+function restoActiveTasks(p){ return (p.tasks||[]).filter(t=>t.category!=="reduced" && !isExcludedRestoTask(t)); }
 function restoProgress(p){
-  const inhouse = (p.tasks||[]).filter(t=>t.category==="inhouse");
+  const inhouse = (p.tasks||[]).filter(t=>t.category==="inhouse" && !isExcludedRestoTask(t));
   const total = inhouse.length;
   const done = inhouse.filter(t=>t.status==="done").length;
   return {total, done, pct: total ? Math.round(done/total*100) : 0};
