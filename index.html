@@ -8307,7 +8307,11 @@ function renderYearStats(year){
   });
 }
 document.getElementById("resetBtn").onclick = ()=>{
-  if(!confirm("すべての予定・有給データを削除してサンプルを再投入します。よろしいですか？")) return;
+  const isDemo = new URLSearchParams(location.search).get("demo") === "1";
+  const msg = isDemo
+    ? "すべての予定・有給データを削除してサンプルを再投入します。よろしいですか？"
+    : "すべての予定・有給データを完全削除します(サンプル再投入なし)。よろしいですか？";
+  if(!confirm(msg)) return;
   localStorage.removeItem(STORAGE_KEY);
   location.reload();
 };
