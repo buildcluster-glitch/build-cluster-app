@@ -4751,8 +4751,13 @@ function extractRestorations(properties, existing){
       // 🏭 業者情報 (v1.9.3〜 convert射影拡張で取得可)
       cleaningContractor: p.cleaningContractor || prev?.cleaningContractor || "", // クリーニング業者
       keyContractor: p.keyContractor || p.keyCon || prev?.keyContractor || "",    // 鍵業者
-      disinfectDone: typeof p.disinfectDone === "boolean" ? p.disinfectDone : (prev?.disinfectDone ?? null), // 除菌有無
+      disinfectDone: typeof p.disinfectDone === "boolean" ? p.disinfectDone
+                   : typeof prev?.disinfectDone === "boolean" ? prev.disinfectDone
+                   : (p.disinfect ? /有|あり|true|1/i.test(String(p.disinfect)) : null), // 除菌有無
       vacancyDate: normalizeDate(p.vacancyDate) || prev?.vacancyDate || "",       // 退去予定日
+      // 🔑 鍵関連の追加情報 (用途不明だけど保存)
+      keyChange: p.keyChange || prev?.keyChange || "",                            // 鍵交換有無?
+      keyLeft: p.keyLeft || prev?.keyLeft || "",                                  // 鍵預け状況?
       // 🔑 鍵交換日 (v1.10.4〜 実際の GAS フィールド名に対応):
       //   1) p.keyDate (物件レベル新設・真の名前)     ← 最優先
       //   2) p.keyChangeDate (もし将来追加されたら互換) ← 念のため
