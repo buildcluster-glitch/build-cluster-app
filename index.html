@@ -5861,17 +5861,29 @@ function renderCalendar(){
     __restoMatchList.push({ key: n, resto: r });
   });
   __restoMatchList.sort((a,b)=>b.key.length - a.key.length); // 長い順
-  // 🪛 デバッグ: window.probeRestoLink("セジュールつかさB 202") でマッチ結果を確認
+  // 🪛 デバッグ: window.probeRestoLink("ホープヒル壱番館 103") でマッチ結果を確認
   window.probeRestoLink = function(title){
     const tNorm = (title||"").replace(/\s+/g,"");
     for(const m of __restoMatchList){
       const norm = m.key.replace(/\s+/g,"");
       const hit = title.includes(m.key) || (norm && tNorm.includes(norm));
       if(hit){
-        console.log("[probeRestoLink] HIT:", m.key, "→", m.resto.name, "/ room:", m.resto.room);
-        console.log("  workVolume:", m.resto.workVolume, "/ finalDate:", m.resto.finalDate, "/ moveinDate:", m.resto.moveinDate);
-        console.log("  tasks (outsource):", (m.resto.tasks||[]).filter(t=>t.category==="outsource").map(t=>({name:t.name,vendor:t.contractor,start:t.periodStart})));
-        return m.resto;
+        const r = m.resto;
+        console.log("[probeRestoLink] HIT:", m.key, "→", r.name, "/ room:", r.room);
+        console.log("  status(営業):", r.status, " / workflowStatus(工事):", r.workflowStatus);
+        console.log("  workVolume:", r.workVolume, "/ finalDate:", r.finalDate, "/ moveinDate:", r.moveinDate);
+        console.log("  vacancyDate:", r.vacancyDate, "/ disinfectDone:", r.disinfectDone);
+        console.log("  cleaningContractor:", r.cleaningContractor, "/ keyContractor:", r.keyContractor);
+        console.log("  🔑 keyChangeDate (導出後):", r.keyChangeDate);
+        const keyTs = (r.tasks||[]).filter(t=>/鍵|シリンダー/.test(String(t.workName||t.name||"")));
+        console.log("  🔑 鍵関連タスク:", keyTs.length, "件");
+        console.table(keyTs.map(t=>({
+          name: t.name, contractor: t.contractor,
+          keyDate: t.keyDate || "(空)",
+          periodStart: t.periodStart || "(空)",
+          status: t.status
+        })));
+        return r;
       }
     }
     console.warn("[probeRestoLink] no match for:", title);
