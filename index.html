@@ -2991,6 +2991,14 @@
           <label style="font-size:12px"><input type="checkbox" id="all-cs-auto" checked> 自動同期 (1.5秒+30秒)</label>
           <span id="all-cs-status" style="font-size:11px;color:var(--muted);margin-left:auto"></span>
         </div>
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          <button class="btn" id="all-cs-push-all" style="background:#16a34a;color:#fff;font-weight:700;padding:6px 12px;font-size:12px">📤 全件強制PUSH</button>
+          <button class="btn" id="all-cs-pull-replace" style="background:#3b82f6;color:#fff;font-weight:700;padding:6px 12px;font-size:12px">📥 強制PULL(ローカル置換)</button>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">
+          📤PUSH: ローカル全予定をサーバーへ送信(初回端末同期で使用)<br>
+          📥PULL: サーバー値でローカルを完全置換(他端末からの全件取り込み)
+        </div>
       </fieldset>
 
       <!-- セクション3: 在庫管理 -->
