@@ -1232,6 +1232,15 @@
     background:#fff;border:1px solid var(--border);border-radius:5px;padding:1px 7px}
   .rd-kv .k{color:var(--muted)}
   .rd-kv .v{color:var(--text);font-weight:600}
+  /* 🛠 自社工事進捗バー (rdJishaProgress) */
+  .rd-jisha-progress{margin:4px 0 6px}
+  .rd-jp-row{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--border);border-radius:7px;padding:5px 10px}
+  .rd-jp-label{font-size:11px;color:var(--muted);font-weight:600;flex-shrink:0}
+  .rd-jp-frac{font-size:12px;color:var(--text);flex-shrink:0}
+  .rd-jp-frac b{font-size:14px}
+  .rd-jp-bar{flex:1;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;min-width:60px}
+  .rd-jp-bar-inner{height:100%;border-radius:4px;transition:width .3s}
+  .rd-jp-pct{font-size:13px;font-weight:700;flex-shrink:0;min-width:40px;text-align:right}
   .rd-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:6px}
   .rd-summary .s{background:#fff;border:1px solid var(--border);border-radius:7px;padding:3px 4px;text-align:center;cursor:pointer;
     display:flex;align-items:center;justify-content:center;gap:5px}
