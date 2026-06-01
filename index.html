@@ -8628,6 +8628,10 @@ function openAllSettings(focus){
   document.getElementById('all-inv-auto').checked = invAuto;
   document.getElementById('all-inv-status').textContent = invUrl ? '✓ 設定済' : '未設定';
 
+  // 動作設定: 工事最終確認カードのダブルクリック挙動
+  const dblEl = document.getElementById('all-check-dblclick');
+  if(dblEl) dblEl.value = getCheckDblclickMode();
+
   allSettingsModal.classList.add('show');
   // フォーカス対象セクションへスクロール
   if(focus){
