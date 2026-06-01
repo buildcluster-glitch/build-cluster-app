@@ -8758,6 +8758,45 @@ function closeAllSettings(){ allSettingsModal.classList.remove('show'); }
 allSettingsModal.onclick = e=>{ if(e.target===allSettingsModal) closeAllSettings(); };
 document.getElementById('all-settings-cancel').onclick = closeAllSettings;
 
+// 📤 全件強制PUSH: ローカル予定全部をキューに積んでサーバーに送信
+document.getElementById('all-cs-push-all').onclick = async ()=>{
+  if(!cloudSync.url){ alert("Cloud Sync URL が未設定です"); return; }
+  const n = state.events.length;
+  if(!confirm(`ローカル予定 ${n}件 をサーバーに強制PUSHします。\n(他端末で同じ予定があれば上書きされます)\n続行?`)) return;
+  const btn = document.getElementById('all-cs-push-all');
+  btn.disabled = true; btn.textContent = "📤 PUSH中...";
+  try{
+    state.events.forEach(ev=>{
+      queueCloudOp('upsertEvent', denormalizeEventForCloud_(ev));
+    });
+    await runCloudOpenSync();
+    const res = await fetch(cloudSync.url);
+    const data = await res.json();
+    alert(`✅ PUSH完了\nサーバー側予定: ${(data.events||[]).length}件`);
+  }catch(e){
+    alert(`❌ PUSH失敗: ${e.message}`);
+  }finally{
+    btn.disabled = false; btn.textContent = "📤 全件強制PUSH";
+  }
+};
+
+// 📥 強制PULL(ローカル置換): サーバー値で local を完全置換
+document.getElementById('all-cs-pull-replace').onclick = async ()=>{
+  if(!cloudSync.url){ alert("Cloud Sync URL が未設定です"); return; }
+  if(!confirm("サーバーの値でローカル予定を完全置換します。\nローカル独自の予定があれば消えます(他端末からの取り込み専用)。\n続行?")) return;
+  const btn = document.getElementById('all-cs-pull-replace');
+  btn.disabled = true; btn.textContent = "📥 PULL中...";
+  try{
+    await cloudSyncPull({ replace:true });
+    render();
+    alert(`✅ PULL完了\nローカル予定件数: ${state.events.length}件`);
+  }catch(e){
+    alert(`❌ PULL失敗: ${e.message}`);
+  }finally{
+    btn.disabled = false; btn.textContent = "📥 強制PULL(ローカル置換)";
+  }
+};
+
 function renderAllMyselfSelect(){
   const sel = document.getElementById("all-myself-select");
   if(!sel) return;
