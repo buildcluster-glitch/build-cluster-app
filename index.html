@@ -5718,8 +5718,8 @@ function renderCalendar(){
     const t = String(ev?.title||"").trim();
     if(!t) return { html:"", text:"" };
     let r = null;
-    for(const [name, rs] of __restoByName){
-      if(t.includes(name)){ r = rs; break; }
+    for(const m of __restoMatchList){
+      if(t.includes(m.key)){ r = m.resto; break; }
     }
     if(!r) return { html:"", text:"" };
     const htmlParts = [];
