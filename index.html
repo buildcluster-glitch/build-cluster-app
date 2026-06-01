@@ -3773,8 +3773,10 @@ function showCheckStaffPicker(el, ck){
   const pop = document.createElement("div");
   pop.className = "quick-pop ck-staff-pop";
   const rect = el.getBoundingClientRect();
-  pop.style.left = Math.min(rect.left, window.innerWidth - 360) + "px";
-  pop.style.top = (rect.bottom + 4) + "px";
+  // 仮表示で実サイズ計測
+  pop.style.visibility = "hidden";
+  pop.style.left = "0";
+  pop.style.top = "0";
   const current = ck.staff || "";
   pop.innerHTML = `
     <div class="qp-title">🚗 現地担当を選択 <span style="font-size:11px;color:#64748b;font-weight:400">${escapeHtml(ck.title||"")}</span></div>
