@@ -11054,8 +11054,11 @@ document.addEventListener("keydown", e=>{
   }
 });
 
-// ===== 初回サンプル投入 =====
-if(state.events.length===0 && state.leaves.length===0){
+// ===== 初回サンプル投入 (v1.10.9〜 デフォルト停止) =====
+// 本番運用に入ったため自動投入を停止。デモが必要なら URL末尾に ?demo=1 を付ける
+// ⟳ボタンからの「データ全消去してサンプル再投入」は引き続き有効(明示操作)
+const _shouldAutoSeed = new URLSearchParams(location.search).get("demo") === "1";
+if(_shouldAutoSeed && state.events.length===0 && state.leaves.length===0){
   const now = new Date();
   const D = (n)=>fmtDate(addDays(now, n));
   const E = (date,start,end,title,category,staff,participants,memo)=>(
