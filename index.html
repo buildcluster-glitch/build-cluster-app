@@ -5785,8 +5785,11 @@ function renderCalendar(){
   function getEventResto_(ev){
     const t = String(ev?.title||"").trim();
     if(!t) return null;
-    for(const [name, rs] of __restoByName){
-      if(t.includes(name)) return rs;
+    const tNorm = t.replace(/\s+/g,"");
+    for(const m of __restoMatchList){
+      if(t.includes(m.key)) return m.resto;
+      const kNorm = m.key.replace(/\s+/g,"");
+      if(kNorm && tNorm.includes(kNorm)) return m.resto;
     }
     return null;
   }
