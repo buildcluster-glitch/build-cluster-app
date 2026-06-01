@@ -9703,6 +9703,7 @@ function renderRestoDetail(){
   if(p.pic) kv.push(["担当者",p.pic]);
   if(p.cleaningContractor) kv.push(["クリーニング",p.cleaningContractor]); // v1.9.3 新規
   if(p.keyContractor)      kv.push(["鍵業者",p.keyContractor]);              // v1.9.3 新規
+  if(p.keyChangeDate)      kv.push(["鍵交換日",p.keyChangeDate]);            // v1.10.1 新規(tasksから導出)
   if(p.disinfectDone !== null && p.disinfectDone !== undefined){
     kv.push(["除菌", p.disinfectDone ? "有" : "無"]);
   }
