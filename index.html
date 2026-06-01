@@ -9598,6 +9598,7 @@ function renderRestoCard(p){
       <div class="rc-row">
         <div class="rc-name">${escapeHtml(p.name)} <span class="rc-room">${roomStr}</span></div>
         ${volBadgeHtml}
+        ${extraBadgesHtml}
         <span class="rc-progress-label">${progressLabel}</span>
         <div class="rc-bar"><div class="rc-bar-inner" style="width:${pr.pct}%"></div></div>
         ${finalStr?`<span class="rc-final" title="最終確認日">最終確認 ${finalStr}</span>`:""}
