@@ -9649,10 +9649,16 @@ function renderRestoDetail(){
   const kv = [];
   if(p.kojiName) kv.push(["工事名",p.kojiName]);
   if(p.orderDate) kv.push(["発注日",p.orderDate]);
+  if(p.vacancyDate) kv.push(["退去予定日",p.vacancyDate]);   // v1.9.3 新規
   if(p.moveout) kv.push(["退去月",p.moveout]);
   if(p.moveinDate) kv.push(["入居日",p.moveinDate]);
   if(p.finalDate) kv.push(["最終確認日",p.finalDate]);
   if(p.pic) kv.push(["担当者",p.pic]);
+  if(p.cleaningContractor) kv.push(["クリーニング",p.cleaningContractor]); // v1.9.3 新規
+  if(p.keyContractor)      kv.push(["鍵業者",p.keyContractor]);              // v1.9.3 新規
+  if(p.disinfectDone !== null && p.disinfectDone !== undefined){
+    kv.push(["除菌", p.disinfectDone ? "有" : "無"]);
+  }
   const totalAmt = (p.tasks||[]).filter(t=>t.category==="outsource").reduce((s,t)=>s+(+t.amount||0),0);
   if(totalAmt) kv.push(["合計(外注)",`¥${totalAmt.toLocaleString()}`]);
   document.getElementById("rdKv").innerHTML = kv.map(([k,v])=>`<span class="kv"><span class="k">${escapeHtml(k)}</span><span class="v">${escapeHtml(v)}</span></span>`).join("");
