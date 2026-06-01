@@ -5707,6 +5707,23 @@ function renderCalendar(){
     __restoMatchList.push({ key: n, resto: r });
   });
   __restoMatchList.sort((a,b)=>b.key.length - a.key.length); // 長い順
+  // 🪛 デバッグ: window.probeRestoLink("セジュールつかさB 202") でマッチ結果を確認
+  window.probeRestoLink = function(title){
+    const tNorm = (title||"").replace(/\s+/g,"");
+    for(const m of __restoMatchList){
+      const norm = m.key.replace(/\s+/g,"");
+      const hit = title.includes(m.key) || (norm && tNorm.includes(norm));
+      if(hit){
+        console.log("[probeRestoLink] HIT:", m.key, "→", m.resto.name, "/ room:", m.resto.room);
+        console.log("  workVolume:", m.resto.workVolume, "/ finalDate:", m.resto.finalDate, "/ moveinDate:", m.resto.moveinDate);
+        console.log("  tasks (outsource):", (m.resto.tasks||[]).filter(t=>t.category==="outsource").map(t=>({name:t.name,vendor:t.contractor,start:t.periodStart})));
+        return m.resto;
+      }
+    }
+    console.warn("[probeRestoLink] no match for:", title);
+    console.log("  available keys (top 10):", __restoMatchList.slice(0,10).map(m=>m.key));
+    return null;
+  };
   // 工事ボリュームのバッジ色
   const __VOL_COLORS = {
     "激重":"#dc2626","激":"#dc2626",
