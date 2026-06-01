@@ -9528,7 +9528,9 @@ function renderRestoDetail(){
   }
   // アーカイブ済み表示
   const archBtn = document.getElementById("rdArchiveBtn");
-  archBtn.textContent = restoIsArchived(p) ? "↩ 完了取消" : "✓ 完了";
+  const archived = restoIsArchived(p);
+  archBtn.textContent = archived ? "↩ 完了を取消" : "✓ 完了";
+  archBtn.classList.toggle("archived", archived);
   // サマリ
   const c = {todo:0,wip:0,done:0};
   restoActiveTasks(p).forEach(t=>{ if(c[t.status]!==undefined) c[t.status]++; });
