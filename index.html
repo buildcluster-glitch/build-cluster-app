@@ -9553,7 +9553,8 @@ function renderRestoDetail(){
 }
 
 function renderRestoTaskGroup(p, cat, listId, sumId){
-  const all = (p.tasks||[]).filter(t=>t.category===cat);
+  // 諸経費系(運搬/廃棄物/管理費)は表示・カウント両方から除外
+  const all = (p.tasks||[]).filter(t=>t.category===cat && !isExcludedRestoTask(t));
   // v1.7: 完了タスクも一覧に残す(取消線+✅で識別)。完了タブを開いた時のみ done絞込
   let tasks = all;
   if(restoTaskStatusFilter && cat!=="reduced") tasks = tasks.filter(t=>t.status===restoTaskStatusFilter);
