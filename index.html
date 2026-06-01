@@ -5688,16 +5688,29 @@ function renderCalendar(){
   (state.restorations||[]).forEach(r=>{
     if(r?.name) __restoByName.set(String(r.name).trim(), r);
   });
+  // 工事ボリュームのバッジ色
+  const __VOL_COLORS = {
+    "激重":"#dc2626","激":"#dc2626",
+    "重":"#ea580c",
+    "普":"#eab308","普通":"#eab308","中":"#eab308",
+    "軽":"#16a34a","小":"#16a34a",
+  };
   function getEventLinkInfo_(ev){
     const t = String(ev?.title||"").trim();
-    if(!t) return "";
+    if(!t) return { html:"", text:"" };
     let r = null;
     for(const [name, rs] of __restoByName){
       if(t.includes(name)){ r = rs; break; }
     }
-    if(!r) return "";
-    const parts = [];
-    if(r.workVolume && r.workVolume !== "無") parts.push(r.workVolume);
+    if(!r) return { html:"", text:"" };
+    const htmlParts = [];
+    const textParts = []; // 文字数推定用
+    // 重い/軽い → カラーバッジ (赤/緑等)
+    if(r.workVolume && r.workVolume !== "無"){
+      const bg = __VOL_COLORS[r.workVolume] || "#6b7280";
+      htmlParts.push(`<span style="background:${bg};color:#fff;padding:0 5px;border-radius:4px;font-weight:700">${escapeHtml(r.workVolume)}</span>`);
+      textParts.push(r.workVolume);
+    }
     // 内装/清掃 最早着工
     const vendors = (r.tasks||[]).filter(t2=>{
       if(t2.category !== "outsource" || !t2.periodStart) return false;
@@ -5708,17 +5721,26 @@ function renderCalendar(){
       const d = parseDate(vendors[0].periodStart);
       const md = !isNaN(d) ? `${d.getMonth()+1}/${d.getDate()}` : vendors[0].periodStart;
       const cat = /清掃|ハウス|FKK/i.test(`${vendors[0].name||""} ${vendors[0].contractor||""}`) ? "清掃" : "内装";
-      parts.push(`${cat}${md}〜`);
+      htmlParts.push(`${escapeHtml(cat)}${escapeHtml(md)}〜`);
+      textParts.push(`${cat}${md}〜`);
     }
     if(r.finalDate){
       const d = parseDate(r.finalDate);
-      if(!isNaN(d)) parts.push(`最終確認${d.getMonth()+1}/${d.getDate()}`);
+      if(!isNaN(d)){
+        const s = `最終確認${d.getMonth()+1}/${d.getDate()}`;
+        htmlParts.push(escapeHtml(s));
+        textParts.push(s);
+      }
     }
     if(r.moveinDate){
       const d = parseDate(r.moveinDate);
-      if(!isNaN(d)) parts.push(`入居${d.getMonth()+1}/${d.getDate()}`);
+      if(!isNaN(d)){
+        const s = `入居${d.getMonth()+1}/${d.getDate()}`;
+        htmlParts.push(escapeHtml(s));
+        textParts.push(s);
+      }
     }
-    return parts.join(" ／ ");
+    return { html: htmlParts.join(" ／ "), text: textParts.join(" ／ ") };
   }
   // イベントタイトルにひもづく原状回復物件を返す(なければnull)。📋進捗アイコン用。
   function getEventResto_(ev){
