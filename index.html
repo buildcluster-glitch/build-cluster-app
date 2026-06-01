@@ -5959,6 +5959,23 @@ function renderCalendar(){
         textParts.push(s);
       }
     }
+    // 🔑 鍵交換日 (日付のみ・業者名は除外)
+    if(r.keyChangeDate){
+      const d = parseDate(r.keyChangeDate);
+      if(!isNaN(d)){
+        const s = `🔑${d.getMonth()+1}/${d.getDate()}`;
+        htmlParts.push(escapeHtml(s));
+        textParts.push(s);
+      }
+    }
+    // 🦠 除菌有無 (true→有 / false→無 / null→非表示)
+    if(r.disinfectDone === true){
+      htmlParts.push(`<span style="background:#16a34a;color:#fff;padding:0 5px;border-radius:4px;font-weight:700">🦠有</span>`);
+      textParts.push("🦠有");
+    } else if(r.disinfectDone === false){
+      htmlParts.push(`<span style="background:#94a3b8;color:#fff;padding:0 5px;border-radius:4px;font-weight:700">🦠無</span>`);
+      textParts.push("🦠無");
+    }
     return { html: htmlParts.join(" ／ "), text: textParts.join(" ／ ") };
   }
   // イベントタイトルにひもづく原状回復物件を返す(なければnull)。📋進捗アイコン用。
