@@ -8709,6 +8709,10 @@ document.getElementById('all-settings-save').onclick = ()=>{
     invConfigChanged = true;
   }
 
+  // 4. 動作設定: ダブルクリック挙動
+  const dblMode = document.getElementById('all-check-dblclick')?.value || 'staff-picker';
+  localStorage.setItem('buildcluster_check_dblclick', dblMode);
+
   closeAllSettings();
   if(invConfigChanged){
     if(confirm('在庫設定を変更しました。今すぐページをリロードして反映しますか？')){
