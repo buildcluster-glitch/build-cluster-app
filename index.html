@@ -9580,6 +9580,19 @@ function renderRestoCard(p){
     const tip = `工事ボリューム: ${volLevel}${heavyN?` (重い品目 ${heavyN}件)`:""}`;
     volBadgeHtml = `<span class="rc-vol" title="${escapeHtml(tip)}" style="background:${bg};color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;flex-shrink:0">${escapeHtml(volLevel)}</span>`;
   }
+  // 🔑 鍵交換 / 🦠 除菌 バッジ
+  const ts_ = p.tasks || [];
+  const keyTs = ts_.filter(t=>/鍵|シリンダー/.test(String(t.name||"")));
+  const disTs = ts_.filter(t=>/除菌|消毒/.test(String(t.name||"")));
+  const extraBadge = (label, tasks, color) => {
+    if(!tasks.length) return "";
+    const allDone = tasks.every(t=>t.status==="done");
+    const bg = allDone ? "#16a34a" : color;
+    const cnt = `${tasks.filter(t=>t.status==="done").length}/${tasks.length}`;
+    const tip = tasks.map(t=>`${t.status==="done"?"✅":"⏳"} ${t.name}`).join("\n");
+    return `<span class="rc-extra" title="${escapeHtml(tip)}" style="background:${bg};color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;flex-shrink:0">${label}${cnt}</span>`;
+  };
+  const extraBadgesHtml = extraBadge("🔑", keyTs, "#0891b2") + extraBadge("🦠", disTs, "#7c3aed");
   return `
     <div class="resto-card st-${st}" data-id="${p.id}">
       <div class="rc-row">
