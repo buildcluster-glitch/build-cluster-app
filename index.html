@@ -4051,9 +4051,12 @@ function renderCheckCard(ck, today){
     volBadge = `<span class="badge-sm badge-volume" title="${escapeHtml(tipParts)}" style="background:${color};color:#fff;box-shadow:${boxShadow};opacity:${opacity}">${prefix} ${escapeHtml(level)}${heavyN?`×${heavyN}`:""}</span>`;
   }
   // 修繕アポ バッジ (v1.4.251): responseDate + responseTime + workflowStatus
+  // v1.10.7〜: 工事ステータス系(着工/受注/完工/施工)は📞バッジに乗せず非表示
   let apptBadge = "";
   const wfStatus = ck.workflowStatus || "";
-  if(ck.responseDate || ck.responseDateRaw || ck.responseTime || wfStatus){
+  const APPT_HIDDEN_WF = /着工|受注|完工|工事指示|施工|完了/;
+  const isApptRelevant = !APPT_HIDDEN_WF.test(wfStatus);
+  if((ck.responseDate || ck.responseDateRaw || ck.responseTime || wfStatus) && isApptRelevant){
     // 日付表記: 正規化できれば M/D、ダメなら raw 文字列
     let dLabel = "";
     if(ck.responseDate){
