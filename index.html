@@ -9439,6 +9439,23 @@ function renderRestoDetail(){
   const totalAmt = (p.tasks||[]).filter(t=>t.category==="outsource").reduce((s,t)=>s+(+t.amount||0),0);
   if(totalAmt) kv.push(["合計(外注)",`¥${totalAmt.toLocaleString()}`]);
   document.getElementById("rdKv").innerHTML = kv.map(([k,v])=>`<span class="kv"><span class="k">${escapeHtml(k)}</span><span class="v">${escapeHtml(v)}</span></span>`).join("");
+  // 🛠 自社工事(ビルドクラスタ施工)進捗バー
+  const pr_ = restoProgress(p);
+  const pBar = document.getElementById("rdJishaProgress");
+  if(pr_.total){
+    const pctColor = pr_.pct === 100 ? "#16a34a" : pr_.pct >= 50 ? "#3b82f6" : "#94a3b8";
+    pBar.innerHTML = `
+      <div class="rd-jp-row">
+        <span class="rd-jp-label">🛠 自社工事 進捗</span>
+        <span class="rd-jp-frac"><b>${pr_.done}</b> / ${pr_.total}</span>
+        <div class="rd-jp-bar"><div class="rd-jp-bar-inner" style="width:${pr_.pct}%;background:${pctColor}"></div></div>
+        <span class="rd-jp-pct" style="color:${pctColor}">${pr_.pct}%</span>
+      </div>`;
+    pBar.style.display = "";
+  } else {
+    pBar.innerHTML = "";
+    pBar.style.display = "none";
+  }
   // アーカイブ済み表示
   const archBtn = document.getElementById("rdArchiveBtn");
   archBtn.textContent = restoIsArchived(p) ? "↩ 完了取消" : "✓ 完了";
