@@ -9620,7 +9620,11 @@ function renderRestoCard(p){
   const ts_ = p.tasks || [];
   let keyBadge = "";
   if(p.keyContractor){
-    keyBadge = `<span class="rc-extra" title="${escapeHtml('鍵業者: '+p.keyContractor)}" style="background:#0891b2;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;flex-shrink:0">🔑${escapeHtml(p.keyContractor)}</span>`;
+    // 鍵交換日があれば M/D 併記
+    let dStr = "";
+    if(p.keyChangeDate){ const d=parseDate(p.keyChangeDate); if(!isNaN(d)) dStr = ` ${d.getMonth()+1}/${d.getDate()}`; }
+    const tip = `鍵業者: ${p.keyContractor}${p.keyChangeDate?` / 交換日: ${p.keyChangeDate}`:""}`;
+    keyBadge = `<span class="rc-extra" title="${escapeHtml(tip)}" style="background:#0891b2;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;flex-shrink:0">🔑${escapeHtml(p.keyContractor)}${dStr}</span>`;
   } else {
     const keyTs = ts_.filter(t=>/鍵|シリンダー/.test(String(t.name||"")));
     if(keyTs.length){
