@@ -5750,6 +5750,15 @@ function renderCalendar(){
       htmlParts.push(`<span style="background:${bg};color:#fff;padding:0 5px;border-radius:4px;font-weight:700">${escapeHtml(r.workVolume)}</span>`);
       textParts.push(r.workVolume);
     }
+    // 🛠 自社工事進捗 % (inhouse タスクの完了率)
+    const inhouseTasks = (r.tasks||[]).filter(t2=>t2.category==="inhouse");
+    if(inhouseTasks.length){
+      const doneN = inhouseTasks.filter(t2=>t2.status==="done").length;
+      const pct = Math.round(doneN/inhouseTasks.length*100);
+      const pctBg = pct === 100 ? "#16a34a" : pct >= 50 ? "#3b82f6" : "#94a3b8";
+      htmlParts.push(`<span style="background:${pctBg};color:#fff;padding:0 5px;border-radius:4px;font-weight:700">自社${doneN}/${inhouseTasks.length}(${pct}%)</span>`);
+      textParts.push(`自社${doneN}/${inhouseTasks.length}(${pct}%)`);
+    }
     // 内装/清掃 最早着工
     const vendors = (r.tasks||[]).filter(t2=>{
       if(t2.category !== "outsource" || !t2.periodStart) return false;
