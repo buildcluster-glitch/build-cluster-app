@@ -4680,6 +4680,7 @@ function restoSyncTasks(existingTasks, serverTasks){
       schedule: schedule || (kept?.schedule || ""),
       periodStart: st.periodStart || kept?.periodStart || "",
       periodEnd: st.periodEnd || kept?.periodEnd || "",
+      keyDate: st.keyDate || kept?.keyDate || "",   // 🔑 鍵専用日付 (v1.10.2〜)
       status: kept?.status || (cat==="outsource" ? "wip" : "todo"),
       doneAt: kept?.doneAt || null,
       statusBy: kept?.statusBy || "", statusAt: kept?.statusAt || null,
