@@ -4744,6 +4744,14 @@ function extractRestorations(properties, existing){
       // 🛠 工事ボリューム (v1.4.218 互換): 軽/普/重/激重 等のレベル
       workVolume: p.workloadStatus?.level || p.workVolume || prev?.workVolume || "",
       workloadStatus: p.workloadStatus || prev?.workloadStatus || null,
+      // 📋 営業/工事ステータス (見積アプリ convert射影由来)
+      status: p.status || prev?.status || "",                 // 営業: 見積中/受注/工事指示有/完工 等
+      workflowStatus: p.workflowStatus || prev?.workflowStatus || "", // 工事: 未着手/着工/完了 等
+      // 🏭 業者情報 (v1.9.3〜 convert射影拡張で取得可)
+      cleaningContractor: p.cleaningContractor || prev?.cleaningContractor || "", // クリーニング業者
+      keyContractor: p.keyContractor || p.keyCon || prev?.keyContractor || "",    // 鍵業者
+      disinfectDone: typeof p.disinfectDone === "boolean" ? p.disinfectDone : (prev?.disinfectDone ?? null), // 除菌有無
+      vacancyDate: normalizeDate(p.vacancyDate) || prev?.vacancyDate || "",       // 退去予定日
       tasks: prev ? prev.tasks : [],
       comments: prev ? prev.comments : [],
     };
