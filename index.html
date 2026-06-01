@@ -5535,12 +5535,13 @@ function renderLeaveBand(){
     });
     return {counts, total};
   };
-  // 件数を「立3 / 事2 / 修1」のように短く整形（量の多い順）
+  // 件数を「立会3 / 事前2 / 修繕1」のように2文字まで短く整形（量の多い順）
   const fmtBreakdown = (counts)=>{
-    const short = {"立会":"立","立会(未定)":"立?","修繕":"修","事前":"事","見積":"見","商談":"商","事務":"務","未分類":"他"};
+    // 1文字だと「事務」「事前」が同じ「事」になり衝突 → 2文字で識別性確保
+    const short = {"立会":"立会","立会(未定)":"立未","修繕":"修繕","事前":"事前","見積":"見積","商談":"商談","事務":"事務","未分類":"他"};
     const entries = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
     if(entries.length === 0) return "";
-    return entries.map(([cat,n])=>`${short[cat]||cat}${n}`).join("/");
+    return entries.map(([cat,n])=>`${short[cat]||cat.slice(0,2)}${n}`).join("/");
   };
   // 件数を1行ずつ「立会: 3件」形式（tooltip用フル）
   const fmtBreakdownFull = (counts)=>{
