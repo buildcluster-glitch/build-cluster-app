@@ -9456,7 +9456,8 @@ function renderRestoDetail(){
 
 function renderRestoTaskGroup(p, cat, listId, sumId){
   const all = (p.tasks||[]).filter(t=>t.category===cat);
-  let tasks = cat==="reduced" ? all : all.filter(t=>t.status!=="done");
+  // v1.7: 完了タスクも一覧に残す(取消線+✅で識別)。完了タブを開いた時のみ done絞込
+  let tasks = all;
   if(restoTaskStatusFilter && cat!=="reduced") tasks = tasks.filter(t=>t.status===restoTaskStatusFilter);
   const el = document.getElementById(listId);
   const sum = document.getElementById(sumId);
