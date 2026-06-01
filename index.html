@@ -5717,9 +5717,12 @@ function renderCalendar(){
   function getEventLinkInfo_(ev){
     const t = String(ev?.title||"").trim();
     if(!t) return { html:"", text:"" };
+    const tNorm = t.replace(/\s+/g,"");
     let r = null;
     for(const m of __restoMatchList){
       if(t.includes(m.key)){ r = m.resto; break; }
+      const kNorm = m.key.replace(/\s+/g,"");
+      if(kNorm && tNorm.includes(kNorm)){ r = m.resto; break; }
     }
     if(!r) return { html:"", text:"" };
     const htmlParts = [];
