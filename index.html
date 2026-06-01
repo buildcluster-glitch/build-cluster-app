@@ -9542,7 +9542,7 @@ function renderRestoTaskRow(t, cat){
     <div class="rtask ${t.status} ${cat==="reduced"?"reduced":""}" data-id="${t.id}">
       <div class="rt-top">
         ${cat==="reduced" ? '<div class="rt-check" style="opacity:.3;border:none">—</div>'
-          : `<button class="rt-check" data-role="toggle" title="${t.statusBy?escapeHtml(t.statusBy)+" "+restoFmtDateTime(t.statusAt):""}">${t.status==="done"?"✓":t.status==="wip"?"◐":""}</button>`}
+          : `<button class="rt-check" data-role="toggle" title="${t.statusBy?escapeHtml(t.statusBy)+" "+restoFmtDateTime(t.statusAt):""}">${t.status==="done"?"✅":t.status==="wip"?"◐":""}</button>`}
         <div class="rt-body" data-role="edit">
           <div class="rt-head">
             ${t.room?`<span class="rt-room">${escapeHtml(t.room)}</span>`:""}
