@@ -7882,11 +7882,15 @@ document.getElementById("ev-save").onclick = ()=>{
   if(!title){ alert("タイトルを入力してください"); return; }
   pushHistory();
   const timeMode = getTimeMode();         // "timed" | "allday" | "anytime"
-  const allday = timeMode !== "timed";    // 旧データ互換
+  // v1.11.3: anytime は allday=false に。時間グリッド内で自由配置できるようにする
+  const allday = timeMode === "allday";
   const date = document.getElementById("ev-date").value;
-  const start = allday ? "00:00" : document.getElementById("ev-start").value;
-  const end   = allday ? "23:59" : document.getElementById("ev-end").value;
-  if(!allday && timeToMin(end)<=timeToMin(start)){ alert("終了時刻は開始時刻より後にしてください"); return; }
+  // anytime は時間入力非表示なので、既存値があれば保持、なければ 9:00/10:00 デフォ
+  const startInput = document.getElementById("ev-start").value || "09:00";
+  const endInput   = document.getElementById("ev-end").value || "10:00";
+  const start = timeMode === "allday" ? "00:00" : startInput;
+  const end   = timeMode === "allday" ? "23:59" : endInput;
+  if(timeMode === "timed" && timeToMin(end)<=timeToMin(start)){ alert("終了時刻は開始時刻より後にしてください"); return; }
   // 参加者(チェック済) - リーダー(ev.staff)はチップに別途出るので重複保存しない
   const leader = document.getElementById("ev-staff").value;
   const participants = Array.from(
