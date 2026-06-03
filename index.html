@@ -8546,11 +8546,21 @@ function normalizeCloudEvent_(x){
   else if(typeof x.comments === 'string' && x.comments){
     try{ const p = JSON.parse(x.comments); if(Array.isArray(p)) comments = p; }catch(e){}
   }
+  // 🕓 サーバー側のシリアル日付バグ吸収 (v1.11.1〜)
+  //   "1899-12-30T10:00" → "10:00"
+  //   "NaN:NaN" → ""
+  //   既に "HH:mm" 形式ならそのまま
+  const cleanTime = (s)=>{
+    if(!s || s==='NaN:NaN') return '';
+    if(/^\d{1,2}:\d{2}$/.test(s)) return s;       // 既に HH:mm
+    const m = String(s).match(/T(\d{2}:\d{2})/);   // "...T10:00"
+    return m ? m[1] : '';
+  };
   return {
     id: x.id,
     date: (x.date||'').slice(0,10),
-    start: x.startTime || '',
-    end: x.endTime || '',
+    start: cleanTime(x.startTime),
+    end: cleanTime(x.endTime),
     allday: !!x.allday,
     timeMode: x.timeMode || (x.allday ? 'allday' : 'timed'),
     title: x.title || '',
