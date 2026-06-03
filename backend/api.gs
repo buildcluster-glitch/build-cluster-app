@@ -207,6 +207,14 @@ function rowToObject_(row, headers) {
       o[h] = m ? m[1] : s;
       return;
     }
+    if (TIME_KEYS.has(h)) {
+      // string で "1899-12-30T10:00" 等が来た場合も HH:mm 抽出
+      const s = String(v);
+      if (/^\d{1,2}:\d{2}$/.test(s)) { o[h] = s; return; }
+      const m = s.match(/T(\d{2}:\d{2})/);
+      o[h] = m ? m[1] : '';
+      return;
+    }
     o[h] = String(v);
   });
   return o;
