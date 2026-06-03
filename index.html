@@ -3346,6 +3346,27 @@ const STORAGE_KEY = "buildcluster_schedule_v1";
 
 // ===== State =====
 let state = loadState();
+// 🩹 v1.11.1 migration: 過去 PULL で混入した "1899-12-30T10:00" 等の汚染時刻を一掃
+(function _migrateBadTimes(){
+  if(!state.events || !state.events.length) return;
+  const clean = s => {
+    if(!s || s==='NaN:NaN') return '';
+    if(/^\d{1,2}:\d{2}$/.test(s)) return s;
+    const m = String(s).match(/T(\d{2}:\d{2})/);
+    return m ? m[1] : '';
+  };
+  let n = 0;
+  state.events.forEach(e=>{
+    const s0=e.start, e0=e.end;
+    e.start = clean(e.start);
+    e.end = clean(e.end);
+    if(s0!==e.start || e0!==e.end) n++;
+  });
+  if(n){
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(_){}
+    console.log("[migrate] 時刻フォーマット正常化:", n, "件");
+  }
+})();
 let currentDate = new Date();      // 表示中の基準日
 let currentView = "month";         // 'month' | 'staff'
 let editingEventId = null;
