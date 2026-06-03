@@ -4328,6 +4328,7 @@ async function pushAttendanceToGAS(){
       headers:{"Content-Type":"text/plain;charset=utf-8"},
       body: JSON.stringify({
         action:"save-attendance",
+        kind:"attendance",  // v1.11.4: master_sync が dispatch する際に必須
         token: s.token,
         data: payload,
       }),
