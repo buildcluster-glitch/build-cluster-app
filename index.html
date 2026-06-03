@@ -3347,6 +3347,8 @@ const STORAGE_KEY = "buildcluster_schedule_v1";
 // ===== State =====
 let state = loadState();
 // 🩹 v1.11.1 migration: 過去 PULL で混入した "1899-12-30T10:00" 等の汚染時刻を一掃
+// 🩹 v1.11.3 migration: timeMode="anytime" なのに allday=true になってる予定を allday=false に修正
+//   (anytime は時間グリッド内自由配置できるべき)
 (function _migrateBadTimes(){
   if(!state.events || !state.events.length) return;
   const clean = s => {
@@ -3355,16 +3357,25 @@ let state = loadState();
     const m = String(s).match(/T(\d{2}:\d{2})/);
     return m ? m[1] : '';
   };
-  let n = 0;
+  let n = 0, m = 0;
   state.events.forEach(e=>{
     const s0=e.start, e0=e.end;
     e.start = clean(e.start);
     e.end = clean(e.end);
     if(s0!==e.start || e0!==e.end) n++;
+    // anytime なのに allday=true → allday=false に修正
+    if(e.timeMode === "anytime" && e.allday === true){
+      e.allday = false;
+      // start/end も "00:00"/"23:59" のままだと位置がおかしい → 9:00 デフォにする
+      if(e.start === "00:00") e.start = "09:00";
+      if(e.end === "23:59")   e.end   = "10:00";
+      m++;
+    }
   });
-  if(n){
+  if(n || m){
     try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(_){}
-    console.log("[migrate] 時刻フォーマット正常化:", n, "件");
+    if(n) console.log("[migrate] 時刻フォーマット正常化:", n, "件");
+    if(m) console.log("[migrate] anytime allday=false 修正:", m, "件");
   }
 })();
 let currentDate = new Date();      // 表示中の基準日
