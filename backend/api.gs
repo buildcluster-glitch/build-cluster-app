@@ -53,6 +53,8 @@ const JSON_ARRAY_KEYS = new Set(['participants','importance','comments']);
 const DATE_KEYS = new Set(['date']);
 // 日時 (yyyy-MM-ddTHH:mm で返す)
 const DATETIME_KEYS = new Set(['datetime','createdAt','updatedAt']);
+// 時刻のみ (HH:mm で返す) — Sheetsが時刻を 1899-12-30 ベースの日付に変換するのを吸収
+const TIME_KEYS = new Set(['startTime','endTime']);
 
 // ===== エンドポイント =====
 
