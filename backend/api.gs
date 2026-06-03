@@ -186,7 +186,8 @@ function rowToObject_(row, headers) {
       return;
     }
     if (v instanceof Date) {
-      const fmt = DATE_KEYS.has(h) ? 'yyyy-MM-dd'
+      const fmt = TIME_KEYS.has(h) ? 'HH:mm'
+                : DATE_KEYS.has(h) ? 'yyyy-MM-dd'
                 : DATETIME_KEYS.has(h) ? "yyyy-MM-dd'T'HH:mm"
                 : "yyyy-MM-dd'T'HH:mm";
       v = Utilities.formatDate(v, 'Asia/Tokyo', fmt);
