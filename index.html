@@ -8598,13 +8598,23 @@ function normalizeCloudEvent_(x){
     const m = String(s).match(/T(\d{2}:\d{2})/);   // "...T10:00"
     return m ? m[1] : '';
   };
+  // v1.11.6: timeMode='anytime' は必ず allday=false (時間グリッド配置)
+  const _tm = x.timeMode || (x.allday ? 'allday' : 'timed');
+  const _allday = _tm === 'allday';
+  // anytime かつ start=00:00 なら 11:00 に補正(マイグレ済データの上書き防止)
+  let _start = cleanTime(x.startTime);
+  let _end = cleanTime(x.endTime);
+  if(_tm === 'anytime'){
+    if(_start === '00:00' || !_start) _start = '11:00';
+    if(_end === '23:59' || !_end)     _end   = '12:00';
+  }
   return {
     id: x.id,
     date: (x.date||'').slice(0,10),
-    start: cleanTime(x.startTime),
-    end: cleanTime(x.endTime),
-    allday: !!x.allday,
-    timeMode: x.timeMode || (x.allday ? 'allday' : 'timed'),
+    start: _start,
+    end: _end,
+    allday: _allday,
+    timeMode: _tm,
     title: x.title || '',
     category: x.category || '',
     contractor: x.contractor || '',
