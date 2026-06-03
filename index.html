@@ -4310,7 +4310,12 @@ function buildAttendancePayload(){
   };
 }
 let _attendancePushTimer = null;
+// v1.11.5: 出勤者 Drive台帳 push は master_sync 側 receiver 未実装のため一時無効化。
+// クラ助連携は staffAvailability で完結しているのでこちらは不要。
+// 将来 master_sync に save-attendance/kind=attendance 受け口ができたら復活させる。
+const ATTENDANCE_DRIVE_PUSH_ENABLED = false;
 function scheduleAttendancePush(){
+  if(!ATTENDANCE_DRIVE_PUSH_ENABLED) return;
   // 短時間に複数回呼ばれても1回だけPOST (debounce 2秒)
   if(_attendancePushTimer) clearTimeout(_attendancePushTimer);
   _attendancePushTimer = setTimeout(()=>{
