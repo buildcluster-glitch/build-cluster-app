@@ -91,6 +91,12 @@
     padding:2px 9px;border-radius:11px;white-space:nowrap;
   }
   .leave-summary .ls-label{font-weight:700;color:var(--muted);margin-left:2px}
+  /* 🔑 山一 確定立会件数 */
+  .leave-summary .ls-taikyo{
+    font-weight:800;color:#6b21a8;background:#f3e8ff;border:1px solid #e9d5ff;
+    padding:2px 9px;border-radius:11px;white-space:nowrap;
+  }
+  .leave-summary .ls-taikyo .ls-prov{font-weight:700;color:#94a3b8;font-size:11px}
   /* 消化タグ: 出社ピルと区別するため 白地+カラードット の軽量スタイル */
   .leave-summary .ls-staff{
     display:inline-flex;align-items:center;gap:5px;
@@ -1973,7 +1979,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.19</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.19.3</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4541,6 +4547,7 @@ async function fetchTaikyoSchedule(opts={}){
           staffOrig: r.staff || "",
           address: r.address || "",
           koji: r.koji || "",
+          provisional: !!r.provisional || /担当未定/.test(r.koji||"") || String(r.id||"").startsWith("tachiai_tentative_"), // クラ助の仮置き立会
           updatedAt: r.updatedAt || "",
         }));
       saveCachedTaikyo_(records);
@@ -4645,6 +4652,33 @@ async function fetchTaikyoShiryoReady(opts={}){
   })();
   return __taikyoShiryoInFlight;
 }
+// 🔁 手動入力した立会(アプリ自身の保存)と クラ助/見積がpushする共有立会の二重表示を排除。
+//   同一の「物件名(正規化)+号室+日付」を1件に集約 → 手動を優先し共有側(仮想)を隠す。
+//   クラ助からは手動イベントが見えないので、突合はカレンダー側で行う。
+function dedupeTaikyoVirtuals_(virtuals){
+  if(!virtuals || !virtuals.length) return virtuals || [];
+  // 手動立会 = state.events のうち 共有由来でなく タイトルに「立会」を含むもの
+  const manual = (state.events||[]).filter(e =>
+    e && e.source !== "taikyo-shared" && /立会/.test(String(e.title||""))
+  );
+  if(!manual.length) return virtuals;
+  // 日付 → 正規化タイトル配列(スペース/号室記号を落として部分一致しやすく)
+  const stripMark = s => String(s||"").replace(/\s|　|号室|号|室/g,"");
+  const byDate = {};
+  manual.forEach(e=>{
+    if(!e.date) return;
+    (byDate[e.date] = byDate[e.date] || []).push(stripMark(e.title));
+  });
+  return virtuals.filter(v=>{
+    const list = byDate[v.date];
+    if(!list || !list.length) return true;           // その日付に手動立会なし→残す
+    const bk = String(v._bukken||"").replace(/\s|　/g,"");
+    const rm = stripMark(v._room);
+    if(!bk) return true;                              // 物件名不明→集約できないので残す
+    const hit = list.some(t => t.includes(bk) && (!rm || t.includes(rm)));
+    return !hit;                                      // 手動とかぶる共有立会は隠す(手動優先)
+  });
+}
 function buildTaikyoVirtualEvent_(r){
   // 時刻パース: "10:00" → 10:00開始/1h幅 / "午前中" 等の自由文字列 → 終日扱い
   const m = String(r.time||"").match(/^(\d{1,2}):(\d{2})/);
@@ -4666,19 +4700,29 @@ function buildTaikyoVirtualEvent_(r){
   const __ovMap = loadTaikyoOverrides_();
   const __ovEntry = __ovMap[r.id];
   const effectiveStaff = __ovEntry?.staff || r.staff || "";
+  // クラ助の仮置き(担当未定) / 担当者色に無いstaff(光和工業=会社名)を色で出し分け
+  const isProvisional = !!r.provisional;
+  const hasStaffColor = !!(effectiveStaff && STAFF_COLORS[effectiveStaff]);
+  const TAIKYO_COLOR = "#a855f7";   // 退去立会 専用色(立会カテゴリ色)
+  const PROVISIONAL_COLOR = "#cbd5e1"; // 立会?(担当未定) グレー
+  const chipColor = isProvisional ? PROVISIONAL_COLOR
+                  : (hasStaffColor ? "" : TAIKYO_COLOR);  // ""=既存ロジックでstaff色を使う
   return {
     id: `_taikyo_${r.id}`,
-    title: `退去立会 ${r.bukken}${r.room?" "+r.room:""}${r.time && !m ? ` (${r.time})` : ""}`,
-    category: "立会",
-    contractor: "",  // 元請けは見積アプリで決まる(取らない)
+    title: `退去立会${isProvisional?'?':''} ${r.bukken}${r.room?" "+r.room:""}${isProvisional?' (担当未定)':''}${r.time && !m ? ` (${r.time})` : ""}`,
+    category: isProvisional ? "立会(未定)" : "立会",
+    contractor: "山一",  // この連携で入る立会は全部 山一立会(山一カテゴリで抽出・件数カウント)
     staff: effectiveStaff,
     _taikyoRawId: r.id,           // override 用に元id保持
     _taikyoOrigStaff: r.staff || "",
+    _bukken: r.bukken || "",      // 手動立会との重複排除キー用
+    _room: r.room || "",
+    _provisional: isProvisional,
     participants: [],
     date: r.date,
     start, end,
     allday, timeMode,
-    color: "",
+    color: chipColor,
     memo: [r.address && `📍 ${r.address}`, r.koji && `工事: ${r.koji}`, r.time && !m && `時刻: ${r.time}`].filter(Boolean).join("\n"),
     importance: [],
     source: "taikyo-shared",  // 識別フラグ(編集不可・cloud syncに送らない)
@@ -6952,8 +6996,21 @@ function renderLeaveSummary(){
     const bg = (typeof STAFF_COLORS!=='undefined' && STAFF_COLORS[s]) ? STAFF_COLORS[s] : "#9ca3af";
     return `<span class="ls-staff ${taken?'taken':''}" title="${escapeHtml(s)} ${month}月の取得休み ${num(x)}日 / 会社休日${num(holN)}日 (有給/年休/半休/休暇/別件/体調不良 等・当番/出張/研修は除外)"><span class="ls-dot" style="background:${bg}"></span>${escapeHtml(s)} <span class="frac">${frac}</span></span>`;
   }).join("");
+  // 🔑 今月の確定立会件数(山一立会・provisional除外)
+  const taikyoRecs = (state.taikyoEvents||[]);
+  let taikyoConfirmed = 0, taikyoProvisional = 0;
+  taikyoRecs.forEach(r=>{
+    const dt = r.date || "";
+    if(dt < mStart || dt > mEnd) return;
+    if(r.provisional) taikyoProvisional++; else taikyoConfirmed++;
+  });
+  const taikyoHtml = taikyoRecs.length
+    ? `<span class="ls-taikyo" title="${month}月の山一・確定立会 ${taikyoConfirmed}件${taikyoProvisional?` / 担当未定(仮) ${taikyoProvisional}件`:''}">🔑 確定立会 ${taikyoConfirmed}件${taikyoProvisional?` <span class="ls-prov">+仮${taikyoProvisional}</span>`:''}</span>`
+    : "";
+
   el.innerHTML =
     `<span class="ls-holiday" title="${year}年${month}月の会社休日(全員共通)">🏖 ${month}月の休み ${holLabel}</span>`
+    + taikyoHtml
     + `<span class="ls-label">各自の取得</span>`
     + staffHtml;
 }
@@ -7527,7 +7584,7 @@ function renderCalendar(){
     const dayCol = grid.querySelector(`.day-col[data-col-key="${c.key}"]`);
     const subCols = dayCol.querySelectorAll(".sub-col");
     // v1.12〜 退去立会(見積アプリ→shared-config)の仮想イベントも合流
-    const taikyoVirtuals = (state.taikyoEvents||[]).map(buildTaikyoVirtualEvent_);
+    const taikyoVirtuals = dedupeTaikyoVirtuals_((state.taikyoEvents||[]).map(buildTaikyoVirtualEvent_));
     // 📋 事務タスク(チェックリスト)はカレンダーに出さずバッジ専用にする(行削除で消えない)
     const events = [...state.events, ...taikyoVirtuals].filter(c.filterEvent).filter(e=>!isJimuTaskEvent_(e));
     const normalEvents = events.filter(e=>!e.allday);
