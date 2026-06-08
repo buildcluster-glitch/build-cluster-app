@@ -100,11 +100,8 @@
   .leave-summary .ls-staff .ls-dot{
     width:8px;height:8px;border-radius:50%;flex:0 0 auto;
   }
-  .leave-summary .ls-staff .frac{font-weight:800;color:#0f172a}
-  .leave-summary .ls-staff.under{
-    border-color:#fb923c;background:#fff7ed;color:#9a3412; /* 会社休日より少ない=出勤多め */
-  }
-  .leave-summary .ls-staff.under .frac{color:#9a3412}
+  .leave-summary .ls-staff .frac{font-weight:800;color:#94a3b8} /* 0(未取得)は控えめグレー */
+  .leave-summary .ls-staff.taken .frac{color:#16a34a}          /* 取得ありは緑で目立たせる */
 
   /* ===== 上段：在席/有給 ===== */
   .leave-band{
@@ -157,6 +154,8 @@
     background:rgba(255,255,255,.85);color:#374151;letter-spacing:.2px;
   }
   .staff-chip .sc-count.sc-empty{color:#9ca3af;background:rgba(255,255,255,.6)}
+  .staff-chip .sc-count.sc-task{cursor:pointer;background:#fff;box-shadow:0 0 0 1.5px rgba(37,99,235,.55) inset}
+  .staff-chip .sc-count.sc-task:hover{background:#eff6ff}
   /* フィルタ解除ボタン (出社セクション右端) */
   .clear-staff-filter{
     flex-shrink:0;background:#0f172a;color:#fff;border:0;
@@ -673,6 +672,38 @@
   .quick-pop .qp-actions button{flex:1;padding:6px;border-radius:6px;border:0;font-size:12px;cursor:pointer;font-weight:600}
   .quick-pop .qp-actions .qp-detail{background:#e0e7ff;color:var(--accent)}
   .quick-pop .qp-actions .qp-close{background:#f3f4f6;color:#64748b}
+
+  /* 📋 簡易タスク チェックリストポップ */
+  .quick-pop.task-pop .tp-count{background:var(--accent);color:#fff;border-radius:10px;padding:1px 8px;font-size:12px}
+  .quick-pop.task-pop .tp-count.done{background:#16a34a}
+  .quick-pop.task-pop .tp-bar{height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden;margin:8px 0 4px}
+  .quick-pop.task-pop .tp-bar i{display:block;height:100%;transition:width .25s}
+  .quick-pop.task-pop .tp-list{display:flex;flex-direction:column;gap:2px;margin-top:4px;max-height:50vh;overflow-y:auto}
+  .quick-pop.task-pop .tp-row{display:flex;align-items:flex-start;gap:8px;padding:5px 6px;border-radius:6px}
+  .quick-pop.task-pop .tp-row:hover{background:#f8fafc}
+  .quick-pop.task-pop .tp-row .tp-prio{flex:0 0 auto;border:0;background:transparent;font-size:12px;line-height:1;cursor:pointer;padding:0;width:18px;text-align:center;opacity:.85}
+  .quick-pop.task-pop .tp-row .tp-prio:hover{opacity:1;transform:scale(1.15)}
+  .quick-pop.task-pop .tp-row input[type=checkbox]{margin-top:2px;width:16px;height:16px;cursor:pointer;flex:0 0 auto}
+  .quick-pop.task-pop .tp-row .tp-text{font-size:13px;line-height:1.4;word-break:break-word;flex:1;cursor:text}
+  .quick-pop.task-pop .tp-row.done .tp-text{text-decoration:line-through;color:#94a3b8}
+  .quick-pop.task-pop .tp-row .tp-del{flex:0 0 auto;border:0;background:transparent;color:#cbd5e1;font-size:16px;line-height:1;cursor:pointer;padding:0 2px}
+  .quick-pop.task-pop .tp-row:hover .tp-del{color:#ef4444}
+  .quick-pop.task-pop .tp-meta{flex:0 0 auto;font-size:10px;color:#16a34a;background:#f0fdf4;border-radius:8px;padding:1px 6px;white-space:nowrap}
+  .quick-pop.task-pop .tp-row.tp-trash .tp-text{text-decoration:line-through}
+  .quick-pop.task-pop .tp-restore,.quick-pop.task-pop .tp-purge{flex:0 0 auto;border:0;background:transparent;font-size:13px;line-height:1;cursor:pointer;padding:0 3px}
+  .quick-pop.task-pop .tp-restore{color:#2563eb}
+  .quick-pop.task-pop .tp-purge{color:#cbd5e1}
+  .quick-pop.task-pop .tp-row:hover .tp-purge{color:#ef4444}
+  .quick-pop.task-pop .tp-edit{flex:1;font-size:13px;padding:2px 6px;border:1px solid var(--accent);border-radius:4px}
+  .quick-pop.task-pop .tp-done-head{font-size:11px;color:var(--muted);font-weight:700;cursor:pointer;padding:5px 6px;margin-top:2px;border-top:1px dashed #e5e7eb;user-select:none}
+  .quick-pop.task-pop .tp-empty{font-size:12px;color:#16a34a;padding:6px;text-align:center}
+  .quick-pop.task-pop .tp-add{display:flex;gap:6px;margin-top:8px}
+  .quick-pop.task-pop .tp-add-input{flex:1;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:6px}
+  .quick-pop.task-pop .tp-add-btn{border:0;background:var(--accent);color:#fff;border-radius:6px;font-size:12px;font-weight:700;padding:5px 12px;cursor:pointer}
+  /* 1行集約タスクチップ: クリック可 + ミニ進捗バー */
+  .event-chip .chip-title.chip-checklist{cursor:pointer}
+  .event-chip .tp-chip-bar{display:inline-block;width:28px;height:5px;background:rgba(0,0,0,.18);border-radius:3px;overflow:hidden;vertical-align:middle;margin:0 2px}
+  .event-chip .tp-chip-bar i{display:block;height:100%}
 
   /* 💬 イベントコメント (チャット + リアクション) */
   .ev-comment-card{background:#fff;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px;position:relative}
@@ -1931,7 +1962,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.17.2</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.18.6</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3214,6 +3245,9 @@
       <div class="field">
         <label>種別</label>
         <select id="lv-type">
+          <optgroup label="所定休日 (会社の休み)">
+            <option value="会社休日">所定休日 (会社の休み・X/8カウント)</option>
+          </optgroup>
           <optgroup label="計画有給 (5日取得義務分)">
             <option value="年休">年休 (年5日義務分)</option>
           </optgroup>
@@ -3224,7 +3258,6 @@
             <option value="半休">半休 (旧表記・0.5日)</option>
           </optgroup>
           <optgroup label="その他">
-            <option value="会社休日">会社休日 (取得)</option>
             <option value="休暇">休暇 (無給)</option>
             <option value="出張">出張</option>
             <option value="研修">研修</option>
@@ -4797,6 +4830,264 @@ async function fetchJizenSchedule(opts={}){
 // 事前イベントかどうか
 function isJizenEvent_(e){
   return e && (e.category === '事前' || (e.title||'').startsWith('事前 '));
+}
+
+// ===== 📋 簡易タスクマネージャー: 箇条書きイベントをチェックリスト化 =====
+// ev.title の各行を解析。先頭が ・- ● ▪ ◦ * などの行=タスク。先頭に ✅☑✓ があれば完了。
+// 完了状態は行頭の ✅ で保持(タイトル文字列に内包=既存同期にそのまま乗る)。
+const TASK_BULLET_RE = /^(\s*)(✅|☑|✓)?\s*([・\-●▪◦*])\s*(.*)$/;
+const TASK_META_RE   = /\s*〔([^〕]*)〕\s*$/;   // 完了ログ 〔M/D 担当〕
+const TASK_PRIO_RE   = /^(🔴|🟡|🔵)\s*/;        // 優先度マーカー(高🔴/中🟡/低🔵)
+const TASK_PRIO_ORDER = ["", "🔴", "🟡", "🔵"]; // none→高→中→低 でサイクル
+const TASK_PRIO_RANK = { "🔴":0, "🟡":1, "":2, "🔵":3 }; // 並び順(高い順)
+function parseTasks_(title){
+  const lines = String(title||"").split(/\r?\n/);
+  const items = [];
+  lines.forEach((ln, i)=>{
+    if(!ln.trim()) return;
+    const isTrash = /^\s*🗑/.test(ln);
+    const work = isTrash ? ln.replace(/^(\s*)🗑\s?/, "$1") : ln;
+    const m = work.match(TASK_BULLET_RE);
+    if(m){
+      let text = (m[4]||"").trim(); let meta = ""; let prio = "";
+      const mm = text.match(TASK_META_RE);
+      if(mm){ meta = (mm[1]||"").trim(); text = text.replace(TASK_META_RE, "").trim(); }
+      const pm = text.match(TASK_PRIO_RE);
+      if(pm){ prio = pm[1]; text = text.slice(pm[0].length).trim(); }
+      items.push({ index:i, text, done: !!m[2], meta, prio, isTask:!isTrash, isTrash });
+    }else{
+      items.push({ index:i, text:work.trim(), done:false, meta:"", prio:"", isTask:false, isTrash:false }); // 見出し/通常行
+    }
+  });
+  return items;
+}
+// チェックリスト対象か(タスク行が2件以上)。対象なら集計を返す
+function getTaskInfo_(ev){
+  if(!ev || !ev.title || ev.title.indexOf("\n") < 0) return null;
+  const items = parseTasks_(ev.title);
+  const tasks = items.filter(x=>x.isTask);
+  const trash = items.filter(x=>x.isTrash);
+  if(tasks.length < 2) return null;
+  const header = items.find(x=>!x.isTask && !x.isTrash && x.text);
+  return { items, tasks, trash, total:tasks.length, done:tasks.filter(t=>t.done).length, headerText: header?header.text:"" };
+}
+// 完了トグル(✅ を付け外し)。完了時は末尾に 〔M/D 担当〕の完了ログを付与
+function toggleTaskLine_(title, lineIndex, who){
+  const lines = String(title||"").split(/\r?\n/);
+  if(lineIndex<0 || lineIndex>=lines.length) return title;
+  let ln = lines[lineIndex];
+  if(/^\s*(✅|☑|✓)/.test(ln)){
+    ln = ln.replace(/^(\s*)(✅|☑|✓)\s?/, "$1").replace(TASK_META_RE, "");   // 完了マーク+ログ除去
+  }else{
+    const d = new Date();
+    const stamp = `${d.getMonth()+1}/${d.getDate()}${who?(" "+who):""}`;
+    ln = ln.replace(/\s*$/, "") + ` 〔${stamp}〕`;                            // 末尾に完了ログ
+    ln = ln.replace(/^(\s*)/, "$1✅ ");                                       // 先頭に ✅
+  }
+  lines[lineIndex] = ln;
+  return lines.join("\n");
+}
+// タスク行を追加(末尾に ・text)
+function addTaskLine_(title, text){
+  text = String(text||"").trim(); if(!text) return title;
+  const base = String(title||"");
+  const sep = (base==="" || base.endsWith("\n")) ? "" : "\n";
+  return base + sep + "・" + text;
+}
+// タスク行をゴミ箱へ(🗑 付与・完了マークは外す)= 復元可能な削除
+function deleteTaskLine_(title, lineIndex){
+  const lines = String(title||"").split(/\r?\n/);
+  if(lineIndex<0 || lineIndex>=lines.length) return title;
+  let ln = lines[lineIndex].replace(/^(\s*)(✅|☑|✓)\s?/, "$1");   // 完了マーク除去
+  if(!/^\s*🗑/.test(ln)) ln = ln.replace(/^(\s*)/, "$1🗑 ");
+  lines[lineIndex] = ln;
+  return lines.join("\n");
+}
+// ゴミ箱から復元(🗑 を外す)
+function restoreTaskLine_(title, lineIndex){
+  const lines = String(title||"").split(/\r?\n/);
+  if(lineIndex<0 || lineIndex>=lines.length) return title;
+  lines[lineIndex] = lines[lineIndex].replace(/^(\s*)🗑\s?/, "$1");
+  return lines.join("\n");
+}
+// 完全削除(行ごと除去)
+function purgeTaskLine_(title, lineIndex){
+  const lines = String(title||"").split(/\r?\n/);
+  if(lineIndex<0 || lineIndex>=lines.length) return title;
+  lines.splice(lineIndex,1);
+  return lines.join("\n");
+}
+// タスク行の文言を編集(インデント/完了マーク/bullet/優先度/完了ログ は保持)
+function editTaskLine_(title, lineIndex, newText){
+  const lines = String(title||"").split(/\r?\n/);
+  if(lineIndex<0 || lineIndex>=lines.length) return title;
+  const raw = lines[lineIndex];
+  const isTrash = /^\s*🗑/.test(raw);
+  const work = isTrash ? raw.replace(/^(\s*)🗑\s?/, "$1") : raw;
+  const m = work.match(TASK_BULLET_RE);
+  const t = String(newText||"").trim();
+  let meta = "", prio = "";
+  if(m){
+    let old = (m[4]||"");
+    const mm = old.match(TASK_META_RE); if(mm){ meta = " 〔"+(mm[1]||"").trim()+"〕"; old = old.replace(TASK_META_RE,""); }
+    const pm = old.match(TASK_PRIO_RE); if(pm) prio = pm[1]+" ";
+  }
+  let out = m ? `${m[1]||""}${m[2]?m[2]+" ":""}${m[3]} ${prio}${t}${meta}` : "・" + t;
+  if(isTrash) out = out.replace(/^(\s*)/, "$1🗑 ");
+  lines[lineIndex] = out;
+  return lines.join("\n");
+}
+// タスク行の優先度を設定(none/🔴/🟡/🔵)。bullet直後に配置・完了ログは末尾維持
+function setTaskPriority_(title, lineIndex, prio){
+  const lines = String(title||"").split(/\r?\n/);
+  if(lineIndex<0 || lineIndex>=lines.length) return title;
+  const raw = lines[lineIndex];
+  const isTrash = /^\s*🗑/.test(raw);
+  const work = isTrash ? raw.replace(/^(\s*)🗑\s?/, "$1") : raw;
+  const m = work.match(TASK_BULLET_RE);
+  if(!m) return title;
+  let text = (m[4]||""); let meta = "";
+  const mm = text.match(TASK_META_RE); if(mm){ meta = " 〔"+(mm[1]||"").trim()+"〕"; text = text.replace(TASK_META_RE,""); }
+  text = text.replace(TASK_PRIO_RE, "").trim();   // 既存の優先度マーカー除去
+  const pre = prio ? prio+" " : "";
+  let out = `${m[1]||""}${m[2]?m[2]+" ":""}${m[3]} ${pre}${text}${meta}`;
+  if(isTrash) out = out.replace(/^(\s*)/, "$1🗑 ");
+  lines[lineIndex] = out;
+  return lines.join("\n");
+}
+// 優先度をサイクル(none→高→中→低→none)
+function cycleTaskPriority_(title, lineIndex){
+  const it = parseTasks_(title).find(x=>x.index===lineIndex);
+  const cur = it ? (it.prio||"") : "";
+  const next = TASK_PRIO_ORDER[(TASK_PRIO_ORDER.indexOf(cur)+1) % TASK_PRIO_ORDER.length];
+  return setTaskPriority_(title, lineIndex, next);
+}
+// 📋 チェックリストポップアップ(チップ クリックで起動)
+function showTaskChecklistPopup(el, ev){
+  document.querySelectorAll(".quick-pop.task-pop").forEach(p=>p.remove());
+  const build = ()=>{
+    const cur = (state.events||[]).find(e=>e.id===ev.id) || ev;
+    return { cur, ti: getTaskInfo_(cur) };
+  };
+  let { cur, ti } = build();
+  if(!ti) return;
+  const pop = document.createElement("div");
+  pop.className = "quick-pop task-pop";
+  const rect = el.getBoundingClientRect();
+  pop.style.visibility = "hidden"; pop.style.left="0"; pop.style.top="0";
+  let collapsed = true;       // 完了タスクは初期は畳む
+  let trashCollapsed = true;  // ゴミ箱は初期は畳む
+  let focusAdd = false;       // 追加後に入力へ再フォーカス
+  // タイトルを transform で更新→保存→再描画
+  const mutate = (transform)=>{
+    const target = (state.events||[]).find(e=>e.id===ev.id);
+    if(!target) return;
+    pushHistory();
+    target.title = transform(target.title);
+    target.updatedAt = new Date().toISOString();
+    saveState();
+    if(typeof cloudQueueEventChange==='function') cloudQueueEventChange(target,'upsert');
+    if(typeof render==='function') render();
+    ({ cur, ti } = build());
+    if(ti) renderInner(); else pop.remove();
+  };
+  // テキストをインライン編集
+  const startEdit_ = (sp, li)=>{
+    const cur0 = sp.textContent;
+    const inp = document.createElement('input');
+    inp.type='text'; inp.className='tp-edit'; inp.value=cur0;
+    sp.replaceWith(inp); inp.focus(); inp.select();
+    let fin=false;
+    const commit=()=>{ if(fin)return; fin=true; const nv=inp.value.trim();
+      if(nv && nv!==cur0){ mutate(t=>editTaskLine_(t, li, nv)); } else { renderInner(); } };
+    inp.onkeydown=e=>{ if(e.key==='Enter'){e.preventDefault();commit();} else if(e.key==='Escape'){fin=true;renderInner();} };
+    inp.onblur=commit;
+  };
+  const renderInner = ()=>{
+    const head = ti.headerText ? escapeHtml(ti.headerText)+" " : "";
+    const pct = ti.total ? Math.round(ti.done/ti.total*100) : 0;
+    const allDone = ti.total>0 && ti.done>=ti.total;
+    // 未完了は優先度順(高🔴→中🟡→無→低🔵)、同位は元順
+    const pending = ti.tasks.filter(t=>!t.done).slice()
+      .sort((a,b)=> ((TASK_PRIO_RANK[a.prio]??2)-(TASK_PRIO_RANK[b.prio]??2)) || a.index-b.index);
+    const doneTasks = ti.tasks.filter(t=>t.done);
+    const trash = ti.trash || [];
+    const PRIO_COLOR = {"🔴":"#dc2626","🟡":"#eab308","🔵":"#3b82f6"};
+    const rowHtml = (t)=>`
+      <div class="tp-row ${t.done?'done':''}" style="border-left:3px solid ${PRIO_COLOR[t.prio]||'transparent'}">
+        <button class="tp-prio" data-line="${t.index}" title="優先度(クリックで 高→中→低→無)">${t.prio||'⚪'}</button>
+        <input type="checkbox" data-line="${t.index}" ${t.done?'checked':''}>
+        <span class="tp-text" data-line="${t.index}" title="クリックで編集">${escapeHtml(t.text)}</span>
+        ${t.done && t.meta ? `<span class="tp-meta" title="完了ログ">${escapeHtml(t.meta)}</span>` : ""}
+        <button class="tp-del" data-line="${t.index}" title="ゴミ箱へ">×</button>
+      </div>`;
+    const trashRowHtml = (t)=>`
+      <div class="tp-row tp-trash">
+        <span class="tp-text" style="color:#94a3b8">${escapeHtml(t.text)}</span>
+        <button class="tp-restore" data-line="${t.index}" title="復元">♻</button>
+        <button class="tp-purge" data-line="${t.index}" title="完全に削除">🗑</button>
+      </div>`;
+    pop.innerHTML = `
+      <div class="qp-title">📋 ${head}タスク <span class="tp-count ${allDone?'done':''}">${allDone?'✓ ':''}${ti.done}/${ti.total}</span></div>
+      <div class="tp-bar"><i style="width:${pct}%;background:${allDone?'#16a34a':'#3b82f6'}"></i></div>
+      <div class="tp-list">
+        ${pending.map(rowHtml).join("") || (doneTasks.length?'<div class="tp-empty">未完了なし 🎉</div>':'')}
+        ${doneTasks.length ? `<div class="tp-done-head" data-sec="done" role="button">${collapsed?'▸':'▾'} 完了 ${doneTasks.length}件</div>${collapsed?'':doneTasks.map(rowHtml).join("")}` : ""}
+        ${trash.length ? `<div class="tp-done-head" data-sec="trash" role="button">${trashCollapsed?'▸':'▾'} 🗑 ゴミ箱 ${trash.length}件</div>${trashCollapsed?'':trash.map(trashRowHtml).join("")}` : ""}
+      </div>
+      <div class="tp-add">
+        <input type="text" class="tp-add-input" placeholder="＋ タスクを追加 (Enter)">
+        <button class="tp-add-btn">追加</button>
+      </div>
+      <div class="qp-actions">
+        <button class="qp-detail" data-role="open-modal">✏️ 本文編集</button>
+        <button class="qp-close" data-role="close">閉じる</button>
+      </div>`;
+    pop.querySelectorAll('input[type=checkbox][data-line]').forEach(cb=>{
+      cb.onchange = ()=> mutate(t=>toggleTaskLine_(t, parseInt(cb.dataset.line,10), (typeof getMyself==='function'?getMyself():"")));
+    });
+    pop.querySelectorAll('.tp-prio').forEach(b=>{
+      b.onclick = ()=> mutate(t=>cycleTaskPriority_(t, parseInt(b.dataset.line,10)));
+    });
+    pop.querySelectorAll('.tp-del').forEach(b=>{
+      b.onclick = ()=> mutate(t=>deleteTaskLine_(t, parseInt(b.dataset.line,10)));   // ゴミ箱へ(復元可)
+    });
+    pop.querySelectorAll('.tp-restore').forEach(b=>{
+      b.onclick = ()=> mutate(t=>restoreTaskLine_(t, parseInt(b.dataset.line,10)));
+    });
+    pop.querySelectorAll('.tp-purge').forEach(b=>{
+      b.onclick = ()=>{ if(confirm('完全に削除しますか？(復元できません)')) mutate(t=>purgeTaskLine_(t, parseInt(b.dataset.line,10))); };
+    });
+    pop.querySelectorAll('.tp-text[data-line]').forEach(sp=>{
+      sp.onclick = ()=> startEdit_(sp, parseInt(sp.dataset.line,10));
+    });
+    pop.querySelectorAll('.tp-done-head').forEach(dh=>{
+      dh.onclick = ()=>{ if(dh.dataset.sec==='trash') trashCollapsed=!trashCollapsed; else collapsed=!collapsed; renderInner(); };
+    });
+    const addInput = pop.querySelector('.tp-add-input');
+    const doAdd = ()=>{ const v=addInput.value.trim(); if(!v) return; focusAdd=true; mutate(t=>addTaskLine_(t, v)); };
+    pop.querySelector('.tp-add-btn').onclick = doAdd;
+    addInput.onkeydown = e=>{ if(e.key==='Enter'){ e.preventDefault(); doAdd(); } };
+    pop.querySelector('[data-role="open-modal"]').onclick = ()=>{ pop.remove(); openEventModal(cur); };
+    pop.querySelector('[data-role="close"]').onclick = ()=>pop.remove();
+    if(focusAdd){ focusAdd=false; addInput.focus(); }
+  };
+  renderInner();
+  document.body.appendChild(pop);
+  requestAnimationFrame(()=>{
+    const rc = pop.getBoundingClientRect();
+    const vw = window.innerWidth, vh = window.innerHeight, mg=8;
+    let top = rect.bottom + 4;
+    if(top + rc.height + mg > vh){ top = rect.top - rc.height - 4; if(top<mg) top = Math.max(mg, vh - rc.height - mg); }
+    let left = rect.left;
+    if(left + rc.width + mg > vw) left = vw - rc.width - mg;
+    if(left < mg) left = mg;
+    pop.style.top = top+"px"; pop.style.left = left+"px"; pop.style.visibility = "visible";
+  });
+  const closeOnOutside = (e2)=>{
+    if(!pop.contains(e2.target)){ pop.remove(); document.removeEventListener("pointerdown", closeOnOutside, true); }
+  };
+  setTimeout(()=>document.addEventListener("pointerdown", closeOnOutside, true), 50);
 }
 // 同一 _jizenSourceId(=台帳NO)で複数イベントが出来てしまった場合の重複統合
 // (複数デバイス/全件PULLで二重insert発生。さらにクラウド送信では _jizenSourceId が
@@ -6438,25 +6729,26 @@ function renderLeaveSummary(){
   const holN = actualHol>0 ? actualHol : refHol;
   const holLabel = actualHol>0 ? `${holN}日` : `${refHol}日(予定)`;
   const num = v => (Math.round(v*10)/10).toString().replace(/\.0$/,"");
-  // 各自: 今月の休み消化 = 会社休日(holN) − 当番日数 + 個人休み(当番/会社休日取得 以外・半休0.5)
+  // 各自: 今月「実際に取った休み」の日数(レコードのみ集計・自動埋めなし)
+  //   対象=有給/年休/半休(0.5)/休暇/別件/体調不良/会社休日(取得) 等。除外=当番/出張/研修(休みではない)
+  //   → 誰も取ってなければ 0/会社休日 になる
   const HALF = new Set(["半休","有給(AM)","有給(PM)"]);
+  const NONREST = new Set(["当番","出張","研修"]);
   const staffHtml = STAFF.map(s=>{
-    let duty = 0, extra = 0;
+    let x = 0;
     (state.leaves||[]).forEach(l=>{
-      if(l.staff!==s) return;
+      if(l.staff!==s || NONREST.has(l.type)) return;
       const days = overlapDays(l); if(!days) return;
-      if(l.type==="当番") duty += days;
-      else if(l.type!=="会社休日") extra += days * (HALF.has(l.type) ? 0.5 : 1);
+      x += days * (HALF.has(l.type) ? 0.5 : 1);
     });
-    let x = holN - duty + extra; if(x<0) x=0;
     const frac = `${num(x)}/${num(holN)}`;
-    const under = x < holN;     // 会社休日より少ない=当番等で出勤
+    const taken = x > 0;
     const bg = (typeof STAFF_COLORS!=='undefined' && STAFF_COLORS[s]) ? STAFF_COLORS[s] : "#9ca3af";
-    return `<span class="ls-staff ${under?'under':''}" title="${escapeHtml(s)} ${month}月の休み ${frac}日 (会社休日${num(holN)} − 当番${num(duty)} + 個人休み${num(extra)})"><span class="ls-dot" style="background:${bg}"></span>${escapeHtml(s)} <span class="frac">${frac}</span></span>`;
+    return `<span class="ls-staff ${taken?'taken':''}" title="${escapeHtml(s)} ${month}月の取得休み ${num(x)}日 / 会社休日${num(holN)}日 (有給/年休/半休/休暇/別件/体調不良 等・当番/出張/研修は除外)"><span class="ls-dot" style="background:${bg}"></span>${escapeHtml(s)} <span class="frac">${frac}</span></span>`;
   }).join("");
   el.innerHTML =
     `<span class="ls-holiday" title="${year}年${month}月の会社休日(全員共通)">🏖 ${month}月の休み ${holLabel}</span>`
-    + `<span class="ls-label">各自の消化</span>`
+    + `<span class="ls-label">各自の取得</span>`
     + staffHtml;
 }
 
@@ -6514,9 +6806,19 @@ function renderLeaveBand(){
     const display = (typeof getStaffDisplayName === 'function') ? getStaffDisplayName(s) : s;
     const {counts, total} = computeTodayBreakdown(s);
     const short = fmtBreakdown(counts);
-    const subHtml = total > 0
-      ? `<span class="sc-count">${short}</span>`
-      : `<span class="sc-count sc-empty">―</span>`;
+    // 📋 今日その人が関与するチェックリスト(箇条書き)イベント → 内訳をクリックでタスクを開く
+    const taskEvs = (typeof getTaskInfo_==='function')
+      ? state.events.filter(ev=> ev.date===todayStr && (ev.staff===s || (ev.participants||[]).includes(s)) && getTaskInfo_(ev))
+      : [];
+    let subHtml;
+    if(total > 0 && taskEvs.length){
+      const ti0 = getTaskInfo_(taskEvs[0]);
+      subHtml = `<span class="sc-count sc-task" data-task-ev="${escapeHtml(taskEvs[0].id)}" title="📋 タスクを開く (${ti0.done}/${ti0.total})">📋 ${short}</span>`;
+    } else if(total > 0){
+      subHtml = `<span class="sc-count">${short}</span>`;
+    } else {
+      subHtml = `<span class="sc-count sc-empty">―</span>`;
+    }
     const isSelected = selectedStaffFilter.has(s);
     const cls = ["staff-chip"];
     if(isSelected) cls.push("selected");
@@ -6572,13 +6874,21 @@ function renderLeaveBand(){
       </span>
     </div>
   `;
-  document.getElementById("addLeaveInline").onclick = ()=>openLeaveModal(null, {type:"有給"});
+  document.getElementById("addLeaveInline").onclick = ()=>openLeaveModal(null, {type:"会社休日"});
   document.getElementById("addDutyInline").onclick = ()=>openLeaveModal(null, {type:"当番"});
   // 🏢 出社スタッフチップ クリック → フィルタトグル
   band.querySelectorAll("[data-staff-filter]").forEach(chip=>{
     chip.onclick = (e)=>{
       e.stopPropagation();
       toggleStaffFilter(chip.dataset.staffFilter);
+    };
+  });
+  // 📋 出社チップの内訳バッジ → クリックでそのタスク(チェックリスト)を開く
+  band.querySelectorAll("[data-task-ev]").forEach(badge=>{
+    badge.onclick = (e)=>{
+      e.stopPropagation();   // 親チップの担当フィルタを発火させない
+      const tev = (state.events||[]).find(x=>x.id===badge.dataset.taskEv);
+      if(tev && typeof showTaskChecklistPopup==='function') showTaskChecklistPopup(badge, tev);
     };
   });
   // ✕ フィルタ解除ボタン
@@ -6997,7 +7307,9 @@ function renderCalendar(){
         ? (typeof ev.freeTop === "number" ? ev.freeTop : 0)
         : ((timeToMin(ev.start) - HOUR_START*60)/60)*HOUR_PX;
       // タイトル行数に応じてチップ高さを決定（改行ありで自動拡大、自然折返しも考慮）
-      const lineCount = ((ev.title||"").match(/\n/g) || []).length + 1;
+      // 📋 チェックリスト(箇条書き)イベントは1行に集約表示するので高さも1行扱い
+      const taskInfo = (typeof getTaskInfo_==='function') ? getTaskInfo_(ev) : null;
+      const lineCount = taskInfo ? 1 : (((ev.title||"").match(/\n/g) || []).length + 1);
       // 参加者バッジ: 2名以上で別行表示。1行あたり24px、7名以上は2段
       const __staffN = (ev.participants||[]).length + (ev.staff?1:0);
       const __staffRows = __staffN >= 2 ? (__staffN >= 7 ? 2 : 1) : 0;
@@ -7072,6 +7384,21 @@ function renderCalendar(){
       const badgeTooltip = (cont && cat) ? `${cont.name} ${cat.name}` : (cont ? cont.name : (cat ? cat.name : ""));
       // チップ用: 1行目のみ表示。複数行/メモはホバーで全文表示。
       const titleFirstLine = (ev.title || "").split(/\r?\n/)[0];
+      // 📋 簡易タスク: 箇条書きイベントは1行に集約(📋 done/total + ミニ進捗バー + 次のタスク) — taskInfoは上部で算出済
+      let compactTaskHtml = "";
+      if(taskInfo){
+        const allDone = taskInfo.done >= taskInfo.total;
+        const pct = taskInfo.total ? Math.round(taskInfo.done/taskInfo.total*100) : 0;
+        // ラベルは固定:「{見出し or カテゴリ}タスク」(個別タスク名は出さない)
+        const labelBase = taskInfo.headerText || (cat && cat.name) || "";
+        const label = (labelBase ? labelBase : "") + "タスク";
+        // 未完了に高優先度(🔴)があれば先頭に表示
+        const hiPrio = taskInfo.tasks.some(t=>!t.done && t.prio==="🔴") ? "🔴" : "";
+        const bar = `<span class="tp-chip-bar"><i style="width:${pct}%;background:${allDone?'#16a34a':'#3b82f6'}"></i></span>`;
+        compactTaskHtml = allDone
+          ? `📋 <b style="color:#16a34a">✓ ${taskInfo.done}/${taskInfo.total}</b> ${bar} <span style="opacity:.8">${escapeHtml(label)} 完了</span>`
+          : `${hiPrio}📋 <b>${taskInfo.done}/${taskInfo.total}</b> ${bar} <span style="opacity:.9">${escapeHtml(label)}</span>`;
+      }
       // ホバーtooltip(改行表示には title属性で十分)
       const fullTooltip = [
         ev.title || "",
@@ -7125,10 +7452,9 @@ function renderCalendar(){
       if(isMonth){
         // 改行ありなら全行表示(multi-line)、なければ1行省略(single-line)
         const isMulti = lineCount > 1;
-        const titleHtml = isMulti
-          ? escapeHtml(ev.title || "").replace(/\n/g, "<br>")
-          : escapeHtml(titleFirstLine);
-        const titleClass = isMulti ? "chip-title multi-line" : "chip-title single-line";
+        const titleHtml = taskInfo ? compactTaskHtml
+          : (isMulti ? escapeHtml(ev.title || "").replace(/\n/g, "<br>") : escapeHtml(titleFirstLine));
+        const titleClass = (taskInfo ? "chip-checklist " : "") + ((taskInfo || !isMulti) ? "chip-title single-line" : "chip-title multi-line");
         const timeBox = isAnytime ? "" : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;
         // 参加者バッジは title 外(チップ直下)に独立行として配置
         el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${titleHtml}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${__linkInfoHtml}</span>${timeBox}${staffBadges}`;
@@ -7136,10 +7462,9 @@ function renderCalendar(){
         el.title = fullTooltip;
       } else if(isFree){
         const isMulti = lineCount > 1;
-        const titleHtml = isMulti
-          ? escapeHtml(ev.title || "").replace(/\n/g, "<br>")
-          : escapeHtml(titleFirstLine);
-        const titleClass = isMulti ? "chip-title multi-line" : "chip-title single-line";
+        const titleHtml = taskInfo ? compactTaskHtml
+          : (isMulti ? escapeHtml(ev.title || "").replace(/\n/g, "<br>") : escapeHtml(titleFirstLine));
+        const titleClass = (taskInfo ? "chip-checklist " : "") + ((taskInfo || !isMulti) ? "chip-title single-line" : "chip-title multi-line");
         el.classList.add("event-chip");
         const timeBox = isAnytime ? "" : `<span class="chip-time">終日</span>`;
         el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${titleHtml}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${__linkInfoHtml}</span>${timeBox}${staffBadges}`;
@@ -7147,13 +7472,13 @@ function renderCalendar(){
         el.title = fullTooltip;
       } else {
         // 担当別ビュー等の縦長ブロック: タイトル内にカテゴリプレフィクス
-        const titleHtmlMulti = escapeHtml(ev.title || "").replace(/\n/g, "<br>");
+        const titleHtmlMulti = taskInfo ? compactTaskHtml : escapeHtml(ev.title || "").replace(/\n/g, "<br>");
         const inlineCatPrefix = cat
           ? `<span class="title-cat" style="background:rgba(255,255,255,.35);color:${fg};padding:0 4px;border-radius:3px;margin-right:4px;font-size:9px;font-weight:700">${escapeHtml(cat.name)}</span>`
           : "";
         const commuteInline = ev.commute ? ` <span class="chip-commute" style="font-size:9px;padding:0 3px">${ev.commute==="直行直帰"?"🚗⇄":ev.commute==="直行"?"🚗→":"→🏠"}</span>` : "";
         el.innerHTML = isShort
-          ? `<div class="title">${inlineCatPrefix}${escapeHtml(titleFirstLine)}${commuteInline}${showStaff&&staffList.length?` <span style="opacity:.8">/${multi?staffList.length+"名":escapeHtml(staffList[0].slice(0,2))}</span>`:""}${progIcon}${__linkInfoHtml}</div>`
+          ? `<div class="title">${inlineCatPrefix}${taskInfo?compactTaskHtml:escapeHtml(titleFirstLine)}${commuteInline}${showStaff&&staffList.length?` <span style="opacity:.8">/${multi?staffList.length+"名":escapeHtml(staffList[0].slice(0,2))}</span>`:""}${progIcon}${__linkInfoHtml}</div>`
           : `<div class="time">${ev.start}〜${ev.end}${commuteInline}</div>
              <div class="title">${inlineCatPrefix}${titleHtmlMulti}${progIcon}${__linkInfoHtml}</div>
              ${showStaff ? (multi ? participantsHtml : (ev.staff ? `<div class="staff">${staffShortLabel}</div>`:"")) : ""}`;
@@ -8318,6 +8643,14 @@ function attachDragOrClick(el, ev){
             }, 250);
           }
         }
+        // 📋 チェックリストイベント(箇条書き): 1クリックでチェックリストポップ(進捗トグル)
+        else if(typeof getTaskInfo_==='function' && getTaskInfo_(ev)){
+          if(el._jizenClickTimer) clearTimeout(el._jizenClickTimer);
+          el._jizenClickTimer = setTimeout(()=>{
+            el._jizenClickTimer = null;
+            showTaskChecklistPopup(el, ev);
+          }, 250);
+        }
         // それ以外の予定は単純クリックでは何もしない（ダブルクリック → 担当者ピッカー）
         return;
       }
@@ -8940,7 +9273,7 @@ function openLeaveModal(lv, defaults){
   }
   document.getElementById("lv-start").value = lv?.start || defStart;
   document.getElementById("lv-end").value   = lv?.end   || defEnd;
-  document.getElementById("lv-type").value  = lv?.type  || defaults?.type || "有給";
+  document.getElementById("lv-type").value  = lv?.type  || defaults?.type || "会社休日"; // 既定=所定休日(X/8カウント)
   document.getElementById("lv-memo").value  = lv?.memo  || (defaults?.type==="当番" ? "在庫/倉庫/ゴミ/除草" : "");
   leaveModal.classList.add("show");
 }
