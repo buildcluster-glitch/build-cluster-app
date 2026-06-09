@@ -1984,7 +1984,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.22.1</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.22.2</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4151,10 +4151,16 @@ function attachCheckDragOrClick(el, ck){
 }
 
 function renderCheckCard(ck, today){
-  const cont = contractorInfo(ck.contractor);
+  // 元請: 短縮名(山一)でも フルネーム(株式会社山一地所)でも解決
+  const cont = contractorInfo(ck.contractor) || contractorInfo(shortenCompany(ck.contractor||""));
   const contBadge = cont
     ? `<span class="badge-sm" style="background:${cont.color};color:${textColorFor(cont.color)}">${escapeHtml(cont.name)}</span>`
     : "";
+  // 🏷 「最終確認」バッジ: 元請けごとの色(元請未設定は山一=原状回復前提の紫)。元請名はホバー
+  const __fcCont = cont || contractorInfo("山一");
+  const __fcBg = __fcCont ? __fcCont.color : "#7c3aed";
+  const __fcTip = cont ? `元請: ${cont.name} ・ 種別: 最終確認` : "種別: 最終確認";
+  const finalCheckBadge = `<span class="badge-sm" title="${escapeHtml(__fcTip)}" style="background:${__fcBg};color:${textColorFor(__fcBg)};font-weight:700">最終確認</span>`;
   const __showStaff = ck.staff && !isHiddenStaffBadge_(ck.staff);  // 「大村まどか」等は非表示
   const staffBadge = __showStaff
     ? `<span class="badge-sm" style="background:${STAFF_COLORS[ck.staff]||"#9ca3af"};color:${textColorFor(STAFF_COLORS[ck.staff]||"#9ca3af")}">${escapeHtml(ck.staff)}</span>`
@@ -4289,7 +4295,7 @@ function renderCheckCard(ck, today){
   return `<div class="check-card ${urgCls}${isClickable?" clickable":""}" data-check-id="${ck.id}" ${styleAttr}>
     <div class="ck-title">${syncMark}${escapeHtml(ck.title)}</div>
     <div class="row">
-      ${contBadge}
+      ${finalCheckBadge}
       ${staffBadge}
       ${volBadge}
       ${apptBadge}
