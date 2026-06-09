@@ -1984,7 +1984,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.23.6</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.24</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -6171,6 +6171,7 @@ function extractRepairs(properties){
       responseDate: normalizeDate(p.responseDate),
       responseDateRaw: p.responseDate || "",
       responseTime: p.responseTime || "",
+      responseContractor: p.responseContractor || prev?.responseContractor || "",  // 対応業者(思綺美装等・見積アプリv1.4.571〜)
       workVolume: p.workVolume || (p.workloadStatus && p.workloadStatus.level) || "",
       workloadStatus: p.workloadStatus || null,
       customerName: p.customerName || "",
@@ -7439,9 +7440,14 @@ function renderCalendar(){
           const wColor = STAFF_COLORS[wKey] || "#fff";
           const wFg = wColor === "#fff" ? "#0f172a" : textColorFor(wColor);
           const label = `🔧 ${r.name}${r.room?" "+r.room:""}${tStr}`;
+          const __vendorB = (r.responseContractor||"").trim();
+          const __vendorBadgeB = __vendorB
+            ? `<span style="background:#e0e7ff;color:#3730a3;font-size:9px;font-weight:700;padding:0 4px;border-radius:3px;margin-left:3px;white-space:nowrap">🛠${escapeHtml(__vendorB)}</span>`
+            : "";
           const tipLines = [
             `🔧 修繕アポ: ${r.contractor?r.contractor+" / ":""}${r.name}${r.room?" "+r.room:""}`,
             `${wf}${t?" / "+t:""}`,
+            __vendorB ? `🛠 対応業者: ${__vendorB}` : "",
             contactPerson ? `📞 連絡者: ${contactPerson}` : "",
             worker ? `🔨 作業担当: ${worker}` : "",
             r.customerName ? `お客様: ${r.customerName}` : "",
@@ -7450,7 +7456,7 @@ function renderCalendar(){
             r.creatorMemo ? `\n📝 メモ: ${r.creatorMemo}` : "",
             "\n(クリックで編集シート)",
           ].filter(Boolean).join("\n");
-          inner += `<span class="repair-appt-chip" data-repair-id="${r.id}" style="background:${wColor};color:${wFg};border-left:4px solid ${wfBar}" title="${escapeHtml(tipLines)}">${tagSpan}${escapeHtml(label)}</span>`;
+          inner += `<span class="repair-appt-chip" data-repair-id="${r.id}" style="background:${wColor};color:${wFg};border-left:4px solid ${wfBar}" title="${escapeHtml(tipLines)}">${tagSpan}${escapeHtml(label)}${__vendorBadgeB}</span>`;
         }
       });
     }
@@ -7981,10 +7987,16 @@ function renderCalendar(){
         const __desc = (r.requestDesc || r.requestDescFull || "").trim();
         const __descShort = __desc ? (__desc.length>34 ? __desc.slice(0,34)+"…" : __desc) : "";
         const label = `🔧 ${r.name}${r.room?" "+r.room:""}`;
+        // 🛠 対応業者バッジ(思綺美装等・見積アプリv1.4.571〜)
+        const __vendor = (r.responseContractor||"").trim();
+        const __vendorBadge = __vendor
+          ? `<span style="background:#e0e7ff;color:#3730a3;font-size:9px;font-weight:700;padding:0 4px;border-radius:3px;margin-left:3px;white-space:nowrap;flex-shrink:0">🛠${escapeHtml(__vendor)}</span>`
+          : "";
         // ホバー詳細(連絡者・作業担当・メモ含む)
         const tipLines = [
           `🔧 修繕アポ: ${r.contractor?r.contractor+" / ":""}${r.name}${r.room?" "+r.room:""}`,
           `${wf} / ${r.responseTime||timeStr}`,
+          __vendor ? `🛠 対応業者: ${__vendor}` : "",
           contactPerson ? `📞 連絡者: ${contactPerson}` : "",
           worker ? `🔨 作業担当: ${worker}` : "",
           r.customerName ? `お客様: ${r.customerName}` : "",
@@ -8003,7 +8015,7 @@ function renderCalendar(){
         const __descLine = __descShort
           ? `<span style="display:block;width:100%;font-size:10px;font-weight:500;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2">${escapeHtml(__descShort)}</span>`
           : "";
-        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis">${tagHtml}${escapeHtml(label)}</span>${__descLine}</span><span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>`;
+        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis">${tagHtml}${escapeHtml(label)}${__vendorBadge}</span>${__descLine}</span><span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>`;
         attachRepairChipHover(el, r); // リッチtooltip
         el.onclick = (ev)=>{
           ev.stopPropagation();
@@ -8575,6 +8587,10 @@ function showRepairTip(r, mouseX, mouseY){
   if(r.responseDate || r.responseTime){
     const dt = `${r.responseDate||"日付未"}${r.responseTime?" "+r.responseTime:""}`;
     rows.push(`<div class="tt-row"><span class="tt-key">📅</span><span class="tt-val">${escapeHtml(dt)}</span></div>`);
+  }
+  // 🛠 対応業者(見積アプリv1.4.571〜)
+  if(r.responseContractor){
+    rows.push(`<div class="tt-row"><span class="tt-key">🛠</span><span class="tt-val">対応業者: <b>${escapeHtml(r.responseContractor)}</b></span></div>`);
   }
   // 連絡者
   if(r.contactPerson){
