@@ -1984,7 +1984,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.24.4</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.24.5</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7791,8 +7791,11 @@ function renderCalendar(){
       el.dataset.startMin = String(isFree ? 0 : (timeToMin(ev.start) - HOUR_START*60));
       // リーダー(ev.staff)も手動色(ev.color)も無い → 背景透明 + 点線枠で「未指定」を明示
       const noLeader = !ev.color && !STAFF_COLORS[ev.staff];
-      const bg = noLeader ? "transparent" : (ev.color || STAFF_COLORS[ev.staff]);
-      const fg = noLeader ? "#0f172a" : textColorFor(bg);
+      // 事前はデフォ白背景(担当色で着色しない・手動色は尊重)。点線枠は付けない(担当はある)
+      const __jizenDefault = ev.category==='事前' && !ev.color;
+      const __whiteBg = noLeader || __jizenDefault;
+      const bg = __whiteBg ? "transparent" : (ev.color || STAFF_COLORS[ev.staff]);
+      const fg = __whiteBg ? "#0f172a" : textColorFor(bg);
       el.style.background = bg;
       el.style.color = fg;
       if(noLeader){
@@ -7815,9 +7818,9 @@ function renderCalendar(){
         : "";
       const isAnytime = ev.timeMode === "anytime";
       const cont = contractorInfo(ev.contractor);
-      // チップ背景 = 手動色 > リーダー色(ev.staff) > 透明(リーダー未指定時)
-      const chipBg = noLeader ? "transparent" : (ev.color || STAFF_COLORS[ev.staff]);
-      const chipFg = noLeader ? "#0f172a" : textColorFor(chipBg);
+      // チップ背景 = 手動色 > リーダー色(ev.staff) > 透明(リーダー未指定 or 事前デフォ)
+      const chipBg = __whiteBg ? "transparent" : (ev.color || STAFF_COLORS[ev.staff]);
+      const chipFg = __whiteBg ? "#0f172a" : textColorFor(chipBg);
       // カテゴリプレフィクスの色 = 元請け色 > カテゴリ色 > 半透明白
       const catBoxBg = cont ? cont.color : (cat ? cat.color : null);
       const catBoxFg = catBoxBg ? textColorFor(catBoxBg) : chipFg;
@@ -8361,10 +8364,12 @@ function renderMonth(){
       `<div class="month-leave" data-leave-id="${l.id}" title="${escapeHtml(l.memo||"")}">${escapeHtml(l.staff)} ${escapeHtml(leaveTypeLabel_(l.type))}</div>`
     ).join("");
     const eventsHtml = showEvents.map(ev=>{
-      // リーダー未指定 → 透明背景+点線
+      // リーダー未指定 → 透明背景+点線 / 事前はデフォ白(担当色で着色しない・点線なし)
       const noLeader = !ev.color && !STAFF_COLORS[ev.staff];
-      const bg = noLeader ? "transparent" : (ev.color || STAFF_COLORS[ev.staff]);
-      const fg = noLeader ? "#0f172a" : textColorFor(bg);
+      const __jizenDefault = ev.category==='事前' && !ev.color;
+      const __whiteBg = noLeader || __jizenDefault;
+      const bg = __whiteBg ? "transparent" : (ev.color || STAFF_COLORS[ev.staff]);
+      const fg = __whiteBg ? "#0f172a" : textColorFor(bg);
       const extraStyle = noLeader ? "border:1px dashed #94a3b8;" : "";
       const staffList = eventStaffList(ev);
       const badge = staffList.length>=2 ? ` 👥${staffList.length}` : "";
