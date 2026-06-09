@@ -1984,7 +1984,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.22.5</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.23</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4158,6 +4158,53 @@ function isRepairCheck_(ck){
   if(ck.kojiName) return ck.kojiName !== "原状回復工事";
   if(/アポ|手配|待機|長期連絡/.test(ck.workflowStatus || "")) return true;
   return /修繕|修理|漏水|補修/.test(ck.memo || "") && !/原状回復/.test(ck.memo || "");
+}
+// 🔧 修繕check → 本体カレンダー(時間グリッド)用の修繕仮想イベント。
+//   修繕は最終確認カードから除外したが「普通のカレンダー」には出したい。日付=checkDate(最終確認日)。
+//   アポ済(responseDateあり)で既に修繕チップ(state.repairs)としてグリッドに出る物件は二重防止で除外(ext idで突合)。
+function buildRepairCheckVirtuals_(){
+  const checks = (state.checks||[]).filter(isRepairCheck_);
+  if(!checks.length) return [];
+  const shownRepair = new Set();
+  (state.repairs||[]).forEach(r=>{
+    if(!r.responseDate) return;                       // アポ日ありの修繕だけグリッドに出ている
+    if(r.extEstimateId)  shownRepair.add('e:'+r.extEstimateId);
+    if(r.extDriveFileId) shownRepair.add('d:'+r.extDriveFileId);
+  });
+  const out = [];
+  checks.forEach(ck=>{
+    if(!ck.checkDate) return;
+    if((ck.extEstimateId && shownRepair.has('e:'+ck.extEstimateId)) ||
+       (ck.extDriveFileId && shownRepair.has('d:'+ck.extDriveFileId))) return; // 既に修繕チップで出る→二重防止
+    const contShort = (typeof shortenCompany==='function') ? shortenCompany(ck.contractor||"") : (ck.contractor||"");
+    const cont = contractorInfo(contShort) || contractorInfo(ck.contractor);
+    // 時刻: responseTime が "10:00" 等パース可→時間グリッド / それ以外→時間未定(anytime)
+    const m = String(ck.responseTime||"").match(/^(\d{1,2})[:時](\d{1,2})?/);
+    let start="09:00", end="10:00", timeMode="anytime", allday=false;
+    if(m){
+      const hh=String(m[1]).padStart(2,'0'), mm=String(m[2]||'00').padStart(2,'0');
+      start=`${hh}:${mm}`;
+      end=`${String(Math.min(parseInt(hh,10)+1,19)).padStart(2,'0')}:${mm}`;
+      timeMode="timed";
+    }
+    out.push({
+      id: "_repchk_"+ck.id,
+      title: ck.title,
+      category: "修繕",
+      contractor: cont ? cont.name : (ck.contractor||""),
+      staff: ck.staff || "",
+      participants: [],
+      date: ck.checkDate,
+      start, end, allday, timeMode,
+      color: "",
+      memo: ck.memo || "",
+      importance: [],
+      source: "repair-check",
+      _readOnly: true,
+      updatedAt: ck.updatedAt || "",
+    });
+  });
+  return out;
 }
 function renderCheckCard(ck, today){
   // 元請: 短縮名(山一)でも フルネーム(株式会社山一地所)でも解決
@@ -7703,8 +7750,9 @@ function renderCalendar(){
     const subCols = dayCol.querySelectorAll(".sub-col");
     // v1.12〜 退去立会(見積アプリ→shared-config)の仮想イベントも合流
     const taikyoVirtuals = buildTaikyoVirtuals_();
+    const repairVirtuals = buildRepairCheckVirtuals_();   // 🔧修繕を本体グリッドにも表示
     // 📋 事務タスク(チェックリスト)はカレンダーに出さずバッジ専用にする(行削除で消えない)
-    const events = [...state.events, ...taikyoVirtuals].filter(c.filterEvent).filter(e=>!isJimuTaskEvent_(e));
+    const events = [...state.events, ...taikyoVirtuals, ...repairVirtuals].filter(c.filterEvent).filter(e=>!isJimuTaskEvent_(e));
     const normalEvents = events.filter(e=>!e.allday);
     const alldayEvents = events.filter(e=>e.allday);
     const placedNormal = layoutEvents(normalEvents).map(p=>({...p, isFree:false}));
@@ -8314,7 +8362,8 @@ function renderMonth(){
     const dayCls = d.getDay()===6?"sat":(d.getDay()===0?"sun":"");
     // v1.12〜 退去立会(virtual)も含めて月ビューに表示(重複集約・ローテ済)
     const __taikyoVs = buildTaikyoVirtuals_();
-    const dayEvents = [...state.events, ...__taikyoVs].filter(ev=>ev.date===dStr && !ev.allday && isEventVisible(ev))
+    const __repairVs = buildRepairCheckVirtuals_();   // 🔧修繕も月ビューに
+    const dayEvents = [...state.events, ...__taikyoVs, ...__repairVs].filter(ev=>ev.date===dStr && !ev.allday && isEventVisible(ev))
       .sort((a,b)=>timeToMin(a.start)-timeToMin(b.start));
     const dayLeaves = state.leaves.filter(l=>dStr>=l.start && dStr<=l.end);
     const MAX_SHOW = 8;
