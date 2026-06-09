@@ -1984,7 +1984,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.20.5</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.21</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4684,6 +4684,32 @@ function dedupeTaikyoVirtuals_(virtuals){
     return !hit;                                      // 手動とかぶる共有立会は隠す(手動優先)
   });
 }
+// 🔂 共有立会の重複集約: 同じ立会が複数ソース(見積id＋クラ助id)で来ると二重カウント/二重表示になる。
+//   「物件名(正規化)+号室+日付」で1件に集約。確定>仮置き、時刻あり>なし を優先して残す。
+function dedupeTaikyoSlots_(virtuals){
+  if(!virtuals || virtuals.length < 2) return virtuals || [];
+  const keyOf = v => normShiryoKey_(v._bukken, v._room) + "|" + (v.date||"");
+  const score = v => (v._provisional ? 0 : 2) + (v.timeMode==='timed' ? 1 : 0);
+  const byKey = new Map();
+  virtuals.forEach(v=>{
+    const k = keyOf(v);
+    const ex = byKey.get(k);
+    if(!ex || score(v) > score(ex)) byKey.set(k, v);
+  });
+  return [...byKey.values()];
+}
+// 立会仮想イベントの正規ビルダー: 生成 → スロット重複集約 → 手動との重複排除。全ての描画/集計はこれを使う
+function buildTaikyoVirtuals_(){
+  // 🗓 防御的ローテ: 過去3ヶ月より古い立会は表示・集計から除外(共有configに古いデータが溜まっても膨張しない)
+  let recs = state.taikyoEvents || [];
+  if(typeof currentDate !== 'undefined'){
+    const cut = new Date(currentDate.getFullYear(), currentDate.getMonth()-3, 1);
+    const cutStr = (typeof fmtDate==='function') ? fmtDate(cut) : cut.toISOString().slice(0,10);
+    recs = recs.filter(r=> !r.date || r.date >= cutStr);
+  }
+  const ve = recs.map(buildTaikyoVirtualEvent_);
+  return dedupeTaikyoVirtuals_(dedupeTaikyoSlots_(ve));
+}
 function buildTaikyoVirtualEvent_(r){
   // 時刻パース: "10:00" → 10:00開始/1h幅 / それ以外(自由文字列/空) → 時間未定(anytime)
   //   時間が決まってないものは「終日」にせず、時間グリッドに「(時間未定)」で配置
@@ -6778,7 +6804,7 @@ function renderCategoryFilter(){
     rangeEnd   = fmtDate(dates[dates.length-1]);
   }
   // 立会(クラ助/見積の共有=state.taikyoEvents)も山一カテゴリ件数に算入(重複排除後の仮想イベント)
-  const taikyoVE = dedupeTaikyoVirtuals_((state.taikyoEvents||[]).map(buildTaikyoVirtualEvent_));
+  const taikyoVE = buildTaikyoVirtuals_();
   const inRange = [...state.events, ...taikyoVE].filter(ev=>ev.date>=rangeStart && ev.date<=rangeEnd);
 
   // 🔑 山一の確定立会件数(category「立会」=確定 / 「立会(未定)」=仮置きは別カウント)
@@ -7627,7 +7653,7 @@ function renderCalendar(){
     const dayCol = grid.querySelector(`.day-col[data-col-key="${c.key}"]`);
     const subCols = dayCol.querySelectorAll(".sub-col");
     // v1.12〜 退去立会(見積アプリ→shared-config)の仮想イベントも合流
-    const taikyoVirtuals = dedupeTaikyoVirtuals_((state.taikyoEvents||[]).map(buildTaikyoVirtualEvent_));
+    const taikyoVirtuals = buildTaikyoVirtuals_();
     // 📋 事務タスク(チェックリスト)はカレンダーに出さずバッジ専用にする(行削除で消えない)
     const events = [...state.events, ...taikyoVirtuals].filter(c.filterEvent).filter(e=>!isJimuTaskEvent_(e));
     const normalEvents = events.filter(e=>!e.allday);
@@ -8234,8 +8260,8 @@ function renderMonth(){
     if(isSameDate(d,today)) cls.push("today");
     if(d.getMonth()!==month) cls.push("other-month");
     const dayCls = d.getDay()===6?"sat":(d.getDay()===0?"sun":"");
-    // v1.12〜 退去立会(virtual)も含めて月ビューに表示
-    const __taikyoVs = (state.taikyoEvents||[]).map(buildTaikyoVirtualEvent_);
+    // v1.12〜 退去立会(virtual)も含めて月ビューに表示(重複集約・ローテ済)
+    const __taikyoVs = buildTaikyoVirtuals_();
     const dayEvents = [...state.events, ...__taikyoVs].filter(ev=>ev.date===dStr && !ev.allday && isEventVisible(ev))
       .sort((a,b)=>timeToMin(a.start)-timeToMin(b.start));
     const dayLeaves = state.leaves.filter(l=>dStr>=l.start && dStr<=l.end);
