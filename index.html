@@ -1984,7 +1984,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.23.5</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.23.6</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7416,10 +7416,14 @@ function renderCalendar(){
         // 時刻パース: "10:00" "10時" "10:30〜11:30" 等
         const t = String(r.responseTime||"").trim();
         const tm = t.match(/^(\d{1,2})[:時](\d{1,2})?/);
-        const hasTimeInGrid = tm && (+tm[1] >= HOUR_START) && (+tm[1] < HOUR_END);
+        let __gh = tm ? +tm[1] : -1, __gm = tm ? +(tm[2]||0) : 0;
+        // 18:00ちょうど(グリッド終端)は終日帯に落とさず、最終時間帯(17時セル最下部)に置いてグリッド表示
+        //   表示時刻は responseTime("18:00")が優先されるので位置だけ寄せる
+        if(__gh === HOUR_END && __gm === 0){ __gh = HOUR_END - 1; __gm = 59; }
+        const hasTimeInGrid = tm && (__gh >= HOUR_START) && (__gh < HOUR_END);
         if(hasTimeInGrid){
           // 時間グリッドに置く: 後段の chip 描画ループの placedRepairs に追加
-          dayRepairsForGrid.push({r, hh:+tm[1], mm:+(tm[2]||0), colKey:c.key});
+          dayRepairsForGrid.push({r, hh:__gh, mm:__gm, colKey:c.key});
         } else {
           // 終日帯: 背景=作業担当者色(なければ白)、左バー=workflowStatus色、修繕バッジ(色=元請け)
           // r.contractor は "山一地所" など正式名 → shortenCompany で略称化してから lookup
