@@ -1984,7 +1984,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.24</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.24.1</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7442,7 +7442,7 @@ function renderCalendar(){
           const label = `🔧 ${r.name}${r.room?" "+r.room:""}${tStr}`;
           const __vendorB = (r.responseContractor||"").trim();
           const __vendorBadgeB = __vendorB
-            ? `<span style="background:#e0e7ff;color:#3730a3;font-size:9px;font-weight:700;padding:0 4px;border-radius:3px;margin-left:3px;white-space:nowrap">🛠${escapeHtml(__vendorB)}</span>`
+            ? `<span style="background:#76a5af;color:#fff;font-size:9px;font-weight:700;padding:0 4px;border-radius:3px;margin-left:3px;white-space:nowrap">🛠${escapeHtml(__vendorB)}</span>`
             : "";
           const tipLines = [
             `🔧 修繕アポ: ${r.contractor?r.contractor+" / ":""}${r.name}${r.room?" "+r.room:""}`,
@@ -7990,7 +7990,7 @@ function renderCalendar(){
         // 🛠 対応業者バッジ(思綺美装等・見積アプリv1.4.571〜)
         const __vendor = (r.responseContractor||"").trim();
         const __vendorBadge = __vendor
-          ? `<span style="background:#e0e7ff;color:#3730a3;font-size:9px;font-weight:700;padding:0 4px;border-radius:3px;margin-left:3px;white-space:nowrap;flex-shrink:0">🛠${escapeHtml(__vendor)}</span>`
+          ? `<span style="background:#76a5af;color:#fff;font-size:9px;font-weight:700;padding:0 4px;border-radius:3px;margin-left:3px;white-space:nowrap;flex-shrink:0">🛠${escapeHtml(__vendor)}</span>`
           : "";
         // ホバー詳細(連絡者・作業担当・メモ含む)
         const tipLines = [
@@ -8649,6 +8649,9 @@ function showRepairQuickPop(r, anchorEl){
   const cont = contractorInfo(contShort) || contractorInfo(r.contractor);
   const contBadge = cont ? `<span style="background:${cont.color};color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700">${escapeHtml(cont.name)}</span>` : '';
   const wfBadge = `<span style="background:${wfBgMap[r.workflowStatus||""]||"#ec4899"};color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700">${escapeHtml(r.workflowStatus||"アポ・手配 未")}</span>`;
+  // 🛠 外注業者(対応業者)バッジ #76a5af
+  const __vendorPop = (r.responseContractor||"").trim();
+  const vendorBadge = __vendorPop ? `<span style="background:#76a5af;color:${textColorFor("#76a5af")};padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700">🛠${escapeHtml(__vendorPop)}</span>` : '';
   // worker buttons
   const me = getMyself();
   const workerBtns = ['<button data-worker="" class="' + (!r.worker?'on':'') + '"><span class="qp-dot" style="background:#cbd5e1"></span>未設定</button>']
@@ -8688,7 +8691,7 @@ function showRepairQuickPop(r, anchorEl){
   };
 
   pop.innerHTML = `
-    <div class="qp-title">🔧 ${escapeHtml(r.name)}${r.room?' '+escapeHtml(r.room):''} ${contBadge} ${wfBadge}</div>
+    <div class="qp-title">🔧 ${escapeHtml(r.name)}${r.room?' '+escapeHtml(r.room):''} ${contBadge} ${vendorBadge} ${wfBadge}</div>
     <div class="qp-sec">
       <div class="qp-label">🔨 作業担当者</div>
       <div class="qp-worker-pick">${workerBtns}</div>
