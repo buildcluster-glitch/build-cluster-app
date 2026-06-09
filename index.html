@@ -230,6 +230,11 @@
     background:rgba(0,0,0,.08);color:var(--text);
     border-radius:8px;padding:0 6px;font-size:10px;font-weight:700;margin-left:2px;
   }
+  /* 🔑 山一チップ内の確定立会件数 */
+  .cat-chip .cat-taikyo{
+    background:#f3e8ff;color:#6b21a8;border:1px solid #e9d5ff;
+    border-radius:8px;padding:1px 7px;font-size:12.5px;font-weight:800;margin-left:3px;
+  }
 
   /* ===== カレンダーグリッド ===== */
   .calendar-wrap{
@@ -1979,7 +1984,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.19.3</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.20.5</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4216,8 +4221,8 @@ function renderCheckCard(ck, today){
   // 担当が設定されたらカード背景をその担当色で薄く着色 (手動色があればそちら優先・緊急度ボーダーは維持)
   const __staffCol = __showStaff ? (STAFF_COLORS[ck.staff] || "") : "";
   const styleAttr = ck.color
-    ? `style="border-left-color:${ck.color};background:${ck.color}1a"`
-    : (__staffCol ? `style="background:${__staffCol}33"` : "");
+    ? `style="border-left-color:${ck.color};background:${ck.color}33"`
+    : (__staffCol ? `style="background:${__staffCol}66"` : "");
   const statusCls = checkStatusClass(ck.status);
   // 入居予定日（参考表示）
   let moveInHtml = "";
@@ -4680,9 +4685,10 @@ function dedupeTaikyoVirtuals_(virtuals){
   });
 }
 function buildTaikyoVirtualEvent_(r){
-  // 時刻パース: "10:00" → 10:00開始/1h幅 / "午前中" 等の自由文字列 → 終日扱い
+  // 時刻パース: "10:00" → 10:00開始/1h幅 / それ以外(自由文字列/空) → 時間未定(anytime)
+  //   時間が決まってないものは「終日」にせず、時間グリッドに「(時間未定)」で配置
   const m = String(r.time||"").match(/^(\d{1,2}):(\d{2})/);
-  let start = "", end = "", timeMode = "allday", allday = true;
+  let start = "09:00", end = "10:00", timeMode = "anytime", allday = false;
   if(m){
     const hh = String(m[1]).padStart(2,'0'), mm = m[2];
     start = `${hh}:${mm}`;
@@ -4691,10 +4697,6 @@ function buildTaikyoVirtualEvent_(r){
     end = `${endH}:${mm}`;
     timeMode = "timed";
     allday = false;
-  } else if(r.time){
-    timeMode = "anytime";
-    allday = false;
-    start = "09:00"; end = "10:00";
   }
   // 🎨 ローカル上書き優先 (見積アプリ値より優先)
   const __ovMap = loadTaikyoOverrides_();
@@ -4702,14 +4704,12 @@ function buildTaikyoVirtualEvent_(r){
   const effectiveStaff = __ovEntry?.staff || r.staff || "";
   // クラ助の仮置き(担当未定) / 担当者色に無いstaff(光和工業=会社名)を色で出し分け
   const isProvisional = !!r.provisional;
-  const hasStaffColor = !!(effectiveStaff && STAFF_COLORS[effectiveStaff]);
-  const TAIKYO_COLOR = "#a855f7";   // 退去立会 専用色(立会カテゴリ色)
   const PROVISIONAL_COLOR = "#cbd5e1"; // 立会?(担当未定) グレー
-  const chipColor = isProvisional ? PROVISIONAL_COLOR
-                  : (hasStaffColor ? "" : TAIKYO_COLOR);  // ""=既存ロジックでstaff色を使う
+  // デフォは行背景 空白(白)。担当者が付けばその担当者色。仮置きのみグレー。
+  const chipColor = isProvisional ? PROVISIONAL_COLOR : "";  // ""=既存ロジック(担当色 or 透明)
   return {
     id: `_taikyo_${r.id}`,
-    title: `退去立会${isProvisional?'?':''} ${r.bukken}${r.room?" "+r.room:""}${isProvisional?' (担当未定)':''}${r.time && !m ? ` (${r.time})` : ""}`,
+    title: `${r.bukken}${r.room?" "+r.room:""}${r.time && !m ? ` (${r.time})` : ""}`,
     category: isProvisional ? "立会(未定)" : "立会",
     contractor: "山一",  // この連携で入る立会は全部 山一立会(山一カテゴリで抽出・件数カウント)
     staff: effectiveStaff,
@@ -5145,6 +5145,46 @@ function cycleTaskPriority_(title, lineIndex){
   return setTaskPriority_(title, lineIndex, next);
 }
 // 📋 チェックリストポップアップ(チップ クリックで起動)
+// 👤 担当者ごとの事務タスクは「日付非依存の1本のリスト」。
+//   日付スコープのバッジ設計だと日が変わると前日のタスクが見えなくなり、クリックで新規が増えて分裂する。
+//   → 同一担当の事務イベントが複数あれば canonical 1件に統合(内容は全部移植・重複イベントは削除)。
+function getStaffJimuEvents_(staff){
+  return (state.events||[]).filter(e=> e && e.category==='事務' && e.staff===staff && getTaskInfo_(e));
+}
+function getOrConsolidateJimuEvent_(staff){
+  const evs = getStaffJimuEvents_(staff);
+  if(evs.length===0) return null;
+  if(evs.length===1) return evs[0];
+  // canonical = タスク総数最多 → 同数は日付古い → 同日はid小(安定)
+  evs.sort((a,b)=>{
+    const ta=getTaskInfo_(a), tb=getTaskInfo_(b);
+    const na=ta.tasks.length+ta.trash.length+ta.archive.length;
+    const nb=tb.tasks.length+tb.trash.length+tb.archive.length;
+    if(nb!==na) return nb-na;
+    if((a.date||'')!==(b.date||'')) return (a.date||'')<(b.date||'')?-1:1;
+    return (a.id||'')<(b.id||'')?-1:1;
+  });
+  if(typeof pushHistory==='function') pushHistory();
+  const canon = evs[0];
+  const lines = String(canon.title||'').split(/\r?\n/);
+  const rest = evs.slice(1);
+  rest.forEach(ev=>{
+    // 先頭(ヘッダ「事務」)を除いた本文行を canonical に移植(空行除外)
+    String(ev.title||'').split(/\r?\n/).slice(1).forEach(ln=>{ if(ln.trim()) lines.push(ln); });
+  });
+  canon.title = lines.join('\n');
+  canon.updatedAt = new Date().toISOString();
+  saveState();
+  if(typeof cloudQueueEventChange==='function') cloudQueueEventChange(canon,'upsert');
+  // 内容を移植済みの重複イベントを削除
+  rest.forEach(ev=>{
+    const idx = state.events.indexOf(ev);
+    if(idx>=0) state.events.splice(idx,1);
+    if(typeof cloudQueueEventChange==='function') cloudQueueEventChange(ev,'delete');
+  });
+  saveState();
+  return canon;
+}
 function showTaskChecklistPopup(el, ev){
   document.querySelectorAll(".quick-pop.task-pop").forEach(p=>p.remove());
   if(typeof sweepTaskArchive_==='function') sweepTaskArchive_();   // 開く前に7日経過分を自動アーカイブ
@@ -6737,7 +6777,17 @@ function renderCategoryFilter(){
     rangeStart = fmtDate(dates[0]);
     rangeEnd   = fmtDate(dates[dates.length-1]);
   }
-  const inRange = state.events.filter(ev=>ev.date>=rangeStart && ev.date<=rangeEnd);
+  // 立会(クラ助/見積の共有=state.taikyoEvents)も山一カテゴリ件数に算入(重複排除後の仮想イベント)
+  const taikyoVE = dedupeTaikyoVirtuals_((state.taikyoEvents||[]).map(buildTaikyoVirtualEvent_));
+  const inRange = [...state.events, ...taikyoVE].filter(ev=>ev.date>=rangeStart && ev.date<=rangeEnd);
+
+  // 🔑 山一の確定立会件数(category「立会」=確定 / 「立会(未定)」=仮置きは別カウント)
+  let taikyoConfirmed = 0, taikyoProvisional = 0;
+  inRange.forEach(ev=>{
+    if(eventFilterKey(ev)!=="山一") return;
+    if(ev.category==="立会") taikyoConfirmed++;
+    else if(ev.category==="立会(未定)") taikyoProvisional++;
+  });
 
   // キーごとの件数+代表色
   const stats = new Map(); // key -> {count, color}
@@ -6775,7 +6825,11 @@ function renderCategoryFilter(){
     const off = hiddenCategories.has(key);
     const chip = document.createElement("span");
     chip.className = "cat-chip" + (off ? " off" : "");
-    chip.innerHTML = `<span class="swatch" style="background:${color}"></span>${escapeHtml(key)} <span class="cat-count">${count}</span>`;
+    // 🔑 山一チップには確定立会件数を内包表示: 山一 13 🔑立会9(+仮M)
+    const taikyoBadge = (key==="山一" && (taikyoConfirmed||taikyoProvisional))
+      ? ` <span class="cat-taikyo" title="うち退去立会 確定${taikyoConfirmed}件${taikyoProvisional?` / 担当未定(仮)${taikyoProvisional}件`:''}">🏠立会${taikyoConfirmed}${taikyoProvisional?`+仮${taikyoProvisional}`:''}</span>`
+      : "";
+    chip.innerHTML = `<span class="swatch" style="background:${color}"></span>${escapeHtml(key)} <span class="cat-count">${count}</span>${taikyoBadge}`;
     chip.title = "クリック: このカテゴリのみ表示  /  Shift+クリック: ON/OFF切替";
     chip.onclick = (e)=>{
       if(e.shiftKey){
@@ -6996,21 +7050,10 @@ function renderLeaveSummary(){
     const bg = (typeof STAFF_COLORS!=='undefined' && STAFF_COLORS[s]) ? STAFF_COLORS[s] : "#9ca3af";
     return `<span class="ls-staff ${taken?'taken':''}" title="${escapeHtml(s)} ${month}月の取得休み ${num(x)}日 / 会社休日${num(holN)}日 (有給/年休/半休/休暇/別件/体調不良 等・当番/出張/研修は除外)"><span class="ls-dot" style="background:${bg}"></span>${escapeHtml(s)} <span class="frac">${frac}</span></span>`;
   }).join("");
-  // 🔑 今月の確定立会件数(山一立会・provisional除外)
-  const taikyoRecs = (state.taikyoEvents||[]);
-  let taikyoConfirmed = 0, taikyoProvisional = 0;
-  taikyoRecs.forEach(r=>{
-    const dt = r.date || "";
-    if(dt < mStart || dt > mEnd) return;
-    if(r.provisional) taikyoProvisional++; else taikyoConfirmed++;
-  });
-  const taikyoHtml = taikyoRecs.length
-    ? `<span class="ls-taikyo" title="${month}月の山一・確定立会 ${taikyoConfirmed}件${taikyoProvisional?` / 担当未定(仮) ${taikyoProvisional}件`:''}">🔑 確定立会 ${taikyoConfirmed}件${taikyoProvisional?` <span class="ls-prov">+仮${taikyoProvisional}</span>`:''}</span>`
-    : "";
+  // 🔑 確定立会件数は カテゴリ「山一」バッジ内に統合表示(renderCategoryFilter)に移動
 
   el.innerHTML =
     `<span class="ls-holiday" title="${year}年${month}月の会社休日(全員共通)">🏖 ${month}月の休み ${holLabel}</span>`
-    + taikyoHtml
     + `<span class="ls-label">各自の取得</span>`
     + staffHtml;
 }
@@ -7065,9 +7108,10 @@ function renderLeaveBand(){
   const hasFilter = selectedStaffFilter.size > 0;
   // その人の今日の事務タスク進捗(全チェックリストイベント合算)
   const staffTaskProgress_ = (staff)=>{
+    // 📋 事務タスクは日付非依存(担当者ごとの常設リスト)。日付スコープにすると日替わりで消える
     let dn=0, tt=0, has=false;
     (state.events||[]).forEach(ev=>{
-      if(ev.date!==todayStr) return;
+      if(ev.category!=='事務') return;
       if(!(ev.staff===staff || (ev.participants||[]).includes(staff))) return;
       const ti = (typeof getTaskInfo_==='function') ? getTaskInfo_(ev) : null;
       if(!ti) return;
@@ -7083,7 +7127,7 @@ function renderLeaveBand(){
     const short = fmtBreakdown(counts);
     // 📋 今日その人が関与するチェックリスト(箇条書き)イベント → 内訳をクリックでタスクを開く
     const taskEvs = (typeof getTaskInfo_==='function')
-      ? state.events.filter(ev=> ev.date===todayStr && (ev.staff===s || (ev.participants||[]).includes(s)) && getTaskInfo_(ev))
+      ? state.events.filter(ev=> ev.category==='事務' && (ev.staff===s || (ev.participants||[]).includes(s)) && getTaskInfo_(ev))
       : [];
     // バッジは📋+進捗(done/total)。カテゴリ内訳「事務1」等は出さない(内訳はホバーで確認可)
     let subHtml;
@@ -7170,9 +7214,10 @@ function renderLeaveBand(){
       e.stopPropagation();   // 親チップの担当フィルタを発火させない
       const s = badge.dataset.taskStaff;
       const today = (typeof fmtDate==='function') ? fmtDate(new Date()) : new Date().toISOString().slice(0,10);
-      let tev = (state.events||[]).find(x=> x.date===today && (x.staff===s || (x.participants||[]).includes(s)) && getTaskInfo_(x));
+      // 📋 日付非依存: 本人の事務タスクを全日付から探して1本に統合して開く(分裂防止)
+      let tev = (typeof getOrConsolidateJimuEvent_==='function') ? getOrConsolidateJimuEvent_(s) : null;
       if(!tev){
-        // 本人の今日の事務タスクが無ければ新規作成(空タスク1件)して開く
+        // 本人の事務タスクが1件も無ければ新規作成(空タスク1件)して開く
         tev = { id:uid(), title:"事務\n・新規タスク", category:"事務", staff:s, participants:[],
                 date:today, start:"09:00", end:"10:00", allday:true, timeMode:"allday",
                 color:"", memo:"", importance:[], updatedAt:new Date().toISOString() };
@@ -7180,12 +7225,10 @@ function renderLeaveBand(){
         if(typeof cloudQueueEventChange==='function') cloudQueueEventChange(tev,'upsert');
         if(typeof pushHistory==='function') pushHistory();
         saveState();
-        if(typeof render==='function') render();   // バンド再描画でbadgeは作り直されるので再取得
-        const nb = document.querySelector('[data-task-staff="'+s+'"]') || document.body;
-        if(typeof showTaskChecklistPopup==='function') showTaskChecklistPopup(nb, tev);
-        return;
       }
-      if(typeof showTaskChecklistPopup==='function') showTaskChecklistPopup(badge, tev);
+      if(typeof render==='function') render();   // バンド再描画でbadgeは作り直されるので再取得
+      const nb = document.querySelector('[data-task-staff="'+s+'"]') || badge || document.body;
+      if(typeof showTaskChecklistPopup==='function') showTaskChecklistPopup(nb, tev);
     };
   });
   // ✕ フィルタ解除ボタン
@@ -10164,13 +10207,25 @@ function cloudMergeById_(localArr, serverArr, pendingIds){
       if(!pendingIds.has(lid)){
         const oldLocal = localArr[i];
         const newServer = serverMap.get(lid);
-        // ローカル限定フィールドを救出してマージ
-        LOCAL_ONLY_KEYS.forEach(k=>{
-          if(oldLocal[k] !== undefined && newServer[k] === undefined){
-            newServer[k] = oldLocal[k];
+        // 🛡 v1.19.8: updatedAt 比較。ローカルが新しい(=サーバーが古いコピー)なら上書きしない
+        //   → 別端末/古いサーバーコピーで最新タスク入りタイトルが潰れる「事務タスク消失」を防止
+        const lU = String(oldLocal.updatedAt || "");
+        const sU = String(newServer.updatedAt || "");
+        const localIsNewer = lU && (!sU || lU > sU);
+        if(localIsNewer){
+          // ローカル保持。サーバーにしか無いフィールドだけ補完(タイトル等の本文は触らない)
+          for(const k in newServer){
+            if(oldLocal[k] === undefined) oldLocal[k] = newServer[k];
           }
-        });
-        localArr[i] = newServer;
+        }else{
+          // ローカル限定フィールドを救出してマージ
+          LOCAL_ONLY_KEYS.forEach(k=>{
+            if(oldLocal[k] !== undefined && newServer[k] === undefined){
+              newServer[k] = oldLocal[k];
+            }
+          });
+          localArr[i] = newServer;
+        }
       }
       serverMap.delete(lid);
     }
