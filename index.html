@@ -1984,7 +1984,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.21</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.21.1</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4700,8 +4700,15 @@ function dedupeTaikyoSlots_(virtuals){
 }
 // 立会仮想イベントの正規ビルダー: 生成 → スロット重複集約 → 手動との重複排除。全ての描画/集計はこれを使う
 function buildTaikyoVirtuals_(){
-  // 🗓 防御的ローテ: 過去3ヶ月より古い立会は表示・集計から除外(共有configに古いデータが溜まっても膨張しない)
   let recs = state.taikyoEvents || [];
+  // 🧹 クラ助が立会表を全件同期(authoritative)している場合、見積アプリの旧schedule push(非 tachiai_ id)は
+  //   立会表に無い古い残骸の可能性が高い → クラ助レコードがあれば見積由来は無視(migration完了をカレンダー側で適用)。
+  //   クラ助レコードが皆無(=未稼働)なら従来どおり見積レコードを使う(graceful fallback)。
+  const kurasukeActive = recs.some(r=> String(r.id||"").startsWith("tachiai_"));
+  if(kurasukeActive){
+    recs = recs.filter(r=> String(r.id||"").startsWith("tachiai_"));
+  }
+  // 🗓 防御的ローテ: 過去3ヶ月より古い立会は表示・集計から除外(共有configに古いデータが溜まっても膨張しない)
   if(typeof currentDate !== 'undefined'){
     const cut = new Date(currentDate.getFullYear(), currentDate.getMonth()-3, 1);
     const cutStr = (typeof fmtDate==='function') ? fmtDate(cut) : cut.toISOString().slice(0,10);
