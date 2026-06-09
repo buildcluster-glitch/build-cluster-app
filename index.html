@@ -1984,7 +1984,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.24.3</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.24.4</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3481,6 +3481,8 @@ let state = loadState();
       e.allday = false; e.timeMode = 'anytime';
       if(e.start === '00:00' || !e.start) e.start = '09:00';
       if(e.end === '23:59' || !e.end) e.end = '10:00';
+      e.updatedAt = new Date().toISOString();  // クラウド同期で「終日」版に戻されないよう更新時刻を進める
+      if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(e,'upsert'); }catch(_){} } // 他端末にも反映
       t++;
     }
   });
