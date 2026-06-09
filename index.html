@@ -1984,7 +1984,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.22.4</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.22.5</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3803,7 +3803,8 @@ function dedupeChecks(checks){
 function renderChecks(){
   const wrap = document.getElementById("checksSection");
   const today = new Date(); today.setHours(0,0,0,0);
-  const visibleChecks = dedupeChecks(state.checks);
+  // 🔧最終確認カードは原状回復のみ。修繕工事は除外(予定表の修繕チップ側で扱う)
+  const visibleChecks = dedupeChecks(state.checks).filter(c=>!isRepairCheck_(c));
 
   // 列を作る（カレンダーの列構造に合わせる）
   let cols = [];
@@ -4150,6 +4151,14 @@ function attachCheckDragOrClick(el, ck){
   };
 }
 
+// 修繕(repair)系のcheckか判定: 工事種別が原状回復以外 / 修繕アポのworkflowStatus / memoに修繕系語(原状回復は含まない)
+//   → 最終確認カードからは除外し、修繕は予定表(修繕チップ/state.repairs)側で扱う
+function isRepairCheck_(ck){
+  if(!ck) return false;
+  if(ck.kojiName) return ck.kojiName !== "原状回復工事";
+  if(/アポ|手配|待機|長期連絡/.test(ck.workflowStatus || "")) return true;
+  return /修繕|修理|漏水|補修/.test(ck.memo || "") && !/原状回復/.test(ck.memo || "");
+}
 function renderCheckCard(ck, today){
   // 元請: 短縮名(山一)でも フルネーム(株式会社山一地所)でも解決
   const cont = contractorInfo(ck.contractor) || contractorInfo(shortenCompany(ck.contractor||""));
@@ -4157,11 +4166,8 @@ function renderCheckCard(ck, today){
     ? `<span class="badge-sm" style="background:${cont.color};color:${textColorFor(cont.color)}">${escapeHtml(cont.name)}</span>`
     : "";
   // 🏷 バッジ: 修繕工事=「修繕」/ それ以外(原状回復)=「最終確認」。色は元請けごと(未設定は山一紫)
-  //   修繕判定: kojiName が原状回復以外 / 修繕アポのworkflowStatus / memoに修繕系語(原状回復を含まない)
-  const __isRepair = (ck.kojiName && ck.kojiName !== "原状回復工事")
-    || /アポ|手配|待機|長期連絡/.test(ck.workflowStatus || "")
-    || (/修繕|修理|漏水|補修/.test(ck.memo || "") && !/原状回復/.test(ck.memo || ""));
-  const __fcLabel = __isRepair ? "修繕" : "最終確認";
+  //   ※最終確認カードからは修繕を除外済(visibleChecks)。安全網としてラベルも出し分け
+  const __fcLabel = isRepairCheck_(ck) ? "修繕" : "最終確認";
   const __fcCont = cont || contractorInfo("山一");
   const __fcBg = __fcCont ? __fcCont.color : "#7c3aed";
   const __fcTip = cont ? `元請: ${cont.name} ・ 種別: ${__fcLabel}` : `種別: ${__fcLabel}`;
