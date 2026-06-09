@@ -1988,7 +1988,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.25.1</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.25.2</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7672,12 +7672,6 @@ function renderCalendar(){
     if(!r) return { html:"", text:"" };
     const htmlParts = [];
     const textParts = []; // 文字数推定用
-    // 👤 担当者(見積作成者)バッジ — 最終確認カードと同じ。スペース入り氏名でも色解決
-    if(r.staff && (typeof isHiddenStaffBadge_!=='function' || !isHiddenStaffBadge_(r.staff))){
-      const __sc = (STAFF_COLORS[r.staff] || STAFF_COLORS[String(r.staff).replace(/\s|　/g,"")]) || "#9ca3af";
-      htmlParts.push(`<span style="background:${__sc};color:${textColorFor(__sc)};padding:0 5px;border-radius:4px;font-weight:700">${escapeHtml(r.staff)}</span>`);
-      textParts.push(r.staff);
-    }
     // 重い/軽い → カラーバッジ (赤/緑等)
     if(r.workVolume && r.workVolume !== "無"){
       const bg = __VOL_COLORS[r.workVolume] || "#6b7280";
@@ -7892,6 +7886,12 @@ function renderCalendar(){
       const progIcon = __progResto
         ? `<span class="chip-prog" data-resto-id="${escapeHtml(String(__progResto.id))}" role="button" title="📋 原状回復の進捗を表示">📋</span>`
         : "";
+      // 👤 担当者(見積作成者)バッジ — 📋進捗アイコンの隣に。スペース入り氏名でも色解決
+      let __progStaffBadge = "";
+      if(__progResto && __progResto.staff && (typeof isHiddenStaffBadge_!=='function' || !isHiddenStaffBadge_(__progResto.staff))){
+        const __psc = (STAFF_COLORS[__progResto.staff] || STAFF_COLORS[String(__progResto.staff).replace(/\s|　/g,"")]) || "#9ca3af";
+        __progStaffBadge = `<span class="chip-progstaff" style="align-self:center;flex-shrink:0;background:${__psc};color:${textColorFor(__psc)};font-size:9px;font-weight:700;padding:0 5px;border-radius:4px;margin-left:3px;white-space:nowrap">${escapeHtml(__progResto.staff)}</span>`;
+      }
       // 💬コメント数バッジ (チャット)
       const commentCount = (ev.comments && ev.comments.length) || 0;
       const commentBadge = commentCount > 0
@@ -7941,7 +7941,7 @@ function renderCalendar(){
         const titleClass = (taskInfo ? "chip-checklist " : "") + ((taskInfo || !isMulti) ? "chip-title single-line" : "chip-title multi-line");
         const timeBox = isAnytime ? "" : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;
         // 参加者バッジは title 外(チップ直下)に独立行として配置
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${titleHtml}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${__linkInfoHtml}</span>${timeBox}${staffBadges}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${titleHtml}${commuteIcon}${memoIcon}${progIcon}${__progStaffBadge}${commentBadge}${shiryoBadge}${__linkInfoHtml}</span>${timeBox}${staffBadges}`;
         if(impList.length){ el.classList.add("imp-flag"); if(impTopClass) el.classList.add(impTopClass); }
         el.title = fullTooltip;
       } else if(isFree){
@@ -7951,7 +7951,7 @@ function renderCalendar(){
         const titleClass = (taskInfo ? "chip-checklist " : "") + ((taskInfo || !isMulti) ? "chip-title single-line" : "chip-title multi-line");
         el.classList.add("event-chip");
         const timeBox = isAnytime ? "" : `<span class="chip-time">終日</span>`;
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${titleHtml}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${__linkInfoHtml}</span>${timeBox}${staffBadges}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${titleHtml}${commuteIcon}${memoIcon}${progIcon}${__progStaffBadge}${commentBadge}${shiryoBadge}${__linkInfoHtml}</span>${timeBox}${staffBadges}`;
         if(impList.length){ el.classList.add("imp-flag"); if(impTopClass) el.classList.add(impTopClass); }
         el.title = fullTooltip;
       } else {
@@ -7962,9 +7962,9 @@ function renderCalendar(){
           : "";
         const commuteInline = ev.commute ? ` <span class="chip-commute" style="font-size:9px;padding:0 3px">${ev.commute==="直行直帰"?"🚗⇄":ev.commute==="直行"?"🚗→":"→🏠"}</span>` : "";
         el.innerHTML = isShort
-          ? `<div class="title">${inlineCatPrefix}${taskInfo?compactTaskHtml:escapeHtml(titleFirstLine)}${commuteInline}${showStaff&&staffList.length?` <span style="opacity:.8">/${multi?staffList.length+"名":escapeHtml(staffList[0].slice(0,2))}</span>`:""}${progIcon}${__linkInfoHtml}</div>`
+          ? `<div class="title">${inlineCatPrefix}${taskInfo?compactTaskHtml:escapeHtml(titleFirstLine)}${commuteInline}${showStaff&&staffList.length?` <span style="opacity:.8">/${multi?staffList.length+"名":escapeHtml(staffList[0].slice(0,2))}</span>`:""}${progIcon}${__progStaffBadge}${__linkInfoHtml}</div>`
           : `<div class="time">${ev.start}〜${ev.end}${commuteInline}</div>
-             <div class="title">${inlineCatPrefix}${titleHtmlMulti}${progIcon}${shiryoBadge}${__linkInfoHtml}</div>
+             <div class="title">${inlineCatPrefix}${titleHtmlMulti}${progIcon}${__progStaffBadge}${shiryoBadge}${__linkInfoHtml}</div>
              ${showStaff ? (multi ? participantsHtml : (ev.staff ? `<div class="staff">${staffShortLabel}</div>`:"")) : ""}`;
         el.title = fullTooltip;
       }
