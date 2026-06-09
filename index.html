@@ -1984,7 +1984,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.23.2</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.23.3</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7432,9 +7432,7 @@ function renderCalendar(){
           const wKey = worker || repairContactCls(contactPerson);
           const wColor = STAFF_COLORS[wKey] || "#fff";
           const wFg = wColor === "#fff" ? "#0f172a" : textColorFor(wColor);
-          const __adesc = (r.requestDesc || r.requestDescFull || "").trim();
-          const __adescShort = __adesc ? (__adesc.length>30 ? __adesc.slice(0,30)+"…" : __adesc) : "";
-          const label = `🔧 ${r.name}${r.room?" "+r.room:""}${__adescShort?`：${__adescShort}`:""}${tStr}`;
+          const label = `🔧 ${r.name}${r.room?" "+r.room:""}${tStr}`;
           const tipLines = [
             `🔧 修繕アポ: ${r.contractor?r.contractor+" / ":""}${r.name}${r.room?" "+r.room:""}`,
             `${wf}${t?" / "+t:""}`,
@@ -7975,8 +7973,8 @@ function renderCalendar(){
         const wColor = STAFF_COLORS[wKey] || "#fff";
         const wFg = wColor === "#fff" ? "#0f172a" : textColorFor(wColor);
         const __desc = (r.requestDesc || r.requestDescFull || "").trim();
-        const __descShort = __desc ? (__desc.length>30 ? __desc.slice(0,30)+"…" : __desc) : "";
-        const label = `🔧 ${r.name}${r.room?" "+r.room:""}${__descShort?`：${__descShort}`:""}`;
+        const __descShort = __desc ? (__desc.length>34 ? __desc.slice(0,34)+"…" : __desc) : "";
+        const label = `🔧 ${r.name}${r.room?" "+r.room:""}`;
         // ホバー詳細(連絡者・作業担当・メモ含む)
         const tipLines = [
           `🔧 修繕アポ: ${r.contractor?r.contractor+" / ":""}${r.name}${r.room?" "+r.room:""}`,
@@ -7996,7 +7994,10 @@ function renderCalendar(){
         el.style.borderLeft = `5px solid ${wfBar}`;
         el.dataset.repairId = r.id;
         el.title = tipLines;
-        el.innerHTML = `<span class="chip-title single-line" style="background:${wColor};color:${wFg}">${tagHtml}${escapeHtml(label)}</span><span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>`;
+        const __descLine = __descShort
+          ? `<span style="display:block;width:100%;font-size:10px;font-weight:500;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2">${escapeHtml(__descShort)}</span>`
+          : "";
+        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis">${tagHtml}${escapeHtml(label)}</span>${__descLine}</span><span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>`;
         attachRepairChipHover(el, r); // リッチtooltip
         el.onclick = (ev)=>{
           ev.stopPropagation();
