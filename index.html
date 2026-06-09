@@ -1984,7 +1984,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.24.1</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.24.2</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3470,15 +3470,24 @@ let state = loadState();
   }
 })();
 // 🩹 v1.22 migration: 事前(jizen)イベントの元請が空のものは山一に補完(山一工事・山一カテゴリで抽出)
-(function _migrateJizenContractor(){
+//   v1.24.2追加: 事前イベントの終日(allday)→時間未定(anytime)に変更(終日帯に出さない)
+(function _migrateJizen(){
   if(!state.events || !state.events.length) return;
-  let n = 0;
+  let n = 0, t = 0;
   state.events.forEach(e=>{
-    if(e && e.category==='事前' && !e.contractor){ e.contractor = "山一"; n++; }
+    if(!e || e.category!=='事前') return;
+    if(!e.contractor){ e.contractor = "山一"; n++; }
+    if(e.allday === true || e.timeMode === 'allday'){
+      e.allday = false; e.timeMode = 'anytime';
+      if(e.start === '00:00' || !e.start) e.start = '09:00';
+      if(e.end === '23:59' || !e.end) e.end = '10:00';
+      t++;
+    }
   });
-  if(n){
+  if(n || t){
     try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(_){}
-    console.log("[migrate] 事前イベントに元請=山一を補完:", n, "件");
+    if(n) console.log("[migrate] 事前イベントに元請=山一を補完:", n, "件");
+    if(t) console.log("[migrate] 事前イベント 終日→時間未定:", t, "件");
   }
 })();
 let currentDate = new Date();      // 表示中の基準日
@@ -5540,8 +5549,8 @@ function applyJizenRecords_(records){
       date: r.date,
       start: "09:00",
       end: "10:00",
-      allday: true,
-      timeMode: "allday",
+      allday: false,        // 終日にしない(時間未定で時間グリッドに表示・山田2026-06-10)
+      timeMode: "anytime",
       color: "",
       memo: memoLines.join("\n"),
       importance: [],
