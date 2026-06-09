@@ -1984,7 +1984,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.22</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.22.1</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7766,10 +7766,13 @@ function renderCalendar(){
       // カテゴリプレフィクスの色 = 元請け色 > カテゴリ色 > 半透明白
       const catBoxBg = cont ? cont.color : (cat ? cat.color : null);
       const catBoxFg = catBoxBg ? textColorFor(catBoxBg) : chipFg;
+      // バッジホバー: 元請＋種別を表示(事前/立会等にカーソルで元請けが分かる)
+      const badgeTooltip = cont
+        ? `元請: ${cont.name}${cat ? " ・ 種別: "+cat.name : ""}`
+        : (cat ? `種別: ${cat.name}` : "");
       const catPrefix = cat
-        ? `<span class="title-cat" style="background:${catBoxBg||"rgba(255,255,255,.35)"};color:${catBoxFg};padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;line-height:14px;height:16px;display:inline-flex;align-items:center;justify-content:center">${escapeHtml(cat.name)}</span>`
+        ? `<span class="title-cat" title="${escapeHtml(badgeTooltip)}" style="background:${catBoxBg||"rgba(255,255,255,.35)"};color:${catBoxFg};padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;line-height:14px;height:16px;display:inline-flex;align-items:center;justify-content:center">${escapeHtml(cat.name)}</span>`
         : "";
-      const badgeTooltip = (cont && cat) ? `${cont.name} ${cat.name}` : (cont ? cont.name : (cat ? cat.name : ""));
       // チップ用: 1行目のみ表示。複数行/メモはホバーで全文表示。
       const titleFirstLine = (ev.title || "").split(/\r?\n/)[0];
       // 📋 簡易タスク: 箇条書きイベントは1行に集約(📋 done/total + ミニ進捗バー + 次のタスク) — taskInfoは上部で算出済
@@ -11558,6 +11561,7 @@ function renderRestoDetail(){
   document.getElementById("rdSub").textContent = [p.client,p.layout,p.address].filter(Boolean).join(" ・ ");
   // KV
   const kv = [];
+  if(p.client || p.contractor) kv.push(["元請",p.client || p.contractor]);  // 元請(山一地所等)を明示
   if(p.kojiName) kv.push(["工事名",p.kojiName]);
   if(p.orderDate) kv.push(["発注日",p.orderDate]);
   if(p.vacancyDate) kv.push(["退去予定日",p.vacancyDate]);   // v1.9.3 新規
