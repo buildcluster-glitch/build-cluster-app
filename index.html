@@ -1984,7 +1984,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.22.2</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.22.3</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4707,7 +4707,15 @@ function dedupeTaikyoVirtuals_(virtuals){
 function dedupeTaikyoSlots_(virtuals){
   if(!virtuals || virtuals.length < 2) return virtuals || [];
   const keyOf = v => normShiryoKey_(v._bukken, v._room) + "|" + (v.date||"");
-  const score = v => (v._provisional ? 0 : 2) + (v.timeMode==='timed' ? 1 : 0);
+  // 確定>仮置き / 時刻あり>なし / 営業時間内(6-20時)の時刻を最優先(クラ助の00:30化け等の異常時刻を避ける)
+  const score = v => {
+    let s = v._provisional ? 0 : 2;
+    if(v.timeMode==='timed'){
+      const hh = parseInt(String(v.start||"").slice(0,2), 10);
+      s += (hh>=6 && hh<=20) ? 2 : 1;   // 営業時間内=+2 / 深夜等=+1
+    }
+    return s;
+  };
   const byKey = new Map();
   virtuals.forEach(v=>{
     const k = keyOf(v);
@@ -4719,12 +4727,15 @@ function dedupeTaikyoSlots_(virtuals){
 // 立会仮想イベントの正規ビルダー: 生成 → スロット重複集約 → 手動との重複排除。全ての描画/集計はこれを使う
 function buildTaikyoVirtuals_(){
   let recs = state.taikyoEvents || [];
-  // 🧹 クラ助が立会表を全件同期(authoritative)している場合、見積アプリの旧schedule push(非 tachiai_ id)は
-  //   立会表に無い古い残骸の可能性が高い → クラ助レコードがあれば見積由来は無視(migration完了をカレンダー側で適用)。
+  // 🧹 クラ助が立会表を全件同期(authoritative)している場合の見積残骸除去。
+  //   ただし「クラ助と同じスロット(物件+号室+日付)に居る見積レコード」は実在立会なので残す
+  //   (slot集約で時刻など正しい方を採用するため)。クラ助に同スロットが無い見積=立会表に無い古い残骸(エクセラン等)だけ除外。
   //   クラ助レコードが皆無(=未稼働)なら従来どおり見積レコードを使う(graceful fallback)。
-  const kurasukeActive = recs.some(r=> String(r.id||"").startsWith("tachiai_"));
-  if(kurasukeActive){
-    recs = recs.filter(r=> String(r.id||"").startsWith("tachiai_"));
+  const isTachiai = r => String(r.id||"").startsWith("tachiai_");
+  if(recs.some(isTachiai)){
+    const slotOf = r => normShiryoKey_(r.bukken, r.room) + "|" + (r.date||"");
+    const tachiaiSlots = new Set(recs.filter(isTachiai).map(slotOf));
+    recs = recs.filter(r=> isTachiai(r) || tachiaiSlots.has(slotOf(r)));
   }
   // 🗓 防御的ローテ: 過去3ヶ月より古い立会は表示・集計から除外(共有configに古いデータが溜まっても膨張しない)
   if(typeof currentDate !== 'undefined'){
