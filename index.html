@@ -701,6 +701,10 @@
   .quick-pop.task-pop .tp-row:hover{background:#f8fafc}
   .quick-pop.task-pop .tp-row .tp-prio-sel{flex:0 0 auto;border:1.5px solid #cbd5e1;background:#fff;font-size:11px;font-weight:800;cursor:pointer;padding:2px 1px;border-radius:5px;text-align:center}
   .quick-pop.task-pop .tp-row .tp-prio-sel:hover{border-color:#94a3b8}
+  .quick-pop.task-pop .tp-row .tp-status-sel{flex:0 0 auto;border:1.5px solid #cbd5e1;background:#fff;font-size:11px;font-weight:700;cursor:pointer;padding:2px 1px;border-radius:5px}
+  .quick-pop.task-pop .tp-row .tp-status-sel:hover{border-color:#94a3b8}
+  .quick-pop.task-pop .tp-row.inprogress{background:#eff6ff}
+  .quick-pop.task-pop .tp-row.inprogress .tp-text{color:#1d4ed8;font-weight:600}
   .quick-pop.task-pop .tp-row input[type=checkbox]{margin-top:2px;width:16px;height:16px;cursor:pointer;flex:0 0 auto}
   .quick-pop.task-pop .tp-row .tp-text{font-size:13px;line-height:1.4;word-break:break-word;flex:1;cursor:text}
   .quick-pop.task-pop .tp-row.done .tp-text{text-decoration:line-through;color:#94a3b8}
@@ -1984,7 +1988,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.24.6</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.25</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5049,7 +5053,7 @@ function isJimuTaskEvent_(e){
 // ===== 📋 簡易タスクマネージャー: 箇条書きイベントをチェックリスト化 =====
 // ev.title の各行を解析。先頭が ・- ● ▪ ◦ * などの行=タスク。先頭に ✅☑✓ があれば完了。
 // 完了状態は行頭の ✅ で保持(タイトル文字列に内包=既存同期にそのまま乗る)。
-const TASK_BULLET_RE = /^(\s*)(✅|☑|✓)?\s*([・\-●▪◦*])\s*(.*)$/;
+const TASK_BULLET_RE = /^(\s*)(✅|☑|✓|🔄)?\s*([・\-●▪◦*])\s*(.*)$/;  // m[2]: ✅=完了 / 🔄=進行中 / 無=未着手
 const TASK_META_RE   = /\s*〔([^〕]*)〕\s*$/;   // 完了ログ 〔M/D 担当〕
 const TASK_PRIO_RE   = /^(🔴|🟡|🔵)\s*/;        // 優先度マーカー(高🔴/中🟡/低🔵)
 const TASK_PRIO_ORDER = ["", "🔴", "🔵"];                 // 普→高→低 でサイクル(3段階)
@@ -5072,7 +5076,10 @@ function parseTasks_(title){
       if(mm){ meta = (mm[1]||"").trim(); text = text.replace(TASK_META_RE, "").trim(); }
       const pm = text.match(TASK_PRIO_RE);
       if(pm){ prio = pm[1]; text = text.slice(pm[0].length).trim(); }
-      items.push({ index:i, text, done: !!m[2], meta, prio, isTask:(!isTrash && !isArchive), isTrash, isArchive });
+      const done = /^(✅|☑|✓)$/.test(m[2]||"");      // ✅系=完了
+      const inProgress = (m[2]==="🔄");               // 🔄=進行中
+      const status = done ? "完了" : (inProgress ? "進行中" : "未着手");
+      items.push({ index:i, text, done, inProgress, status, meta, prio, isTask:(!isTrash && !isArchive), isTrash, isArchive });
     }else{
       items.push({ index:i, text:work.trim(), done:false, meta:"", prio:"", isTask:false, isTrash:false, isArchive:false }); // 見出し/通常行
     }
@@ -5091,7 +5098,7 @@ function getTaskInfo_(ev){
   // アクティブが少なくても、ゴミ箱/アーカイブがあればチェックリストとして扱う(中身を見られるよう)
   if(tasks.length < minTasks && trash.length===0 && archive.length===0) return null;
   const header = items.find(x=>!x.isTask && !x.isTrash && !x.isArchive && x.text);
-  return { items, tasks, trash, archive, total:tasks.length, done:tasks.filter(t=>t.done).length, headerText: header?header.text:"" };
+  return { items, tasks, trash, archive, total:tasks.length, done:tasks.filter(t=>t.done).length, inProgress:tasks.filter(t=>t.inProgress).length, headerText: header?header.text:"" };
 }
 // 完了トグル(✅ を付け外し)。完了時は末尾に 〔M/D 担当〕の完了ログを付与
 function toggleTaskLine_(title, lineIndex, who){
@@ -5107,6 +5114,26 @@ function toggleTaskLine_(title, lineIndex, who){
     ln = ln.replace(/^(\s*)/, "$1✅ ");                                       // 先頭に ✅
   }
   lines[lineIndex] = ln;
+  return lines.join("\n");
+}
+// ステータス設定(未着手/進行中/完了)。m[2]位置のマーカーを 無/🔄/✅ に切替。完了時は完了ログ付与
+function setTaskStatus_(title, lineIndex, status, who){
+  const lines = String(title||"").split(/\r?\n/);
+  if(lineIndex<0 || lineIndex>=lines.length) return title;
+  let ln = lines[lineIndex];
+  if(/^\s*(🗑|📦)/.test(ln)) return title;            // ゴミ箱/アーカイブ行は触らない
+  const m = ln.match(TASK_BULLET_RE);
+  if(!m) return title;
+  let text = (m[4]||"").replace(TASK_META_RE, "").trimEnd();  // 既存の完了ログは一旦除去
+  let marker = "", meta = "";
+  if(status === "完了"){
+    marker = "✅ ";
+    const d = new Date();
+    meta = ` 〔${d.getMonth()+1}/${d.getDate()}${who?(" "+who):""}〕`;
+  }else if(status === "進行中"){
+    marker = "🔄 ";
+  } // 未着手 → marker 無し
+  lines[lineIndex] = `${m[1]||""}${marker}${m[3]} ${text}${meta}`;
   return lines.join("\n");
 }
 // タスク行を追加(末尾に ・text)
@@ -5326,14 +5353,18 @@ function showTaskChecklistPopup(el, ev){
     const doneTasks = ti.tasks.filter(t=>t.done);
     const trash = ti.trash || [];
     const rowHtml = (t)=>`
-      <div class="tp-row ${t.done?'done':''}" style="border-left:3px solid ${(t.prio&&TASK_PRIO_COLOR[t.prio])||'transparent'}">
+      <div class="tp-row ${t.done?'done':''}${t.inProgress?' inprogress':''}" style="border-left:3px solid ${(t.prio&&TASK_PRIO_COLOR[t.prio])||'transparent'}">
         <select class="tp-prio-sel" data-line="${t.index}" title="優先度を選択" style="color:${TASK_PRIO_COLOR[t.prio||'']}">
           <option value="🔴" ${(t.prio||'')==='🔴'?'selected':''}>高</option>
           <option value="" ${!t.prio?'selected':''}>普</option>
           <option value="🔵" ${(t.prio||'')==='🔵'?'selected':''}>低</option>
           ${(t.prio==='🟡')?'<option value="🟡" selected>中</option>':''}
         </select>
-        <input type="checkbox" data-line="${t.index}" ${t.done?'checked':''}>
+        <select class="tp-status-sel" data-line="${t.index}" title="ステータス(未着手/進行中/完了)">
+          <option value="未着手" ${t.status==='未着手'?'selected':''}>⬜ 未</option>
+          <option value="進行中" ${t.status==='進行中'?'selected':''}>🔄 進行中</option>
+          <option value="完了" ${t.status==='完了'?'selected':''}>✅ 完了</option>
+        </select>
         <span class="tp-text" data-line="${t.index}" title="クリックで編集">${escapeHtml(t.text)}</span>
         ${t.done && t.meta ? `<span class="tp-meta" title="完了ログ">${escapeHtml(t.meta)}</span>` : ""}
         <button class="tp-del" data-line="${t.index}" title="ゴミ箱へ">×</button>
@@ -5382,8 +5413,8 @@ function showTaskChecklistPopup(el, ev){
         <button class="qp-del-event" data-role="del-event" title="この事務タスク予定を丸ごと削除">🗑 予定削除</button>
         <button class="qp-close" data-role="close">閉じる</button>
       </div>`;
-    pop.querySelectorAll('input[type=checkbox][data-line]').forEach(cb=>{
-      cb.onchange = ()=> mutate(t=>toggleTaskLine_(t, parseInt(cb.dataset.line,10), (typeof getMyself==='function'?getMyself():"")));
+    pop.querySelectorAll('.tp-status-sel').forEach(sel=>{
+      sel.onchange = ()=> mutate(t=>setTaskStatus_(t, parseInt(sel.dataset.line,10), sel.value, (typeof getMyself==='function'?getMyself():"")));
     });
     pop.querySelectorAll('.tp-prio-sel').forEach(sel=>{
       sel.onchange = ()=> mutate(t=>setTaskPriority_(t, parseInt(sel.dataset.line,10), sel.value));
