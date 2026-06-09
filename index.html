@@ -1984,7 +1984,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.24.5</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.24.6</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7506,21 +7506,12 @@ function renderCalendar(){
   allday.querySelectorAll("[data-repair-id]").forEach(el=>{
     const r = (state.repairs||[]).find(x=>x.id===el.dataset.repairId);
     if(r) attachRepairChipHover(el, r);
-    el.onclick = (e)=>{
-      e.stopPropagation();
-      // シングルクリックは遅延 → ダブルクリックなら下で打ち消し(ポップと詳細編集の二重起動防止)
-      if(el._repairClickTimer) clearTimeout(el._repairClickTimer);
-      el._repairClickTimer = setTimeout(()=>{
-        el._repairClickTimer = null;
-        const r2 = (state.repairs||[]).find(x=>x.id===el.dataset.repairId);
-        if(r2) showRepairQuickPop(r2, el);
-      }, 250);
-    };
+    // 単クリック無効・ダブルクリックで作業担当者ピッカー(内側に✎詳細編集)— 他チップと統一(v1.24.6)
+    el.onclick = (e)=>{ e.stopPropagation(); };
     el.ondblclick = (e)=>{
       e.stopPropagation();
-      if(el._repairClickTimer){ clearTimeout(el._repairClickTimer); el._repairClickTimer = null; }
       const r2 = (state.repairs||[]).find(x=>x.id===el.dataset.repairId);
-      if(r2) openRepairSheet(r2.id);
+      if(r2) showRepairQuickPop(r2, el);
     };
   });
 
@@ -8031,19 +8022,11 @@ function renderCalendar(){
           : "";
         el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis">${tagHtml}${escapeHtml(label)}${__vendorBadge}</span>${__descLine}</span><span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>`;
         attachRepairChipHover(el, r); // リッチtooltip
-        el.onclick = (ev)=>{
-          ev.stopPropagation();
-          // シングルクリックは遅延 → ダブルクリックなら下で打ち消し(ポップと詳細編集の二重起動防止)
-          if(el._repairClickTimer) clearTimeout(el._repairClickTimer);
-          el._repairClickTimer = setTimeout(()=>{
-            el._repairClickTimer = null;
-            showRepairQuickPop(r, el);
-          }, 250);
-        };
+        // 単クリックは無効・ダブルクリックで作業担当者ピッカー(内側に✎詳細編集)— 他チップと統一(v1.24.6)
+        el.onclick = (ev)=>{ ev.stopPropagation(); };
         el.ondblclick = (ev)=>{
           ev.stopPropagation();
-          if(el._repairClickTimer){ clearTimeout(el._repairClickTimer); el._repairClickTimer = null; }
-          openRepairSheet(r.id);
+          showRepairQuickPop(r, el);
         };
         cell.appendChild(el);
       });
