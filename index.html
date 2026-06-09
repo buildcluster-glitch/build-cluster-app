@@ -1984,7 +1984,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.21.1</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.22</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3317,7 +3317,7 @@ const CATEGORIES = [
   { name:"立会",       color:"#a855f7" }, // 紫
   { name:"立会(未定)", color:"#d8b4fe" }, // 薄紫
   { name:"修繕",       color:"#fde047" }, // 黄
-  { name:"事前",       color:"#14b8a6" }, // ティール = 事前補修(内装業者前のビルドクラスタ社内補修)
+  { name:"事前",       color:"#7c3aed" }, // 紫(山一色) = 事前補修(内装業者前のビルドクラスタ社内補修・山一工事)
   { name:"見積",       color:"#3b82f6" }, // 青
   { name:"商談",       color:"#f97316" }, // オレンジ
   { name:"事務",       color:"#6b7280" }, // グレー
@@ -3467,6 +3467,18 @@ let state = loadState();
     try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(_){}
     if(n) console.log("[migrate] 時刻フォーマット正常化:", n, "件");
     if(m) console.log("[migrate] anytime allday=false 修正:", m, "件");
+  }
+})();
+// 🩹 v1.22 migration: 事前(jizen)イベントの元請が空のものは山一に補完(山一工事・山一カテゴリで抽出)
+(function _migrateJizenContractor(){
+  if(!state.events || !state.events.length) return;
+  let n = 0;
+  state.events.forEach(e=>{
+    if(e && e.category==='事前' && !e.contractor){ e.contractor = "山一"; n++; }
+  });
+  if(n){
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(_){}
+    console.log("[migrate] 事前イベントに元請=山一を補完:", n, "件");
   }
 })();
 let currentDate = new Date();      // 表示中の基準日
@@ -5471,6 +5483,7 @@ function applyJizenRecords_(records){
     });
     if(existing){
       if(!existing._jizenSourceId) existing._jizenSourceId = r.id; // sid治癒
+      if(!existing.contractor) existing.contractor = r.contractor || r.motouke || "山一"; // 元請を後付け治癒
       seen.add(r.id);
       return;
     }
@@ -5488,7 +5501,7 @@ function applyJizenRecords_(records){
       _jizenSourceId: r.id,  // 見積アプリ元id (重複防止/逆引き用)
       title: `事前 ${r.bukken}${r.room?" "+r.room:""}`,
       category: "事前",
-      contractor: "",
+      contractor: r.contractor || r.motouke || "山一",  // 元請(jizen_schedule にあれば使う・無ければ山一工事)
       staff: r.staff || "",
       participants: [],
       date: r.date,
