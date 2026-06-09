@@ -1984,7 +1984,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.24.2</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.24.3</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7446,7 +7446,7 @@ function renderCalendar(){
           const worker = (r.worker||"").trim();
           const contactPerson = (r.contactPerson||"").trim();
           const wKey = worker || repairContactCls(contactPerson);
-          const wColor = STAFF_COLORS[wKey] || "#fff";
+          const wColor = repairWorkerColor_(wKey);
           const wFg = wColor === "#fff" ? "#0f172a" : textColorFor(wColor);
           const label = `🔧 ${r.name}${r.room?" "+r.room:""}${tStr}`;
           const __vendorB = (r.responseContractor||"").trim();
@@ -7991,7 +7991,7 @@ function renderCalendar(){
         const worker = (r.worker||"").trim();
         const contactPerson = (r.contactPerson||"").trim();
         const wKey = worker || repairContactCls(contactPerson);
-        const wColor = STAFF_COLORS[wKey] || "#fff";
+        const wColor = repairWorkerColor_(wKey);
         const wFg = wColor === "#fff" ? "#0f172a" : textColorFor(wColor);
         const __desc = (r.requestDesc || r.requestDescFull || "").trim();
         const __descShort = __desc ? (__desc.length>34 ? __desc.slice(0,34)+"…" : __desc) : "";
@@ -8581,7 +8581,7 @@ function showRepairTip(r, mouseX, mouseY){
   const wfBar = (typeof wfBgMap === 'object' && wfBgMap[r.workflowStatus||""]) || "#ec4899";
   const wfLabel = r.workflowStatus || "アポ・手配 未";
   const worker = (r.worker||"").trim();
-  const workerColor = worker ? (STAFF_COLORS[worker] || "#9ca3af") : null;
+  const workerColor = worker ? (worker===VENDOR_WORKER ? VENDOR_WORKER_COLOR : (STAFF_COLORS[worker] || "#9ca3af")) : null;
   tip.style.borderLeftColor = workerColor || wfBar;
 
   const titleHtml = `<div class="tt-title">🔧 ${escapeHtml(r.name||"(物件不明)")}${r.room?" "+escapeHtml(r.room):""}</div>`;
@@ -8663,12 +8663,15 @@ function showRepairQuickPop(r, anchorEl){
   const vendorBadge = __vendorPop ? `<span style="background:#76a5af;color:${textColorFor("#76a5af")};padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700">🛠${escapeHtml(__vendorPop)}</span>` : '';
   // worker buttons
   const me = getMyself();
+  const __vOn = r.worker === VENDOR_WORKER ? 'on' : '';
+  const vendorWorkerBtn = `<button data-worker="${VENDOR_WORKER}" class="${__vOn}" style="${__vOn?`background:${VENDOR_WORKER_COLOR}22;border-color:${VENDOR_WORKER_COLOR}`:''}"><span class="qp-dot" style="background:${VENDOR_WORKER_COLOR}"></span>🛠${VENDOR_WORKER}</button>`;
   const workerBtns = ['<button data-worker="" class="' + (!r.worker?'on':'') + '"><span class="qp-dot" style="background:#cbd5e1"></span>未設定</button>']
     .concat(STAFF.map(s=>{
       const display = (typeof getStaffDisplayName === 'function') ? getStaffDisplayName(s) : s;
       const on = r.worker === s ? 'on' : '';
       return `<button data-worker="${escapeHtml(s)}" class="${on}" style="${on?`background:${STAFF_COLORS[s]}22;border-color:${STAFF_COLORS[s]}`:''}"><span class="qp-dot" style="background:${STAFF_COLORS[s]}"></span>${escapeHtml(display)}</button>`;
-    })).join('');
+    }))
+    .concat([vendorWorkerBtn]).join('');
 
   // comments rendering
   const renderComments = ()=>{
@@ -10894,6 +10897,13 @@ function repairContactCls(name){
   if(/松尾/.test(n)) return "松尾";
   return "";
 }
+// 🛠 作業担当="外注業者" は専用色 #76a5af。それ以外はスタッフ色
+const VENDOR_WORKER = "外注業者";
+const VENDOR_WORKER_COLOR = "#76a5af";
+function repairWorkerColor_(wKey){
+  if(wKey === VENDOR_WORKER) return VENDOR_WORKER_COLOR;
+  return (typeof STAFF_COLORS!=='undefined' && STAFF_COLORS[wKey]) ? STAFF_COLORS[wKey] : "#fff";
+}
 
 function renderRepairView(){
   const list = state.repairs || [];
@@ -10989,7 +10999,7 @@ function renderRepairCard(r, i){
     : "";
   // 作業担当者バッジ(別フィールド・ローカル設定)
   const worker = (r.worker||"").trim();
-  const wColor = STAFF_COLORS[worker] || "#e2e8f0";
+  const wColor = worker===VENDOR_WORKER ? VENDOR_WORKER_COLOR : (STAFF_COLORS[worker] || "#e2e8f0");
   const workerHtml = worker
     ? `<span class="rep-person" style="background:${wColor};color:${textColorFor(wColor)};box-shadow:inset 0 0 0 1.5px #b45309" title="作業担当: ${escapeHtml(worker)}">🔨 ${escapeHtml(worker)}</span>`
     : "";
@@ -11218,12 +11228,14 @@ function openRepairSheet(id){
   // 作業担当者ピッカー (空白OK・単一選択)
   const workerPick = document.getElementById("rs-worker-pick");
   const curWorker = r.worker || "";
+  const __vck = curWorker === VENDOR_WORKER;
+  const vendorLabel = `<label class="${__vck?"checked":""}" data-staff="${VENDOR_WORKER}"><input type="radio" name="rs-worker" value="${VENDOR_WORKER}" ${__vck?"checked":""}><span class="p-dot" style="background:${VENDOR_WORKER_COLOR}"></span>🛠${VENDOR_WORKER}</label>`;
   workerPick.innerHTML = [`<label class="${!curWorker?"checked":""}" data-staff=""><input type="radio" name="rs-worker" value="" ${!curWorker?"checked":""}><span class="p-dot" style="background:#e5e7eb"></span>未設定</label>`].concat(
     STAFF.map(s=>{
       const ck = curWorker === s;
       return `<label class="${ck?"checked":""}" data-staff="${s}"><input type="radio" name="rs-worker" value="${s}" ${ck?"checked":""}><span class="p-dot" style="background:${STAFF_COLORS[s]}"></span>${s}</label>`;
     })
-  ).join("");
+  ).concat([vendorLabel]).join("");
   workerPick.querySelectorAll("input").forEach(cb=>{
     cb.onchange = ()=>{
       workerPick.querySelectorAll("label").forEach(l=>l.classList.remove("checked"));
