@@ -1988,7 +1988,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.25.2</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.25.3</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -6318,6 +6318,23 @@ function restoApplyProgress(prop, serverProgress){
     });
   }
 }
+// 🚫 完了済み工事の事前は隠す: 事前イベントを state.restorations と「物件名+号室(長いキー優先)」で突合し、
+//   突合工事が status=完了/完工/完成 or 完了日あり なら true(jizen_scheduleに完了案件が残っても表示しない)
+function isCompletedJizenEvent_(ev){
+  if(!ev || ev.category !== '事前') return false;
+  const t = String(ev.title||"").replace(/\s+|　/g,"");
+  if(!t) return false;
+  let best=null, bestLen=0;
+  (state.restorations||[]).forEach(x=>{
+    if(!x || !x.name) return;
+    const n  = String(x.name).replace(/\s+|　/g,"");
+    const rm = String(x.room||"").replace(/\s+|　/g,"");
+    const keys = rm ? [n+rm, n] : [n];   // 号室付きの長いキーを優先
+    keys.forEach(k=>{ if(k && t.includes(k) && k.length>bestLen){ best=x; bestLen=k.length; } });
+  });
+  if(!best) return false;
+  return /完了|完工|完成/.test(String(best.status||"")) || !!(best.completeDate);
+}
 function extractRestorations(properties, existing){
   const exById = new Map();
   (existing||[]).forEach(p=>exById.set(p.id, p));
@@ -7753,7 +7770,7 @@ function renderCalendar(){
     // v1.12〜 退去立会(見積アプリ→shared-config)の仮想イベントも合流
     const taikyoVirtuals = buildTaikyoVirtuals_();
     // 📋 事務タスク(チェックリスト)はカレンダーに出さずバッジ専用にする(行削除で消えない)
-    const events = [...state.events, ...taikyoVirtuals].filter(c.filterEvent).filter(e=>!isJimuTaskEvent_(e));
+    const events = [...state.events, ...taikyoVirtuals].filter(c.filterEvent).filter(e=>!isJimuTaskEvent_(e)).filter(e=>!isCompletedJizenEvent_(e));
     const normalEvents = events.filter(e=>!e.allday);
     const alldayEvents = events.filter(e=>e.allday);
     const placedNormal = layoutEvents(normalEvents).map(p=>({...p, isFree:false}));
@@ -8375,7 +8392,7 @@ function renderMonth(){
     const dayCls = d.getDay()===6?"sat":(d.getDay()===0?"sun":"");
     // v1.12〜 退去立会(virtual)も含めて月ビューに表示(重複集約・ローテ済)
     const __taikyoVs = buildTaikyoVirtuals_();
-    const dayEvents = [...state.events, ...__taikyoVs].filter(ev=>ev.date===dStr && !ev.allday && isEventVisible(ev))
+    const dayEvents = [...state.events, ...__taikyoVs].filter(ev=>ev.date===dStr && !ev.allday && isEventVisible(ev) && !isCompletedJizenEvent_(ev))
       .sort((a,b)=>timeToMin(a.start)-timeToMin(b.start));
     const dayLeaves = state.leaves.filter(l=>dStr>=l.start && dStr<=l.end);
     const MAX_SHOW = 8;
