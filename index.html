@@ -1988,7 +1988,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.25.4</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.26</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7489,7 +7489,7 @@ function renderCalendar(){
           const tagSpan = `<span style="background:${tagBg};color:${textColorFor(tagBg)};padding:0 5px;border-radius:3px;font-size:10px;font-weight:700;margin-right:4px" title="${escapeHtml(r.contractor||'')}">修繕</span>`;
           const worker = (r.worker||"").trim();
           const contactPerson = (r.contactPerson||"").trim();
-          const wKey = worker || repairContactCls(contactPerson);
+          const wKey = firstWorker_(worker) || repairContactCls(contactPerson);
           const wColor = repairWorkerColor_(wKey);
           const wFg = wColor === "#fff" ? "#0f172a" : textColorFor(wColor);
           const label = `🔧 ${r.name}${r.room?" "+r.room:""}${tStr}`;
@@ -8034,7 +8034,7 @@ function renderCalendar(){
         // 作業担当者色 (worker > contactPerson 優先順) で背景色を決定
         const worker = (r.worker||"").trim();
         const contactPerson = (r.contactPerson||"").trim();
-        const wKey = worker || repairContactCls(contactPerson);
+        const wKey = firstWorker_(worker) || repairContactCls(contactPerson);
         const wColor = repairWorkerColor_(wKey);
         const wFg = wColor === "#fff" ? "#0f172a" : textColorFor(wColor);
         const __desc = (r.requestDesc || r.requestDescFull || "").trim();
@@ -8619,7 +8619,8 @@ function showRepairTip(r, mouseX, mouseY){
   const wfBar = (typeof wfBgMap === 'object' && wfBgMap[r.workflowStatus||""]) || "#ec4899";
   const wfLabel = r.workflowStatus || "アポ・手配 未";
   const worker = (r.worker||"").trim();
-  const workerColor = worker ? (worker===VENDOR_WORKER ? VENDOR_WORKER_COLOR : (STAFF_COLORS[worker] || "#9ca3af")) : null;
+  const __wf = firstWorker_(worker);
+  const workerColor = worker ? (__wf===VENDOR_WORKER ? VENDOR_WORKER_COLOR : (STAFF_COLORS[__wf] || "#9ca3af")) : null;
   tip.style.borderLeftColor = workerColor || wfBar;
 
   const titleHtml = `<div class="tt-title">🔧 ${escapeHtml(r.name||"(物件不明)")}${r.room?" "+escapeHtml(r.room):""}</div>`;
@@ -8701,12 +8702,13 @@ function showRepairQuickPop(r, anchorEl){
   const vendorBadge = __vendorPop ? `<span style="background:#76a5af;color:${textColorFor("#76a5af")};padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700">🛠${escapeHtml(__vendorPop)}</span>` : '';
   // worker buttons
   const me = getMyself();
-  const __vOn = r.worker === VENDOR_WORKER ? 'on' : '';
+  const __wlist = parseWorkers_(r.worker);   // 複数可
+  const __vOn = __wlist.includes(VENDOR_WORKER) ? 'on' : '';
   const vendorWorkerBtn = `<button data-worker="${VENDOR_WORKER}" class="${__vOn}" style="${__vOn?`background:${VENDOR_WORKER_COLOR}22;border-color:${VENDOR_WORKER_COLOR}`:''}"><span class="qp-dot" style="background:${VENDOR_WORKER_COLOR}"></span>🛠${VENDOR_WORKER}</button>`;
-  const workerBtns = ['<button data-worker="" class="' + (!r.worker?'on':'') + '"><span class="qp-dot" style="background:#cbd5e1"></span>未設定</button>']
+  const workerBtns = ['<button data-worker="" class="' + (__wlist.length===0?'on':'') + '"><span class="qp-dot" style="background:#cbd5e1"></span>未設定</button>']
     .concat(STAFF.map(s=>{
       const display = (typeof getStaffDisplayName === 'function') ? getStaffDisplayName(s) : s;
-      const on = r.worker === s ? 'on' : '';
+      const on = __wlist.includes(s) ? 'on' : '';
       return `<button data-worker="${escapeHtml(s)}" class="${on}" style="${on?`background:${STAFF_COLORS[s]}22;border-color:${STAFF_COLORS[s]}`:''}"><span class="qp-dot" style="background:${STAFF_COLORS[s]}"></span>${escapeHtml(display)}</button>`;
     }))
     .concat([vendorWorkerBtn]).join('');
@@ -8777,20 +8779,22 @@ function showRepairQuickPop(r, anchorEl){
   pop.querySelector('.qp-worker-pick').onclick = (e)=>{
     const btn = e.target.closest('[data-worker]');
     if(!btn) return;
-    const newWorker = btn.dataset.worker;
-    r.worker = newWorker;
+    const w = btn.dataset.worker;
+    let list = parseWorkers_(r.worker);
+    if(w === ""){ list = []; }                              // 未設定 → 全クリア
+    else if(list.includes(w)){ list = list.filter(x=>x!==w); } // 解除(トグル)
+    else { list.push(w); }                                  // 追加
+    r.worker = joinWorkers_(list);
     saveState();
     render();
-    // ボタン状態更新
+    // ボタン状態更新(複数on可)
     pop.querySelectorAll('[data-worker]').forEach(b=>{
-      const isOn = b.dataset.worker === newWorker;
+      const bw = b.dataset.worker;
+      const isOn = bw === "" ? list.length===0 : list.includes(bw);
       b.classList.toggle('on', isOn);
-      if(isOn && newWorker){
-        b.style.background = STAFF_COLORS[newWorker]+'22';
-        b.style.borderColor = STAFF_COLORS[newWorker];
-      } else {
-        b.style.background = ''; b.style.borderColor = '';
-      }
+      const col = bw===VENDOR_WORKER ? VENDOR_WORKER_COLOR : STAFF_COLORS[bw];
+      if(isOn && bw && col){ b.style.background = col+'22'; b.style.borderColor = col; }
+      else { b.style.background = ''; b.style.borderColor = ''; }
     });
   };
   // コメント送信
@@ -10942,6 +10946,10 @@ function repairWorkerColor_(wKey){
   if(wKey === VENDOR_WORKER) return VENDOR_WORKER_COLOR;
   return (typeof STAFF_COLORS!=='undefined' && STAFF_COLORS[wKey]) ? STAFF_COLORS[wKey] : "#fff";
 }
+// 作業担当は複数可(カンマ区切り保存)。
+function parseWorkers_(w){ return String(w||"").split(/[,、]/).map(s=>s.trim()).filter(Boolean); }
+function joinWorkers_(arr){ return (arr||[]).filter(Boolean).join(","); }
+function firstWorker_(w){ return parseWorkers_(w)[0] || ""; }
 
 function renderRepairView(){
   const list = state.repairs || [];
@@ -11037,7 +11045,8 @@ function renderRepairCard(r, i){
     : "";
   // 作業担当者バッジ(別フィールド・ローカル設定)
   const worker = (r.worker||"").trim();
-  const wColor = worker===VENDOR_WORKER ? VENDOR_WORKER_COLOR : (STAFF_COLORS[worker] || "#e2e8f0");
+  const __wf2 = firstWorker_(worker);
+  const wColor = __wf2===VENDOR_WORKER ? VENDOR_WORKER_COLOR : (STAFF_COLORS[__wf2] || "#e2e8f0");
   const workerHtml = worker
     ? `<span class="rep-person" style="background:${wColor};color:${textColorFor(wColor)};box-shadow:inset 0 0 0 1.5px #b45309" title="作業担当: ${escapeHtml(worker)}">🔨 ${escapeHtml(worker)}</span>`
     : "";
@@ -11265,20 +11274,15 @@ function openRepairSheet(id){
   document.getElementById("rs-creatormemo").value = r.creatorMemo || "";
   // 作業担当者ピッカー (空白OK・単一選択)
   const workerPick = document.getElementById("rs-worker-pick");
-  const curWorker = r.worker || "";
-  const __vck = curWorker === VENDOR_WORKER;
-  const vendorLabel = `<label class="${__vck?"checked":""}" data-staff="${VENDOR_WORKER}"><input type="radio" name="rs-worker" value="${VENDOR_WORKER}" ${__vck?"checked":""}><span class="p-dot" style="background:${VENDOR_WORKER_COLOR}"></span>🛠${VENDOR_WORKER}</label>`;
-  workerPick.innerHTML = [`<label class="${!curWorker?"checked":""}" data-staff=""><input type="radio" name="rs-worker" value="" ${!curWorker?"checked":""}><span class="p-dot" style="background:#e5e7eb"></span>未設定</label>`].concat(
-    STAFF.map(s=>{
-      const ck = curWorker === s;
-      return `<label class="${ck?"checked":""}" data-staff="${s}"><input type="radio" name="rs-worker" value="${s}" ${ck?"checked":""}><span class="p-dot" style="background:${STAFF_COLORS[s]}"></span>${s}</label>`;
-    })
-  ).concat([vendorLabel]).join("");
+  const __wcur = parseWorkers_(r.worker);   // 複数可(チェックボックス・無チェック=未設定)
+  const __vck = __wcur.includes(VENDOR_WORKER);
+  const vendorLabel = `<label class="${__vck?"checked":""}" data-staff="${VENDOR_WORKER}"><input type="checkbox" name="rs-worker" value="${VENDOR_WORKER}" ${__vck?"checked":""}><span class="p-dot" style="background:${VENDOR_WORKER_COLOR}"></span>🛠${VENDOR_WORKER}</label>`;
+  workerPick.innerHTML = STAFF.map(s=>{
+      const ck = __wcur.includes(s);
+      return `<label class="${ck?"checked":""}" data-staff="${s}"><input type="checkbox" name="rs-worker" value="${s}" ${ck?"checked":""}><span class="p-dot" style="background:${STAFF_COLORS[s]}"></span>${s}</label>`;
+    }).concat([vendorLabel]).join("");
   workerPick.querySelectorAll("input").forEach(cb=>{
-    cb.onchange = ()=>{
-      workerPick.querySelectorAll("label").forEach(l=>l.classList.remove("checked"));
-      cb.closest("label").classList.add("checked");
-    };
+    cb.onchange = ()=>{ cb.closest("label").classList.toggle("checked", cb.checked); }; // 複数可: クリックしたものだけトグル
   });
   // 営業ステータス 7値ピッカー
   const stPick = document.getElementById("rs-status-pick");
@@ -11320,7 +11324,7 @@ async function saveRepairSheet(){
   const newRespDate = document.getElementById("rs-respdate").value;
   const newRespTime = document.getElementById("rs-resptime").value.trim();
   const newMemo = document.getElementById("rs-creatormemo").value;
-  const newWorker = document.querySelector('input[name="rs-worker"]:checked')?.value || "";
+  const newWorker = joinWorkers_(Array.from(document.querySelectorAll('input[name="rs-worker"]:checked')).map(c=>c.value));
   // 楽観的更新
   const prev = {status:r.status, workflowStatus:r.workflowStatus, responseDate:r.responseDate, responseTime:r.responseTime, creatorMemo:r.creatorMemo, worker:r.worker};
   r.status = newSt;
