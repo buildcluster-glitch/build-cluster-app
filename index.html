@@ -708,6 +708,8 @@
   .quick-pop.task-pop .tp-row input[type=checkbox]{margin-top:2px;width:16px;height:16px;cursor:pointer;flex:0 0 auto}
   .quick-pop.task-pop .tp-row .tp-text{font-size:13px;line-height:1.4;word-break:break-word;flex:1;cursor:text}
   .quick-pop.task-pop .tp-row.done .tp-text{text-decoration:line-through;color:#94a3b8}
+  .quick-pop.task-pop .tp-row .tp-done-quick{flex:0 0 auto;border:1.5px solid #bbf7d0;background:#f0fdf4;color:#16a34a;font-size:12px;font-weight:800;line-height:1;cursor:pointer;padding:2px 6px;border-radius:5px}
+  .quick-pop.task-pop .tp-row .tp-done-quick:hover{background:#16a34a;color:#fff;border-color:#16a34a}
   .quick-pop.task-pop .tp-row .tp-del{flex:0 0 auto;border:0;background:transparent;color:#cbd5e1;font-size:16px;line-height:1;cursor:pointer;padding:0 2px}
   .quick-pop.task-pop .tp-row:hover .tp-del{color:#ef4444}
   .quick-pop.task-pop .tp-meta{flex:0 0 auto;font-size:10px;color:#16a34a;background:#f0fdf4;border-radius:8px;padding:1px 6px;white-space:nowrap}
@@ -1988,7 +1990,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.26.1</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.27</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5343,6 +5345,41 @@ function showTaskChecklistPopup(el, ev){
     ({ cur, ti } = build());
     if(ti) renderInner(); else pop.remove();
   };
+  // 💬 コメント(イベント ev.comments 利用)
+  const renderTaskComments_ = ()=>{
+    const cev = (state.events||[]).find(e=>e.id===ev.id) || ev;
+    const cs = cev.comments || [];
+    const me = (typeof getMyself==='function')?getMyself():"";
+    if(!cs.length) return '<div style="font-size:11px;color:var(--muted);text-align:center;padding:4px">まだコメント無し</div>';
+    return cs.map((c,idx)=>{
+      const tm = c.at ? (()=>{ const d=new Date(c.at); if(isNaN(d))return ''; const p=n=>String(n).padStart(2,'0'); const td=new Date();td.setHours(0,0,0,0); return d>=td?`${p(d.getHours())}:${p(d.getMinutes())}`:`${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`; })() : '';
+      return `<div class="ev-comment-card ${c.author===me?'mine':''}" style="padding:3px 6px;font-size:11px;position:relative;border-radius:6px;margin-bottom:2px;background:#f8fafc">
+        ${c.author===me?`<button class="tp-c-del" data-cidx="${idx}" title="削除" style="position:absolute;right:2px;top:2px;border:0;background:transparent;color:#cbd5e1;cursor:pointer;font-size:11px">✕</button>`:''}
+        <div style="font-size:10px;color:var(--muted)"><b>${escapeHtml(c.author||'?')}</b> ${escapeHtml(tm)}</div>
+        <div style="white-space:pre-wrap">${escapeHtml(c.text||'')}</div>
+      </div>`;
+    }).join('');
+  };
+  const wireTaskCommentDel_ = ()=>{
+    pop.querySelectorAll('.tp-c-del').forEach(b=>{
+      b.onclick = ()=>{
+        const cev=(state.events||[]).find(e=>e.id===ev.id); if(!cev||!cev.comments) return;
+        cev.comments.splice(parseInt(b.dataset.cidx,10),1);
+        cev.updatedAt=new Date().toISOString(); saveState();
+        if(typeof cloudQueueEventChange==='function') cloudQueueEventChange(cev,'upsert');
+        const el2=pop.querySelector('#tpCommentsList'); if(el2) el2.innerHTML=renderTaskComments_(); wireTaskCommentDel_(); render();
+      };
+    });
+  };
+  const addTaskComment_ = (text)=>{
+    text=String(text||'').trim(); if(!text) return;
+    const cev=(state.events||[]).find(e=>e.id===ev.id); if(!cev) return;
+    if(!Array.isArray(cev.comments)) cev.comments=[];
+    cev.comments.push({author:((typeof getMyself==='function'?getMyself():'')||'?'), text, at:new Date().toISOString()});
+    cev.updatedAt=new Date().toISOString(); saveState();
+    if(typeof cloudQueueEventChange==='function') cloudQueueEventChange(cev,'upsert');
+    const el2=pop.querySelector('#tpCommentsList'); if(el2) el2.innerHTML=renderTaskComments_(); wireTaskCommentDel_(); render();
+  };
   // テキストをインライン編集
   const startEdit_ = (sp, li)=>{
     const cur0 = sp.textContent;
@@ -5379,6 +5416,7 @@ function showTaskChecklistPopup(el, ev){
         </select>
         <span class="tp-text" data-line="${t.index}" title="クリックで編集">${escapeHtml(t.text)}</span>
         ${t.done && t.meta ? `<span class="tp-meta" title="完了ログ">${escapeHtml(t.meta)}</span>` : ""}
+        ${!t.done ? `<button class="tp-done-quick" data-line="${t.index}" title="一発で完了にする">✓</button>` : ""}
         <button class="tp-del" data-line="${t.index}" title="ゴミ箱へ">×</button>
       </div>`;
     // 未完了を優先度グループごとに区切り線で分割
@@ -5412,13 +5450,21 @@ function showTaskChecklistPopup(el, ev){
           : (doneTasks.length ? '<div class="tp-empty">未完了なし 🎉</div>'
           : '<div class="tp-empty">タスクなし — 下の入力で追加できます</div>')
         )}
-        ${doneTasks.length ? `<div class="tp-done-head" data-sec="done" role="button">${collapsed?'▸':'▾'} 完了 ${doneTasks.length}件</div>${collapsed?'':doneTasks.map(rowHtml).join("")}` : ""}
+        ${doneTasks.length ? `<div class="tp-done-head" data-sec="done" role="button">${collapsed?'▸':'▾'} 完了 ${doneTasks.length}件 <span style="font-weight:400;color:#9ca3af;font-size:10px">(完了タスクは1週間でアーカイブされます)</span></div>${collapsed?'':doneTasks.map(rowHtml).join("")}` : ""}
         ${archive.length ? `<div class="tp-done-head" data-sec="archive" role="button">${archiveCollapsed?'▸':'▾'} 🗂 アーカイブ ${archive.length}件 <span style="font-weight:400;color:#9ca3af;font-size:10px">(完了7日経過)</span></div>${archiveCollapsed?'':archive.map(archiveRowHtml).join("")}` : ""}
         ${trash.length ? `<div class="tp-done-head" data-sec="trash" role="button">${trashCollapsed?'▸':'▾'} 🗑 ゴミ箱 ${trash.length}件</div>${trashCollapsed?'':trash.map(trashRowHtml).join("")}` : ""}
       </div>
       <div class="tp-add">
         <input type="text" class="tp-add-input" placeholder="＋ タスクを追加 (Enter)">
         <button class="tp-add-btn">追加</button>
+      </div>
+      <div class="qp-sec tp-comment-sec" style="margin-top:6px">
+        <div class="qp-label">💬 コメント</div>
+        <div class="tp-comments-list" id="tpCommentsList">${renderTaskComments_()}</div>
+        <div class="qp-comment-input" style="display:flex;gap:4px;margin-top:4px">
+          <textarea class="tp-comment-input" rows="1" placeholder="メッセージ (Enter送信)" style="flex:1;font-size:12px;resize:vertical;min-height:28px"></textarea>
+          <button class="tp-comment-send btn">送信</button>
+        </div>
       </div>
       <div class="qp-actions">
         <button class="qp-detail" data-role="open-modal">✏️ 本文編集</button>
@@ -5430,6 +5476,9 @@ function showTaskChecklistPopup(el, ev){
     });
     pop.querySelectorAll('.tp-prio-sel').forEach(sel=>{
       sel.onchange = ()=> mutate(t=>setTaskPriority_(t, parseInt(sel.dataset.line,10), sel.value));
+    });
+    pop.querySelectorAll('.tp-done-quick').forEach(b=>{   // 一発完了
+      b.onclick = ()=> mutate(t=>setTaskStatus_(t, parseInt(b.dataset.line,10), '完了', (typeof getMyself==='function'?getMyself():"")));
     });
     pop.querySelectorAll('.tp-del').forEach(b=>{
       b.onclick = ()=>{
@@ -5461,6 +5510,15 @@ function showTaskChecklistPopup(el, ev){
     const doAdd = ()=>{ const v=addInput.value.trim(); if(!v) return; focusAdd=true; mutate(t=>addTaskLine_(t, v)); };
     pop.querySelector('.tp-add-btn').onclick = doAdd;
     addInput.onkeydown = e=>{ if(e.key==='Enter'){ e.preventDefault(); doAdd(); } };
+    // 💬 コメント送信
+    const __cSend = pop.querySelector('.tp-comment-send');
+    const __cInput = pop.querySelector('.tp-comment-input');
+    if(__cSend && __cInput){
+      const doSend = ()=>{ const v=__cInput.value.trim(); if(!v) return; addTaskComment_(v); __cInput.value=''; __cInput.focus(); };
+      __cSend.onclick = doSend;
+      __cInput.onkeydown = e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); doSend(); } };
+    }
+    wireTaskCommentDel_();
     pop.querySelector('[data-role="open-modal"]').onclick = ()=>{ pop.remove(); openEventModal(cur); };
     pop.querySelector('[data-role="del-event"]').onclick = ()=>{
       if(!confirm('この事務タスク(予定)を丸ごと削除しますか？\n中のタスクも全部消えます(直後なら ↶Undo で戻せます)')) return;
