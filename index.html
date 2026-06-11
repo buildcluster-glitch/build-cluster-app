@@ -1993,7 +1993,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.3</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.4</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4627,6 +4627,8 @@ function saveCachedStaffMaster(members, full){
 // 名前を詰め表記に正規化 (例: "山田 裕貴" → "山田裕貴")
 // master_sync staffMaster は氏名にスペース入り・STAFF 配列は詰め表記なので統一する
 function normalizeStaffName(s){ return String(s==null?'':s).replace(/\s+/g,''); }
+// 実在スタッフ名か (「光和工業」等の会社名はスタッフ扱いしない)
+function isRealStaffName_(s){ return !!(s && (STAFF_COLORS[s] || STAFF_COLORS[normalizeStaffName(s)])); }
 
 // 🗓 退去立会カレンダー連携 (v1.12〜): 見積アプリ→master_sync→ここ
 // 見積アプリが taikyo_tachiai_schedule に push、当アプリは GET で取得して仮想イベントに変換
@@ -8116,10 +8118,13 @@ function renderCalendar(){
           : `${hiPrio}📋 <b>${taskInfo.done}/${taskInfo.total}</b> ${bar} <span style="opacity:.9">${escapeHtml(label)}</span>`;
       }
       // ホバーtooltip(改行表示には title属性で十分)
+      const __ttStaff = (ev.source === "taikyo-shared")
+        ? parseWorkers_(ev.staff).filter(isRealStaffName_).join("・")   // 共有立会は会社名(光和工業等)を除外
+        : (ev.staff || "");
       const fullTooltip = [
         ev.title || "",
         ev.memo ? `📝 ${ev.memo}` : "",
-        ev.staff ? `担当: ${ev.staff}` : "",
+        __ttStaff ? `担当: ${__ttStaff}` : "",
         multi ? `参加: ${staffList.join("/")}` : "",
         !isFree && !isAnytime ? `${ev.start}〜${ev.end}` : (isAnytime ? "(時間未定)" : "(終日)"),
       ].filter(Boolean).join("\n");
@@ -8780,8 +8785,14 @@ function showChipTip(ev, mouseX, mouseY){
   const tip = ensureChipTip();
   const cont = contractorInfo(ev.contractor);
   const cat  = catInfo(ev.category);
-  const staffList = eventStaffList(ev);
-  const leaderColor = STAFF_COLORS[ev.staff] || cont?.color || "#3b82f6";
+  let staffList = eventStaffList(ev);
+  let leaderName = ev.staff;
+  if(ev.source === "taikyo-shared"){
+    // 共有立会: 会社名(光和工業等)は担当として表示しない。複数人はカンマ分解して個別バッジ
+    staffList = parseWorkers_(ev.staff).filter(isRealStaffName_);
+    leaderName = staffList[0] || "";
+  }
+  const leaderColor = STAFF_COLORS[leaderName] || STAFF_COLORS[normalizeStaffName(leaderName)] || cont?.color || "#3b82f6";
   // border-left color = リーダー色
   tip.style.borderLeftColor = leaderColor;
   // 中身組み立て
@@ -8819,8 +8830,8 @@ function showChipTip(ev, mouseX, mouseY){
   // 参加者
   if(staffList.length > 0){
     const staffHtml = staffList.map(s=>{
-      const sc = STAFF_COLORS[s] || "#9ca3af";
-      const isLeader = s === ev.staff;
+      const sc = STAFF_COLORS[s] || STAFF_COLORS[normalizeStaffName(s)] || "#9ca3af";
+      const isLeader = s === leaderName;
       return `<span class="tt-staff${isLeader?" is-leader":""}" style="background:${sc};color:${textColorFor(sc)}">${escapeHtml(s)}${isLeader?" ★":""}</span>`;
     }).join("");
     rows.push(`<div class="tt-row"><span class="tt-key">👥</span><span class="tt-val"><div class="tt-staffs">${staffHtml}</div></span></div>`);
