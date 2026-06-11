@@ -1993,7 +1993,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.28</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.1</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3135,6 +3135,22 @@
         </div>
       </fieldset>
 
+      <!-- セクション5: 自動バックアップ -->
+      <fieldset style="border:1px solid var(--border);border-radius:8px;padding:12px;margin:0">
+        <legend style="padding:0 8px;font-weight:700;color:#1f2937">🗄 自動バックアップ</legend>
+        <div class="field" style="margin:0">
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="all-snap-select" style="padding:6px;font-size:13px;flex:1"></select>
+            <button class="btn" id="all-snap-restore" style="white-space:nowrap">⏪ 復元</button>
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-top:4px">
+            9時/13時/18時の各時刻を過ぎてアプリが開いていると自動保存(変化がない時はスキップ)。保存期間14日。<br>
+            復元すると現在のデータは「復元前の退避」として残り、ページを再読込します。<br>
+            ⚠ 復元はこの端末のみ。クラウド同期で他端末の新しい変更が優先される場合があります。
+          </div>
+        </div>
+      </fieldset>
+
       <div style="font-size:11px;color:var(--muted);background:#f3f4f6;padding:8px 10px;border-radius:6px;line-height:1.5">
         💡 <strong>注意</strong>: 在庫設定の変更はページリロード後に反映されます。<br>
         💡 各URLは個別の GAS ですので、混同しないでください。
@@ -3532,6 +3548,83 @@ function loadState(){
 function saveState(){
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
+
+// ===== 🗄 自動バックアップ(スナップショット) =====
+// 9時/13時/18時の3枠。各枠に入って最初にアプリが動いている時に1回だけ撮影。
+// 直近スナップと内容が同じならスキップ。保存期間14日(古いものから自動削除)。
+const SNAP_PREFIX = "buildcluster_schedule_snap_";
+const SNAP_SLOTS = [9, 13, 18];
+const SNAP_KEEP_DAYS = 14;
+function snapDateStr_(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function listSnapshots_(){
+  const ks = [];
+  for(let i=0;i<localStorage.length;i++){
+    const k = localStorage.key(i);
+    if(k && k.indexOf(SNAP_PREFIX)===0) ks.push(k);
+  }
+  return ks.sort(); // キー=日付_時刻 なので文字列ソート=時系列
+}
+function pruneSnapshots_(){
+  const cutoff = snapDateStr_(new Date(Date.now() - SNAP_KEEP_DAYS*86400000));
+  listSnapshots_().forEach(k=>{
+    const dateStr = k.slice(SNAP_PREFIX.length, SNAP_PREFIX.length+10); // YYYY-MM-DD
+    if(dateStr < cutoff) localStorage.removeItem(k);
+  });
+}
+function takeSnapshotIfDue_(){
+  try{
+    const now = new Date();
+    let slot = null;
+    SNAP_SLOTS.forEach(h=>{ if(now.getHours()>=h) slot = h; });
+    if(slot===null) return; // 9時前は撮らない
+    const key = SNAP_PREFIX + snapDateStr_(now) + "_" + String(slot).padStart(2,"0");
+    if(localStorage.getItem(key) !== null) return; // この枠は撮影済
+    pruneSnapshots_();
+    const json = JSON.stringify(state);
+    const ks = listSnapshots_();
+    const last = ks.length ? localStorage.getItem(ks[ks.length-1]) : null;
+    if(last === json) return; // 前回から変化なし → 容量節約でスキップ
+    try{
+      localStorage.setItem(key, json);
+    }catch(e){
+      // 容量オーバー → 古いスナップから削除して再試行(最大5回)
+      for(let i=0;i<5;i++){
+        const olds = listSnapshots_();
+        if(!olds.length) break;
+        localStorage.removeItem(olds[0]);
+        try{ localStorage.setItem(key, json); break; }catch(_){}
+      }
+    }
+    console.log("[snapshot] 自動バックアップ保存:", key, Math.round(json.length/1024)+"KB");
+  }catch(e){ console.warn("[snapshot] 失敗", e); }
+}
+function restoreSnapshot_(key){
+  const raw = localStorage.getItem(key);
+  if(!raw){ alert("バックアップが見つかりません"); return; }
+  let parsed;
+  try{ parsed = JSON.parse(raw); }catch(e){ alert("バックアップデータが壊れています"); return; }
+  const label = snapLabel_(key);
+  if(!confirm(`「${label}」のバックアップに復元します。\n\n現在のデータは「復元前」として退避されます。\n復元後にページを再読込します。よろしいですか？`)) return;
+  // 現在データを退避(誤復元しても戻れる)
+  const now = new Date();
+  const preKey = SNAP_PREFIX + snapDateStr_(now) + "_pre" + String(now.getHours()).padStart(2,"0") + String(now.getMinutes()).padStart(2,"0");
+  try{ localStorage.setItem(preKey, JSON.stringify(state)); }catch(_){}
+  localStorage.setItem(STORAGE_KEY, raw);
+  location.reload();
+}
+function snapLabel_(key){
+  const rest = key.slice(SNAP_PREFIX.length); // YYYY-MM-DD_HH or YYYY-MM-DD_preHHMM
+  const dateStr = rest.slice(0,10);
+  const tag = rest.slice(11);
+  const d = new Date(dateStr+"T00:00:00");
+  const yobi = ["日","月","火","水","木","金","土"][d.getDay()];
+  const m = d.getMonth()+1, day = d.getDate();
+  if(tag.indexOf("pre")===0) return `${m}/${day}(${yobi}) ${tag.slice(3,5)}:${tag.slice(5,7)} 復元前の退避`;
+  return `${m}/${day}(${yobi}) ${parseInt(tag,10)}時のバックアップ`;
+}
+// 起動15秒後(クラウド同期が落ち着いてから)＋以後5分おきに枠チェック
+setTimeout(takeSnapshotIfDue_, 15000);
+setInterval(takeSnapshotIfDue_, 5*60*1000);
 
 // ===== タスクマネージャー 関連 =====
 const TASK_PRIORITIES = [
@@ -4806,8 +4899,11 @@ function buildTaikyoVirtualEvent_(r){
   // クラ助の仮置き(担当未定) / 担当者色に無いstaff(光和工業=会社名)を色で出し分け
   const isProvisional = !!r.provisional;
   const PROVISIONAL_COLOR = "#cbd5e1"; // 立会?(担当未定) グレー
-  // デフォは行背景 空白(白)。担当者が付けばその担当者色。仮置きのみグレー。
-  const chipColor = isProvisional ? PROVISIONAL_COLOR : "";  // ""=既存ロジック(担当色 or 透明)
+  // デフォは行背景 空白(白)。担当者が付けばその担当者色(複数人なら先頭の人)。仮置きで担当無しのみグレー。
+  //   ※ 以前は仮置き=グレー固定でピッカーで担当を付けても色が変わらなかった / 複数人選択も "A,B" が色表に無く白のままだった
+  const __tkFirst = (typeof firstWorker_==='function') ? firstWorker_(effectiveStaff) : String(effectiveStaff||"").split(",")[0].trim();
+  const __tkStaffCol = STAFF_COLORS[__tkFirst] || STAFF_COLORS[normalizeStaffName(__tkFirst)] || "";
+  const chipColor = __tkStaffCol ? __tkStaffCol : (isProvisional ? PROVISIONAL_COLOR : "");  // ""=既存ロジック(担当色 or 透明)
   return {
     id: `_taikyo_${r.id}`,
     title: `${r.bukken}${r.room?" "+r.room:""}${r.time && !m ? ` (${r.time})` : ""}`,
@@ -8022,8 +8118,10 @@ function renderCalendar(){
         ? `<span class="chip-prog" data-resto-id="${escapeHtml(String(__progResto.id))}" role="button" title="📋 原状回復の進捗を表示">📋</span>`
         : "";
       // 👤 担当者(見積作成者)バッジ — 📋進捗アイコンの隣に。スペース入り氏名でも色解決
+      //   立会チップには出さない(立会担当ピッカーの担当と紛らわしいため。事前/最終確認等のみ)
+      const __isTachiaiChip = ev.source === "taikyo-shared" || String(ev.category||"").startsWith("立会");
       let __progStaffBadge = "";
-      if(__progResto && __progResto.staff && (typeof isHiddenStaffBadge_!=='function' || !isHiddenStaffBadge_(__progResto.staff))){
+      if(__progResto && __progResto.staff && !__isTachiaiChip && (typeof isHiddenStaffBadge_!=='function' || !isHiddenStaffBadge_(__progResto.staff))){
         const __psc = (STAFF_COLORS[__progResto.staff] || STAFF_COLORS[String(__progResto.staff).replace(/\s|　/g,"")]) || "#9ca3af";
         __progStaffBadge = `<span class="chip-progstaff" style="align-self:center;flex-shrink:0;background:${__psc};color:${textColorFor(__psc)};font-size:9px;font-weight:700;padding:0 5px;border-radius:4px;margin-left:3px;white-space:nowrap">${escapeHtml(__progResto.staff)}</span>`;
       }
@@ -10757,6 +10855,18 @@ function openAllSettings(focus){
   const dblEl = document.getElementById('all-check-dblclick');
   if(dblEl) dblEl.value = getCheckDblclickMode();
 
+  // 🗄 自動バックアップ一覧 (新しい順)
+  const snapSel = document.getElementById('all-snap-select');
+  if(snapSel){
+    const ks = listSnapshots_().reverse();
+    snapSel.innerHTML = ks.length
+      ? ks.map(k=>{
+          const kb = Math.round((localStorage.getItem(k)||'').length/1024);
+          return `<option value="${k}">${snapLabel_(k)} (${kb}KB)</option>`;
+        }).join('')
+      : '<option value="">(まだバックアップなし — 9時/13時/18時に自動保存)</option>';
+  }
+
   allSettingsModal.classList.add('show');
   // フォーカス対象セクションへスクロール
   if(focus){
@@ -10769,6 +10879,13 @@ function openAllSettings(focus){
 function closeAllSettings(){ allSettingsModal.classList.remove('show'); }
 allSettingsModal.onclick = e=>{ if(e.target===allSettingsModal) closeAllSettings(); };
 document.getElementById('all-settings-cancel').onclick = closeAllSettings;
+
+// 🗄 バックアップ復元
+document.getElementById('all-snap-restore').onclick = ()=>{
+  const key = document.getElementById('all-snap-select').value;
+  if(!key){ alert("まだバックアップがありません。\n9時/13時/18時にアプリを開いていると自動保存されます。"); return; }
+  restoreSnapshot_(key);
+};
 
 // 📤 全件強制PUSH: ローカル予定全部をキューに積んでサーバーに送信
 document.getElementById('all-cs-push-all').onclick = async ()=>{
