@@ -708,6 +708,9 @@
   .quick-pop.task-pop .tp-row input[type=checkbox]{margin-top:2px;width:16px;height:16px;cursor:pointer;flex:0 0 auto}
   .quick-pop.task-pop .tp-row .tp-text{font-size:13px;line-height:1.4;word-break:break-word;flex:1;cursor:text}
   .quick-pop.task-pop .tp-row.done .tp-text{text-decoration:line-through;color:#94a3b8}
+  .quick-pop.task-pop .tp-row .tp-comment-btn{flex:0 0 auto;border:1px solid var(--border);background:#fff;color:#64748b;font-size:10px;font-weight:700;line-height:1;cursor:pointer;padding:2px 5px;border-radius:5px}
+  .quick-pop.task-pop .tp-row .tp-comment-btn.has{background:#dbeafe;color:#1d4ed8;border-color:#bfdbfe}
+  .quick-pop.task-pop .tp-row .tp-comment-btn:hover{border-color:#94a3b8}
   .quick-pop.task-pop .tp-row .tp-done-quick{flex:0 0 auto;border:1.5px solid #bbf7d0;background:#f0fdf4;color:#16a34a;font-size:12px;font-weight:800;line-height:1;cursor:pointer;padding:2px 6px;border-radius:5px}
   .quick-pop.task-pop .tp-row .tp-done-quick:hover{background:#16a34a;color:#fff;border-color:#16a34a}
   .quick-pop.task-pop .tp-row .tp-del{flex:0 0 auto;border:0;background:transparent;color:#cbd5e1;font-size:16px;line-height:1;cursor:pointer;padding:0 2px}
@@ -1990,7 +1993,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.27.4</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.28</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5390,40 +5393,50 @@ function showTaskChecklistPopup(el, ev){
     ({ cur, ti } = build());
     if(ti) renderInner(); else pop.remove();
   };
-  // 💬 コメント(イベント ev.comments 利用)
-  const renderTaskComments_ = ()=>{
-    const cev = (state.events||[]).find(e=>e.id===ev.id) || ev;
-    const cs = cev.comments || [];
+  // 💬 タスク個別コメント(cur.taskComments[正規化テキスト] に保存)
+  const taskCKey_ = (text)=> String(text||'').replace(/^(🔴|🔵|🟡)\s*/,'').replace(/\s*〔[^〕]*〕\s*$/,'').trim();
+  const getTaskCmts_ = (key)=>{ const cev=(state.events||[]).find(e=>e.id===ev.id)||ev; return (cev.taskComments && cev.taskComments[key]) || []; };
+  const showTaskCommentPopup_ = (key, taskText, anchorEl)=>{
+    document.querySelectorAll('.quick-pop.task-cmt-pop').forEach(p=>p.remove());
     const me = (typeof getMyself==='function')?getMyself():"";
-    if(!cs.length) return '<div style="font-size:11px;color:var(--muted);text-align:center;padding:4px">まだコメント無し</div>';
-    return cs.map((c,idx)=>{
-      const tm = c.at ? (()=>{ const d=new Date(c.at); if(isNaN(d))return ''; const p=n=>String(n).padStart(2,'0'); const td=new Date();td.setHours(0,0,0,0); return d>=td?`${p(d.getHours())}:${p(d.getMinutes())}`:`${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`; })() : '';
-      return `<div class="ev-comment-card ${c.author===me?'mine':''}" style="padding:3px 6px;font-size:11px;position:relative;border-radius:6px;margin-bottom:2px;background:#f8fafc">
-        ${c.author===me?`<button class="tp-c-del" data-cidx="${idx}" title="削除" style="position:absolute;right:2px;top:2px;border:0;background:transparent;color:#cbd5e1;cursor:pointer;font-size:11px">✕</button>`:''}
-        <div style="font-size:10px;color:var(--muted)"><b>${escapeHtml(c.author||'?')}</b> ${escapeHtml(tm)}</div>
-        <div style="white-space:pre-wrap">${escapeHtml(c.text||'')}</div>
-      </div>`;
-    }).join('');
-  };
-  const wireTaskCommentDel_ = ()=>{
-    pop.querySelectorAll('.tp-c-del').forEach(b=>{
-      b.onclick = ()=>{
-        const cev=(state.events||[]).find(e=>e.id===ev.id); if(!cev||!cev.comments) return;
-        cev.comments.splice(parseInt(b.dataset.cidx,10),1);
-        cev.updatedAt=new Date().toISOString(); saveState();
-        if(typeof cloudQueueEventChange==='function') cloudQueueEventChange(cev,'upsert');
-        const el2=pop.querySelector('#tpCommentsList'); if(el2) el2.innerHTML=renderTaskComments_(); wireTaskCommentDel_(); render();
-      };
-    });
-  };
-  const addTaskComment_ = (text)=>{
-    text=String(text||'').trim(); if(!text) return;
-    const cev=(state.events||[]).find(e=>e.id===ev.id); if(!cev) return;
-    if(!Array.isArray(cev.comments)) cev.comments=[];
-    cev.comments.push({author:((typeof getMyself==='function'?getMyself():'')||'?'), text, at:new Date().toISOString()});
-    cev.updatedAt=new Date().toISOString(); saveState();
-    if(typeof cloudQueueEventChange==='function') cloudQueueEventChange(cev,'upsert');
-    const el2=pop.querySelector('#tpCommentsList'); if(el2) el2.innerHTML=renderTaskComments_(); wireTaskCommentDel_(); render();
+    const cp = document.createElement('div'); cp.className='quick-pop task-cmt-pop';
+    const renderList = ()=>{
+      const cs = getTaskCmts_(key);
+      if(!cs.length) return '<div style="font-size:11px;color:var(--muted);text-align:center;padding:4px">まだコメント無し</div>';
+      return cs.map((c,idx)=>{
+        const tm = c.at ? (()=>{ const d=new Date(c.at); if(isNaN(d))return ''; const p=n=>String(n).padStart(2,'0'); const td=new Date();td.setHours(0,0,0,0); return d>=td?`${p(d.getHours())}:${p(d.getMinutes())}`:`${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`; })() : '';
+        return `<div class="ev-comment-card ${c.author===me?'mine':''}" style="padding:3px 6px;font-size:11px;position:relative;border-radius:6px;margin-bottom:2px;background:#f8fafc">
+          ${c.author===me?`<button class="tcp-del" data-cidx="${idx}" style="position:absolute;right:2px;top:2px;border:0;background:transparent;color:#cbd5e1;cursor:pointer;font-size:11px">✕</button>`:''}
+          <div style="font-size:10px;color:var(--muted)"><b>${escapeHtml(c.author||'?')}</b> ${escapeHtml(tm)}</div>
+          <div style="white-space:pre-wrap">${escapeHtml(c.text||'')}</div>
+        </div>`;
+      }).join('');
+    };
+    cp.innerHTML = `
+      <div class="qp-title">💬 <span style="font-weight:600">${escapeHtml(taskText)}</span></div>
+      <div class="tcp-list" style="max-height:200px;overflow:auto;margin-top:4px">${renderList()}</div>
+      <div style="display:flex;gap:4px;margin-top:4px">
+        <textarea class="tcp-input" rows="1" placeholder="メッセージ (Enter送信)" style="flex:1;font-size:12px;resize:vertical;min-height:28px"></textarea>
+        <button class="tcp-send btn">送信</button>
+      </div>
+      <div class="qp-actions"><button class="qp-close" data-role="close">閉じる</button></div>`;
+    document.body.appendChild(cp);
+    const rect = anchorEl.getBoundingClientRect();
+    cp.style.left = Math.max(8, Math.min(rect.left, window.innerWidth-320))+'px';
+    cp.style.top  = Math.min(rect.bottom+4, window.innerHeight-260)+'px';
+    const persist = ()=>{ const cev=(state.events||[]).find(e=>e.id===ev.id); if(cev){ cev.updatedAt=new Date().toISOString(); saveState(); if(typeof cloudQueueEventChange==='function') cloudQueueEventChange(cev,'upsert'); } };
+    const wireDel = ()=>{ cp.querySelectorAll('.tcp-del').forEach(b=>{ b.onclick=()=>{ const cev=(state.events||[]).find(e=>e.id===ev.id); if(cev&&cev.taskComments&&cev.taskComments[key]){ cev.taskComments[key].splice(parseInt(b.dataset.cidx,10),1); persist(); refresh(); renderInner(); } }; }); };
+    const refresh = ()=>{ const l=cp.querySelector('.tcp-list'); if(l) l.innerHTML=renderList(); wireDel(); };
+    const add = (text)=>{ text=String(text||'').trim(); if(!text) return; const cev=(state.events||[]).find(e=>e.id===ev.id); if(!cev) return; if(!cev.taskComments) cev.taskComments={}; if(!Array.isArray(cev.taskComments[key])) cev.taskComments[key]=[]; cev.taskComments[key].push({author:(me||'?'),text,at:new Date().toISOString()}); persist(); refresh(); renderInner(); };
+    wireDel();
+    const inp=cp.querySelector('.tcp-input'), snd=cp.querySelector('.tcp-send');
+    const doSend=()=>{ add(inp.value); inp.value=''; inp.focus(); };
+    snd.onclick=doSend;
+    inp.onkeydown=e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); doSend(); } };
+    cp.querySelector('[data-role="close"]').onclick=()=>cp.remove();
+    setTimeout(()=>inp.focus(),30);
+    const closeOut=(e2)=>{ if(!cp.contains(e2.target) && !anchorEl.contains(e2.target)){ cp.remove(); document.removeEventListener('pointerdown',closeOut,true); } };
+    setTimeout(()=>document.addEventListener('pointerdown',closeOut,true),60);
   };
   // テキストをインライン編集
   const startEdit_ = (sp, li)=>{
@@ -5461,6 +5474,7 @@ function showTaskChecklistPopup(el, ev){
         </select>
         <span class="tp-text" data-line="${t.index}" title="クリックで編集">${escapeHtml(t.text)}</span>
         ${t.done && t.meta ? `<span class="tp-meta" title="完了ログ">${escapeHtml(t.meta)}</span>` : ""}
+        ${(()=>{ const n=getTaskCmts_(taskCKey_(t.text)).length; return `<button class="tp-comment-btn ${n?'has':''}" data-line="${t.index}" title="このタスクのコメント">💬${n||''}</button>`; })()}
         ${!t.done ? `<button class="tp-done-quick" data-line="${t.index}" title="一発で完了にする">✓</button>` : ""}
         <button class="tp-del" data-line="${t.index}" title="ゴミ箱へ">×</button>
       </div>`;
@@ -5503,14 +5517,6 @@ function showTaskChecklistPopup(el, ev){
         <input type="text" class="tp-add-input" placeholder="＋ タスクを追加 (Enter)">
         <button class="tp-add-btn">追加</button>
       </div>
-      <div class="qp-sec tp-comment-sec" style="margin-top:6px">
-        <div class="qp-label">💬 コメント</div>
-        <div class="tp-comments-list" id="tpCommentsList">${renderTaskComments_()}</div>
-        <div class="qp-comment-input" style="display:flex;gap:4px;margin-top:4px">
-          <textarea class="tp-comment-input" rows="1" placeholder="メッセージ (Enter送信)" style="flex:1;font-size:12px;resize:vertical;min-height:28px"></textarea>
-          <button class="tp-comment-send btn">送信</button>
-        </div>
-      </div>
       <div class="qp-actions">
         <button class="qp-detail" data-role="open-modal">✏️ 本文編集</button>
         <button class="qp-del-event" data-role="del-event" title="この事務タスク予定を丸ごと削除">🗑 予定削除</button>
@@ -5524,6 +5530,15 @@ function showTaskChecklistPopup(el, ev){
     });
     pop.querySelectorAll('.tp-done-quick').forEach(b=>{   // 一発完了
       b.onclick = ()=> mutate(t=>setTaskStatus_(t, parseInt(b.dataset.line,10), '完了', (typeof getMyself==='function'?getMyself():"")));
+    });
+    pop.querySelectorAll('.tp-comment-btn').forEach(b=>{   // 💬 タスク個別コメント
+      b.onclick = (e)=>{
+        e.stopPropagation();
+        const li = parseInt(b.dataset.line,10);
+        const tk = (ti.tasks||[]).concat(ti.trash||[], ti.archive||[]).find(x=>x.index===li);
+        const text = tk ? tk.text : '';
+        if(text) showTaskCommentPopup_(taskCKey_(text), text, b);
+      };
     });
     pop.querySelectorAll('.tp-del').forEach(b=>{
       b.onclick = ()=>{
@@ -5558,15 +5573,6 @@ function showTaskChecklistPopup(el, ev){
     const doAdd = ()=>{ const v=addInput.value.trim(); if(!v) return; focusAdd=true; mutate(t=>addTaskLine_(t, v)); };
     pop.querySelector('.tp-add-btn').onclick = doAdd;
     addInput.onkeydown = e=>{ if(e.key==='Enter'){ e.preventDefault(); doAdd(); } };
-    // 💬 コメント送信
-    const __cSend = pop.querySelector('.tp-comment-send');
-    const __cInput = pop.querySelector('.tp-comment-input');
-    if(__cSend && __cInput){
-      const doSend = ()=>{ const v=__cInput.value.trim(); if(!v) return; addTaskComment_(v); __cInput.value=''; __cInput.focus(); };
-      __cSend.onclick = doSend;
-      __cInput.onkeydown = e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); doSend(); } };
-    }
-    wireTaskCommentDel_();
     pop.querySelector('[data-role="open-modal"]').onclick = ()=>{ pop.remove(); openEventModal(cur); };
     pop.querySelector('[data-role="del-event"]').onclick = ()=>{
       if(!confirm('この事務タスク(予定)を丸ごと削除しますか？\n中のタスクも全部消えます(直後なら ↶Undo で戻せます)')) return;
