@@ -1990,7 +1990,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.27.3</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.27.4</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5527,6 +5527,9 @@ function showTaskChecklistPopup(el, ev){
     });
     pop.querySelectorAll('.tp-del').forEach(b=>{
       b.onclick = ()=>{
+        const __row = b.closest('.tp-row');
+        const __txt = (__row && __row.querySelector('.tp-text') ? __row.querySelector('.tp-text').textContent : 'このタスク').trim();
+        if(!confirm(`「${__txt}」を削除しますか?\n(ゴミ箱に移動します・後で復元できます)`)) return;
         mutate(t=>deleteTaskLine_(t, parseInt(b.dataset.line,10)));   // ゴミ箱へ(復元可)
         if(typeof showAutoSyncToast==='function') showAutoSyncToast('🗑 ゴミ箱に移動しました(下の🗑から復元できます)');
       };
