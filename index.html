@@ -1990,7 +1990,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.27.2</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.27.3</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3497,35 +3497,6 @@ let state = loadState();
     if(n) console.log("[migrate] 事前イベントに元請=山一を補完:", n, "件");
     if(t) console.log("[migrate] 事前イベント 終日→時間未定:", t, "件");
   }
-})();
-// 🩹 v1.27.2 migration: 事務タスクの重複行を排除＋空の事務イベントを削除(増殖の掃除)
-(function _migrateJimuDedup(){
-  if(!state.events || !state.events.length) return;
-  if(typeof dedupeTaskLines_!=='function' || typeof getTaskInfo_!=='function') return;
-  let dd=0;
-  state.events.forEach(e=>{
-    if(e && e.category==='事務' && e.title){
-      const nt = dedupeTaskLines_(e.title);
-      if(nt !== e.title){ e.title = nt; e.updatedAt = new Date().toISOString(); dd++;
-        if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(e,'upsert'); }catch(_){} } }
-    }
-  });
-  // 空の事務イベント(タスク/ゴミ箱/アーカイブ 全部なし)を削除
-  const rmSet = new Set();
-  state.events.forEach(e=>{
-    if(e && e.category==='事務' && !getTaskInfo_(e)){
-      const body = String(e.title||'').split(/\r?\n/).slice(1).filter(l=>l.trim());
-      if(body.length===0) rmSet.add(e.id);
-    }
-  });
-  let rm=0;
-  if(rmSet.size){
-    state.events.forEach(e=>{ if(rmSet.has(e.id) && typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(e,'delete'); }catch(_){} } });
-    state.events = state.events.filter(e=>!rmSet.has(e.id));
-    rm = rmSet.size;
-  }
-  if(dd||rm){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(_){}
-    console.log(`[migrate] 事務タスク重複行排除 ${dd}件 / 空事務イベント削除 ${rm}件`); }
 })();
 let currentDate = new Date();      // 表示中の基準日
 let currentView = "month";         // 'month' | 'staff'
@@ -5361,6 +5332,34 @@ function getOrConsolidateJimuEvent_(staff){
   saveState();
   return canon;
 }
+// 🩹 v1.27.3 migration: 事務タスクの重複行を排除＋空の事務イベントを削除(増殖の掃除)
+//   ※parseTasks_/getTaskInfo_に依存するため、これらconst定義より後の位置で実行する
+(function _migrateJimuDedup(){
+  if(!state.events || !state.events.length) return;
+  let dd=0;
+  state.events.forEach(e=>{
+    if(e && e.category==='事務' && e.title){
+      const nt = dedupeTaskLines_(e.title);
+      if(nt !== e.title){ e.title = nt; e.updatedAt = new Date().toISOString(); dd++;
+        if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(e,'upsert'); }catch(_){} } }
+    }
+  });
+  const rmSet = new Set();
+  state.events.forEach(e=>{
+    if(e && e.category==='事務' && !getTaskInfo_(e)){
+      const body = String(e.title||'').split(/\r?\n/).slice(1).filter(l=>l.trim());
+      if(body.length===0) rmSet.add(e.id);
+    }
+  });
+  let rm=0;
+  if(rmSet.size){
+    state.events.forEach(e=>{ if(rmSet.has(e.id) && typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(e,'delete'); }catch(_){} } });
+    state.events = state.events.filter(e=>!rmSet.has(e.id));
+    rm = rmSet.size;
+  }
+  if(dd||rm){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(_){}
+    console.log(`[migrate] 事務タスク重複行排除 ${dd}件 / 空事務イベント削除 ${rm}件`); }
+})();
 function showTaskChecklistPopup(el, ev){
   document.querySelectorAll(".quick-pop.task-pop").forEach(p=>p.remove());
   if(typeof sweepTaskArchive_==='function') sweepTaskArchive_();   // 開く前に7日経過分を自動アーカイブ
