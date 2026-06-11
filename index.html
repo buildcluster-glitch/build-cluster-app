@@ -1990,7 +1990,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.27</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.27.1</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4199,11 +4199,8 @@ function renderCheckCard(ck, today){
   const finalCheckBadge = `<span class="badge-sm" title="${escapeHtml(__fcTip)}" style="background:${__fcBg};color:${textColorFor(__fcBg)};font-weight:700">${__fcLabel}</span>`;
   const __showStaff = ck.staff && !isHiddenStaffBadge_(ck.staff);  // 「大村まどか」等は非表示
   // 色: スペース入り氏名(「鈴木 悠平」)でも詰め表記キーで引けるよう正規化
-  const __ckStaff1 = firstWorker_(ck.staff) || String(ck.staff||"");   // 複数可: 色は先頭担当者
-  const __staffBadgeCol = STAFF_COLORS[__ckStaff1] || STAFF_COLORS[String(__ckStaff1).replace(/\s|　/g,"")] || "#9ca3af";
-  const staffBadge = __showStaff
-    ? `<span class="badge-sm" style="background:${__staffBadgeCol};color:${textColorFor(__staffBadgeCol)}">${escapeHtml(ck.staff)}</span>`
-    : "";
+  // 複数担当は略称バッジ列(大 木 南…)、1名はフルネーム
+  const staffBadge = __showStaff ? staffBadgesMini_(ck.staff, {full:true}) : "";
   // 工事ボリュームバッジ (v1.4.218 workloadStatus 対応)
   // 色: 無→非表示 / 軽→緑 / 普→黄 / 重→オレンジ / 激重→赤
   const volColors = {
@@ -7567,6 +7564,7 @@ function renderCalendar(){
           const __vendorBadgeB = __vendorB
             ? `<span style="background:#76a5af;color:#fff;font-size:9px;font-weight:700;padding:0 4px;border-radius:3px;margin-left:3px;white-space:nowrap">🛠${escapeHtml(__vendorB)}</span>`
             : "";
+          const __workerMiniB = parseWorkers_(r.worker).length>1 ? staffBadgesMini_(r.worker) : "";
           const tipLines = [
             `🔧 修繕アポ: ${r.contractor?r.contractor+" / ":""}${r.name}${r.room?" "+r.room:""}`,
             `${wf}${t?" / "+t:""}`,
@@ -7579,7 +7577,7 @@ function renderCalendar(){
             r.creatorMemo ? `\n📝 メモ: ${r.creatorMemo}` : "",
             "\n(クリックで編集シート)",
           ].filter(Boolean).join("\n");
-          inner += `<span class="repair-appt-chip" data-repair-id="${r.id}" style="background:${wColor};color:${wFg};border-left:4px solid ${wfBar}" title="${escapeHtml(tipLines)}">${tagSpan}${escapeHtml(label)}${__vendorBadgeB}</span>`;
+          inner += `<span class="repair-appt-chip" data-repair-id="${r.id}" style="background:${wColor};color:${wFg};border-left:4px solid ${wfBar}" title="${escapeHtml(tipLines)}">${tagSpan}${escapeHtml(label)}${__vendorBadgeB}${__workerMiniB}</span>`;
         }
       });
     }
@@ -8115,6 +8113,8 @@ function renderCalendar(){
         const __vendorBadge = __vendor
           ? `<span style="background:#76a5af;color:#fff;font-size:9px;font-weight:700;padding:0 4px;border-radius:3px;margin-left:3px;white-space:nowrap;flex-shrink:0">🛠${escapeHtml(__vendor)}</span>`
           : "";
+        // 複数作業担当は略称バッジ列(大 木 …)。1名は背景色で表現済みなので省略
+        const __workerMini = parseWorkers_(r.worker).length>1 ? `<span style="display:inline-flex;gap:2px;margin-left:3px;flex-shrink:0">${staffBadgesMini_(r.worker)}</span>` : "";
         // ホバー詳細(連絡者・作業担当・メモ含む)
         const tipLines = [
           `🔧 修繕アポ: ${r.contractor?r.contractor+" / ":""}${r.name}${r.room?" "+r.room:""}`,
@@ -8138,7 +8138,7 @@ function renderCalendar(){
         const __descLine = __descShort
           ? `<span style="display:block;width:100%;font-size:10px;font-weight:500;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2">${escapeHtml(__descShort)}</span>`
           : "";
-        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis">${tagHtml}${escapeHtml(label)}${__vendorBadge}</span>${__descLine}</span><span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>`;
+        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis">${tagHtml}${escapeHtml(label)}${__vendorBadge}${__workerMini}</span>${__descLine}</span><span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>`;
         attachRepairChipHover(el, r); // リッチtooltip
         // 単クリックは無効・ダブルクリックで作業担当者ピッカー(内側に✎詳細編集)— 他チップと統一(v1.24.6)
         el.onclick = (ev)=>{ ev.stopPropagation(); };
@@ -11020,6 +11020,21 @@ function repairWorkerColor_(wKey){
 function parseWorkers_(w){ return String(w||"").split(/[,、]/).map(s=>s.trim()).filter(Boolean); }
 function joinWorkers_(arr){ return (arr||[]).filter(Boolean).join(","); }
 function firstWorker_(w){ return parseWorkers_(w)[0] || ""; }
+// 担当者の略称(姓頭1文字)。外注業者=🛠
+function staffAbbrev_(s){ if(s===VENDOR_WORKER) return "🛠"; return String(s||"").replace(/\s|　/g,"").slice(0,1); }
+function staffColor_(s){ return (s===VENDOR_WORKER) ? VENDOR_WORKER_COLOR : (STAFF_COLORS[s] || STAFF_COLORS[String(s||"").replace(/\s|　/g,"")] || "#9ca3af"); }
+// 複数担当を略称バッジ列で描画。1名なら略称、複数なら 大 木 南 … と並べる。空=""
+//   opts.full=true で1名時はフルネーム表示
+function staffBadgesMini_(staffStr, opts){
+  const list = parseWorkers_(staffStr).filter(s=> typeof isHiddenStaffBadge_!=='function' || !isHiddenStaffBadge_(s));
+  if(!list.length) return "";
+  const single = list.length === 1;
+  return list.map(s=>{
+    const c = staffColor_(s);
+    const label = (single && opts && opts.full) ? s : staffAbbrev_(s);
+    return `<span class="badge-sm staff-mini" title="${escapeHtml(s)}" style="background:${c};color:${textColorFor(c)};padding:0 ${single&&opts&&opts.full?'5px':'4px'};font-weight:700">${escapeHtml(label)}</span>`;
+  }).join("");
+}
 
 function renderRepairView(){
   const list = state.repairs || [];
