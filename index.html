@@ -1993,7 +1993,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.1</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.3</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4940,9 +4940,11 @@ function showTaikyoStaffPicker(el, ev){
   const origStaff = ev._taikyoOrigStaff || "";
   const current = ev.staff || "";
   const __tklist = parseWorkers_(current);   // 複数可
+  // 「光和工業」等の会社名はスタッフではないので表示しない(実在スタッフの時だけ参考表示)
+  const origIsStaff = !!(STAFF_COLORS[origStaff] || STAFF_COLORS[normalizeStaffName(origStaff)]);
   pop.innerHTML = `
     <div class="qp-title">🚗 立会担当を選択 <span style="font-size:11px;color:#64748b;font-weight:400">${escapeHtml(ev.title||"")}</span></div>
-    ${origStaff ? `<div style="font-size:11px;color:#64748b;margin-bottom:6px">見積アプリ側: <b>${escapeHtml(origStaff)}</b></div>` : `<div style="font-size:11px;color:#94a3b8;margin-bottom:6px">見積アプリ側: (未指定)</div>`}
+    ${origIsStaff ? `<div style="font-size:11px;color:#64748b;margin-bottom:6px">見積アプリ側: <b>${escapeHtml(origStaff)}</b></div>` : ``}
     <div class="qp-sec">
       <div class="qp-label">スタッフ <span style="font-weight:400;color:#94a3b8;font-size:10px">(複数選択可)</span></div>
       <div class="qp-worker-pick">
@@ -4956,7 +4958,7 @@ function showTaikyoStaffPicker(el, ev){
       <div style="font-size:10px;color:var(--muted);margin-top:4px">※ 担当変更はカレンダー側のみ。見積アプリには反映しません</div>
     </div>
     <div class="qp-actions">
-      ${origStaff && current !== origStaff ? `<button class="qp-detail" data-role="restore-orig">↺ 元に戻す(${escapeHtml(origStaff)})</button>` : ""}
+      ${origStaff && current !== origStaff ? `<button class="qp-detail" data-role="restore-orig">↺ ${origIsStaff ? `元に戻す(${escapeHtml(origStaff)})` : "上書きを解除"}</button>` : ""}
       <button class="qp-close" data-role="close">閉じる</button>
     </div>`;
   document.body.appendChild(pop);
@@ -4975,7 +4977,18 @@ function showTaikyoStaffPicker(el, ev){
     btn.onclick = ()=>{
       const s = btn.dataset.staff;
       if(s===""){ __tkcur=[]; } else if(__tkcur.includes(s)){ __tkcur=__tkcur.filter(x=>x!==s); } else { __tkcur.push(s); }
-      setTaikyoStaffOverride_(taikyoId, joinWorkers_(__tkcur));
+      if(taikyoId){
+        setTaikyoStaffOverride_(taikyoId, joinWorkers_(__tkcur));
+      }else{
+        // 🛡 rawId無し(=state.eventsに紛れたゴースト等)はoverride先が無いので、イベント自体を直接更新
+        const real = (state.events||[]).find(x=>x.id===ev.id);
+        if(real){
+          real.staff = joinWorkers_(__tkcur);
+          real.updatedAt = new Date().toISOString();
+          saveState();
+          if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(real,'upsert'); }catch(_){} }
+        }
+      }
       render();
       // ボタン状態更新(複数on可・閉じない)
       pop.querySelectorAll("[data-staff]").forEach(b=>{
@@ -10574,6 +10587,8 @@ async function cloudSyncPull({ replace=false }={}){
   if(Array.isArray(data.members)){
     state.cloudMembers = data.members.map(m=>typeof m === 'string' ? m : (m.name||'')).filter(Boolean);
   }
+  // 🧹 サーバーから立会ゴースト(過去Verの実体コピー)が再流入していたら都度除去
+  if(typeof purgeTaikyoGhosts_ === 'function') purgeTaikyoGhosts_();
   cloudSync.lastSyncAt = new Date().toISOString();
   saveCloudSyncConfig();
   saveState();
@@ -11085,6 +11100,26 @@ function cloudQueueEventChange(ev, mode){
   };
   queueCloudOp('appendLog', log);
 }
+
+// 🧹 退去立会ゴーストイベント掃除 (v1.29.2)
+//   立会仮想イベント(source=taikyo-shared / id=_taikyo_*)は描画時に生成するもので state.events に保存してはいけないが、
+//   過去バージョンがクラウドDBに実体コピーを送っていた。同期で各端末に入り込むと:
+//   ① 本物の仮想チップを「手動立会優先」ルールで隠して自分が表示される
+//   ② クラウド同期で _taikyoRawId が剥がれているため、立会担当ピッカーで選んでも上書き先が undefined → 色が変わらない
+//   → state.events から除去 + クラウドにも削除伝播(全端末から消す)
+function purgeTaikyoGhosts_(){
+  try{
+    const isGhost = e => e && (e.source === 'taikyo-shared' || String(e.id||'').startsWith('_taikyo_'));
+    const ghosts = (state.events||[]).filter(isGhost);
+    if(!ghosts.length) return 0;
+    state.events = state.events.filter(e=>!isGhost(e));
+    ghosts.forEach(g=>{ try{ cloudQueueEventChange(g, 'delete'); }catch(_){} });
+    saveState();
+    console.log('[migrate] 退去立会ゴーストイベント除去:', ghosts.length, '件 (クラウドにも削除伝播)');
+    return ghosts.length;
+  }catch(e){ console.warn('[migrate] ゴースト掃除失敗', e); return 0; }
+}
+purgeTaikyoGhosts_();  // 起動時に1回
 
 // ===== 初期化 =====
 loadCloudSyncConfig();
