@@ -1988,7 +1988,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.25.3</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.25.4</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5504,40 +5504,33 @@ function showTaskChecklistPopup(el, ev){
 //  落ちるため「sid有り」と「sid無し(孤児)」のペアになる → title でも統合する)
 function dedupeJizenEvents_(){
   const evs = state.events || [];
-  // 1) sid を持つ事前イベントを sid でグループ化
-  const groups = new Map(); // sid -> {sid, title, list:[]}
+  // タイトル(物件名+号室)正規化キーで全事前イベントをグループ化(別sid・同タイトルの重複も集約)
+  const norm = s => String(s||'').replace(/\s+|　/g,'');
+  const groups = new Map(); // normTitle -> list
   evs.forEach(e=>{
-    if(isJizenEvent_(e) && e._jizenSourceId){
-      let g = groups.get(e._jizenSourceId);
-      if(!g){ g = {sid:e._jizenSourceId, title:(e.title||''), list:[]}; groups.set(e._jizenSourceId, g); }
-      g.list.push(e);
-    }
+    if(!isJizenEvent_(e)) return;
+    const key = norm(e.title);
+    if(!key) return;
+    if(!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(e);
   });
-  // 2) title → sid 索引 (孤児コピーの吸収先)
-  const titleToSid = new Map();
-  groups.forEach(g=>{ if(g.title) titleToSid.set(g.title, g.sid); });
-  // 3) sid を持たない孤児の事前イベントを、同 title の sid グループへ吸収
-  evs.forEach(e=>{
-    if(isJizenEvent_(e) && !e._jizenSourceId){
-      const sid = titleToSid.get(e.title||'');
-      if(sid) groups.get(sid).list.push(e);
-    }
-  });
-  // 4) 各グループ 1件に集約 (残す方=updatedAt新しい=ユーザー移動済を優先、sidを再付与)
+  // 各グループ 1件に集約。残す=sid持ち優先→updatedAt新しい(ユーザー移動済を優先)
   const removeIds = new Set();
-  groups.forEach(g=>{
-    if(g.list.length <= 1) return;
-    g.list.sort((a,b)=> (new Date(b.updatedAt||0)) - (new Date(a.updatedAt||0)) );
-    const keep = g.list[0];
-    if(!keep._jizenSourceId) keep._jizenSourceId = g.sid; // sidを治癒(次回から安定)
-    g.list.slice(1).forEach(e=>{
+  groups.forEach(list=>{
+    if(list.length <= 1) return;
+    list.sort((a,b)=>{
+      const as = a._jizenSourceId?1:0, bs = b._jizenSourceId?1:0;
+      if(as !== bs) return bs - as;                 // sid持ちを先頭に
+      return (new Date(b.updatedAt||0)) - (new Date(a.updatedAt||0));
+    });
+    list.slice(1).forEach(e=>{
       removeIds.add(e.id);
       if(typeof cloudQueueEventChange === 'function') cloudQueueEventChange(e, 'delete');
     });
   });
   if(removeIds.size){
     state.events = evs.filter(e=> !removeIds.has(e.id));
-    console.warn(`[jizen_schedule] 重複統合 ${removeIds.size}件削除`);
+    console.warn(`[jizen_schedule] 重複統合 ${removeIds.size}件削除(タイトル基準)`);
   }
   return removeIds.size;
 }
@@ -5549,11 +5542,11 @@ function applyJizenRecords_(records){
   const deduped = dedupeJizenEvents_(); // 既存の二重分を先に掃除
   records.forEach(r=>{
     const title = `事前 ${r.bukken}${r.room?" "+r.room:""}`;
-    // 既存イベント判定: sid一致 or (sid無しの孤児で)title一致 → 既存扱い
-    // (クラウド送信で sid が落ちた孤児コピーを拾い、二重insertを防ぐ。拾ったらsidを治癒)
+    const __titleNorm = title.replace(/\s+|　/g,"");
+    // 既存イベント判定: sid一致 or 同タイトル(物件+号室)の事前があれば既存扱い → 別sid・同物件の二重insertを防ぐ
     const existing = (state.events||[]).find(e=>{
       if(e._jizenSourceId === r.id) return true;
-      if(!e._jizenSourceId && isJizenEvent_(e) && (e.title||'') === title) return true;
+      if(isJizenEvent_(e) && String(e.title||"").replace(/\s+|　/g,"") === __titleNorm) return true;
       return false;
     });
     if(existing){
