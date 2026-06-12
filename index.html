@@ -419,8 +419,8 @@
   /* 単行モード(改行なし) — 自然折返しを禁止して1行省略 */
   .event-chip .chip-title.single-line{
     white-space:nowrap;text-overflow:ellipsis;
-    flex-wrap:nowrap;  /* ⚠ 基底の flex-wrap:wrap を打消し。子要素(バッジ等)が折返すと
-                          チップ高28pxの枠外に隠れ「立会バッジだけの空白チップ」になる(スマホ220px列で顕在化) */
+    /* ※ flex-wrap は基底の wrap のまま (PCは連携情報行を2行目に折り返すデザイン)。
+       スマホのみ768pxメディア内で nowrap (折返すと28px枠外に隠れて空白チップ化するため) */
   }
   /* 複数行モード(改行あり) — pre-wrap で改行を尊重 */
   .event-chip .chip-title.multi-line{
@@ -1645,6 +1645,9 @@
     /* 📱 3日/日ビューの時間グリッドは縦スクロールのみ許可 → 横フリックは日送りに使う
        (月=30日ビューは .tswipe が付かないので横パンで自然スクロール) */
     #calGrid.tswipe{touch-action:pan-y}
+    /* 📱 チップは完全1行省略 (狭い列で子要素が折返すと28px枠外に隠れ「空白チップ」になるため)。
+       PCは連携情報行の2行目折返しを維持するのでこの指定はスマホ限定 */
+    .event-chip .chip-title.single-line{flex-wrap:nowrap}
     /* 📱 下部ナビ表示 + 各ビューの高さ/余白調整 (ID指定=後続の基本CSS display:none より優先) */
     #mobileNav{display:flex}
     .calendar-wrap{height:calc(100vh - 188px)}
@@ -2067,7 +2070,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.11</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.12</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
