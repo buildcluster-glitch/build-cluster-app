@@ -419,6 +419,8 @@
   /* 単行モード(改行なし) — 自然折返しを禁止して1行省略 */
   .event-chip .chip-title.single-line{
     white-space:nowrap;text-overflow:ellipsis;
+    flex-wrap:nowrap;  /* ⚠ 基底の flex-wrap:wrap を打消し。子要素(バッジ等)が折返すと
+                          チップ高28pxの枠外に隠れ「立会バッジだけの空白チップ」になる(スマホ220px列で顕在化) */
   }
   /* 複数行モード(改行あり) — pre-wrap で改行を尊重 */
   .event-chip .chip-title.multi-line{
@@ -2065,7 +2067,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.10</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.11</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3518,8 +3520,9 @@ const HOUR_END   = 18;  // 表示終了（18以降は「工事最終確認」セ
 const HOUR_PX_DEFAULT = 130;  // 旧220 → 130 (1時間あたり ≒ 4チップ分。詰まる時は自動拡大)
 const MONTH_COL_DEFAULT = window.innerWidth <= 700 ? 220 : 344; // 📱スマホは220px(最終確認列と同幅で縦に整列) / PC: 旧220→286→344
 let HOUR_PX = parseInt(localStorage.getItem("buildcluster_schedule_hour_px"),10) || HOUR_PX_DEFAULT;
-// 📱 スマホ(≤700px)はズーム未調整なら初期高さを圧縮 (1日の全体が見渡せるように。ズームボタンで変更可)
-if(window.innerWidth <= 700 && !localStorage.getItem("buildcluster_schedule_hour_px")) HOUR_PX = 80;
+// ⚠ 旧v1.30.2の「スマホは80px」初期値は撤去(v1.30.11)。月(30日)ビューは1時間=130px前提の計算が
+//   混在しており、80pxにするとセルとチップの位置がズレて重なり/タイトル欠け(空白立会)が発生していた。
+//   スマホは30日ビュー専用になったため圧縮自体が不要
 // v88 マイグレーション: 旧デフォルト 220 のまま保存されてた場合 → 新デフォルトに置き換え
 if(HOUR_PX === 220){
   HOUR_PX = HOUR_PX_DEFAULT;
