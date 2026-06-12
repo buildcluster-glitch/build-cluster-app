@@ -1641,8 +1641,9 @@
     .checks-header .title{font-size:11px}
     .checks-header .title::after{content:" ⇄ 横にスクロール";font-size:9px;font-weight:400;color:#94a3b8}
     #syncCheckBtn{font-size:11px;padding:4px 8px}
-    /* 📱 時間グリッド上は縦スクロールのみ許可 → 横フリックは日送りに使う */
-    #calGrid{touch-action:pan-y}
+    /* 📱 3日/日ビューの時間グリッドは縦スクロールのみ許可 → 横フリックは日送りに使う
+       (月=30日ビューは .tswipe が付かないので横パンで自然スクロール) */
+    #calGrid.tswipe{touch-action:pan-y}
     /* 📱 下部ナビ表示 + 各ビューの高さ/余白調整 (ID指定=後続の基本CSS display:none より優先) */
     #mobileNav{display:flex}
     .calendar-wrap{height:calc(100vh - 188px)}
@@ -2061,7 +2062,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.3</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.4</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2097,10 +2098,11 @@
 
 <!-- 📱 スマホ用 下部ナビ (≤768pxでのみ表示・親指でビュー切替) -->
 <nav id="mobileNav" class="mobile-nav">
-  <button data-mnav="cal">📅<span>予定</span></button>
+  <button data-mnav="cal">🗓<span>30日</span></button>
+  <button data-mnav="day3">📅<span>3日</span></button>
   <button data-mnav="task">📋<span>タスク</span></button>
   <button data-mnav="repair">🔧<span>修繕</span></button>
-  <button data-mnav="resto">🏠<span>原状回復</span></button>
+  <button data-mnav="resto">🏠<span>原回</span></button>
   <button data-mnav="inventory">📦<span>在庫</span></button>
 </nav>
 
@@ -3512,7 +3514,7 @@ const HOUR_START = 9;   // 表示開始
 const HOUR_END   = 18;  // 表示終了（18以降は「工事最終確認」セクション）
 // HOUR_PX は localStorage で永続化、月列幅は列ごと個別管理(セッション限定)
 const HOUR_PX_DEFAULT = 130;  // 旧220 → 130 (1時間あたり ≒ 4チップ分。詰まる時は自動拡大)
-const MONTH_COL_DEFAULT = 344; // 旧220 → 286 → 344 (×1.3 → さらに×1.2 / 2026-05-31)
+const MONTH_COL_DEFAULT = window.innerWidth <= 700 ? 170 : 344; // 📱スマホは最終確認列(170px)と同幅で縦に整列 / PC: 旧220→286→344
 let HOUR_PX = parseInt(localStorage.getItem("buildcluster_schedule_hour_px"),10) || HOUR_PX_DEFAULT;
 // 📱 スマホ(≤700px)はズーム未調整なら初期高さを圧縮 (1日の全体が見渡せるように。ズームボタンで変更可)
 if(window.innerWidth <= 700 && !localStorage.getItem("buildcluster_schedule_hour_px")) HOUR_PX = 80;
@@ -3646,7 +3648,7 @@ const VIEW_STORAGE_KEY = "buildcluster_schedule_last_view";
     const saved = localStorage.getItem(VIEW_STORAGE_KEY);
     const valid = ["month","week","3day","day","staff","task","repair","resto","inventory"];
     if(saved && valid.includes(saved)){ currentView = saved; return; }
-    if(window.innerWidth <= 700) currentView = "3day";
+    // スマホ初回も month (=今日から30日ローリング表示)
   }catch(_){}
 })();
 let editingEventId = null;
@@ -3869,6 +3871,10 @@ function visibleDates(){
     return Array.from({length:3}, (_,i)=>addDays(currentDate, i));
   }
   if(currentView==="month"){
+    // 📱 スマホ: 基準日から30日のローリング表示 (‹›で±30日。月の切れ目で分断されない)
+    if(window.innerWidth <= 700){
+      return Array.from({length:30}, (_,i)=>addDays(currentDate, i));
+    }
     // 月の1日〜末日（時間グリッドで横スクロール）
     const first = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
     const last  = new Date(currentDate.getFullYear(), currentDate.getMonth()+1, 0);
@@ -3935,9 +3941,13 @@ function render(){
   // 📱 下部ナビのアクティブ表示
   const __mn = document.getElementById('mobileNav');
   if(__mn){
-    const __mk = ['task','repair','resto','inventory'].includes(currentView) ? currentView : 'cal';
+    const __mk = ['task','repair','resto','inventory'].includes(currentView) ? currentView
+      : (['3day','day'].includes(currentView) ? 'day3' : 'cal');
     __mn.querySelectorAll('button').forEach(b=>b.classList.toggle('active', b.dataset.mnav===__mk));
   }
+  // 📱 月(30日)ビューは横パンでスクロール / それ以外の時間グリッドは横フリック=日送り
+  const __cg = document.getElementById('calGrid');
+  if(__cg) __cg.classList.toggle('tswipe', currentView !== 'month');
   renderHeader();
   renderStaffLegend();
 
@@ -7549,7 +7559,12 @@ function renderHeader(){
       : `${d.getMonth()+1}/${d.getDate()} (${DOW_JA[d.getDay()]})`;
     navDate.textContent = `担当別 ${dateStr}の予定`;
   }else if(currentView==="month"){
-    navDate.textContent = `${d.getFullYear()}年 ${d.getMonth()+1}月`;
+    if(window.innerWidth <= 700){
+      const e30 = addDays(d, 29);
+      navDate.textContent = `${d.getMonth()+1}/${d.getDate()} 〜 ${e30.getMonth()+1}/${e30.getDate()}`;
+    }else{
+      navDate.textContent = `${d.getFullYear()}年 ${d.getMonth()+1}月`;
+    }
   }else if(currentView==="3day"){
     const e = addDays(d,2);
     navDate.textContent = `${d.getFullYear()}年 ${d.getMonth()+1}/${d.getDate()} - ${e.getMonth()+1}/${e.getDate()}`;
@@ -10302,8 +10317,8 @@ document.getElementById("lv-delete").onclick = ()=>{
 
 // ===== ナビ =====
 document.getElementById("todayBtn").onclick = ()=>{
-  // 月ボタンと同じ動作: ビューを月に切替(スマホは3日ビュー) + 今日に移動 + 今日にスクロール
-  currentView = (window.innerWidth <= 700) ? "3day" : "month";
+  // ビューを月(スマホ=今日から30日ローリング)に切替 + 今日に移動 + 今日にスクロール
+  currentView = "month";
   currentDate = new Date();
   render();
   scrollToToday();
@@ -10378,8 +10393,13 @@ function scrollToTodayRobust(){
 }
 function navigate(dir){
   if(currentView==="task" || currentView==="repair" || currentView==="resto") return; // タスク/修繕/原状回復ビューでは日付ナビ無効
-  // ‹/› は常に月単位ジャンプ → 次月/前月の1日へ
-  currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth()+dir, 1);
+  if(currentView==="month" && window.innerWidth <= 700){
+    // 📱 ローリング30日表示: ‹›で±30日
+    currentDate = addDays(currentDate, dir*30);
+  } else {
+    // ‹/› は常に月単位ジャンプ → 次月/前月の1日へ
+    currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth()+dir, 1);
+  }
   render();
   // スクロール位置を1日の始点に戻す (前の月の15時位置を引きずらない)
   const body = document.getElementById("calBody");
@@ -10406,6 +10426,7 @@ function swipeNavigate_(dir){
   document.addEventListener('pointerdown', e=>{
     active = false;
     if(e.pointerType !== 'touch') return;
+    if(currentView === 'month') return;  // 月(30日)ビューは横パン=スクロールに譲る
     if(!e.target.closest('#calGrid')) return;
     if(e.target.closest('.event, .month-event, .check-card')) return;
     sx = e.clientX; sy = e.clientY; st = Date.now(); active = true;
@@ -10421,7 +10442,7 @@ function swipeNavigate_(dir){
 document.querySelectorAll('#mobileNav button').forEach(b=>{
   b.onclick = ()=>{
     const k = b.dataset.mnav;
-    currentView = (k === 'cal') ? ((window.innerWidth <= 700) ? '3day' : 'month') : k;
+    currentView = (k === 'cal') ? 'month' : (k === 'day3' ? '3day' : k);
     render();
   };
 });
