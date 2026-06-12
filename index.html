@@ -2070,7 +2070,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.16</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.17</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4273,9 +4273,54 @@ function attachCheckDragOrClick(el, ck){
       showCheckStaffPicker(el, ck);
     }
   };
+  // 関連する原状回復進捗/修繕シートを開く (PCシングルクリック / 📱タップ 共通)
+  const openLinkedDetail_ = ()=>{
+    // 1. extDriveFileId → extEstimateId → title(フル→号室除去) の順で原状回復案件を探す
+    const _restos = state.restorations || [];
+    const _ckFull = ck.title ? ck.title.trim() : "";
+    const _ckNorm = _ckFull.replace(/\s+\d+$/, "").trim();
+    const resto =
+      (ck.extDriveFileId && _restos.find(r=>r.extDriveFileId === ck.extDriveFileId)) ||
+      (ck.extEstimateId  && _restos.find(r=>r.extEstimateId  === ck.extEstimateId )) ||
+      (_ckFull           && _restos.find(r=>r.name === _ckFull)) ||
+      (_ckNorm           && _restos.find(r=>r.name === _ckNorm)) ||
+      null;
+    if(resto){ openRestoDialog(resto.id); return; }
+    // 2. 修繕案件
+    const _repairs = state.repairs || [];
+    const repair =
+      (ck.extDriveFileId && _repairs.find(r=>r.extDriveFileId === ck.extDriveFileId)) ||
+      (ck.extEstimateId  && _repairs.find(r=>r.extEstimateId  === ck.extEstimateId )) ||
+      (_ckFull           && _repairs.find(r=>r.name === _ckFull)) ||
+      (_ckNorm           && _repairs.find(r=>r.name === _ckNorm)) ||
+      null;
+    if(repair){ openRepairSheet(repair.id); return; }
+    // 3. フォールバック: 外部の工事タスクマネージャーURL (旧運用)
+    const taskUrl = loadGasSettings().taskManagerUrl;
+    if(ck.source==="gas-sync" && ck.extEstimateId && taskUrl){
+      const sep = taskUrl.includes("?") ? "&" : "?";
+      window.open(`${taskUrl}${sep}estimateId=${encodeURIComponent(ck.extEstimateId)}`, "_blank", "noopener");
+      return;
+    }
+    // 4. 何も該当しなければ編集モーダル
+    openCheckModal(ck);
+  };
   el.onpointerdown = (pdEv)=>{
     if(pdEv.button !== undefined && pdEv.button !== 0) return;
-    if(pdEv.pointerType === 'touch') return;  // 📱 タッチではカードのドラッグ移動を無効化 (誤移動事故防止 v1.30.6)
+    if(pdEv.pointerType === 'touch'){
+      // 📱 ドラッグ移動は無効(v1.30.6)。代わりにタップ=シングルクリック扱いで進捗ダイアログ等を開く (v1.30.17)
+      const sx = pdEv.clientX, sy = pdEv.clientY, st = Date.now();
+      const cleanup = ()=>{ document.removeEventListener('pointerup', onTUp); document.removeEventListener('pointercancel', cleanup); };
+      const onTUp = (ue)=>{
+        cleanup();
+        if(Date.now() - st > 500) return;                              // 長押し→担当ピッカー(長押し=dblclick)に譲る
+        if(Math.hypot(ue.clientX - sx, ue.clientY - sy) > 10) return;  // スクロール操作
+        openLinkedDetail_();
+      };
+      document.addEventListener('pointerup', onTUp);
+      document.addEventListener('pointercancel', cleanup);
+      return;
+    }
     pdEv.preventDefault();
     const startX = pdEv.clientX, startY = pdEv.clientY;
     const rect = el.getBoundingClientRect();
@@ -4336,49 +4381,11 @@ function attachCheckDragOrClick(el, ck){
       if(lastTargetCol) lastTargetCol.classList.remove("drop-hilite");
       if(!started){
         // 単純クリック: 関連する原状回復/修繕案件があれば詳細ビューを開く (TM外部URLより優先)
-        // dblclick との競合回避のため 250ms 待ってからオープン
+        // dblclick との競合回避のため 250ms 待ってからオープン (本体は openLinkedDetail_ に共通化 v1.30.17)
         if(el._pendingClickTimer) clearTimeout(el._pendingClickTimer);
         el._pendingClickTimer = setTimeout(()=>{
           el._pendingClickTimer = null;
-          // 1. extDriveFileId → extEstimateId → title(フル→号室除去) の順で原状回復案件を探す
-          //    ※旧コードは ?: と || の優先順位の罠で、extDriveFileId がある時に
-          //      後続の title フォールバックが実行されず詳細へ飛べなかった (2026-06-01修正)
-          const _restos = state.restorations || [];
-          const _ckFull = ck.title ? ck.title.trim() : "";
-          const _ckNorm = _ckFull.replace(/\s+\d+$/, "").trim();
-          const resto =
-            (ck.extDriveFileId && _restos.find(r=>r.extDriveFileId === ck.extDriveFileId)) ||
-            (ck.extEstimateId  && _restos.find(r=>r.extEstimateId  === ck.extEstimateId )) ||
-            (_ckFull           && _restos.find(r=>r.name === _ckFull)) ||
-            (_ckNorm           && _restos.find(r=>r.name === _ckNorm)) ||
-            null;
-          if(resto){
-            // カレンダーを残したまま、原状回復の進捗をダイアログ(ポップアップ)で表示
-            openRestoDialog(resto.id);
-            return;
-          }
-          // 2. 修繕案件を探す (resto と同じく優先順位の罠を回避)
-          const _repairs = state.repairs || [];
-          const repair =
-            (ck.extDriveFileId && _repairs.find(r=>r.extDriveFileId === ck.extDriveFileId)) ||
-            (ck.extEstimateId  && _repairs.find(r=>r.extEstimateId  === ck.extEstimateId )) ||
-            (_ckFull           && _repairs.find(r=>r.name === _ckFull)) ||
-            (_ckNorm           && _repairs.find(r=>r.name === _ckNorm)) ||
-            null;
-          if(repair){
-            openRepairSheet(repair.id);
-            return;
-          }
-          // 3. フォールバック: 外部の工事タスクマネージャーURL (旧運用)
-          const taskUrl = loadGasSettings().taskManagerUrl;
-          if(ck.source==="gas-sync" && ck.extEstimateId && taskUrl){
-            const sep = taskUrl.includes("?") ? "&" : "?";
-            const url = `${taskUrl}${sep}estimateId=${encodeURIComponent(ck.extEstimateId)}`;
-            window.open(url, "_blank", "noopener");
-            return;
-          }
-          // 4. 何も該当しなければ編集モーダル
-          openCheckModal(ck);
+          openLinkedDetail_();
         }, 250);
         return;
       }
