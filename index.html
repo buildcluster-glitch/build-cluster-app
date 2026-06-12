@@ -1661,7 +1661,8 @@
   @media (max-width: 480px){
     /* 小型スマホ: より圧縮 */
     .app-title{font-size:12px}
-    .app-title span{display:none}  /* バージョン番号隠す */
+    /* バージョン番号はスマホでも表示 (更新確認のため・v1.30.5で非表示を撤回) */
+    .app-title span{font-size:8px}
     .view-switch button{padding:5px 7px;font-size:11px}
     .nav-btn{padding:5px 7px;font-size:12px}
     .nav-date{font-size:11px}
@@ -2062,7 +2063,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.4</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.5</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
