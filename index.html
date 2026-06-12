@@ -1634,7 +1634,6 @@
     /* 📱 最終確認: 列を潰さず1列170pxで横スクロール (カレンダー全体が横スクロール) */
     .calendar-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
     .checks-columns{min-width:max-content}
-    .check-card{max-width:200px}
     /* 📱 最終確認ヘッダー圧縮: 同期時刻は非表示・横スクロールのヒント表示 */
     .checks-synced{display:none}
     .checks-header{padding:4px 6px;gap:4px}
@@ -2063,7 +2062,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.6</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.7</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2099,11 +2098,10 @@
 
 <!-- 📱 スマホ用 下部ナビ (≤768pxでのみ表示・親指でビュー切替) -->
 <nav id="mobileNav" class="mobile-nav">
-  <button data-mnav="cal">🗓<span>30日</span></button>
-  <button data-mnav="day3">📅<span>3日</span></button>
+  <button data-mnav="cal">🗓<span>予定</span></button>
   <button data-mnav="task">📋<span>タスク</span></button>
   <button data-mnav="repair">🔧<span>修繕</span></button>
-  <button data-mnav="resto">🏠<span>原回</span></button>
+  <button data-mnav="resto">🏠<span>原状回復</span></button>
   <button data-mnav="inventory">📦<span>在庫</span></button>
 </nav>
 
@@ -3515,7 +3513,7 @@ const HOUR_START = 9;   // 表示開始
 const HOUR_END   = 18;  // 表示終了（18以降は「工事最終確認」セクション）
 // HOUR_PX は localStorage で永続化、月列幅は列ごと個別管理(セッション限定)
 const HOUR_PX_DEFAULT = 130;  // 旧220 → 130 (1時間あたり ≒ 4チップ分。詰まる時は自動拡大)
-const MONTH_COL_DEFAULT = window.innerWidth <= 700 ? 170 : 344; // 📱スマホは最終確認列(170px)と同幅で縦に整列 / PC: 旧220→286→344
+const MONTH_COL_DEFAULT = window.innerWidth <= 700 ? 220 : 344; // 📱スマホは220px(最終確認列と同幅で縦に整列) / PC: 旧220→286→344
 let HOUR_PX = parseInt(localStorage.getItem("buildcluster_schedule_hour_px"),10) || HOUR_PX_DEFAULT;
 // 📱 スマホ(≤700px)はズーム未調整なら初期高さを圧縮 (1日の全体が見渡せるように。ズームボタンで変更可)
 if(window.innerWidth <= 700 && !localStorage.getItem("buildcluster_schedule_hour_px")) HOUR_PX = 80;
@@ -3648,7 +3646,11 @@ const VIEW_STORAGE_KEY = "buildcluster_schedule_last_view";
   try{
     const saved = localStorage.getItem(VIEW_STORAGE_KEY);
     const valid = ["month","week","3day","day","staff","task","repair","resto","inventory"];
-    if(saved && valid.includes(saved)){ currentView = saved; return; }
+    if(saved && valid.includes(saved)){
+      // 📱 スマホはカレンダー系の記憶は常に month(30日ローリング)に寄せる (3日/週ビューは廃止 v1.30.7)
+      currentView = (window.innerWidth <= 700 && ["3day","day","week","staff"].includes(saved)) ? "month" : saved;
+      return;
+    }
     // スマホ初回も month (=今日から30日ローリング表示)
   }catch(_){}
 })();
@@ -3942,8 +3944,7 @@ function render(){
   // 📱 下部ナビのアクティブ表示
   const __mn = document.getElementById('mobileNav');
   if(__mn){
-    const __mk = ['task','repair','resto','inventory'].includes(currentView) ? currentView
-      : (['3day','day'].includes(currentView) ? 'day3' : 'cal');
+    const __mk = ['task','repair','resto','inventory'].includes(currentView) ? currentView : 'cal';
     __mn.querySelectorAll('button').forEach(b=>b.classList.toggle('active', b.dataset.mnav===__mk));
   }
   // 📱 月(30日)ビューは横パンでスクロール / それ以外の時間グリッドは横フリック=日送り
@@ -4132,7 +4133,7 @@ function renderChecks(){
       <button class="nav-btn" id="gasSettingsBtn" title="GAS URL/Token 設定">⚙</button>
       <!-- ＋追加ボタン削除 (2026-05-31): 工事最終確認は台帳から自動取得のため手動登録不要 -->
     </div>
-    <div class="checks-columns" style="grid-template-columns:${currentView==="month" ? buildMonthColTemplate(cols) : `${TIME_COL_W}px repeat(${colCount}, minmax(${window.innerWidth<=768?"170px":"0"}, 1fr))`}">
+    <div class="checks-columns" style="grid-template-columns:${currentView==="month" ? buildMonthColTemplate(cols) : `${TIME_COL_W}px repeat(${colCount}, minmax(${window.innerWidth<=768?"220px":"0"}, 1fr))`}">
       <div class="checks-col-time"><div class="checks-time-label">🔧<br>最終<br>確認</div></div>
       ${cols.map(c=>{
         let items = visibleChecks.filter(c.filter);
@@ -10426,7 +10427,7 @@ function swipeNavigate_(dir){
 document.querySelectorAll('#mobileNav button').forEach(b=>{
   b.onclick = ()=>{
     const k = b.dataset.mnav;
-    currentView = (k === 'cal') ? 'month' : (k === 'day3' ? '3day' : k);
+    currentView = (k === 'cal') ? 'month' : k;
     render();
   };
 });
