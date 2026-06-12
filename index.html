@@ -2018,7 +2018,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.13</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.14</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -6512,7 +6512,31 @@ function extractRepairs(properties){
       updatedAt: p.updatedAt || "",
     });
   });
-  return out;
+  // 🔁 台帳重複の集約 (v1.29.14): 見積パターン①②や台帳の重複行は見積IDが違うため上のseenを通過してしまう。
+  //    「物件名+部屋+依頼内容」が同じものは1件に集約。残す優先度: アポ日時あり > アポ済 > 作業担当あり > updatedAt新しい
+  const __ckey = r => (r.name + "|" + r.room + "|" + (r.requestDesc || r.requestDescFull || "")).replace(/\s|　/g, "");
+  const __cscore = r => (r.responseDate?4:0) + (r.workflowStatus==="アポ・手配 済"?2:0) + (r.worker?1:0);
+  const __mergeLocal = (keep, drop) => {   // 落とす方だけが持つローカル情報(作業担当/コメント)は救出
+    if(!keep.worker && drop.worker) keep.worker = drop.worker;
+    if(!keep.responseContractor && drop.responseContractor) keep.responseContractor = drop.responseContractor;
+    if(drop.comments && drop.comments.length){
+      const ids = new Set((keep.comments||[]).map(c=>c.id));
+      keep.comments = (keep.comments||[]).concat(drop.comments.filter(c=>!ids.has(c.id)));
+    }
+  };
+  const __byKey = new Map();
+  out.forEach(r=>{
+    const k = __ckey(r);
+    const ex = __byKey.get(k);
+    if(!ex){ __byKey.set(k, r); return; }
+    const rIsBetter = __cscore(r) > __cscore(ex) ||
+      (__cscore(r) === __cscore(ex) && String(r.updatedAt||"") > String(ex.updatedAt||""));
+    if(rIsBetter){ __mergeLocal(r, ex); __byKey.set(k, r); }
+    else { __mergeLocal(ex, r); }
+  });
+  const deduped = [...__byKey.values()];
+  if(deduped.length !== out.length) console.log("[task-sync] 修繕重複集約(パターン違い等):", out.length - deduped.length, "件");
+  return deduped;
 }
 
 // ===== 原状回復案件の抽出 (TM 原状回復タブ移植) =====
