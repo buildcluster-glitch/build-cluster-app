@@ -1657,6 +1657,10 @@
   @media (hover: none) and (pointer: coarse){
     .nav-btn:hover{background:#fff}
     .nav-btn.primary:hover{background:var(--accent)}
+    /* 長押し(=ダブルクリック相当)時にテキスト選択・iOSコールアウトが出ないように */
+    .event, .event-chip, .check-card, .month-event, .rep-card, .chip-title, .sub-col, .hour-cell{
+      -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+    }
   }
 </style>
 
@@ -2018,7 +2022,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.16</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3551,8 +3555,51 @@ let state = loadState();
     if(t) console.log("[migrate] 事前イベント 終日→時間未定:", t, "件");
   }
 })();
+// 📱 タッチ長押し(550ms) = ダブルクリック相当 (v1.30)
+//   スマホではdblclickが事実上使えないため、チップ長押しで担当ピッカー等を開けるようにする。
+//   8px以上動いたら(ドラッグ/スクロール)キャンセル。発火後800msはclickを抑止(ピッカーの上に
+//   シングルクリック由来のダイアログが被ったり、指離しでピッカーのボタンを誤タップするのを防ぐ)
+let __lpSuppressUntil = 0;
+(function setupLongPressAsDblclick_(){
+  let timer = null, sx = 0, sy = 0, tgt = null;
+  const cancel = ()=>{ if(timer){ clearTimeout(timer); timer = null; } tgt = null; };
+  document.addEventListener('pointerdown', e=>{
+    if(e.pointerType !== 'touch') return;
+    tgt = e.target; sx = e.clientX; sy = e.clientY;
+    timer = setTimeout(()=>{
+      timer = null;
+      const t = tgt; tgt = null;
+      if(!t || !document.contains(t)) return;
+      __lpSuppressUntil = Date.now() + 800;
+      try{ if(navigator.vibrate) navigator.vibrate(15); }catch(_){}
+      t.dispatchEvent(new MouseEvent('dblclick', {bubbles:true, cancelable:true, clientX:sx, clientY:sy}));
+    }, 550);
+  }, true);
+  document.addEventListener('pointermove', e=>{
+    if(timer && Math.hypot(e.clientX - sx, e.clientY - sy) > 8) cancel();
+  }, true);
+  document.addEventListener('pointerup', cancel, true);
+  document.addEventListener('pointercancel', cancel, true);
+  document.addEventListener('click', e=>{
+    if(Date.now() < __lpSuppressUntil){ e.stopPropagation(); e.preventDefault(); }
+  }, true);
+  document.addEventListener('contextmenu', e=>{
+    if(Date.now() < __lpSuppressUntil) e.preventDefault();
+  }, true);
+})();
+
 let currentDate = new Date();      // 表示中の基準日
 let currentView = "month";         // 'month' | 'staff'
+// 📱 ビュー記憶 + スマホ初期ビュー (v1.30): 前回のビューを復元。初回はスマホ(≤700px)なら3日ビュー
+const VIEW_STORAGE_KEY = "buildcluster_schedule_last_view";
+(function initViewForDevice_(){
+  try{
+    const saved = localStorage.getItem(VIEW_STORAGE_KEY);
+    const valid = ["month","week","3day","day","staff","task","repair","resto","inventory"];
+    if(saved && valid.includes(saved)){ currentView = saved; return; }
+    if(window.innerWidth <= 700) currentView = "3day";
+  }catch(_){}
+})();
 let editingEventId = null;
 let editingLeaveId = null;
 let hiddenCategories = new Set();  // 非表示中のカテゴリ名（"(未分類)"="" を含む）
@@ -3835,6 +3882,7 @@ function timeColumns(){
 
 // ===== レンダリング =====
 function render(){
+  try{ localStorage.setItem(VIEW_STORAGE_KEY, currentView); }catch(_){}  // 📱 ビュー記憶
   renderHeader();
   renderStaffLegend();
 
@@ -10199,8 +10247,8 @@ document.getElementById("lv-delete").onclick = ()=>{
 
 // ===== ナビ =====
 document.getElementById("todayBtn").onclick = ()=>{
-  // 月ボタンと同じ動作: ビューを月に切替 + 今日に移動 + 今日にスクロール
-  currentView = "month";
+  // 月ボタンと同じ動作: ビューを月に切替(スマホは3日ビュー) + 今日に移動 + 今日にスクロール
+  currentView = (window.innerWidth <= 700) ? "3day" : "month";
   currentDate = new Date();
   render();
   scrollToToday();
