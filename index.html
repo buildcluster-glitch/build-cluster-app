@@ -1650,8 +1650,11 @@
     .event-chip .chip-title.single-line{flex-wrap:nowrap}
     /* 📱 下部ナビ表示 + 各ビューの高さ/余白調整 (ID指定=後続の基本CSS display:none より優先) */
     #mobileNav{display:flex}
-    .calendar-wrap{height:calc(100vh - 188px)}
-    .task-view{height:calc(100vh - 158px)}
+    /* iOSは100vhがブラウザUI込みで実際の表示域より大きい → dvh(動的ビューポート)優先 */
+    .calendar-wrap{height:calc(100vh - 188px);height:calc(100dvh - 188px)}
+    .task-view{height:calc(100vh - 158px);height:calc(100dvh - 158px)}
+    /* 最終確認セクションの末尾に下部ナビ分の余白 → 最後のカードまでスクロールで見える */
+    .checks-section{padding-bottom:calc(70px + env(safe-area-inset-bottom,0))}
     .repair-view, .resto-view{padding-bottom:70px}
     .repair-list{padding-bottom:140px}
     #inventoryView .inv-app{padding-bottom:140px}
@@ -2070,7 +2073,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.17</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.18</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
