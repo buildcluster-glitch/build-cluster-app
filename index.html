@@ -2014,7 +2014,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.11</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.12</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2086,6 +2086,9 @@
 <div class="repair-view" id="repairView" style="display:none">
   <div class="repair-toolbar">
     <div class="repair-filters" id="repairFilters"></div>
+  </div>
+  <div class="repair-toolbar">
+    <div class="repair-filters" id="repairPersonFilters"></div>
   </div>
   <div class="repair-toolbar">
     <div class="repair-filters" id="repairClientFilters"></div>
@@ -11282,6 +11285,11 @@ let repairClientFilter = "all";   // 元請けカテゴリ絞込: all / 山一�
 let repairMineOnly = false;
 let repairSearch = "";
 let repairSortMode = "progress";  // 並び順: progress(進行状況) / contact(📞担当者別) / worker(🔨作業担当別)
+let repairPersonFilter = "all";   // 👤担当者バッジ絞込: all / スタッフ名 / 外注業者 / ""(未設定)
+// 案件の「担当者」キー: 作業担当(先頭)優先 → 無ければ連絡者をスタッフ名に正規化 (チップ色と同じロジック)
+function repairPersonKey_(r){
+  return firstWorker_(r.worker||"") || repairContactCls((r.contactPerson||"").trim());
+}
 const REPAIR_STATUSES_LIST = ["下書き","見積作成中","提出済","受注（工事指示有）","完了","失注","キャンセル"];
 const REPAIR_STATUS_LABEL = {"提出済":"見積提出済"};
 // 営業→進行 自動連動 (HANDOFFのapplyStatusToWorkflow)
@@ -11388,6 +11396,34 @@ function renderRepairView(){
   cFiltersEl.querySelectorAll(".rf-chip").forEach(b=>{
     b.onclick = ()=>{ repairClientFilter = b.dataset.key; renderRepairView(); };
   });
+  // 👤 担当者バッジ列 (作業担当優先→連絡者。クリックでその担当者に絞り込み・もう一度で解除)
+  const personCounts = {};
+  list.forEach(r=>{ const p = repairPersonKey_(r); personCounts[p] = (personCounts[p]||0)+1; });
+  const personKeys = STAFF.filter(s=>personCounts[s])                                              // スタッフ順
+    .concat(Object.keys(personCounts).filter(p=>p && !STAFF.includes(p) && p!==VENDOR_WORKER))     // 表外の名前(松尾等)
+    .concat(personCounts[VENDOR_WORKER] ? [VENDOR_WORKER] : [])                                    // 外注業者
+    .concat(personCounts[""] ? [""] : []);                                                         // 未設定は最後
+  const pFiltersEl = document.getElementById("repairPersonFilters");
+  if(pFiltersEl){
+    pFiltersEl.innerHTML = [
+      `<button class="rf-chip ${repairPersonFilter==="all"?"active":""}" data-p="all">👤 全担当<span class="count">${list.length}</span></button>`
+    ].concat(personKeys.map(p=>{
+      const disp = p === "" ? "未設定" : p;
+      const col = p === "" ? "#cbd5e1" : staffColor_(p);
+      const active = repairPersonFilter === p;
+      const style = active
+        ? `background:${col};border-color:${col};color:${textColorFor(col)}`
+        : `box-shadow:inset 0 -2.5px 0 ${col}`;
+      return `<button class="rf-chip ${active?"active":""}" data-p="${escapeHtml(p)}" style="${style}">${escapeHtml(disp)}<span class="count">${personCounts[p]}</span></button>`;
+    })).join("");
+    pFiltersEl.querySelectorAll(".rf-chip").forEach(b=>{
+      b.onclick = ()=>{
+        const p = b.dataset.p;
+        repairPersonFilter = (p === "all" || repairPersonFilter === p) ? "all" : p;
+        renderRepairView();
+      };
+    });
+  }
   document.getElementById("repairMineOnly").checked = repairMineOnly;
   document.getElementById("repairSearch").value = repairSearch;
   const sortSel = document.getElementById("repairSortMode");
@@ -11403,6 +11439,7 @@ function renderRepairView(){
     if(repairProgressFilter !== "all" && (r.workflowStatus||"アポ・手配 未") !== repairProgressFilter) return false;
     if(repairClientFilter !== "all" && repairClientCat(r) !== repairClientFilter) return false;
     if(repairMineOnly && me && (r.contactPerson||"").trim() !== me) return false;
+    if(repairPersonFilter !== "all" && repairPersonKey_(r) !== repairPersonFilter) return false;
     if(q){
       const hay = [r.name,r.room,r.address,r.customerName,r.contractor].filter(Boolean).join(" ").toLowerCase();
       if(!hay.includes(q)) return false;
