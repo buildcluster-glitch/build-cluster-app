@@ -2070,7 +2070,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.13</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.14</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7919,6 +7919,11 @@ function renderCalendar(){
           const tStr = t ? " "+t : "";
           // バッジ: テキスト="修繕"固定 / 色=元請けカラー (山一なら紫、みどりなら緑など)
           const tagSpan = `<span style="background:${tagBg};color:${textColorFor(tagBg)};padding:0 5px;border-radius:3px;font-size:10px;font-weight:700;margin-right:4px" title="${escapeHtml(r.contractor||'')}">修繕</span>`;
+          // 進行ステータスのミニバッジ (v1.30.14): 左バー色だけでは「アポ・手配 未」が読み取れないため明示
+          const __wfMini = {"アポ・手配 未":"📞未", "アポ・手配 済":"📞済", "待機":"待機", "長期連絡なし":"長期"}[wf] || "";
+          const wfMiniSpan = __wfMini
+            ? `<span style="background:${wfBar};color:#fff;padding:0 4px;border-radius:3px;font-size:9px;font-weight:700;margin-right:3px;white-space:nowrap" title="${escapeHtml(wf)}">${__wfMini}</span>`
+            : "";
           const worker = (r.worker||"").trim();
           const contactPerson = (r.contactPerson||"").trim();
           const wKey = firstWorker_(worker) || repairContactCls(contactPerson);
@@ -7942,7 +7947,7 @@ function renderCalendar(){
             r.creatorMemo ? `\n📝 メモ: ${r.creatorMemo}` : "",
             "\n(クリックで編集シート)",
           ].filter(Boolean).join("\n");
-          inner += `<span class="repair-appt-chip" data-repair-id="${r.id}" style="background:${wColor};color:${wFg};border-left:4px solid ${wfBar}" title="${escapeHtml(tipLines)}">${tagSpan}${escapeHtml(label)}${__vendorBadgeB}${__workerMiniB}</span>`;
+          inner += `<span class="repair-appt-chip" data-repair-id="${r.id}" style="background:${wColor};color:${wFg};border-left:4px solid ${wfBar}" title="${escapeHtml(tipLines)}">${tagSpan}${wfMiniSpan}${escapeHtml(label)}${__vendorBadgeB}${__workerMiniB}</span>`;
         }
       });
     }
