@@ -1082,9 +1082,21 @@
   .check-card:hover{background:var(--hover)}
   .check-card.overdue{border-left-color:var(--danger)}
   .check-card.soon{border-left-color:#f59e0b}
-  /* ステータス完了の工事はグレースケールで「済」感を出す (ホバーで一時的に色復帰) */
-  .check-card.done-gray{filter:grayscale(1);opacity:.6}
+  /* ステータス完了の工事は「済」感を強調: グレースケール+取り消し線+ハンコ風スタンプ (ホバーで色復帰) */
+  .check-card.done-gray{filter:grayscale(1);opacity:.55;position:relative;overflow:hidden}
   .check-card.done-gray:hover{filter:grayscale(0);opacity:1}
+  .check-card.done-gray .ck-title{text-decoration:line-through;text-decoration-thickness:1.5px;color:#6b7280}
+  .check-card.done-gray::after{
+    content:"完 了";
+    position:absolute; right:8px; top:50%;
+    transform:translateY(-50%) rotate(-12deg);
+    font-size:14px; font-weight:900; letter-spacing:3px; line-height:1;
+    color:#dc2626; border:2px solid #dc2626; border-radius:6px;
+    padding:3px 7px 2px;
+    background:rgba(255,255,255,.55);
+    box-shadow:0 0 0 1px rgba(220,38,38,.15);
+    opacity:.9; pointer-events:none;
+  }
   .check-card .row{display:flex;flex-wrap:wrap;gap:3px;align-items:center}
   .check-card .badge-sm{
     font-size:9px;padding:0 5px;border-radius:8px;font-weight:700;
@@ -1996,7 +2008,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.6</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.7</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
