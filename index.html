@@ -2018,7 +2018,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.14</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.15</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2120,12 +2120,14 @@
       </div>
       <div class="field"><label>住所</label><input id="rs-address" readonly></div>
       <div class="field-row">
-        <div class="field"><label>依頼日</label><input id="rs-reqdate" type="date" readonly></div>
+        <div class="field" style="max-width:200px"><label>依頼日</label><input id="rs-reqdate" type="date" readonly></div>
+      </div>
+      <div class="field-row">
         <div class="field"><label>対応予定日</label><input id="rs-respdate" type="date"></div>
         <div class="field" style="max-width:200px"><label>対応予定時間</label>
-          <input id="rs-resptime" list="rs-resptime-list" placeholder="10:00 / 午前中 / 14時頃" autocomplete="off">
+          <select id="rs-resptime"></select>
           <datalist id="rs-resptime-list"></datalist>
-          <div style="font-size:10px;color:var(--muted);margin-top:2px">▼で15分刻みから選択 / 自由入力可</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px">15分刻み+午前中/午後など</div>
         </div>
       </div>
       <div class="field-row">
@@ -11759,6 +11761,21 @@ function populateRespTimeOptions_(){
   dl.innerHTML = opts.map(v=>`<option value="${v}">`).join('');
   dl.dataset.populated = '1';
 }
+populateRespTimeOptions_();  // ck-response-time(最終確認アポ更新)用 datalist は起動時に生成
+// 対応予定時間プルダウン(編集シート用)。共通パターン→15分刻みの順。既存値が候補外でも先頭に足して保持
+function populateRespTimeSelect_(current){
+  const sel = document.getElementById('rs-resptime');
+  if(!sel) return;
+  const opts = ['', '午前中', '午後', '夕方', '終日', '時間調整中'];
+  for(let h = 8; h <= 18; h++){
+    for(let m = 0; m < 60; m += 15){
+      opts.push(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
+    }
+  }
+  const cur = String(current || '');
+  const list = opts.includes(cur) ? opts : [cur].concat(opts);
+  sel.innerHTML = list.map(v=>`<option value="${escapeHtml(v)}"${v===cur?' selected':''}>${v===''?'(時間未定)':escapeHtml(v)}</option>`).join('');
+}
 
 function openRepairSheet(id){
   const r = state.repairs.find(x=>x.id===id);
@@ -11770,9 +11787,8 @@ function openRepairSheet(id){
   document.getElementById("rs-address").value  = r.address || "";
   document.getElementById("rs-reqdate").value  = r.requestDate || "";
   document.getElementById("rs-respdate").value = r.responseDate || "";
-  document.getElementById("rs-resptime").value = r.responseTime || "";
-  // datalist 候補を populate (15分刻み + 共通パターン)
-  populateRespTimeOptions_();
+  // 対応予定時間プルダウン (現在値が候補外の自由テキストでも選択肢に含めて保持)
+  populateRespTimeSelect_(r.responseTime || "");
   document.getElementById("rs-cust").value     = r.customerName || "";
   document.getElementById("rs-tel").value      = r.customerTel || "";
   document.getElementById("rs-reqdesc").value  = r.requestDesc || "";
