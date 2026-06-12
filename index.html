@@ -2070,7 +2070,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.15</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.16</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7865,12 +7865,12 @@ function renderCalendar(){
   // 休日帯 (旧:終日帯) — 有給/休暇/会社休日 + 終日予定 + 修繕アポ無時刻
   const allday = document.getElementById("alldayBand");
   allday.style.gridTemplateColumns = gridTemplate;
-  // 縦スクロールでヘッダー(sticky)の下に潜り込んで「チップがヘッダーにかぶる」見え方になるため、
-  // 終日帯もヘッダー直下に sticky 固定する (v1.30.13)
-  allday.style.position = "sticky";
-  allday.style.top = (head.offsetHeight || 44) + "px";
-  allday.style.zIndex = "16";   // 時間列(z15)より上・ポップアップ類(z9999)より下
-  allday.style.background = "#fff";
+  // ※ v1.30.13で終日帯をsticky固定にしたが「未対応でも追従してこなくていい」(山田 2026-06-12)とのことで
+  //   v1.30.16で解除。スクロールでヘッダー裏に流れて消えるのは正常挙動とする
+  allday.style.position = "";
+  allday.style.top = "";
+  allday.style.zIndex = "";
+  allday.style.background = "";
   let alldayHtml = `<div class="time-col-header allday-label-header" style="display:flex;flex-direction:column;align-items:center;justify-content:center;color:#6b7280;font-size:11px;cursor:pointer" title="クリック: その列の日付で休暇/有給を登録"><span style="font-weight:700;color:#0f172a">🏖 休日</span><span style="font-size:9px;opacity:.7">/終日</span></div>`;
   // wfBgMap はグローバル定義 (showRepairQuickPop等から参照されるため)
   // const は外で window.wfBgMap で公開済
