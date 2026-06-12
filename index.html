@@ -1212,6 +1212,15 @@
     flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:6px 2px 100px;
   }
   .repair-empty{text-align:center;padding:40px;color:var(--muted);font-size:13px}
+  /* 担当者別ソートのグループ見出し */
+  .rep-group-head{
+    display:flex;align-items:center;gap:6px;
+    font-size:12px;font-weight:700;color:#334155;
+    margin:10px 2px 0;padding-top:8px;border-top:1px dashed var(--border);
+  }
+  .rep-group-head:first-child{margin-top:0;padding-top:2px;border-top:none}
+  .rep-group-head .rg-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+  .rep-group-head .rg-count{font-weight:400;color:var(--muted);font-size:11px;margin-left:2px}
   /* 修繕カード: 白背景 + 左カラーバーで進行状況。同色連続でも境界が明確 */
   /* 超ワイド画面で間延びしないよう最大幅を制限 */
   .rep-card{
@@ -2005,7 +2014,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.10</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.11</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2081,6 +2090,11 @@
   <div class="repair-toolbar">
     <div class="repair-filters" id="repairClientFilters"></div>
     <span class="sep"></span>
+    <select id="repairSortMode" title="並び順" style="padding:5px 8px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer">
+      <option value="progress">並び: 進行状況</option>
+      <option value="contact">並び: 📞担当者別</option>
+      <option value="worker">並び: 🔨作業担当別</option>
+    </select>
     <label class="repair-mine"><input type="checkbox" id="repairMineOnly"> 👤自分担当のみ</label>
     <input id="repairSearch" placeholder="🔎 物件名/住所/お客様/業者">
     <button class="nav-btn" id="repairReload" title="Drive再同期">🔄</button>
@@ -11267,6 +11281,7 @@ let repairProgressFilter = "all"; // workflowStatus 絞込
 let repairClientFilter = "all";   // 元請けカテゴリ絞込: all / 山一地所 / みどり不動産 / 自社工事 / その他
 let repairMineOnly = false;
 let repairSearch = "";
+let repairSortMode = "progress";  // 並び順: progress(進行状況) / contact(📞担当者別) / worker(🔨作業担当別)
 const REPAIR_STATUSES_LIST = ["下書き","見積作成中","提出済","受注（工事指示有）","完了","失注","キャンセル"];
 const REPAIR_STATUS_LABEL = {"提出済":"見積提出済"};
 // 営業→進行 自動連動 (HANDOFFのapplyStatusToWorkflow)
@@ -11375,6 +11390,11 @@ function renderRepairView(){
   });
   document.getElementById("repairMineOnly").checked = repairMineOnly;
   document.getElementById("repairSearch").value = repairSearch;
+  const sortSel = document.getElementById("repairSortMode");
+  if(sortSel){
+    sortSel.value = repairSortMode;
+    sortSel.onchange = ()=>{ repairSortMode = sortSel.value; renderRepairView(); };
+  }
 
   // フィルタ適用
   const me = getMyself();
@@ -11389,19 +11409,62 @@ function renderRepairView(){
     }
     return true;
   });
-  // ソート: workflowStatus 順 → 依頼日新しい順
-  items.sort((a,b)=>{
+  // ソート
+  //   progress(標準): workflowStatus 順 → 依頼日新しい順
+  //   contact/worker(担当者別): 担当者(STAFF順・未設定は最後) → workflowStatus 順 → 依頼日新しい順
+  const __byProgress = (a,b)=>{
     const wa = WF_ORDER[a.workflowStatus] ?? 5, wb = WF_ORDER[b.workflowStatus] ?? 5;
     if(wa !== wb) return wa - wb;
     return (b.requestDate||b.responseDate||"").localeCompare(a.requestDate||a.responseDate||"");
-  });
+  };
+  const __personOf = r => repairSortMode==="worker"
+    ? (firstWorker_(r.worker||"") || "")
+    : (r.contactPerson||"").trim();
+  const __personOrder = p => {
+    if(!p) return 998;                              // 未設定は最後
+    if(p === VENDOR_WORKER) return 900;             // 外注業者はスタッフの後
+    const key = repairSortMode==="worker" ? p : repairContactCls(p);
+    const i = STAFF.indexOf(key);
+    return i >= 0 ? i : 500;                        // スタッフ表に無い名前は中間
+  };
+  if(repairSortMode === "progress"){
+    items.sort(__byProgress);
+  }else{
+    items.sort((a,b)=>{
+      const pa = __personOf(a), pb = __personOf(b);
+      const oa = __personOrder(pa), ob = __personOrder(pb);
+      if(oa !== ob) return oa - ob;
+      if(pa !== pb) return pa.localeCompare(pb, "ja");
+      return __byProgress(a,b);
+    });
+  }
 
   const listEl = document.getElementById("repairList");
   if(items.length === 0){
     listEl.innerHTML = `<div class="repair-empty">🔧 修繕案件がありません<br><small>${list.length===0?"🔄 Drive同期で取り込まれます":"フィルタ条件に一致なし"}</small></div>`;
     return;
   }
-  listEl.innerHTML = items.map((r,i)=>renderRepairCard(r,i)).join("");
+  if(repairSortMode === "progress"){
+    listEl.innerHTML = items.map((r,i)=>renderRepairCard(r,i)).join("");
+  }else{
+    // 担当者別: グループ見出し(色ドット+名前+件数)を挟んで表示
+    const groupCounts = {};
+    items.forEach(r=>{ const p=__personOf(r); groupCounts[p]=(groupCounts[p]||0)+1; });
+    let html = "", cur = null, idx = 0;
+    items.forEach(r=>{
+      const p = __personOf(r);
+      if(p !== cur){
+        cur = p;
+        const disp = p || "担当未設定";
+        const colKey = repairSortMode==="worker" ? p : repairContactCls(p);
+        const col = !p ? "#cbd5e1" : (p===VENDOR_WORKER ? VENDOR_WORKER_COLOR : (STAFF_COLORS[colKey] || "#94a3b8"));
+        const icon = repairSortMode==="worker" ? "🔨" : "📞";
+        html += `<div class="rep-group-head"><span class="rg-dot" style="background:${col}"></span>${icon} ${escapeHtml(disp)}<span class="rg-count">${groupCounts[p]}件</span></div>`;
+      }
+      html += renderRepairCard(r, idx++);
+    });
+    listEl.innerHTML = html;
+  }
   bindRepairCardEvents(listEl);
 }
 
