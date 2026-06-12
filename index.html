@@ -2022,7 +2022,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.1</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3135,12 +3135,11 @@
           <span id="all-cs-status" style="font-size:11px;color:var(--muted);margin-left:auto"></span>
         </div>
         <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
-          <button class="btn" id="all-cs-push-all" style="background:#16a34a;color:#fff;font-weight:700;padding:6px 12px;font-size:12px">📤 全件強制PUSH</button>
           <button class="btn" id="all-cs-pull-replace" style="background:#3b82f6;color:#fff;font-weight:700;padding:6px 12px;font-size:12px">📥 強制PULL(ローカル置換)</button>
         </div>
         <div style="font-size:10px;color:var(--muted);margin-top:4px">
-          📤PUSH: ローカル全予定をサーバーへ送信(初回端末同期で使用)<br>
-          📥PULL: サーバー値でローカルを完全置換(他端末からの全件取り込み)
+          📥PULL: サーバー値でローカルを完全置換(他端末からの全件取り込み)<br>
+          ※「全件強制PUSH」は他端末の予定を一括上書きする危険があるため廃止しました(v1.30.1)。通常の自動同期で十分です
         </div>
       </fieldset>
 
@@ -11087,27 +11086,7 @@ document.getElementById('all-snap-restore').onclick = ()=>{
   restoreSnapshot_(key);
 };
 
-// 📤 全件強制PUSH: ローカル予定全部をキューに積んでサーバーに送信
-document.getElementById('all-cs-push-all').onclick = async ()=>{
-  if(!cloudSync.url){ alert("Cloud Sync URL が未設定です"); return; }
-  const n = state.events.length;
-  if(!confirm(`ローカル予定 ${n}件 をサーバーに強制PUSHします。\n(他端末で同じ予定があれば上書きされます)\n続行?`)) return;
-  const btn = document.getElementById('all-cs-push-all');
-  btn.disabled = true; btn.textContent = "📤 PUSH中...";
-  try{
-    state.events.forEach(ev=>{
-      queueCloudOp('upsertEvent', denormalizeEventForCloud_(ev));
-    });
-    await runCloudOpenSync();
-    const res = await fetch(cloudSync.url);
-    const data = await res.json();
-    alert(`✅ PUSH完了\nサーバー側予定: ${(data.events||[]).length}件`);
-  }catch(e){
-    alert(`❌ PUSH失敗: ${e.message}`);
-  }finally{
-    btn.disabled = false; btn.textContent = "📤 全件強制PUSH";
-  }
-};
+// 📤 全件強制PUSH は v1.30.1 で廃止 (他端末の予定を一括上書きする事故リスクのため。通常の自動同期で十分)
 
 // 📥 強制PULL(ローカル置換): サーバー値で local を完全置換
 document.getElementById('all-cs-pull-replace').onclick = async ()=>{
