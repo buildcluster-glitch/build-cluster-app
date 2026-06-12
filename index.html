@@ -2070,7 +2070,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.14</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.15</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7947,7 +7947,8 @@ function renderCalendar(){
             r.creatorMemo ? `\n📝 メモ: ${r.creatorMemo}` : "",
             "\n(クリックで編集シート)",
           ].filter(Boolean).join("\n");
-          inner += `<span class="repair-appt-chip" data-repair-id="${r.id}" style="background:${wColor};color:${wFg};border-left:4px solid ${wfBar}" title="${escapeHtml(tipLines)}">${tagSpan}${wfMiniSpan}${escapeHtml(label)}${__vendorBadgeB}${__workerMiniB}</span>`;
+          // 左カラーバーは廃止(v1.30.15): ピルの角丸に沿って曲がり「謎のピンクの三日月」に見えていた。状態は📞未等のミニバッジで表現
+          inner += `<span class="repair-appt-chip" data-repair-id="${r.id}" style="background:${wColor};color:${wFg}" title="${escapeHtml(tipLines)}">${tagSpan}${wfMiniSpan}${escapeHtml(label)}${__vendorBadgeB}${__workerMiniB}</span>`;
         }
       });
     }
