@@ -1087,15 +1087,12 @@
   .check-card.done-gray:hover{filter:grayscale(0);opacity:1}
   .check-card.done-gray .ck-title{text-decoration:line-through;text-decoration-thickness:1.5px;color:#6b7280}
   .check-card.done-gray::after{
-    content:"完 了";
-    position:absolute; right:8px; top:50%;
-    transform:translateY(-50%) rotate(-12deg);
-    font-size:14px; font-weight:900; letter-spacing:3px; line-height:1;
-    color:#dc2626; border:2px solid #dc2626; border-radius:6px;
-    padding:3px 7px 2px;
-    background:rgba(255,255,255,.55);
-    box-shadow:0 0 0 1px rgba(220,38,38,.15);
-    opacity:.9; pointer-events:none;
+    content:"✓ 完了";
+    position:absolute; right:6px; top:6px;
+    font-size:9px; font-weight:700; line-height:1;
+    color:#fff; background:#475569;
+    border-radius:999px; padding:3px 8px;
+    opacity:.92; pointer-events:none;
   }
   .check-card .row{display:flex;flex-wrap:wrap;gap:3px;align-items:center}
   .check-card .badge-sm{
@@ -2008,7 +2005,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.7</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.8</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
