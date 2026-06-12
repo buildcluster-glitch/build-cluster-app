@@ -285,7 +285,7 @@
     font-size:12px;
   }
   .time-col-header{
-    position:relative;z-index:20;background:#fafbfc;
+    position:sticky;left:0;z-index:20;background:#fafbfc;
     box-shadow:2px 0 3px rgba(0,0,0,.05);
   }
   .day-col-header{
@@ -347,7 +347,7 @@
   .time-col{
     border-right:1px solid var(--border);
     background:#fafbfc;
-    position:relative;z-index:15;
+    position:sticky;left:0;z-index:15;  /* 横スクロール時の左固定 (JS追従→stickyに変更 v1.30.6) */
     box-shadow:2px 0 3px rgba(0,0,0,.05);
   }
   .time-label{
@@ -985,7 +985,7 @@
   }
   .checks-col-time{
     border-right:1px solid var(--border);background:#fff7ed;
-    position:relative;z-index:15;
+    position:sticky;left:0;z-index:15;
     box-shadow:2px 0 3px rgba(0,0,0,.05);
   }
   /* 🔧 最終確認エリアであることを示す左ガターのラベル */
@@ -2063,7 +2063,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.5</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.6</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4023,11 +4023,8 @@ function render(){
   renderLeaveBand();
   renderCalendar();
   renderChecks();
-  setupTimeColStickyFallback();
-  const body = document.getElementById("calBody");
-  body.querySelectorAll(".time-col, .time-col-header, .checks-col-time").forEach(el=>{
-    el.style.transform = `translateX(${body.scrollLeft}px)`;
-  });
+  // 時間列の左固定は CSS position:sticky に移行 (v1.30.6)。
+  // 旧: scroll+rAFのtranslateX追従 → スマホの慣性スクロールで描画が遅れて「がくがく」震えるため廃止
 }
 
 // 見積アプリv1.4.124の新ステータス + 旧ステータス を色分け
@@ -4268,6 +4265,7 @@ function attachCheckDragOrClick(el, ck){
   };
   el.onpointerdown = (pdEv)=>{
     if(pdEv.button !== undefined && pdEv.button !== 0) return;
+    if(pdEv.pointerType === 'touch') return;  // 📱 タッチではカードのドラッグ移動を無効化 (誤移動事故防止 v1.30.6)
     pdEv.preventDefault();
     const startX = pdEv.clientX, startY = pdEv.clientY;
     const rect = el.getBoundingClientRect();
@@ -7813,26 +7811,8 @@ function renderLeaveBand(){
   });
 }
 
-// CSS sticky:left は CSS Grid 内では機能しないので、JSでscroll連動して時間列を左固定する
-function setupTimeColStickyFallback(){
-  const body = document.getElementById("calBody");
-  if(body._stickyAttached) return;
-  body._stickyAttached = true;
-  let rafId = null;
-  const apply = ()=>{
-    rafId = null;
-    const sl = body.scrollLeft;
-    body.querySelectorAll(".time-col, .time-col-header, .checks-col-time").forEach(el=>{
-      el.style.transform = `translateX(${sl}px)`;
-    });
-  };
-  body.addEventListener("scroll", ()=>{
-    if(rafId) return;
-    rafId = requestAnimationFrame(apply);
-  });
-  // 初回適用
-  apply();
-}
+// 時間列の左固定: CSS position:sticky で実現 (v1.30.6〜)。
+// 旧 setupTimeColStickyFallback(scroll+rAFでtranslateX追従)はスマホの慣性スクロールで震えるため廃止。
 
 function renderCalendar(){
   const cols = timeColumns();
@@ -9543,6 +9523,9 @@ function attachDragOrClick(el, ev){
       return;
     }
     if(pdEv.button !== undefined && pdEv.button !== 0) return; // 左ボタンのみ
+    // 📱 タッチではドラッグ移動を無効化 (v1.30.6): スクロール中の誤移動事故防止。
+    //    移動は編集モーダル/時刻ステッパーから。長押しピッカー・タップは従来通り
+    if(pdEv.pointerType === 'touch') return;
     // ダブルクリック保護: 直前のクリックから400ms以内ならドラッグ禁止
     const blockDrag = (Date.now() - __lastClickAt) < DRAG_BLOCK_AFTER_CLICK_MS;
     pdEv.preventDefault();
