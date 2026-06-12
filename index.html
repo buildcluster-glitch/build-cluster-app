@@ -1082,6 +1082,9 @@
   .check-card:hover{background:var(--hover)}
   .check-card.overdue{border-left-color:var(--danger)}
   .check-card.soon{border-left-color:#f59e0b}
+  /* ステータス完了の工事はグレースケールで「済」感を出す (ホバーで一時的に色復帰) */
+  .check-card.done-gray{filter:grayscale(1);opacity:.6}
+  .check-card.done-gray:hover{filter:grayscale(0);opacity:1}
   .check-card .row{display:flex;flex-wrap:wrap;gap:3px;align-items:center}
   .check-card .badge-sm{
     font-size:9px;padding:0 5px;border-radius:8px;font-weight:700;
@@ -1993,7 +1996,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.5</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.6</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4424,7 +4427,9 @@ function renderCheckCard(ck, today){
   const syncMark = ck.source==="gas-sync"
     ? `<span class="ck-sync" title="${isClickable?'タップで工事タスクマネージャーを新タブで開く':'Drive同期由来。編集すると元GASに書き戻されます'}">${isClickable?"🔧":"🔗"}</span>`
     : "";
-  return `<div class="check-card ${urgCls}${isClickable?" clickable":""}" data-check-id="${ck.id}" ${styleAttr}>
+  // ステータス完了系はグレースケール表示
+  const __isDoneCk = /完了|完工|完成/.test(ck.status||"") && ck.status !== "清掃完了";
+  return `<div class="check-card ${urgCls}${isClickable?" clickable":""}${__isDoneCk?" done-gray":""}" data-check-id="${ck.id}" ${styleAttr}>
     <div class="ck-title">${syncMark}${escapeHtml(ck.title)}</div>
     <div class="row">
       ${finalCheckBadge}
