@@ -1684,6 +1684,28 @@
     .nav-btn.primary{font-size:13px;font-weight:700}
   }
 
+  /* 📱 予定クイック追加シート (スマホ用・最低限入力) */
+  .quick-add-sheet-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:880;display:flex;align-items:flex-end}
+  .quick-add-sheet{
+    background:#fff;border-radius:16px 16px 0 0;width:100%;
+    padding:14px 14px calc(14px + env(safe-area-inset-bottom,0));
+    box-shadow:0 -4px 20px rgba(0,0,0,.18);
+  }
+  .quick-add-sheet h3{margin:0 0 10px;font-size:14px}
+  .quick-add-sheet .qa-row{display:flex;gap:8px;margin-bottom:8px}
+  .quick-add-sheet input[type="text"], .quick-add-sheet input[type="date"], .quick-add-sheet select{
+    width:100%;padding:10px;font-size:16px;  /* 16px=iOSのフォーカスズーム防止 */
+    border:1px solid var(--border-strong);border-radius:8px;background:#fff;min-width:0;
+  }
+  .quick-add-sheet .qa-staff{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+  .quick-add-sheet .qa-staff button{
+    border:1.5px solid transparent;border-radius:999px;padding:7px 12px;
+    font-size:13px;font-weight:600;background:#f1f5f9;color:#0f172a;
+  }
+  .quick-add-sheet .qa-staff button.on{outline:2.5px solid #0f172a}
+  .quick-add-sheet .qa-actions{display:flex;gap:8px}
+  .quick-add-sheet .qa-actions button{flex:1;padding:12px;border:none;border-radius:10px;font-size:14px;font-weight:700}
+
   /* 📱 下部ナビ (スマホのみ。デスクトップは display:none のまま) */
   .mobile-nav{
     display:none;
@@ -2073,7 +2095,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.18</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.19</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -8557,7 +8579,7 @@ function renderCalendar(){
         const startH = Math.floor(startMin/60), startM = startMin%60;
         const endMin = startMin+60;
         const endH = Math.floor(endMin/60), endM = endMin%60;
-        openEventModal(null, {
+        openQuickOrFullEvent_({
           date: c.contextDate,
           staff: c.contextStaff || undefined,
           start: `${pad(startH)}:${pad(startM)}`,
@@ -8574,7 +8596,7 @@ function renderCalendar(){
           const hour = parseInt(cell.dataset.hour, 10);
           const startH = hour, startM = 0;
           const endH = Math.min(HOUR_END, hour+1), endM = 0;
-          openEventModal(null, {
+          openQuickOrFullEvent_({
             date: c.contextDate,
             staff: c.contextStaff || undefined,
             start: `${pad(startH)}:${pad(startM)}`,
@@ -10471,7 +10493,79 @@ document.querySelectorAll('#mobileNav button').forEach(b=>{
 document.querySelectorAll(".view-switch button").forEach(b=>{
   b.onclick = ()=>{ currentView = b.dataset.view; render(); };
 });
-document.getElementById("addBtn").onclick = ()=>openEventModal(null);
+// 📱 予定クイック追加シート (v1.30.19): スマホはフルモーダルだと大変なので最低限(タイトル/日付/時刻/担当)だけで登録。
+//   「✏️詳細」で従来モーダルへ引き継ぎ。PCは従来通りフルモーダル
+function showQuickAddSheet_(defaults={}){
+  document.querySelectorAll('.quick-add-sheet-backdrop').forEach(x=>x.remove());
+  const me = getMyself();
+  let selStaff = (defaults.staff && STAFF.includes(defaults.staff)) ? defaults.staff : (STAFF.includes(me) ? me : "");
+  const dateV = defaults.date || fmtDate(currentDate || new Date());
+  const startV = defaults.start || "";
+  const timeOpts = ['<option value="">時間未定</option>'];
+  for(let h=7; h<=19; h++) for(let m=0; m<60; m+=15){
+    const v = `${pad(h)}:${pad(m)}`;
+    timeOpts.push(`<option value="${v}"${v===startV?' selected':''}>${v}</option>`);
+  }
+  const endOf = st => st ? `${pad(Math.min(+st.slice(0,2)+1, 23))}:${st.slice(3)}` : "10:00";
+  const bd = document.createElement('div');
+  bd.className = 'quick-add-sheet-backdrop';
+  bd.innerHTML = `<div class="quick-add-sheet">
+    <h3>＋ 予定を追加 <span style="font-weight:400;font-size:11px;color:var(--muted)">最低限だけ。細かい設定は✏️詳細から</span></h3>
+    <div class="qa-row"><input type="text" id="qa-title" placeholder="タイトル (例: 〇〇 立会)" autocomplete="off"></div>
+    <div class="qa-row">
+      <input type="date" id="qa-date" value="${escapeHtml(dateV)}">
+      <select id="qa-time">${timeOpts.join('')}</select>
+    </div>
+    <div class="qa-staff">${STAFF.map(s=>{
+      const c = STAFF_COLORS[s] || '#9ca3af';
+      return `<button data-s="${escapeHtml(s)}" class="${s===selStaff?'on':''}" style="background:${c}40">${escapeHtml(s)}</button>`;
+    }).join('')}</div>
+    <div class="qa-actions">
+      <button id="qa-cancel" style="background:#f1f5f9;color:#334155">キャンセル</button>
+      <button id="qa-detail" style="background:#e0e7ff;color:#3730a3">✏️ 詳細</button>
+      <button id="qa-save" style="background:var(--accent);color:#fff">登録</button>
+    </div>
+  </div>`;
+  document.body.appendChild(bd);
+  bd.onclick = (e)=>{ if(e.target===bd) bd.remove(); };
+  bd.querySelectorAll('.qa-staff button').forEach(b=>{
+    b.onclick = ()=>{
+      selStaff = (selStaff === b.dataset.s) ? "" : b.dataset.s;
+      bd.querySelectorAll('.qa-staff button').forEach(x=>x.classList.toggle('on', x.dataset.s===selStaff));
+    };
+  });
+  bd.querySelector('#qa-cancel').onclick = ()=>bd.remove();
+  bd.querySelector('#qa-detail').onclick = ()=>{
+    const t = bd.querySelector('#qa-title').value;
+    const d = bd.querySelector('#qa-date').value;
+    const st = bd.querySelector('#qa-time').value;
+    bd.remove();
+    openEventModal(null, {date:d||undefined, staff:selStaff||undefined, start:st||undefined, end:st?endOf(st):undefined});
+    try{ if(t) document.getElementById('ev-title').value = t; }catch(_){}
+  };
+  bd.querySelector('#qa-save').onclick = ()=>{
+    const title = bd.querySelector('#qa-title').value.trim();
+    if(!title){ alert('タイトルを入れてください'); return; }
+    const d = bd.querySelector('#qa-date').value || fmtDate(new Date());
+    const st = bd.querySelector('#qa-time').value;
+    const ev = {
+      id: uid(), title, category:"", contractor:"", staff: selStaff||"", participants: [],
+      date: d, start: st||"09:00", end: endOf(st), allday: false, timeMode: st ? "timed" : "anytime",
+      color:"", memo:"", importance: [], updatedAt: new Date().toISOString(),
+    };
+    if(typeof pushHistory==='function') pushHistory();
+    state.events.push(ev);
+    if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(ev,'upsert'); }catch(_){} }
+    saveState(); render();
+    bd.remove();
+  };
+}
+// 新規予定の入口: スマホ=クイックシート / PC=フルモーダル
+function openQuickOrFullEvent_(defaults){
+  if(window.innerWidth <= 700) showQuickAddSheet_(defaults || {});
+  else openEventModal(null, defaults);
+}
+document.getElementById("addBtn").onclick = ()=>openQuickOrFullEvent_();
 document.getElementById("undoBtn").onclick = ()=>undo();
 document.getElementById("yearStatsBtn").onclick = ()=>openYearStats();
 document.getElementById("gasSettingsBtnHeader").onclick = ()=>openAllSettings('drive');
