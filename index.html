@@ -2005,7 +2005,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.9</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.10</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9026,8 +9026,19 @@ function showRepairQuickPop(r, anchorEl){
     }).join('');
   };
 
+  // 📅 アポ日時 (responseDate は表記ゆれがあるので date input 用に ISO 正規化)
+  const __rdParsed = r.responseDate ? parseDate(r.responseDate) : null;
+  const __rdIso = (__rdParsed && !isNaN(__rdParsed)) ? fmtDate(__rdParsed) : "";
   pop.innerHTML = `
     <div class="qp-title">🔧 ${escapeHtml(r.name)}${r.room?' '+escapeHtml(r.room):''} ${contBadge} ${vendorBadge} ${wfBadge}</div>
+    <div class="qp-sec">
+      <div class="qp-label">📅 アポ日時</div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="date" id="qp-resp-date" value="${escapeHtml(__rdIso)}" style="flex:1;min-width:0;padding:5px 6px;font-size:12px;border:1px solid var(--border);border-radius:6px">
+        <input type="text" id="qp-resp-time" value="${escapeHtml(r.responseTime||'')}" placeholder="10:00" style="width:70px;padding:5px 6px;font-size:12px;border:1px solid var(--border);border-radius:6px">
+        <button id="qp-resp-apply" class="qp-detail" style="padding:5px 10px;flex-shrink:0">変更</button>
+      </div>
+    </div>
     <div class="qp-sec">
       <div class="qp-label">🔨 作業担当者</div>
       <div class="qp-worker-pick">${workerBtns}</div>
@@ -9059,6 +9070,35 @@ function showRepairQuickPop(r, anchorEl){
   if(x < 8) x = 8; if(y < 8) y = 8;
   pop.style.left = x + 'px'; pop.style.top = y + 'px';
 
+  // 📅 アポ日時変更 (saveRepairSheet と同じ作法: 楽観更新→Drive書き戻し→失敗ならロールバック)
+  pop.querySelector('#qp-resp-apply').onclick = async ()=>{
+    const btn = pop.querySelector('#qp-resp-apply');
+    const nd = pop.querySelector('#qp-resp-date').value;
+    const nt = pop.querySelector('#qp-resp-time').value.trim();
+    if(!nd){ alert('日付を選択してください'); return; }
+    const prev = { responseDate: r.responseDate, responseTime: r.responseTime };
+    if(nd === __rdIso && nt === (prev.responseTime||'')){ btn.textContent = '変更なし'; setTimeout(()=>{ btn.textContent='変更'; }, 1200); return; }
+    r.responseDate = nd;
+    r.responseTime = nt;
+    saveState();
+    render();   // チップが新しい日時へ即移動
+    if(r.extDriveFileId){
+      btn.textContent = '送信中…'; btn.disabled = true;
+      try{
+        const fields = { responseDate: nd, responseTime: nt };
+        await pushAppointmentToGAS(r.extDriveFileId, fields);
+        btn.textContent = '✓ 変更済';
+        setTimeout(()=>{ btn.textContent='変更'; btn.disabled=false; }, 1500);
+      }catch(err){
+        Object.assign(r, prev); saveState(); render();
+        btn.textContent = '変更'; btn.disabled = false;
+        alert('Drive書き戻しに失敗(元に戻しました):\n' + err.message);
+      }
+    }else{
+      btn.textContent = '✓ 変更済';
+      setTimeout(()=>{ btn.textContent='変更'; }, 1500);
+    }
+  };
   // 担当者変更
   pop.querySelector('.qp-worker-pick').onclick = (e)=>{
     const btn = e.target.closest('[data-worker]');
