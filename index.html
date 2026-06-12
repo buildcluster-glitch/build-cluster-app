@@ -1635,6 +1635,22 @@
     .calendar-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
     .checks-columns{min-width:max-content}
     .check-card{max-width:200px}
+    /* 📱 最終確認ヘッダー圧縮: 同期時刻は非表示・横スクロールのヒント表示 */
+    .checks-synced{display:none}
+    .checks-header{padding:4px 6px;gap:4px}
+    .checks-header .title{font-size:11px}
+    .checks-header .title::after{content:" ⇄ 横にスクロール";font-size:9px;font-weight:400;color:#94a3b8}
+    #syncCheckBtn{font-size:11px;padding:4px 8px}
+    /* 📱 時間グリッド上は縦スクロールのみ許可 → 横フリックは日送りに使う */
+    #calGrid{touch-action:pan-y}
+    /* 📱 下部ナビ表示 + 各ビューの高さ/余白調整 (ID指定=後続の基本CSS display:none より優先) */
+    #mobileNav{display:flex}
+    .calendar-wrap{height:calc(100vh - 188px)}
+    .task-view{height:calc(100vh - 158px)}
+    .repair-view, .resto-view{padding-bottom:70px}
+    .repair-list{padding-bottom:140px}
+    #inventoryView .inv-app{padding-bottom:140px}
+    .inv-fab{bottom:72px}
 
     /* 在庫管理ビュー: 既にレスポンシブだが微調整 */
     #inventoryView .inv-app{max-width:100%;padding-bottom:80px}
@@ -1658,6 +1674,23 @@
     /* スマホでも+休/+予定ボタンは目立たせる */
     .nav-btn.primary{font-size:13px;font-weight:700}
   }
+
+  /* 📱 下部ナビ (スマホのみ。デスクトップは display:none のまま) */
+  .mobile-nav{
+    display:none;
+    position:fixed;left:0;right:0;bottom:0;z-index:600;
+    background:#fff;border-top:1px solid var(--border);
+    box-shadow:0 -2px 8px rgba(0,0,0,.06);
+    padding-bottom:env(safe-area-inset-bottom,0);
+  }
+  .mobile-nav button{
+    flex:1;border:0;background:none;padding:7px 2px 5px;
+    display:flex;flex-direction:column;align-items:center;gap:1px;
+    font-size:17px;line-height:1;color:#64748b;min-height:50px;
+  }
+  .mobile-nav button span{font-size:9px;font-weight:600}
+  .mobile-nav button.active{color:var(--accent)}
+  .mobile-nav button.active span{color:var(--accent)}
 
   /* タッチデバイスでホバーを無効化 */
   @media (hover: none) and (pointer: coarse){
@@ -2028,7 +2061,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.2</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.3</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2061,6 +2094,15 @@
 <div class="category-filter" id="categoryFilter">
   <span class="title">🏷️ カテゴリ</span>
 </div>
+
+<!-- 📱 スマホ用 下部ナビ (≤768pxでのみ表示・親指でビュー切替) -->
+<nav id="mobileNav" class="mobile-nav">
+  <button data-mnav="cal">📅<span>予定</span></button>
+  <button data-mnav="task">📋<span>タスク</span></button>
+  <button data-mnav="repair">🔧<span>修繕</span></button>
+  <button data-mnav="resto">🏠<span>原状回復</span></button>
+  <button data-mnav="inventory">📦<span>在庫</span></button>
+</nav>
 
 <div class="calendar-wrap" id="calendarWrap">
   <div class="calendar-body" id="calBody">
@@ -3890,6 +3932,12 @@ function timeColumns(){
 // ===== レンダリング =====
 function render(){
   try{ localStorage.setItem(VIEW_STORAGE_KEY, currentView); }catch(_){}  // 📱 ビュー記憶
+  // 📱 下部ナビのアクティブ表示
+  const __mn = document.getElementById('mobileNav');
+  if(__mn){
+    const __mk = ['task','repair','resto','inventory'].includes(currentView) ? currentView : 'cal';
+    __mn.querySelectorAll('button').forEach(b=>b.classList.toggle('active', b.dataset.mnav===__mk));
+  }
   renderHeader();
   renderStaffLegend();
 
@@ -4070,7 +4118,7 @@ function renderChecks(){
     <div class="checks-header">
       <span class="title">🔧 工事最終確認</span>
       <span class="count" title="表示中/全件 (複製は自動非表示)">${visibleChecks.length}${visibleChecks.length!==state.checks.length?` / ${state.checks.length}`:""}</span>
-      <span style="font-size:11px;color:var(--muted);margin-left:6px">${syncedLabel}</span>
+      <span class="checks-synced" style="font-size:11px;color:var(--muted);margin-left:6px">${syncedLabel}</span>
       <div style="flex:1"></div>
       <button class="nav-btn" id="syncCheckBtn" title="master_sync GAS から最終確認日を取得">🔄 Drive同期</button>
       <button class="nav-btn" id="gasSettingsBtn" title="GAS URL/Token 設定">⚙</button>
@@ -8351,7 +8399,7 @@ function renderCalendar(){
         const commuteInline = ev.commute ? ` <span class="chip-commute" style="font-size:9px;padding:0 3px">${ev.commute==="直行直帰"?"🚗⇄":ev.commute==="直行"?"🚗→":"→🏠"}</span>` : "";
         el.innerHTML = isShort
           ? `<div class="title">${inlineCatPrefix}${taskInfo?compactTaskHtml:escapeHtml(titleFirstLine)}${commuteInline}${showStaff&&staffList.length?` <span style="opacity:.8">/${multi?staffList.length+"名":escapeHtml(staffList[0].slice(0,2))}</span>`:""}${progIcon}${__progStaffBadge}${__linkInfoHtml}</div>`
-          : `<div class="time">${ev.start}〜${ev.end}${commuteInline}</div>
+          : `<div class="time">${window.innerWidth<=700 ? ev.start : `${ev.start}〜${ev.end}`}${commuteInline}</div>
              <div class="title">${inlineCatPrefix}${titleHtmlMulti}${progIcon}${__progStaffBadge}${shiryoBadge}${__linkInfoHtml}</div>
              ${showStaff ? (multi ? participantsHtml : (ev.staff ? `<div class="staff">${staffShortLabel}</div>`:"")) : ""}`;
         el.title = fullTooltip;
@@ -10342,6 +10390,41 @@ function navigate(dir){
 }
 document.getElementById("prevBtn").onclick = ()=>navigate(-1);
 document.getElementById("nextBtn").onclick = ()=>navigate(1);
+
+// 📱 スワイプ日送り: ビューの表示スパン分だけ移動 (‹›の月ジャンプとは別・細かい送り)
+function swipeNavigate_(dir){
+  if(["task","repair","resto","inventory"].includes(currentView)) return;
+  if(currentView === "month"){ navigate(dir); return; }
+  const span = currentView==="week" ? 7 : (currentView==="3day" ? 3 : 1);
+  currentDate = addDays(currentDate, dir*span);
+  render();
+}
+// 📱 時間グリッドの横フリック → 日送り。チップ上から始まるフリックは対象外(ドラッグ/長押し優先)
+//   #calGrid は touch-action:pan-y (スマホCSS) なので横ジェスチャはスクロールに食われずここに届く
+(function setupSwipeNav_(){
+  let sx=0, sy=0, st=0, active=false;
+  document.addEventListener('pointerdown', e=>{
+    active = false;
+    if(e.pointerType !== 'touch') return;
+    if(!e.target.closest('#calGrid')) return;
+    if(e.target.closest('.event, .month-event, .check-card')) return;
+    sx = e.clientX; sy = e.clientY; st = Date.now(); active = true;
+  }, true);
+  document.addEventListener('pointerup', e=>{
+    if(!active) return; active = false;
+    const dx = e.clientX - sx, dy = e.clientY - sy, dt = Date.now() - st;
+    if(dt > 600 || Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy)*2) return;
+    swipeNavigate_(dx < 0 ? 1 : -1);  // 左フリック=次へ
+  }, true);
+})();
+// 📱 下部ナビ (スマホのみ表示。クリックでビュー切替)
+document.querySelectorAll('#mobileNav button').forEach(b=>{
+  b.onclick = ()=>{
+    const k = b.dataset.mnav;
+    currentView = (k === 'cal') ? ((window.innerWidth <= 700) ? '3day' : 'month') : k;
+    render();
+  };
+});
 document.querySelectorAll(".view-switch button").forEach(b=>{
   b.onclick = ()=>{ currentView = b.dataset.view; render(); };
 });
