@@ -939,10 +939,10 @@
   /* ===== 工事最終確認セクション ===== */
   .checks-section{
     border-top:3px double var(--border-strong);
-    background:#fafbfc;padding:8px 12px;
+    background:#fafbfc;padding:8px 0;  /* 左右paddingなし: 列をカレンダーグリッドと縦に揃える(旧12pxで+12pxズレていた) */
   }
   .checks-header{
-    display:flex;align-items:center;gap:10px;margin-bottom:6px;
+    display:flex;align-items:center;gap:10px;margin-bottom:6px;padding:0 12px;  /* ヘッダー行だけ従来の余白 */
   }
   .checks-header .title{font-weight:700;font-size:13px;color:var(--text)}
   .checks-header .count{
@@ -2062,7 +2062,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.8</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.9</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -8777,7 +8777,9 @@ function autoFitMonthColumnWidth(colCount){
   if(maxNeeded <= 0) return;
   // 最低 220px, 最大 500px(極端な広さ防止)で調整
   const colW = Math.max(220, Math.min(500, Math.ceil(maxNeeded)));
-  const newSpec = `${TIME_COL_W}px repeat(${colCount}, minmax(${colW}px, 1fr))`;
+  // ⚠ 固定px指定 (旧: minmax(...,1fr))。1frだと、列数が2本多い最終確認グリッドの方が横幅が広く、
+  //   グリッド全体がその幅へ引き伸ばされて日列だけ微妙に太る→最終確認列と縦ズレしていた
+  const newSpec = `${TIME_COL_W}px repeat(${colCount}, ${colW}px)`;
   // 同じ値なら再適用しない (無限ループ防止)
   if(grid.style.gridTemplateColumns === newSpec) return;
   grid.style.gridTemplateColumns = newSpec;
@@ -8787,7 +8789,11 @@ function autoFitMonthColumnWidth(colCount){
   const allday = document.getElementById("alldayBand");
   if(allday) allday.style.gridTemplateColumns = newSpec;
   const checksCols = document.querySelector(".checks-columns");
-  if(checksCols) checksCols.style.gridTemplateColumns = newSpec.replace(/repeat\(\d+/, `repeat(${checksCols.style.gridTemplateColumns.match(/repeat\((\d+)/)?.[1]||colCount}`);
+  if(checksCols){
+    // 最終確認は date列 + 末尾2列(今後の予定/確認日未定)。日列と同じ幅で揃える
+    const extra = Math.max(0, checksCols.querySelectorAll(".checks-col").length - colCount);
+    checksCols.style.gridTemplateColumns = newSpec + ` ${colW}px`.repeat(extra);
+  }
 }
 
 function renderMonth(){
