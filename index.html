@@ -2018,7 +2018,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.15</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.16</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -12365,9 +12365,13 @@ function restoFmtDateTime(ts){
 
 function renderRestoTaskRow(t, cat){
   const qtyStr = t.qty ? `${t.qty}${t.unit||""}` : (t.unit||"");
+  // 表示名: 仕様(具体的内容)があればそれをタイトルに。工種(交換・補修工事等)は小さく後ろへ
+  //   ※「交換・補修工事」等の工種名が太字で並んで内容が分からない問題の対策 (v1.29.16)
+  const __specTrim = String(t.spec||"").trim();
+  const dispName = __specTrim || t.name;
   const sub = [];
   if(t.surface) sub.push(escapeHtml(t.surface));
-  if(t.spec) sub.push(escapeHtml(t.spec));
+  if(__specTrim && t.name && String(t.name).trim() !== __specTrim) sub.push(escapeHtml(t.name));
   if(t.schedule) sub.push("📅 "+escapeHtml(t.schedule));
   if(t.amount) sub.push(`<span class="rt-amount">¥${(+t.amount).toLocaleString()}</span>`);
   const logCount = (t.logs||[]).length;
@@ -12401,7 +12405,7 @@ function renderRestoTaskRow(t, cat){
         <div class="rt-body" data-role="edit">
           <div class="rt-head">
             ${t.room?`<span class="rt-room">${escapeHtml(t.room)}</span>`:""}
-            <span class="rt-name">${escapeHtml(t.name)}</span>
+            <span class="rt-name">${escapeHtml(dispName)}</span>
             ${qtyStr?`<span class="rt-qty">${escapeHtml(qtyStr)}</span>`:""}
             ${sub.length?`<span class="rt-sub" style="margin:0">${sub.join(" · ")}</span>`:""}
           </div>
