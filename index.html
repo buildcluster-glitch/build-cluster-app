@@ -2005,7 +2005,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.8</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.9</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2021,8 +2021,7 @@
   <div class="spacer"></div>
   <button class="nav-btn icon-only" id="undoBtn" title="直前の変更を取り消し (Ctrl+Z)" disabled>↶</button>
   <button class="nav-btn icon-only" id="yearStatsBtn" title="📊 休日管理 (有給・休日年間集計)">📊</button>
-  <button class="nav-btn icon-only" id="syncBtnHeader" title="🔄 Drive同期 (master_sync GAS から最終確認日を取得)">🔄</button>
-  <button class="nav-btn" id="cloudSyncBtn" title="☁ クラウド同期 (工事カレンダーDB)"><span id="cloudSyncIcon">☁</span><span id="cloudSyncBadge" class="hidden"></span></button>
+  <button class="nav-btn" id="cloudSyncBtn" title="☁ 全同期 — クラウド(予定/休暇) + Drive(最終確認・立会・事前など) をまとめて今すぐ同期。設定は⚙"><span id="cloudSyncIcon">☁</span><span id="cloudSyncBadge" class="hidden"></span></button>
   <button class="nav-btn icon-only" id="gasSettingsBtnHeader" title="⚙ 設定 (GAS URL/Token)">⚙</button>
   <button class="nav-btn icon-only" id="resetBtn" title="⟳ リセット (データ全消去してサンプル再投入)">⟳</button>
   <button class="nav-btn" id="addLeaveBtn" title="有給・休暇・別件を追加">＋休</button>
@@ -10207,7 +10206,6 @@ document.querySelectorAll(".view-switch button").forEach(b=>{
 document.getElementById("addBtn").onclick = ()=>openEventModal(null);
 document.getElementById("undoBtn").onclick = ()=>undo();
 document.getElementById("yearStatsBtn").onclick = ()=>openYearStats();
-document.getElementById("syncBtnHeader").onclick = ()=>syncChecksFromGAS();
 document.getElementById("gasSettingsBtnHeader").onclick = ()=>openAllSettings('drive');
 
 // ===== 有給年間集計 =====
@@ -10556,8 +10554,8 @@ async function cloudSyncFullSilent(){
   return { push, pull };
 }
 
-async function runCloudOpenSync(){
-  if(!cloudSync.url || !cloudSync.autoSync) return;
+async function runCloudOpenSync(opts={}){
+  if(!cloudSync.url || (!cloudSync.autoSync && !opts.manual)) return;  // manual=☁ボタンからはautoSync OFFでも実行
   if(cloudSyncInFlight) return;
   cloudSyncInFlight = true;
   setCloudSyncIcon('syncing');
@@ -10873,7 +10871,12 @@ document.getElementById('cs-pull-now').onclick = async ()=>{
     alert('取得失敗: ' + err.message);
   }
 };
-document.getElementById('cloudSyncBtn').onclick = ()=>openAllSettings('cloud');
+// ☁ = 全同期ボタン (v1.29.9): クラウド(予定/休暇DB) + Drive(master_sync: 最終確認・立会・事前等) をまとめて実行
+//   設定モーダルは ⚙ から (以前は☁=設定を開くだけだった)
+document.getElementById('cloudSyncBtn').onclick = ()=>{
+  runCloudOpenSync({manual:true});   // クラウド同期 (push pending + pull)
+  syncChecksFromGAS();               // Drive同期 (未設定なら設定誘導confirm)
+};
 
 // ===========================================================
 // ⚙ 全体設定モーダル: Drive + Cloud Sync + 在庫 を1画面で
