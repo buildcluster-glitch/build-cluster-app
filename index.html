@@ -1993,7 +1993,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.4</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.29.5</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4740,6 +4740,24 @@ function setTaikyoStaffOverride_(taikyoId, staff){
   }
   saveTaikyoOverrides_(map);
 }
+// 🩹 v1.29.5 migration: 旧ピッカーが作った「光和工業,大村将史」形式の override から会社名を除去
+//   (会社名が先頭に居座ると色が引けず白のままになるバグの修復)
+(function _migrateTaikyoOverrides(){
+  try{
+    const map = loadTaikyoOverrides_();
+    let n = 0;
+    Object.keys(map).forEach(k=>{
+      const list = String(map[k]?.staff||'').split(',').map(s=>s.trim()).filter(s=>isRealStaffName_(s));
+      const joined = list.join(',');
+      if(joined !== String(map[k]?.staff||'')){
+        if(joined) map[k].staff = joined;
+        else delete map[k];
+        n++;
+      }
+    });
+    if(n){ saveTaikyoOverrides_(map); console.log('[migrate] 立会担当overrideから会社名除去:', n, '件'); }
+  }catch(e){ console.warn('[migrate] override修復失敗', e); }
+})();
 // 立会レコードを仮想イベントに変換 (カレンダー描画用)
 // ====================================================================
 // 📄 立会「資料作成済」フラグ (taikyo_shiryo_ready) — 見積アプリ(v1.4.539)がpush
@@ -4903,7 +4921,8 @@ function buildTaikyoVirtualEvent_(r){
   const PROVISIONAL_COLOR = "#cbd5e1"; // 立会?(担当未定) グレー
   // デフォは行背景 空白(白)。担当者が付けばその担当者色(複数人なら先頭の人)。仮置きで担当無しのみグレー。
   //   ※ 以前は仮置き=グレー固定でピッカーで担当を付けても色が変わらなかった / 複数人選択も "A,B" が色表に無く白のままだった
-  const __tkFirst = (typeof firstWorker_==='function') ? firstWorker_(effectiveStaff) : String(effectiveStaff||"").split(",")[0].trim();
+  // 先頭の「実在スタッフ」の色を採用 (光和工業等の会社名が混ざっていても飛ばす)
+  const __tkFirst = parseWorkers_(effectiveStaff).find(isRealStaffName_) || "";
   const __tkStaffCol = STAFF_COLORS[__tkFirst] || STAFF_COLORS[normalizeStaffName(__tkFirst)] || "";
   const chipColor = __tkStaffCol ? __tkStaffCol : (isProvisional ? PROVISIONAL_COLOR : "");  // ""=既存ロジック(担当色 or 透明)
   return {
@@ -4941,7 +4960,10 @@ function showTaikyoStaffPicker(el, ev){
   const taikyoId = ev._taikyoRawId;
   const origStaff = ev._taikyoOrigStaff || "";
   const current = ev.staff || "";
-  const __tklist = parseWorkers_(current);   // 複数可
+  // ⚠ 会社名(光和工業等)は選択リストに引き継がない。
+  //   以前は「光和工業」が外せない見えない選択として先頭に居座り、override が
+  //   "光和工業,大村将史" になって先頭の色が引けず白のままになるバグがあった
+  const __tklist = parseWorkers_(current).filter(isRealStaffName_);   // 複数可
   // 「光和工業」等の会社名はスタッフではないので表示しない(実在スタッフの時だけ参考表示)
   const origIsStaff = !!(STAFF_COLORS[origStaff] || STAFF_COLORS[normalizeStaffName(origStaff)]);
   pop.innerHTML = `
@@ -4974,7 +4996,7 @@ function showTaikyoStaffPicker(el, ev){
     if(left < mg) left = mg;
     pop.style.top = top + "px"; pop.style.left = left + "px"; pop.style.visibility = "visible";
   });
-  let __tkcur = parseWorkers_(current);   // 複数可・トグルで更新
+  let __tkcur = parseWorkers_(current).filter(isRealStaffName_);   // 複数可・トグルで更新(会社名は除外)
   pop.querySelectorAll("[data-staff]").forEach(btn=>{
     btn.onclick = ()=>{
       const s = btn.dataset.staff;
