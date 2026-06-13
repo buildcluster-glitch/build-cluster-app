@@ -804,6 +804,24 @@
     cursor:pointer;border-left:3px solid rgba(0,0,0,.18) !important;
   }
   .repair-appt-grid:hover{filter:brightness(1.06);box-shadow:0 2px 6px rgba(0,0,0,.18)}
+  /* 🔍 スケジュール検索 */
+  .modal-overlay .modal.modal-search{max-width:560px;width:100%}
+  .sch-search-box{display:flex;gap:8px;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border)}
+  .sch-search-box input{flex:1;font-size:16px;padding:10px 12px;border:1px solid var(--border-strong);border-radius:8px;font-family:inherit;min-width:0;background:#fff}
+  .sch-search-box .sch-close-btn{flex:0 0 auto;border:0;background:#f3f4f6;color:#64748b;border-radius:8px;font-size:13px;font-weight:600;padding:9px 12px;cursor:pointer}
+  .sch-results{max-height:62vh;overflow-y:auto;padding:6px}
+  .sch-result{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;cursor:pointer}
+  .sch-result:hover,.sch-result.active{background:#f1f5f9}
+  .sch-date{flex:0 0 auto;font-size:12.5px;font-weight:700;color:#334155;width:74px;white-space:nowrap}
+  .sch-date .dow{font-weight:400;color:#94a3b8;font-size:11px;margin-left:1px}
+  .sch-kind{flex:0 0 auto;font-size:10px;font-weight:700;color:#fff;border-radius:6px;padding:2px 7px;white-space:nowrap}
+  .sch-main{flex:1;min-width:0}
+  .sch-title{font-size:13.5px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sch-sub{font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sch-empty{text-align:center;color:#94a3b8;font-size:13px;padding:34px 16px;line-height:1.7}
+  /* ジャンプ先の列をフラッシュ */
+  .col-flash{animation:colFlash 1.5s ease}
+  @keyframes colFlash{0%,100%{background:transparent}15%,30%{background:rgba(245,158,11,.30)}}
   /* 旧スタイルは保持(他で使用箇所あれば) */
   .allday-event{
     background:var(--leave-bg);color:var(--leave-text);
@@ -2168,7 +2186,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.25</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.27</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2183,6 +2201,7 @@
   </div>
   <div class="spacer"></div>
   <button class="nav-btn icon-only" id="undoBtn" title="直前の変更を取り消し (Ctrl+Z)" disabled>↶</button>
+  <button class="nav-btn icon-only" id="searchBtn" title="🔍 予定・立会・修繕・最終確認・休暇を横断検索 (/)">🔍</button>
   <button class="nav-btn icon-only" id="yearStatsBtn" title="📊 休日管理 (有給・休日年間集計)">📊</button>
   <button class="nav-btn" id="cloudSyncBtn" title="☁ 全同期 — クラウド(予定/休暇) + Drive(最終確認・立会・事前など) をまとめて今すぐ同期。設定は⚙"><span id="cloudSyncIcon">☁</span><span id="cloudSyncBadge" class="hidden"></span></button>
   <button class="nav-btn icon-only" id="gasSettingsBtnHeader" title="⚙ 設定 (GAS URL/Token)">⚙</button>
@@ -2200,6 +2219,17 @@
 
 <div class="category-filter" id="categoryFilter">
   <span class="title">🏷️ カテゴリ</span>
+</div>
+
+<!-- 🔍 スケジュール検索 (予定/立会/修繕/最終確認/休暇 横断) -->
+<div class="modal-overlay" id="searchModal">
+  <div class="modal modal-search">
+    <div class="sch-search-box">
+      <input id="sch-input" type="text" placeholder="🔍 物件名・担当・タイトル・メモで検索" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button class="sch-close-btn" id="sch-close">閉じる</button>
+    </div>
+    <div class="sch-results" id="sch-results"></div>
+  </div>
 </div>
 
 <!-- 📱 スマホ用 下部ナビ (≤768pxでのみ表示・親指でビュー切替) -->
@@ -7059,6 +7089,13 @@ function normalizeDate(d){
   return "";
 }
 
+// 📅 GAS射影の日付アンカー: ISOキー(responseDateIso/finalCheckDateIso)を最優先・無ければ生値をnormalizeDate
+//   生値(p.responseDate/p.finalDate 等)は "6/13" 等のM/D文字列で年が無い → 見積アプリが年補完したISOを優先する(v1.30.27)
+function pickIsoDate_(iso, ...raws){
+  if(iso && /^\d{4}-\d{2}-\d{2}$/.test(String(iso).trim())) return String(iso).trim();
+  for(const r of raws){ const n = normalizeDate(r); if(n) return n; }
+  return "";
+}
 // ===== 修繕案件の抽出 (TM 修繕ビュー移植) =====
 // workflowStatus 旧値 → 新値マイグレ (TM applyGasSync より)
 const WF_MIGRATE = {
@@ -7095,8 +7132,8 @@ function extractRepairs(properties){
       status: p.status || "見積作成中",
       workflowStatus: migrateWorkflow(p.workflowStatus),
       requestDate: normalizeDate(p.requestDate),
-      responseDate: normalizeDate(p.responseDate),
-      responseDateRaw: p.responseDate || "",
+      responseDate: pickIsoDate_(p.responseDateIso, p.responseDate),   // ISOアンカー優先(v1.30.27)
+      responseDateRaw: p.responseDate || p.responseDateIso || "",
       responseTime: p.responseTime || "",
       responseContractor: p.responseContractor || prev?.responseContractor || "",  // 対応業者(思綺美装等・見積アプリv1.4.571〜)
       workVolume: p.workVolume || (p.workloadStatus && p.workloadStatus.level) || "",
@@ -7376,10 +7413,10 @@ async function syncChecksFromGAS(opts){
     const dateDiag = properties.map(p=>({
       name: p.name,
       room: p.room || "",
-      raw: p.finalDate,
-      type: typeof p.finalDate,
-      normalized: p.finalDate ? normalizeDate(p.finalDate) : "",
-      ok: !!(p.finalDate && normalizeDate(p.finalDate)),
+      iso: p.finalCheckDateIso || "",
+      raw: p.finalCheckDate || p.checkDate || p.finalDate || "",
+      effective: pickIsoDate_(p.finalCheckDateIso, p.finalCheckDate, p.checkDate, p.finalDate),
+      ok: !!pickIsoDate_(p.finalCheckDateIso, p.finalCheckDate, p.checkDate, p.finalDate),
       status: p.kojiStatus || p.status,
     }));
     console.log("[task-sync] date diag:");
@@ -7392,13 +7429,13 @@ async function syncChecksFromGAS(opts){
     const seenIds = new Set();
     const seenSig = new Set();
     const imported = properties
-      .filter(p => p.finalDate)
+      .filter(p => pickIsoDate_(p.finalCheckDateIso, p.finalCheckDate, p.checkDate, p.finalDate))   // ISOアンカー含めて判定(v1.30.27・finalDate以外でも作る)
       .map(p => ({
         id: "gas-" + (p.driveFileId || p.estimateId || p.no || p.id || (p.name+"|"+(p.room||""))),
         title: (p.name || "(物件名なし)") + (p.room ? " " + p.room : ""),
         contractor: p.contractor || p.contractorName || p.clientRaw || p.clientCat || "",
         staff: p.estimatedBy || p.staff || p.assignee || p.pic || p.salesPerson || "",  // バッジ=見積作成者(estimatedBy)優先
-        checkDate: normalizeDate(p.finalDate),
+        checkDate: pickIsoDate_(p.finalCheckDateIso, p.finalCheckDate, p.checkDate, p.finalDate),   // ISOアンカー優先(v1.30.27)
         originalCheckDate: normalizeDate(p.originalFinalDate || p.originalFinalCheckDate),
         moveInDate: normalizeDate(p.moveInDate || p.moveIn || p.movein),
         status: p.status || "清掃完了",
@@ -7408,8 +7445,8 @@ async function syncChecksFromGAS(opts){
         workVolume: p.workloadStatus?.level || p.workVolume || "",
         workloadStatus: p.workloadStatus || null,
         // 修繕アポ情報(v1.4.251)
-        responseDate: normalizeDate(p.responseDate),
-        responseDateRaw: p.responseDate || "",     // 元表記("6/3"等)を書き戻し用に保持
+        responseDate: pickIsoDate_(p.responseDateIso, p.responseDate),   // ISOアンカー優先(v1.30.27)
+        responseDateRaw: p.responseDate || p.responseDateIso || "",     // 元表記("6/3"等)を書き戻し用に保持
         responseTime: p.responseTime || "",        // 自由テキスト("10:00"等)
         workflowStatus: p.workflowStatus || "",
         memo: [p.memo, p.note, p.kojiType, p.kojiName, p.requestDetail].filter(Boolean).join(" / "),
@@ -11030,6 +11067,180 @@ document.getElementById("addBtn").onclick = ()=>openQuickOrFullEvent_();
 document.getElementById("undoBtn").onclick = ()=>undo();
 document.getElementById("yearStatsBtn").onclick = ()=>openYearStats();
 document.getElementById("gasSettingsBtnHeader").onclick = ()=>openAllSettings('drive');
+
+// ===== 🔍 スケジュール検索 (予定/立会/修繕/最終確認/休暇 横断) =====
+const SCH_KIND_COLOR = { "予定":"#3b82f6", "立会":"#a855f7", "修繕":"#ec4899", "最終確認":"#0ea5e9", "休暇":"#f59e0b" };
+let __schResults = [];
+let __schActiveIdx = 0;
+// 検索対象を統一形に集約 {date,kind,title,sub,hay}。UIフィルタ(カテゴリ/マイ)は無視して全件対象
+function collectScheduleSearchItems_(){
+  const items = [];
+  const low = s => String(s==null?"":s).toLowerCase();
+  // 予定 (state.events)
+  (state.events||[]).forEach(ev=>{
+    if(!ev || !ev.date) return;
+    const titleFull = String(ev.title||"");
+    const title = (titleFull.split(/\r?\n/)[0] || "(無題)").trim();
+    const parts = Array.isArray(ev.participants) ? ev.participants.join(" ") : "";
+    items.push({
+      date: ev.date,
+      kind: (String(ev.category||"").indexOf("立会")>=0) ? "立会" : "予定",
+      title,
+      sub: [ev.staff, parts, ev.category].filter(Boolean).join(" / "),
+      hay: low([titleFull, ev.memo, ev.staff, parts, ev.category].join(" ")),
+    });
+  });
+  // 立会 (taikyo 仮想・override/重複排除適用済)
+  try{
+    const tv = (typeof buildTaikyoVirtuals_==='function') ? buildTaikyoVirtuals_() : [];
+    (tv||[]).forEach(v=>{
+      if(!v || !v.date) return;
+      items.push({
+        date: v.date, kind:"立会",
+        title: (v.title || `${v._bukken||''} ${v._room||''}`).trim(),
+        sub: [v.staff, v._room].filter(Boolean).join(" / "),
+        hay: low([v.title, v._bukken, v._room, v.staff, v.memo].join(" ")),
+      });
+    });
+  }catch(_){}
+  // 修繕アポ (state.repairs・responseDate付き)
+  (state.repairs||[]).forEach(r=>{
+    const raw = r.responseDate || r.responseDateRaw;
+    if(!raw) return;
+    let date = raw;
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date) && typeof normalizeDate==='function'){ try{ date = normalizeDate(raw) || raw; }catch(_){} }
+    items.push({
+      date, kind:"修繕",
+      title: `🔧 ${(r.name||'')}${r.room?(' '+r.room):''}`.trim(),
+      sub: [r.contractor, r.worker||r.contactPerson, r.responseTime].filter(Boolean).join(" / "),
+      hay: low([r.name, r.room, r.contractor, r.worker, r.contactPerson, r.requestDesc, r.requestDescFull, r.customerName].join(" ")),
+    });
+  });
+  // 最終確認 (state.checks・修繕除外)
+  (state.checks||[]).forEach(c=>{
+    if(!c || !c.checkDate) return;
+    if(typeof isRepairCheck_==='function' && isRepairCheck_(c)) return;
+    items.push({
+      date: c.checkDate, kind:"最終確認",
+      title: `🏠 ${(c.name||c.title||'')}`.trim(),
+      sub: [c.contractor, c.room].filter(Boolean).join(" / "),
+      hay: low([c.name, c.title, c.contractor, c.room, c.memo].join(" ")),
+    });
+  });
+  // 休暇 (state.leaves)
+  (state.leaves||[]).forEach(l=>{
+    if(!l || !l.start) return;
+    const tlabel = (typeof leaveTypeLabel_==='function') ? leaveTypeLabel_(l.type) : (l.type||"");
+    items.push({
+      date: l.start, kind:"休暇",
+      title: `${l.staff||''} ${tlabel||''}`.trim(),
+      sub: (l.start===l.end) ? l.start : `${l.start}〜${l.end}`,
+      hay: low([l.staff, l.type, tlabel, l.memo].join(" ")),
+    });
+  });
+  return items;
+}
+function searchScheduleItems_(query){
+  const q = String(query||"").trim().toLowerCase();
+  if(!q) return [];
+  const tokens = q.split(/\s+/).filter(Boolean);
+  const hit = collectScheduleSearchItems_().filter(it => tokens.every(t => it.hay.includes(t)));
+  const today = fmtDate(new Date());
+  // 今日以降を昇順(近い順)→過去を降順(直近過去が上)
+  hit.sort((a,b)=>{
+    const af = a.date>=today, bf = b.date>=today;
+    if(af!==bf) return af ? -1 : 1;
+    if(a.date===b.date) return 0;
+    return af ? (a.date<b.date?-1:1) : (a.date>b.date?-1:1);
+  });
+  return hit.slice(0, 200);
+}
+function openScheduleSearch(){
+  const ov = document.getElementById("searchModal");
+  if(!ov) return;
+  ov.classList.add("show");
+  const inp = document.getElementById("sch-input");
+  inp.value = ""; __schResults = []; __schActiveIdx = 0;
+  renderScheduleSearch_("");
+  setTimeout(()=>inp.focus(), 30);
+}
+function closeScheduleSearch(){ const ov=document.getElementById("searchModal"); if(ov) ov.classList.remove("show"); }
+function renderScheduleSearch_(q){
+  const box = document.getElementById("sch-results");
+  if(!box) return;
+  __schResults = searchScheduleItems_(q);
+  __schActiveIdx = 0;
+  if(!String(q||"").trim()){
+    box.innerHTML = `<div class="sch-empty">物件名・担当・タイトル・メモで検索<br><span style="font-size:11px">例:「フォーチュン」「山田 立会」「VIP仙台」「鈴木 休」</span></div>`;
+    return;
+  }
+  if(!__schResults.length){
+    box.innerHTML = `<div class="sch-empty">「${escapeHtml(q)}」に一致する予定はありません</div>`;
+    return;
+  }
+  box.innerHTML = __schResults.map((it,i)=>{
+    const d = parseDate(it.date);
+    const dlabel = (d && !isNaN(d)) ? `${d.getMonth()+1}/${d.getDate()}<span class="dow">(${DOW_JA[d.getDay()]})</span>` : escapeHtml(it.date);
+    const col = SCH_KIND_COLOR[it.kind] || "#64748b";
+    return `<div class="sch-result${i===0?' active':''}" data-idx="${i}">
+      <span class="sch-date">${dlabel}</span>
+      <span class="sch-kind" style="background:${col}">${it.kind}</span>
+      <span class="sch-main"><div class="sch-title">${escapeHtml(it.title)}</div>${it.sub?`<div class="sch-sub">${escapeHtml(it.sub)}</div>`:""}</span>
+    </div>`;
+  }).join("");
+  box.querySelectorAll('.sch-result').forEach(el=>{
+    el.onclick = ()=> jumpToScheduleItem_(parseInt(el.dataset.idx,10));
+  });
+}
+function jumpToScheduleItem_(idx){
+  const it = __schResults[idx]; if(!it) return;
+  const d = parseDate(it.date); if(!d || isNaN(d)) return;
+  currentDate = d;
+  currentView = "month";
+  closeScheduleSearch();
+  render();
+  requestAnimationFrame(()=>{
+    const cols = document.querySelectorAll(`[data-col-key="date-${it.date}"]`);
+    if(cols.length){
+      try{ cols[0].scrollIntoView({behavior:'smooth', inline:'center', block:'nearest'}); }catch(_){ cols[0].scrollIntoView(); }
+      cols.forEach(c=>{ c.classList.add('col-flash'); setTimeout(()=>c.classList.remove('col-flash'), 1500); });
+    }
+  });
+}
+{
+  const sb = document.getElementById("searchBtn");
+  if(sb) sb.onclick = openScheduleSearch;
+  const cb = document.getElementById("sch-close");
+  if(cb) cb.onclick = closeScheduleSearch;
+  const inp = document.getElementById("sch-input");
+  if(inp){
+    inp.oninput = e => renderScheduleSearch_(e.target.value);
+    inp.onkeydown = e => {
+      if(e.key==='Escape'){ closeScheduleSearch(); return; }
+      if(e.key==='Enter'){ if(__schResults.length) jumpToScheduleItem_(Math.max(0,__schActiveIdx)); return; }
+      if(e.key==='ArrowDown' || e.key==='ArrowUp'){
+        e.preventDefault();
+        if(!__schResults.length) return;
+        __schActiveIdx = (__schActiveIdx + (e.key==='ArrowDown'?1:-1) + __schResults.length) % __schResults.length;
+        const box = document.getElementById("sch-results");
+        box.querySelectorAll('.sch-result').forEach((el,i)=>el.classList.toggle('active', i===__schActiveIdx));
+        const act = box.querySelector('.sch-result.active'); if(act) act.scrollIntoView({block:'nearest'});
+      }
+    };
+  }
+  const ov = document.getElementById("searchModal");
+  if(ov) ov.onclick = e => { if(e.target===ov) closeScheduleSearch(); };
+  // "/" でクイック起動 (入力中は除外)
+  document.addEventListener('keydown', e=>{
+    if(e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
+    const t = e.target;
+    if(t && (t.tagName==='INPUT' || t.tagName==='TEXTAREA' || t.tagName==='SELECT' || t.isContentEditable)) return;
+    const ov2 = document.getElementById("searchModal");
+    if(ov2 && ov2.classList.contains('show')) return;
+    e.preventDefault();
+    openScheduleSearch();
+  });
+}
 
 // ===== 有給年間集計 =====
 const yearStatsModal = document.getElementById("yearStatsModal");
