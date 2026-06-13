@@ -390,6 +390,13 @@
     background:var(--chip-bg, rgba(255,255,255,.25));padding:0 4px;border-radius:8px;font-size:10px;color:inherit;
   }
   .event{border:1px solid rgba(0,0,0,.08);user-select:none;touch-action:none}
+  /* 🔒 ドラッグで動かせないチップ(立会/修繕アポ): 掴むと小さく横揺れして「動かせない」を明示 */
+  .event.chip-locked.nodrag-shake{animation:nodragShake .35s ease}
+  @keyframes nodragShake{
+    0%,100%{transform:translateX(0)}
+    20%{transform:translateX(-3px)} 40%{transform:translateX(3px)}
+    60%{transform:translateX(-2px)} 80%{transform:translateX(2px)}
+  }
   /* 月ビューの1行チップ: 透明背景、内側に [カテゴリ][タイトル][時間] のボックスを並べる */
   .event-chip{
     padding:0;font-size:11px;line-height:1.5;
@@ -690,6 +697,26 @@
   .quick-pop .qp-actions .qp-detail{background:#e0e7ff;color:var(--accent)}
   .quick-pop .qp-actions .qp-del-event{background:#fee2e2;color:#b91c1c;flex:0 0 auto}
   .quick-pop .qp-actions .qp-close{background:#f3f4f6;color:#64748b}
+  /* 🕐 立会 日時変更 */
+  .quick-pop .tk-dt-row{display:flex;gap:6px;align-items:center}
+  .quick-pop .tk-dt-row input{font-size:13px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px;font-family:inherit;background:#fff;min-width:0}
+  .quick-pop .tk-dt-row .tk-dt-date{flex:1.3}
+  .quick-pop .tk-dt-row .tk-dt-time{flex:1}
+  .quick-pop .tk-dt-row .tk-dt-restore{flex:0 0 auto;border:1px solid var(--border-strong);background:#fff;color:#64748b;border-radius:6px;font-size:13px;padding:6px 9px;cursor:pointer}
+  .quick-pop .tk-dt-row .tk-dt-restore:hover{border-color:var(--accent);color:var(--accent)}
+  /* 💬 立会コメント欄 */
+  .quick-pop .tk-cmt-list{max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;margin-bottom:6px}
+  .quick-pop .tk-cmt-empty{font-size:11px;color:#94a3b8;text-align:center;padding:6px 0}
+  .quick-pop .tk-cmt-card{position:relative;background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:4px 8px}
+  .quick-pop .tk-cmt-card.mine{background:#eff6ff;border-color:#bfdbfe}
+  .quick-pop .tk-cmt-meta{font-size:10px;color:#64748b}
+  .quick-pop .tk-cmt-meta b{color:#334155}
+  .quick-pop .tk-cmt-text{font-size:12.5px;line-height:1.35;white-space:pre-wrap;word-break:break-word;color:#0f172a}
+  .quick-pop .tk-cmt-del{position:absolute;right:3px;top:3px;border:0;background:transparent;color:#cbd5e1;cursor:pointer;font-size:11px;line-height:1}
+  .quick-pop .tk-cmt-card:hover .tk-cmt-del{color:#ef4444}
+  .quick-pop .tk-cmt-add{display:flex;gap:6px;align-items:flex-end}
+  .quick-pop .tk-cmt-input{flex:1;font-size:13px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px;font-family:inherit;resize:vertical;min-height:32px}
+  .quick-pop .tk-cmt-send{flex:0 0 auto;border:0;background:var(--accent);color:#fff;border-radius:6px;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer}
 
   /* 📋 簡易タスク チェックリストポップ */
   .quick-pop.task-pop .qp-title{cursor:move;user-select:none} /* タイトルバーを掴んで移動 */
@@ -718,6 +745,8 @@
   .quick-pop.task-pop .tp-row .tp-del{flex:0 0 auto;border:0;background:transparent;color:#cbd5e1;font-size:16px;line-height:1;cursor:pointer;padding:0 2px}
   .quick-pop.task-pop .tp-row:hover .tp-del{color:#ef4444}
   .quick-pop.task-pop .tp-meta{flex:0 0 auto;font-size:10px;color:#16a34a;background:#f0fdf4;border-radius:8px;padding:1px 6px;white-space:nowrap}
+  /* 追加した人バッジ(他人が登録したタスクに表示) */
+  .quick-pop.task-pop .tp-by{flex:0 0 auto;font-size:10px;color:#7c3aed;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:1px 6px;white-space:nowrap;font-weight:700}
   .quick-pop.task-pop .tp-row.tp-trash .tp-text{text-decoration:line-through}
   .quick-pop.task-pop .tp-restore,.quick-pop.task-pop .tp-purge{flex:0 0 auto;border:0;background:transparent;font-size:13px;line-height:1;cursor:pointer;padding:0 3px}
   .quick-pop.task-pop .tp-restore{color:#2563eb}
@@ -727,8 +756,9 @@
   .quick-pop.task-pop .tp-edit{flex:1;font-size:13px;padding:2px 6px;border:1px solid var(--accent);border-radius:4px}
   .quick-pop.task-pop .tp-done-head{font-size:11px;color:var(--muted);font-weight:700;cursor:pointer;padding:5px 6px;margin-top:2px;border-top:1px dashed #e5e7eb;user-select:none}
   .quick-pop.task-pop .tp-empty{font-size:12px;color:#16a34a;padding:6px;text-align:center}
-  .quick-pop.task-pop .tp-add{display:flex;gap:6px;margin-top:8px}
-  .quick-pop.task-pop .tp-add-input{flex:1;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:6px}
+  .quick-pop.task-pop .tp-add{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+  .quick-pop.task-pop .tp-add-input{flex:1;min-width:120px;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:6px}
+  .quick-pop.task-pop .tp-add-who{flex:0 0 auto;font-size:12px;font-weight:600;padding:4px 6px;border:1px solid var(--border-strong);border-radius:6px;background:#fff;cursor:pointer;max-width:96px}
   .quick-pop.task-pop .tp-add-btn{border:0;background:var(--accent);color:#fff;border-radius:6px;font-size:12px;font-weight:700;padding:5px 12px;cursor:pointer}
   /* 1行集約タスクチップ: クリック可 + ミニ進捗バー */
   .event-chip .chip-title.chip-checklist{cursor:pointer}
@@ -1495,6 +1525,41 @@
   .task-empty{
     text-align:center;padding:40px;color:var(--muted);font-size:13px;
   }
+  /* ===== 📋 事務タスク ボード(タスクビュー) ===== */
+  .jt-bar{display:flex;align-items:center;gap:8px;padding:4px 6px 8px;position:sticky;top:0;background:var(--bg,#fff);z-index:2}
+  .jt-bar .jt-title{font-size:15px;font-weight:800}
+  .jt-bar .jt-spacer{flex:1}
+  .jt-board{
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;padding:2px 4px;align-items:start;
+  }
+  .jt-card{
+    background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;cursor:pointer;
+    box-shadow:0 1px 2px rgba(0,0,0,.04);transition:box-shadow .12s,transform .12s;
+  }
+  .jt-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.10);transform:translateY(-1px)}
+  .jt-card.me{outline:2px solid var(--accent);outline-offset:-1px}
+  .jt-head{
+    display:flex;align-items:center;justify-content:space-between;gap:6px;
+    padding:8px 10px;border-top:3px solid #9ca3af;background:#f8fafc;
+  }
+  .jt-name{display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:13px}
+  .jt-namedot{width:10px;height:10px;border-radius:50%;display:inline-block;flex:0 0 auto}
+  .jt-meTag{font-size:9px;font-weight:700;color:#fff;background:var(--accent);border-radius:6px;padding:1px 5px}
+  .jt-count{font-size:12px;font-weight:700;color:#64748b;background:#fff;border:1px solid var(--border);border-radius:10px;padding:1px 8px;white-space:nowrap}
+  .jt-count.alldone{color:#16a34a;background:#f0fdf4;border-color:#bbf7d0}
+  .jt-body{padding:6px 8px;display:flex;flex-direction:column;gap:3px;max-height:240px;overflow-y:auto}
+  .jt-row{display:flex;align-items:flex-start;gap:6px;font-size:12.5px;line-height:1.35}
+  .jt-dot{width:7px;height:7px;border-radius:50%;margin-top:5px;flex:0 0 auto}
+  .jt-text{flex:1;word-break:break-word}
+  .jt-text.wip{color:#1d4ed8;font-weight:600}
+  .jt-by{flex:0 0 auto;font-size:9px;color:#7c3aed;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:7px;padding:0 5px;font-weight:700;white-space:nowrap}
+  .jt-empty{font-size:12px;color:#94a3b8;text-align:center;padding:8px 0}
+  .jt-foot{padding:6px 10px;border-top:1px dashed var(--border);font-size:11px;color:#64748b;text-align:center}
+  .jt-card:hover .jt-foot{color:var(--accent)}
+  @media (max-width:768px){
+    .jt-board{grid-template-columns:1fr}
+    .jt-body{max-height:none}
+  }
   .task-card{
     background:#fff;border:1px solid var(--border);border-left:4px solid #6b7280;
     border-radius:8px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start;
@@ -1601,14 +1666,22 @@
     .nav-btn{min-height:36px;padding:6px 10px;font-size:13px;flex-shrink:0}
     .nav-btn.icon-only{min-width:36px;padding:6px}
 
-    /* モーダル: スマホで全画面風に */
+    /* モーダル: スマホで全画面風に
+       ⚠ overlay の padding:16px を残したまま 100vh にすると flex中央寄せで上下にはみ出し、
+       閉じるボタン・タイトルが画面外に切れる(v1.30.20で修正)。
+       iOSは 100vh>実表示域 なので dvh 優先 + viewport-fit=cover のため safe-area を確保 */
+    .modal-overlay{padding:0}
     .modal-overlay .modal{
       max-width:100% !important;
       width:100%;
       max-height:100vh;
+      max-height:100dvh;
       height:100vh;
+      height:100dvh;
       border-radius:0;
       margin:0;
+      padding-top:calc(env(safe-area-inset-top,0px) + 6px);
+      padding-bottom:calc(env(safe-area-inset-bottom,0px) + 6px);
     }
     .modal-body{padding:12px}
     .modal-footer{padding:10px;flex-wrap:wrap;gap:6px}
@@ -2095,7 +2168,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.19</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.25</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2153,7 +2226,7 @@
 
 <!-- タスクマネージャービュー -->
 <div class="task-view" id="taskView" style="display:none">
-  <div class="task-toolbar">
+  <div class="task-toolbar" id="taskToolbarLegacy" style="display:none">
     <div class="task-tabs" id="taskTabs"></div>
     <span class="sep"></span>
     <label style="font-size:11px;color:var(--muted)">並び:</label>
@@ -4912,23 +4985,109 @@ async function fetchTaikyoSchedule(opts={}){
   })();
   return __taikyoScheduleInFlight;
 }
-// 🎨 退去立会の担当者ローカル上書き (見積アプリの値が空 or 違う時にカレンダー側で割当)
+// 🎨 退去立会の上書き (担当・日時) — 全員共有(shared-config 'taikyo_overrides' = Drive json)
+//   見積アプリ/クラ助が流す元レコードに対し、カレンダー側で担当や日時を割り当て直す。
+//   entry = { staff, date, time, at, by }  ※空フィールドは「上書きなし(元の値)」。
+//   解除は delete ではなく空entry(at新)を書く → 他端末とのLWWマージで確実に元へ戻せる。
+//   value(JSON) = { overrides:{ [taikyoId]: entry }, updatedAt }
 const TAIKYO_OVERRIDE_KEY = "buildcluster_taikyo_overrides";
 function loadTaikyoOverrides_(){
-  try{ return JSON.parse(localStorage.getItem(TAIKYO_OVERRIDE_KEY)||"{}") || {}; }
+  try{ const o = JSON.parse(localStorage.getItem(TAIKYO_OVERRIDE_KEY)||"{}"); return (o && typeof o==='object') ? o : {}; }
   catch(e){ return {}; }
 }
 function saveTaikyoOverrides_(map){
-  localStorage.setItem(TAIKYO_OVERRIDE_KEY, JSON.stringify(map||{}));
+  try{ localStorage.setItem(TAIKYO_OVERRIDE_KEY, JSON.stringify(map||{})); }catch(e){}
 }
-function setTaikyoStaffOverride_(taikyoId, staff){
-  const map = loadTaikyoOverrides_();
-  if(staff){
-    map[taikyoId] = { staff, updatedAt: new Date().toISOString() };
-  } else {
-    delete map[taikyoId]; // 解除
+// entryが実質「上書きなし」か(全フィールド空)
+function __ovIsEmpty_(e){ return !e || (!String(e.staff||'').trim() && !String(e.date||'').trim() && !String(e.time||'').trim()); }
+// 2マップを taikyoId 単位の last-write-wins(at新しい方)で統合
+function mergeTaikyoOverrideMaps_(a, b){
+  const out = {};
+  const keys = new Set([...Object.keys(a||{}), ...Object.keys(b||{})]);
+  keys.forEach(k=>{
+    const ea = a?.[k], eb = b?.[k];
+    if(!ea){ out[k] = eb; return; }
+    if(!eb){ out[k] = ea; return; }
+    out[k] = (String(eb.at||'') >= String(ea.at||'')) ? eb : ea;   // 新しい方を採用
+  });
+  return out;
+}
+// shared-config から取得 → ローカルと統合(local生存) → キャッシュ更新。opts.push で統合結果をpush(移行用)
+async function fetchTaikyoOverrides_(opts={}){
+  const s = loadGasSettings();
+  const local = loadTaikyoOverrides_();
+  if(!s.url || !s.token) return local;
+  try{
+    const url = `${s.url}?action=get-shared-config&key=taikyo_overrides&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res = await fetch(url, {method:'GET', redirect:'follow'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json();
+    let raw = data.value;
+    if(raw==='' || raw==null) raw = {overrides:{}};
+    else if(typeof raw==='string'){ try{ raw = JSON.parse(raw); }catch(e){ raw = {overrides:{}}; } }
+    const remote = (raw && raw.overrides && typeof raw.overrides==='object') ? raw.overrides : {};
+    const merged = mergeTaikyoOverrideMaps_(remote, local);
+    saveTaikyoOverrides_(merged);
+    // 移行: ローカルにしか無い(or新しい)上書きをクラウドへ反映
+    if(opts.push && JSON.stringify(merged) !== JSON.stringify(remote)){
+      pushTaikyoOverridesMap_(merged).catch(()=>{});
+    }
+    if(!opts.silent && typeof render==='function') render();
+    return merged;
+  }catch(err){
+    if(!opts.silent) console.warn('[taikyo_overrides] fetch失敗:', err.message);
+    return local;
   }
+}
+async function pushTaikyoOverridesMap_(map){
+  const s = loadGasSettings();
+  if(!s.url || !s.token) return;
+  const payload = { overrides: map||{}, updatedAt: new Date().toISOString() };
+  try{
+    await fetch(s.url, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ action:'save-shared-config', key:'taikyo_overrides', value: JSON.stringify(payload), token: s.token, savedBy:'calendar-app' }) });
+  }catch(e){ console.warn('[taikyo_overrides] push失敗:', e.message); }
+}
+// 最新remoteを取得→対象entryにpatch(空フィールドは元値)→キャッシュ更新→push (他端末の上書きを消さない)
+async function mutateTaikyoOverrideRemote_(taikyoId, patch){
+  const s = loadGasSettings();
+  let map = loadTaikyoOverrides_();
+  if(s.url && s.token){
+    try{
+      const url = `${s.url}?action=get-shared-config&key=taikyo_overrides&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+      const res = await fetch(url, {method:'GET', redirect:'follow'});
+      if(res.ok){
+        const d = await res.json(); let raw = d.value;
+        if(typeof raw==='string'){ try{ raw = JSON.parse(raw); }catch(_){ raw = null; } }
+        if(raw && raw.overrides && typeof raw.overrides==='object') map = mergeTaikyoOverrideMaps_(raw.overrides, map);
+      }
+    }catch(_){}
+  }
+  const cur = map[taikyoId] || {};
+  const next = { staff: cur.staff||'', date: cur.date||'', time: cur.time||'', ...patch,
+                 at: new Date().toISOString(), by: (typeof getMyself==='function'?getMyself():'')||'' };
+  map[taikyoId] = next;
   saveTaikyoOverrides_(map);
+  if(typeof render==='function') render();
+  await pushTaikyoOverridesMap_(map);
+  return map;
+}
+// 担当上書き(従来API維持・同期push対応)。staff="" で担当のみ解除
+function setTaikyoStaffOverride_(taikyoId, staff){
+  // 楽観的にローカル即更新
+  const map = loadTaikyoOverrides_();
+  const cur = map[taikyoId] || {};
+  map[taikyoId] = { staff: staff||'', date: cur.date||'', time: cur.time||'', at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' };
+  saveTaikyoOverrides_(map);
+  mutateTaikyoOverrideRemote_(taikyoId, { staff: staff||'' });
+}
+// 🕐 日時上書き。date/time のうち渡されたものだけ変更(time="" で時間未定)
+function setTaikyoDateTimeOverride_(taikyoId, patch){
+  const map = loadTaikyoOverrides_();
+  const cur = map[taikyoId] || {};
+  map[taikyoId] = { staff: cur.staff||'', date: (patch.date!==undefined?patch.date:cur.date)||'', time: (patch.time!==undefined?patch.time:cur.time)||'', at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' };
+  saveTaikyoOverrides_(map);
+  mutateTaikyoOverrideRemote_(taikyoId, patch);
 }
 // 🩹 v1.29.5 migration: 旧ピッカーが作った「光和工業,大村将史」形式の override から会社名を除去
 //   (会社名が先頭に居座ると色が引けず白のままになるバグの修復)
@@ -4940,14 +5099,113 @@ function setTaikyoStaffOverride_(taikyoId, staff){
       const list = String(map[k]?.staff||'').split(',').map(s=>s.trim()).filter(s=>isRealStaffName_(s));
       const joined = list.join(',');
       if(joined !== String(map[k]?.staff||'')){
-        if(joined) map[k].staff = joined;
-        else delete map[k];
+        map[k].staff = joined;                 // 会社名除去(日時上書きは保持)
+        if(__ovIsEmpty_(map[k])) delete map[k]; // 担当も日時も無くなったentryだけ掃除
         n++;
       }
     });
     if(n){ saveTaikyoOverrides_(map); console.log('[migrate] 立会担当overrideから会社名除去:', n, '件'); }
   }catch(e){ console.warn('[migrate] override修復失敗', e); }
 })();
+// ===========================================================
+// 💬 退去立会 コメント (全員共有・shared-config 'taikyo_comments')
+//   value = JSON { comments: { [taikyoId]: [ {id,author,text,at} ] }, updatedAt }
+//   マルチ著者なので「最新remoteを取得→1操作だけ適用→push」で他端末のコメントを消さない。
+//   ローカルキャッシュ(localStorage)で即描画＋オフライン耐性。GASは汎用KV(save/get-shared-config)。
+// ===========================================================
+const TAIKYO_COMMENTS_CACHE_KEY = "buildcluster_taikyo_comments_cache";
+function loadTaikyoCommentsMap_(){
+  try{ const o = JSON.parse(localStorage.getItem(TAIKYO_COMMENTS_CACHE_KEY)||"{}"); return (o && typeof o==='object') ? o : {}; }
+  catch(e){ return {}; }
+}
+function saveTaikyoCommentsMap_(map){
+  try{ localStorage.setItem(TAIKYO_COMMENTS_CACHE_KEY, JSON.stringify(map||{})); }catch(e){}
+}
+function getTaikyoComments_(taikyoId){
+  if(!taikyoId) return [];
+  const arr = loadTaikyoCommentsMap_()[taikyoId];
+  return Array.isArray(arr) ? arr.slice().sort((a,b)=>String(a.at||'').localeCompare(String(b.at||''))) : [];
+}
+function taikyoCommentCount_(taikyoId){
+  const arr = loadTaikyoCommentsMap_()[taikyoId];
+  return Array.isArray(arr) ? arr.length : 0;
+}
+// shared-config から全コメントmapを取得(リモートを正本としてキャッシュ置換=削除も伝播)
+async function fetchTaikyoComments_(opts={}){
+  const s = loadGasSettings();
+  if(!s.url || !s.token) return loadTaikyoCommentsMap_();
+  const url = `${s.url}?action=get-shared-config&key=taikyo_comments&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+  try{
+    const res = await fetch(url, {method:'GET', redirect:'follow'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json();
+    let raw = data.value;
+    if(raw==='' || raw==null) raw = {comments:{}};
+    else if(typeof raw==='string'){ try{ raw = JSON.parse(raw); }catch(e){ raw = {comments:{}}; } }
+    const remote = (raw && raw.comments && typeof raw.comments==='object') ? raw.comments : {};
+    saveTaikyoCommentsMap_(remote);
+    if(typeof __refreshOpenTaikyoCommentUI_==='function') __refreshOpenTaikyoCommentUI_();
+    if(!opts.silent && typeof render==='function') render();
+    return remote;
+  }catch(err){
+    if(!opts.silent) console.warn('[taikyo_comments] fetch失敗:', err.message);
+    return loadTaikyoCommentsMap_();
+  }
+}
+// 最新remoteを取得し、対象IDのリストにmutatorを1回適用→キャッシュ更新→push
+// (他端末/他著者のコメントは fresh remote 由来でそのまま保持される)
+async function mutateTaikyoCommentsRemote_(taikyoId, mutator){
+  const s = loadGasSettings();
+  let map = loadTaikyoCommentsMap_();
+  if(s.url && s.token){
+    try{
+      const url = `${s.url}?action=get-shared-config&key=taikyo_comments&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+      const res = await fetch(url, {method:'GET', redirect:'follow'});
+      if(res.ok){
+        const d = await res.json(); let raw = d.value;
+        if(typeof raw==='string'){ try{ raw = JSON.parse(raw); }catch(_){ raw = null; } }
+        if(raw && raw.comments && typeof raw.comments==='object') map = raw.comments;
+      }
+    }catch(_){ /* オフライン等: ローカルキャッシュを土台に続行 */ }
+  }
+  const list = Array.isArray(map[taikyoId]) ? map[taikyoId].slice() : [];
+  const next = mutator(list) || [];
+  if(next.length) map[taikyoId] = next; else delete map[taikyoId];
+  saveTaikyoCommentsMap_(map);
+  if(typeof __refreshOpenTaikyoCommentUI_==='function') __refreshOpenTaikyoCommentUI_();
+  if(typeof render==='function') render();
+  if(s.url && s.token){
+    const payload = { comments: map, updatedAt: new Date().toISOString() };
+    try{
+      await fetch(s.url, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body: JSON.stringify({ action:'save-shared-config', key:'taikyo_comments', value: JSON.stringify(payload), token: s.token, savedBy:'calendar-app' }) });
+    }catch(e){ console.warn('[taikyo_comments] push失敗:', e.message); }
+  }
+  return map;
+}
+function addTaikyoComment_(taikyoId, text, author){
+  text = String(text||'').trim(); if(!taikyoId || !text) return null;
+  const c = { id: uid(), author: author||'', text, at: new Date().toISOString() };
+  // 楽観的にローカルへ即反映
+  const map = loadTaikyoCommentsMap_();
+  (map[taikyoId] = Array.isArray(map[taikyoId])?map[taikyoId]:[]).push(c);
+  saveTaikyoCommentsMap_(map);
+  // 最新remoteに1件追加してpush
+  mutateTaikyoCommentsRemote_(taikyoId, list => list.some(x=>x.id===c.id) ? list : [...list, c]);
+  return c;
+}
+function deleteTaikyoComment_(taikyoId, commentId){
+  if(!taikyoId || !commentId) return;
+  const map = loadTaikyoCommentsMap_();
+  if(Array.isArray(map[taikyoId])){
+    map[taikyoId] = map[taikyoId].filter(x=>x.id!==commentId);
+    if(!map[taikyoId].length) delete map[taikyoId];
+    saveTaikyoCommentsMap_(map);
+  }
+  mutateTaikyoCommentsRemote_(taikyoId, list => list.filter(x=>x.id!==commentId));
+}
+// 開いている立会ポップのコメント欄を再描画するフック(showTaikyoStaffPickerが差し替える)
+let __refreshOpenTaikyoCommentUI_ = null;
 // 立会レコードを仮想イベントに変換 (カレンダー描画用)
 // ====================================================================
 // 📄 立会「資料作成済」フラグ (taikyo_shiryo_ready) — 見積アプリ(v1.4.539)がpush
@@ -5089,9 +5347,16 @@ function buildTaikyoVirtuals_(){
   return dedupeTaikyoVirtuals_(dedupeTaikyoSlots_(ve));
 }
 function buildTaikyoVirtualEvent_(r){
+  // 🎨 上書き優先 (担当・日時。全員共有のtaikyo_overrides → 無ければ元レコード)
+  const __ovMap = loadTaikyoOverrides_();
+  const __ovEntry = __ovMap[r.id];
+  const effectiveStaff = (__ovEntry && String(__ovEntry.staff||'').trim()) ? __ovEntry.staff : (r.staff || "");
+  const effDate = (__ovEntry && String(__ovEntry.date||'').trim()) ? __ovEntry.date : r.date;
+  // 時刻: 上書きtimeが非空ならそれを採用。空なら元レコードの時刻(=日付だけ変えても時刻は保持)
+  const effTime = (__ovEntry && String(__ovEntry.time||'').trim()) ? __ovEntry.time : (r.time||"");
   // 時刻パース: "10:00" → 10:00開始/1h幅 / それ以外(自由文字列/空) → 時間未定(anytime)
   //   時間が決まってないものは「終日」にせず、時間グリッドに「(時間未定)」で配置
-  const m = String(r.time||"").match(/^(\d{1,2}):(\d{2})/);
+  const m = String(effTime||"").match(/^(\d{1,2}):(\d{2})/);
   let start = "09:00", end = "10:00", timeMode = "anytime", allday = false;
   if(m){
     const hh = String(m[1]).padStart(2,'0'), mm = m[2];
@@ -5102,10 +5367,6 @@ function buildTaikyoVirtualEvent_(r){
     timeMode = "timed";
     allday = false;
   }
-  // 🎨 ローカル上書き優先 (見積アプリ値より優先)
-  const __ovMap = loadTaikyoOverrides_();
-  const __ovEntry = __ovMap[r.id];
-  const effectiveStaff = __ovEntry?.staff || r.staff || "";
   // クラ助の仮置き(担当未定) / 担当者色に無いstaff(光和工業=会社名)を色で出し分け
   const isProvisional = !!r.provisional;
   const PROVISIONAL_COLOR = "#cbd5e1"; // 立会?(担当未定) グレー
@@ -5117,7 +5378,7 @@ function buildTaikyoVirtualEvent_(r){
   const chipColor = __tkStaffCol ? __tkStaffCol : (isProvisional ? PROVISIONAL_COLOR : "");  // ""=既存ロジック(担当色 or 透明)
   return {
     id: `_taikyo_${r.id}`,
-    title: `${r.bukken}${r.room?" "+r.room:""}${r.time && !m ? ` (${r.time})` : ""}`,
+    title: `${r.bukken}${r.room?" "+r.room:""}${effTime && !m ? ` (${effTime})` : ""}`,
     category: isProvisional ? "立会(未定)" : "立会",
     contractor: "山一",  // この連携で入る立会は全部 山一立会(山一カテゴリで抽出・件数カウント)
     staff: effectiveStaff,
@@ -5127,11 +5388,13 @@ function buildTaikyoVirtualEvent_(r){
     _room: r.room || "",
     _provisional: isProvisional,
     participants: [],
-    date: r.date,
+    date: effDate,
+    _taikyoOrigDate: r.date,
+    _taikyoOrigTime: r.time||"",
     start, end,
     allday, timeMode,
     color: chipColor,
-    memo: [r.address && `📍 ${r.address}`, r.koji && `工事: ${r.koji}`, r.time && !m && `時刻: ${r.time}`].filter(Boolean).join("\n"),
+    memo: [r.address && `📍 ${r.address}`, r.koji && `工事: ${r.koji}`, effTime && !m && `時刻: ${effTime}`].filter(Boolean).join("\n"),
     importance: [],
     source: "taikyo-shared",  // 識別フラグ(編集不可・cloud syncに送らない)
     _readOnly: true,
@@ -5148,6 +5411,7 @@ function showTaikyoStaffPicker(el, ev){
   pop.style.visibility = "hidden";
   pop.style.left = "0"; pop.style.top = "0";
   const taikyoId = ev._taikyoRawId;
+  const cid = taikyoId || ev.id;   // 💬 コメントの保存キー(rawId無しゴーストはev.idで代用)
   const origStaff = ev._taikyoOrigStaff || "";
   const current = ev.staff || "";
   // ⚠ 会社名(光和工業等)は選択リストに引き継がない。
@@ -5170,6 +5434,23 @@ function showTaikyoStaffPicker(el, ev){
         }).join("")}
       </div>
       <div style="font-size:10px;color:var(--muted);margin-top:4px">※ 担当変更はカレンダー側のみ。見積アプリには反映しません</div>
+    </div>
+    <div class="qp-sec tk-dt-sec">
+      <div class="qp-label">🕐 日時 <span style="font-weight:400;color:#94a3b8;font-size:10px">(全員で共有)</span></div>
+      <div class="tk-dt-row">
+        <input type="date" class="tk-dt-date" value="${escapeHtml(ev.date||'')}">
+        <input type="time" class="tk-dt-time" value="${(ev.timeMode==='timed' && ev.start)?escapeHtml(ev.start):''}">
+        <button class="tk-dt-restore" title="元の日時に戻す">↺</button>
+      </div>
+      <div class="tk-dt-hint" style="font-size:10px;color:var(--muted);margin-top:4px"></div>
+    </div>
+    <div class="qp-sec tk-cmt-sec">
+      <div class="qp-label">💬 コメント <span style="font-weight:400;color:#94a3b8;font-size:10px">(全員で共有)</span></div>
+      <div class="tk-cmt-list"></div>
+      <div class="tk-cmt-add">
+        <textarea class="tk-cmt-input" rows="1" placeholder="現場メモ・連絡(Enterで送信)"></textarea>
+        <button class="tk-cmt-send">送信</button>
+      </div>
     </div>
     <div class="qp-actions">
       ${origStaff && current !== origStaff ? `<button class="qp-detail" data-role="restore-orig">↺ ${origIsStaff ? `元に戻す(${escapeHtml(origStaff)})` : "上書きを解除"}</button>` : ""}
@@ -5218,9 +5499,91 @@ function showTaikyoStaffPicker(el, ev){
       pop.remove(); render();
     };
   }
-  pop.querySelector('[data-role="close"]').onclick = ()=>pop.remove();
+  // 🕐 日時変更 (全員共有)
+  const dateEl = pop.querySelector('.tk-dt-date');
+  const timeEl = pop.querySelector('.tk-dt-time');
+  const dtHint = pop.querySelector('.tk-dt-hint');
+  const origDate = ev._taikyoOrigDate || ev.date || "";
+  const origTime = ev._taikyoOrigTime || "";
+  const updateDtHint = ()=>{
+    if(!dtHint) return;
+    const ov = (typeof loadTaikyoOverrides_==='function') ? (loadTaikyoOverrides_()[taikyoId]||{}) : {};
+    const changed = (String(ov.date||'').trim() || String(ov.time||'').trim());
+    dtHint.innerHTML = changed
+      ? `元: ${escapeHtml(origDate)}${origTime?(' '+escapeHtml(origTime)):''} <b style="color:#b45309">← 変更中</b>`
+      : `空欄の時刻=元の時刻のまま`;
+  };
+  updateDtHint();
+  const applyDt = ()=>{
+    if(!taikyoId){
+      // rawId無しゴースト: イベント自体を直接更新
+      const real = (state.events||[]).find(x=>x.id===ev.id);
+      if(real){
+        if(dateEl.value) real.date = dateEl.value;
+        if(timeEl.value){ real.start = timeEl.value; real.timeMode='timed'; real.allday=false; const eh=String(Math.min(parseInt(timeEl.value.slice(0,2),10)+1,18)).padStart(2,'0'); real.end=`${eh}:${timeEl.value.slice(3)}`; }
+        real.updatedAt = new Date().toISOString(); saveState();
+        if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(real,'upsert'); }catch(_){} }
+        render();
+      }
+      return;
+    }
+    setTaikyoDateTimeOverride_(taikyoId, { date: dateEl.value||'', time: timeEl.value||'' });
+    updateDtHint();
+  };
+  if(dateEl) dateEl.onchange = applyDt;
+  if(timeEl) timeEl.onchange = applyDt;
+  const dtRestore = pop.querySelector('.tk-dt-restore');
+  if(dtRestore) dtRestore.onclick = ()=>{
+    if(taikyoId) setTaikyoDateTimeOverride_(taikyoId, { date:'', time:'' });
+    if(dateEl) dateEl.value = origDate;
+    if(timeEl) timeEl.value = /^\d{1,2}:\d{2}/.test(origTime) ? origTime.slice(0,5) : '';
+    updateDtHint();
+  };
+  // 💬 コメント欄
+  const me = (typeof getMyself==='function') ? getMyself() : "";
+  const listEl = pop.querySelector('.tk-cmt-list');
+  const inputEl = pop.querySelector('.tk-cmt-input');
+  const fmtCmtTime_ = (iso)=>{
+    const d = new Date(iso); if(isNaN(d)) return "";
+    const p=n=>String(n).padStart(2,'0');
+    const td=new Date(); td.setHours(0,0,0,0);
+    return d>=td ? `${p(d.getHours())}:${p(d.getMinutes())}` : `${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  };
+  const renderComments = ()=>{
+    if(!listEl) return;
+    const cs = getTaikyoComments_(cid);
+    if(!cs.length){ listEl.innerHTML = `<div class="tk-cmt-empty">まだコメントはありません</div>`; return; }
+    listEl.innerHTML = cs.map(c=>`
+      <div class="tk-cmt-card${c.author && c.author===me?' mine':''}">
+        ${(c.author===me)?`<button class="tk-cmt-del" data-cid="${escapeHtml(c.id)}" title="削除">✕</button>`:''}
+        <div class="tk-cmt-meta"><b>${escapeHtml(c.author||'?')}</b> <span>${escapeHtml(fmtCmtTime_(c.at))}</span></div>
+        <div class="tk-cmt-text">${escapeHtml(c.text||'')}</div>
+      </div>`).join("");
+    listEl.querySelectorAll('.tk-cmt-del').forEach(b=>{
+      b.onclick = ()=>{ if(confirm('このコメントを削除しますか？')) deleteTaikyoComment_(cid, b.dataset.cid); };
+    });
+  };
+  __refreshOpenTaikyoCommentUI_ = renderComments;   // remote取得/push後に再描画される
+  renderComments();
+  const sendComment = ()=>{
+    const v = (inputEl.value||'').trim(); if(!v) return;
+    if(!me){ alert('先に「👤 自分」を設定してください(タスク画面の👤から)'); return; }
+    addTaikyoComment_(cid, v, me);
+    inputEl.value = ''; inputEl.style.height='';
+    renderComments();
+    requestAnimationFrame(()=>{ if(listEl) listEl.scrollTop = listEl.scrollHeight; });
+  };
+  if(pop.querySelector('.tk-cmt-send')) pop.querySelector('.tk-cmt-send').onclick = sendComment;
+  if(inputEl){
+    inputEl.onkeydown = e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendComment(); } };
+  }
+  // 開いた時に最新コメントを取得(他端末の更新を反映)
+  if(typeof fetchTaikyoComments_==='function') fetchTaikyoComments_({silent:true}).then(()=>{ if(pop.isConnected) renderComments(); }).catch(()=>{});
+
+  const cleanup_ = ()=>{ if(__refreshOpenTaikyoCommentUI_===renderComments) __refreshOpenTaikyoCommentUI_=null; };
+  pop.querySelector('[data-role="close"]').onclick = ()=>{ cleanup_(); pop.remove(); };
   const closeOnOutside = (ev2)=>{
-    if(!pop.contains(ev2.target)){ pop.remove(); document.removeEventListener("pointerdown", closeOnOutside, true); }
+    if(!pop.contains(ev2.target)){ cleanup_(); pop.remove(); document.removeEventListener("pointerdown", closeOnOutside, true); }
   };
   setTimeout(()=>document.addEventListener("pointerdown", closeOnOutside, true), 50);
 }
@@ -5461,24 +5824,32 @@ function setTaskStatus_(title, lineIndex, status, who){
   if(/^\s*(🗑|📦)/.test(ln)) return title;            // ゴミ箱/アーカイブ行は触らない
   const m = ln.match(TASK_BULLET_RE);
   if(!m) return title;
-  let text = (m[4]||"").replace(TASK_META_RE, "").trimEnd();  // 既存の完了ログは一旦除去
+  // 既存メタを確認: 追加者(+名前)は未完了の間ずっと保持する。完了ログ(日付)は破棄して付け直す
+  let addBy = "";
+  const mm0 = (m[4]||"").match(TASK_META_RE);
+  if(mm0){ const mv=(mm0[1]||"").trim(); if(mv.startsWith("+")) addBy = mv; }
+  let text = (m[4]||"").replace(TASK_META_RE, "").trimEnd();  // 既存のメタは一旦除去
   let marker = "", meta = "";
   if(status === "完了"){
     marker = "✅ ";
     const d = new Date();
-    meta = ` 〔${d.getMonth()+1}/${d.getDate()}${who?(" "+who):""}〕`;
+    meta = ` 〔${d.getMonth()+1}/${d.getDate()}${who?(" "+who):""}〕`;   // 完了時は完了ログで上書き
   }else if(status === "進行中"){
     marker = "🔄 ";
-  } // 未着手 → marker 無し
+    if(addBy) meta = ` 〔${addBy}〕`;
+  }else{ // 未着手 → marker 無し
+    if(addBy) meta = ` 〔${addBy}〕`;
+  }
   lines[lineIndex] = `${m[1]||""}${marker}${m[3]} ${text}${meta}`;
   return lines.join("\n");
 }
-// タスク行を追加(末尾に ・text)
-function addTaskLine_(title, text){
+// タスク行を追加(末尾に ・text)。by を渡すと「追加した人」を 〔+名前〕 として付与
+function addTaskLine_(title, text, by){
   text = String(text||"").trim(); if(!text) return title;
   const base = String(title||"");
   const sep = (base==="" || base.endsWith("\n")) ? "" : "\n";
-  return base + sep + "・" + text;
+  const tag = by ? ` 〔+${String(by).trim()}〕` : "";
+  return base + sep + "・" + text + tag;
 }
 // タスク行をゴミ箱へ(🗑 付与・完了マークは外す)= 復元可能な削除
 function deleteTaskLine_(title, lineIndex){
@@ -5624,6 +5995,34 @@ function dedupeTaskLines_(title){
 function getStaffJimuEvents_(staff){
   return (state.events||[]).filter(e=> e && e.category==='事務' && e.staff===staff && getTaskInfo_(e));
 }
+// 📖 表示専用: スタッフの事務イベントを副作用なしで1件返す(統合・保存はしない)。render中から安全に呼べる
+function peekStaffJimuEvent_(staff){
+  const evs = getStaffJimuEvents_(staff);
+  if(evs.length<=1) return evs[0] || null;
+  return evs.slice().sort((a,b)=>{
+    const ta=getTaskInfo_(a), tb=getTaskInfo_(b);
+    return (tb.tasks.length+tb.trash.length+tb.archive.length) - (ta.tasks.length+ta.trash.length+ta.archive.length);
+  })[0];
+}
+// 📋 スタッフの事務タスクを開く(無ければ作成)。バンドのバッジ・タスクビュー両方から使う共通入口
+function openStaffJimuTasks_(staff, anchorEl){
+  const today = (typeof fmtDate==='function') ? fmtDate(new Date()) : new Date().toISOString().slice(0,10);
+  let tev = (typeof getOrConsolidateJimuEvent_==='function') ? getOrConsolidateJimuEvent_(staff) : null;
+  if(!tev){
+    tev = { id:uid(), title:"事務\n・新規タスク", category:"事務", staff, participants:[],
+            date:today, start:"09:00", end:"10:00", allday:true, timeMode:"allday",
+            color:"", memo:"", importance:[], updatedAt:new Date().toISOString() };
+    state.events.push(tev);
+    if(typeof cloudQueueEventChange==='function') cloudQueueEventChange(tev,'upsert');
+    if(typeof pushHistory==='function') pushHistory();
+    saveState();
+  }
+  if(typeof render==='function') render();   // バンド/ボードを再描画(アンカーは作り直される)
+  const nb = document.querySelector('[data-task-staff="'+staff+'"]')
+          || document.querySelector('[data-jimu-staff="'+staff+'"]')
+          || anchorEl || document.body;
+  if(typeof showTaskChecklistPopup==='function') showTaskChecklistPopup(nb, tev);
+}
 function getOrConsolidateJimuEvent_(staff){
   const evs = getStaffJimuEvents_(staff);
   if(evs.length===0) return null;
@@ -5657,6 +6056,25 @@ function getOrConsolidateJimuEvent_(staff){
   });
   saveState();
   return canon;
+}
+// 📌 指定スタッフの事務タスクリストへ1行追加(無ければ新規作成)。by=追加した人。追加先イベントを返す
+function addTaskToStaff_(staff, text, by){
+  text = String(text||"").trim(); if(!staff || !text) return null;
+  let tev = (typeof getOrConsolidateJimuEvent_==='function') ? getOrConsolidateJimuEvent_(staff) : null;
+  if(typeof pushHistory==='function') pushHistory();
+  if(!tev){
+    const today = (typeof fmtDate==='function') ? fmtDate(new Date()) : new Date().toISOString().slice(0,10);
+    tev = { id:uid(), title:"事務", category:"事務", staff, participants:[],
+            date:today, start:"09:00", end:"10:00", allday:true, timeMode:"allday",
+            color:"", memo:"", importance:[], updatedAt:new Date().toISOString() };
+    state.events.push(tev);
+  }
+  tev.title = addTaskLine_(tev.title, text, by);
+  tev.updatedAt = new Date().toISOString();
+  saveState();
+  if(typeof cloudQueueEventChange==='function') cloudQueueEventChange(tev,'upsert');
+  if(typeof render==='function') render();
+  return tev;
 }
 // 🩹 v1.27.3 migration: 事務タスクの重複行を排除＋空の事務イベントを削除(増殖の掃除)
 //   ※parseTasks_/getTaskInfo_に依存するため、これらconst定義より後の位置で実行する
@@ -5796,7 +6214,11 @@ function showTaskChecklistPopup(el, ev){
           <option value="完了" ${t.status==='完了'?'selected':''}>✅ 完了</option>
         </select>
         <span class="tp-text" data-line="${t.index}" title="クリックで編集">${escapeHtml(t.text)}</span>
-        ${t.done && t.meta ? `<span class="tp-meta" title="完了ログ">${escapeHtml(t.meta)}</span>` : ""}
+        ${(()=>{
+          const meta = t.meta||"";
+          if(meta.startsWith("+")) return `<span class="tp-by" title="このタスクを追加した人">＋${escapeHtml(meta.slice(1))}</span>`;   // 追加者(未完了でも表示)
+          return (t.done && meta) ? `<span class="tp-meta" title="完了ログ">${escapeHtml(meta)}</span>` : "";
+        })()}
         ${(()=>{ const n=getTaskCmts_(taskCKey_(t.text)).length; return `<button class="tp-comment-btn ${n?'has':''}" data-line="${t.index}" title="このタスクのコメント">💬${n||''}</button>`; })()}
         ${!t.done ? `<button class="tp-done-quick" data-line="${t.index}" title="一発で完了にする">✓</button>` : ""}
         <button class="tp-del" data-line="${t.index}" title="ゴミ箱へ">×</button>
@@ -5838,6 +6260,13 @@ function showTaskChecklistPopup(el, ev){
       </div>
       <div class="tp-add">
         <input type="text" class="tp-add-input" placeholder="＋ タスクを追加 (Enter)">
+        ${(()=>{
+          // 事務タスクのときだけ「追加先の担当」を選べる(他人のリストにも入れられる)
+          if(cur.category !== '事務' || typeof STAFF==='undefined') return "";
+          const owner = cur.staff || "";
+          const opts = STAFF.map(s=>`<option value="${escapeHtml(s)}" ${s===owner?'selected':''}>${escapeHtml(s)}</option>`).join("");
+          return `<select class="tp-add-who" title="追加先の担当(他人のタスクにも追加できます)">${opts}</select>`;
+        })()}
         <button class="tp-add-btn">追加</button>
       </div>
       <div class="qp-actions">
@@ -5893,7 +6322,23 @@ function showTaskChecklistPopup(el, ev){
       };
     });
     const addInput = pop.querySelector('.tp-add-input');
-    const doAdd = ()=>{ const v=addInput.value.trim(); if(!v) return; focusAdd=true; mutate(t=>addTaskLine_(t, v)); };
+    const doAdd = ()=>{
+      const v=addInput.value.trim(); if(!v) return;
+      const me = (typeof getMyself==='function') ? getMyself() : "";
+      const whoSel = pop.querySelector('.tp-add-who');
+      const target = whoSel ? whoSel.value : (cur.staff||"");
+      // 開いているリストの所有者でない人が追加 → 追加者名を 〔+me〕 で記録(誰が頼んだか分かる)
+      const by = (me && target && target !== me) ? me : "";
+      if(cur.category==='事務' && target && target !== (cur.staff||"")){
+        // 他人の事務リストへ追加
+        if(me && !confirm(`${target}さんのタスクに追加しますか？`)){ return; }
+        addTaskToStaff_(target, v, by);
+        addInput.value=""; addInput.focus();
+        if(typeof showAutoSyncToast==='function') showAutoSyncToast(`✅ ${target}さんのタスクに追加しました`);
+        return;
+      }
+      focusAdd=true; mutate(t=>addTaskLine_(t, v, by));
+    };
     pop.querySelector('.tp-add-btn').onclick = doAdd;
     addInput.onkeydown = e=>{ if(e.key==='Enter'){ e.preventDefault(); doAdd(); } };
     pop.querySelector('[data-role="open-modal"]').onclick = ()=>{ pop.remove(); openEventModal(cur); };
@@ -7822,23 +8267,7 @@ function renderLeaveBand(){
   band.querySelectorAll("[data-task-staff]").forEach(badge=>{
     badge.onclick = (e)=>{
       e.stopPropagation();   // 親チップの担当フィルタを発火させない
-      const s = badge.dataset.taskStaff;
-      const today = (typeof fmtDate==='function') ? fmtDate(new Date()) : new Date().toISOString().slice(0,10);
-      // 📋 日付非依存: 本人の事務タスクを全日付から探して1本に統合して開く(分裂防止)
-      let tev = (typeof getOrConsolidateJimuEvent_==='function') ? getOrConsolidateJimuEvent_(s) : null;
-      if(!tev){
-        // 本人の事務タスクが1件も無ければ新規作成(空タスク1件)して開く
-        tev = { id:uid(), title:"事務\n・新規タスク", category:"事務", staff:s, participants:[],
-                date:today, start:"09:00", end:"10:00", allday:true, timeMode:"allday",
-                color:"", memo:"", importance:[], updatedAt:new Date().toISOString() };
-        state.events.push(tev);
-        if(typeof cloudQueueEventChange==='function') cloudQueueEventChange(tev,'upsert');
-        if(typeof pushHistory==='function') pushHistory();
-        saveState();
-      }
-      if(typeof render==='function') render();   // バンド再描画でbadgeは作り直されるので再取得
-      const nb = document.querySelector('[data-task-staff="'+s+'"]') || badge || document.body;
-      if(typeof showTaskChecklistPopup==='function') showTaskChecklistPopup(nb, tev);
+      openStaffJimuTasks_(badge.dataset.taskStaff, badge);
     };
   });
   // ✕ フィルタ解除ボタン
@@ -8388,6 +8817,11 @@ function renderCalendar(){
             ? `<span class="chip-shiryo ready" title="📄 立会資料 作成済(見積アプリ)">📄済</span>`
             : `<span class="chip-shiryo" title="📄 立会資料 未作成">📄未</span>`)
         : "";
+      // 💬 立会コメント数バッジ (全員共有・taikyo_comments)
+      const __tkCmtN = (ev.source === "taikyo-shared" && typeof taikyoCommentCount_==='function')
+        ? taikyoCommentCount_(ev._taikyoRawId || ev.id) : 0;
+      const taikyoCmtBadge = __tkCmtN > 0
+        ? `<span class="chip-comment-badge" title="💬 立会コメント ${__tkCmtN}件">💬${__tkCmtN}</span>` : "";
       // 直行/直帰バッジ
       const commuteIcon = ev.commute
         ? `<span class="chip-commute" title="${escapeHtml(ev.commute)}">${ev.commute==="直行直帰"?"🚗⇄":ev.commute==="直行"?"🚗→":"→🏠"}</span>`
@@ -8427,7 +8861,7 @@ function renderCalendar(){
         const titleClass = (taskInfo ? "chip-checklist " : "") + ((taskInfo || !isMulti) ? "chip-title single-line" : "chip-title multi-line");
         const timeBox = isAnytime ? "" : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;
         // 参加者バッジは title 外(チップ直下)に独立行として配置
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${titleHtml}${commuteIcon}${memoIcon}${progIcon}${__progStaffBadge}${commentBadge}${shiryoBadge}${__linkInfoHtml}</span>${timeBox}${staffBadges}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${titleHtml}${commuteIcon}${memoIcon}${progIcon}${__progStaffBadge}${commentBadge}${shiryoBadge}${taikyoCmtBadge}${__linkInfoHtml}</span>${timeBox}${staffBadges}`;
         if(impList.length){ el.classList.add("imp-flag"); if(impTopClass) el.classList.add(impTopClass); }
         el.title = fullTooltip;
       } else if(isFree){
@@ -8437,7 +8871,7 @@ function renderCalendar(){
         const titleClass = (taskInfo ? "chip-checklist " : "") + ((taskInfo || !isMulti) ? "chip-title single-line" : "chip-title multi-line");
         el.classList.add("event-chip");
         const timeBox = isAnytime ? "" : `<span class="chip-time">終日</span>`;
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${titleHtml}${commuteIcon}${memoIcon}${progIcon}${__progStaffBadge}${commentBadge}${shiryoBadge}${__linkInfoHtml}</span>${timeBox}${staffBadges}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${titleHtml}${commuteIcon}${memoIcon}${progIcon}${__progStaffBadge}${commentBadge}${shiryoBadge}${taikyoCmtBadge}${__linkInfoHtml}</span>${timeBox}${staffBadges}`;
         if(impList.length){ el.classList.add("imp-flag"); if(impTopClass) el.classList.add(impTopClass); }
         el.title = fullTooltip;
       } else {
@@ -8450,7 +8884,7 @@ function renderCalendar(){
         el.innerHTML = isShort
           ? `<div class="title">${inlineCatPrefix}${taskInfo?compactTaskHtml:escapeHtml(titleFirstLine)}${commuteInline}${showStaff&&staffList.length?` <span style="opacity:.8">/${multi?staffList.length+"名":escapeHtml(staffList[0].slice(0,2))}</span>`:""}${progIcon}${__progStaffBadge}${__linkInfoHtml}</div>`
           : `<div class="time">${window.innerWidth<=700 ? ev.start : `${ev.start}〜${ev.end}`}${commuteInline}</div>
-             <div class="title">${inlineCatPrefix}${titleHtmlMulti}${progIcon}${__progStaffBadge}${shiryoBadge}${__linkInfoHtml}</div>
+             <div class="title">${inlineCatPrefix}${titleHtmlMulti}${progIcon}${__progStaffBadge}${shiryoBadge}${taikyoCmtBadge}${__linkInfoHtml}</div>
              ${showStaff ? (multi ? participantsHtml : (ev.staff ? `<div class="staff">${staffShortLabel}</div>`:"")) : ""}`;
         el.title = fullTooltip;
       }
@@ -8548,12 +8982,22 @@ function renderCalendar(){
           : "";
         el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis">${tagHtml}${escapeHtml(label)}${__vendorBadge}${__workerMini}</span>${__descLine}</span><span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>`;
         attachRepairChipHover(el, r); // リッチtooltip
+        el.classList.add("chip-locked"); // 🔒 ドラッグ移動不可(台帳=Driveが真データのため)
         // 単クリックは無効・ダブルクリックで作業担当者ピッカー(内側に✎詳細編集)— 他チップと統一(v1.24.6)
         el.onclick = (ev)=>{ ev.stopPropagation(); };
         el.ondblclick = (ev)=>{
           ev.stopPropagation();
           showRepairQuickPop(r, el);
         };
+        // 🔒 ドラッグで動かそうとしたら案内トースト(移動は編集シートから)
+        el.addEventListener("pointerdown", (pd)=>{
+          if(pd.pointerType === 'touch' || (pd.button !== undefined && pd.button !== 0)) return;
+          const sx = pd.clientX, sy = pd.clientY; let toasted = false;
+          const mv = (m)=>{ if(!toasted && Math.hypot(m.clientX-sx, m.clientY-sy) > DRAG_THRESHOLD){ toasted = true; showNoDragToast_('repair'); el.classList.add('nodrag-shake'); setTimeout(()=>el.classList.remove('nodrag-shake'), 400); cleanup(); } };
+          const cleanup = ()=>{ document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", cleanup); };
+          document.addEventListener("pointermove", mv);
+          document.addEventListener("pointerup", cleanup);
+        });
         cell.appendChild(el);
       });
     }
@@ -9554,7 +9998,16 @@ function attachChipHover(el, ev){
   el.addEventListener("pointerdown", ()=>{ hideChipTip(); });
 }
 
+// 🔒 ドラッグで動かせないチップ(立会/修繕アポ)用の案内トースト
+function showNoDragToast_(kind){
+  const msg = kind === 'repair'
+    ? '🔒 修繕アポはドラッグで動かせません(変更は編集シートから)'
+    : '🔒 立会はドラッグで動かせません(日時はダブルクリックで変更)';
+  if(typeof showAutoSyncToast === 'function') showAutoSyncToast(msg);
+}
 function attachDragOrClick(el, ev){
+  // 🔒 立会(taikyo-shared)/読取専用はドラッグ移動不可。掴むとカーソルと案内で明示
+  if(ev.source === "taikyo-shared" || ev._readOnly){ el.classList.add("chip-locked"); }
   // ダブルクリック → 担当者ピッカー (全チップ共通・v1.14)
   //   taikyo-shared/読取専用 → 立会用ピッカー(見積アプリoverride) / それ以外 → 汎用ピッカー
   //   いずれも内側の「✏️ 詳細編集」で従来の編集モーダルへ
@@ -9598,10 +10051,18 @@ function attachDragOrClick(el, ev){
     let ghost = null;
     let indicator = null;
     let timeTip = null;
+    // 🔒 立会/読取専用はドラッグ移動不可。掴んで動かそうとしたら案内トースト(1回)
+    const __noDrag = (ev.source === "taikyo-shared" || ev._readOnly);
+    let __noDragToasted = false;
 
     const onMove = (mvEv)=>{
       const dx = mvEv.clientX - startX;
       const dy = mvEv.clientY - startY;
+      if(!started && __noDrag && Math.hypot(dx,dy) > DRAG_THRESHOLD){
+        if(!__noDragToasted){ __noDragToasted = true; showNoDragToast_('taikyo');
+          el.classList.add('nodrag-shake'); setTimeout(()=>el.classList.remove('nodrag-shake'), 400); }
+        return; // ドラッグは開始しない(虚しくゴーストが動いて元に戻る挙動を防ぐ)
+      }
       if(!started && !blockDrag && Math.hypot(dx,dy) > DRAG_THRESHOLD){
         // ドラッグ開始
         started = true;
@@ -13250,60 +13711,61 @@ function isFreshDone(t){
 }
 
 // ===== タスクビュー描画 =====
+// 📋 タスクビュー = 事務タスクのボード(各担当のチェックリストを一覧。クリックで編集ポップを開く)
+//   旧 state.tasks ベースの一覧は廃止して事務タスクに統合(v1.30.22)。
+//   state.tasks のデータ・関連関数(openTaskModal/renderTaskCard/sortTasks 等)はそのまま温存(非表示)。
 function renderTaskView(){
   const me = getMyself();
-  // 自分タブの初期化
-  if(taskFilterAssignee === null){
-    taskFilterAssignee = me || "全員";
-  }
-  // 「自分」ボタン
-  const myselfBtn = document.getElementById("taskMyselfBtn");
-  myselfBtn.textContent = me ? `👤 自分: ${me}` : "👤 自分: 未設定";
-
-  // タブ
-  const tabsEl = document.getElementById("taskTabs");
-  const allTabs = ["全員", ...STAFF];
-  const counts = {};
-  state.tasks.forEach(t=>{
-    if(!isFreshDone(t)) return;
-    counts[t.assignee] = (counts[t.assignee]||0) + 1;
-  });
-  const totalCount = state.tasks.filter(isFreshDone).length;
-  tabsEl.innerHTML = allTabs.map(name=>{
-    const isMe = name === me;
-    const isActive = name === taskFilterAssignee;
-    const cnt = name==="全員" ? totalCount : (counts[name]||0);
-    const dot = name==="全員"
-      ? '<span class="dot" style="background:#374151"></span>'
-      : `<span class="dot" style="background:${STAFF_COLORS[name]||"#9ca3af"}"></span>`;
-    return `<button class="task-tab ${isActive?"active":""} ${isMe?"me":""}" data-assignee="${escapeHtml(name)}">${dot}${escapeHtml(name)}${isMe?" (自分)":""}<span class="count">${cnt}</span></button>`;
-  }).join("");
-  tabsEl.querySelectorAll(".task-tab").forEach(b=>{
-    b.onclick = ()=>{
-      taskFilterAssignee = b.dataset.assignee;
-      renderTaskView();
-    };
-  });
-
-  // 並びセレクタの値を反映
-  const sortSel = document.getElementById("taskSortSel");
-  sortSel.value = taskSortMode;
-
-  // フィルタ&ソート
-  let list = state.tasks.filter(isFreshDone);
-  if(taskFilterAssignee && taskFilterAssignee !== "全員"){
-    list = list.filter(t=>t.assignee === taskFilterAssignee);
-  }
-  list = sortTasks(list, taskSortMode);
-
-  // カード描画
   const listEl = document.getElementById("taskList");
-  if(list.length === 0){
-    listEl.innerHTML = `<div class="task-empty">📭 タスクはありません<br><small>右上の「＋タスク」から追加できます</small></div>`;
-    return;
-  }
-  listEl.innerHTML = list.map(t=>renderTaskCard(t, me, false)).join("");
-  bindTaskCardEvents(listEl, false);
+  if(!listEl) return;
+  // 自分→先頭、残りはSTAFF順
+  const order = (me && STAFF.includes(me)) ? [me, ...STAFF.filter(s=>s!==me)] : [...STAFF];
+  const cards = order.map(staff=>{
+    const ev = peekStaffJimuEvent_(staff);
+    const ti = ev ? getTaskInfo_(ev) : null;
+    const color = (typeof STAFF_COLORS!=='undefined' && STAFF_COLORS[staff]) || "#9ca3af";
+    const total = ti ? ti.total : 0;
+    const done  = ti ? ti.done  : 0;
+    const pending = ti ? ti.tasks.filter(t=>!t.done).slice()
+      .sort((a,b)=> ((TASK_PRIO_RANK[a.prio]??1)-(TASK_PRIO_RANK[b.prio]??1)) || a.index-b.index) : [];
+    const rows = pending.length
+      ? pending.map(t=>`
+          <div class="jt-row">
+            <span class="jt-dot" style="background:${t.prio?TASK_PRIO_COLOR[t.prio]:'#cbd5e1'}"></span>
+            <span class="jt-text${t.inProgress?' wip':''}">${escapeHtml(t.text)}</span>
+            ${(t.meta&&t.meta.startsWith('+'))?`<span class="jt-by" title="追加した人">＋${escapeHtml(t.meta.slice(1))}</span>`:''}
+          </div>`).join("")
+      : `<div class="jt-empty">未完了なし 🎉</div>`;
+    const isMe = staff===me;
+    return `
+      <div class="jt-card${isMe?' me':''}" data-jimu-staff="${escapeHtml(staff)}" title="クリックで開く / タスク追加">
+        <div class="jt-head" style="border-top-color:${color}">
+          <span class="jt-name"><span class="jt-namedot" style="background:${color}"></span>${escapeHtml(staff)}${isMe?' <span class="jt-meTag">自分</span>':''}</span>
+          <span class="jt-count${(total&&done>=total)?' alldone':''}">${done}/${total}</span>
+        </div>
+        <div class="jt-body">${rows}</div>
+        <div class="jt-foot">＋ タスクを開く / 追加 ›</div>
+      </div>`;
+  }).join("");
+  listEl.innerHTML = `
+    <div class="jt-bar">
+      <span class="jt-title">📋 みんなのタスク</span>
+      <span class="jt-spacer"></span>
+      <button class="nav-btn" id="jtMyselfBtn">${me?`👤 自分: ${escapeHtml(me)}`:'👤 自分: 未設定'}</button>
+      <button class="nav-btn primary" id="jtAddMine">＋ 自分のタスク</button>
+    </div>
+    <div class="jt-board">${cards}</div>`;
+  listEl.querySelectorAll('.jt-card').forEach(card=>{
+    card.onclick = ()=> openStaffJimuTasks_(card.dataset.jimuStaff);
+  });
+  const myBtn = listEl.querySelector('#jtMyselfBtn');
+  if(myBtn) myBtn.onclick = ()=>{ if(typeof openMyself==='function') openMyself(); };
+  const addMine = listEl.querySelector('#jtAddMine');
+  if(addMine) addMine.onclick = ()=>{
+    const who = me || (STAFF.includes(getMyself())?getMyself():"");
+    if(!who){ if(typeof openMyself==='function') openMyself(); return; }
+    openStaffJimuTasks_(who);
+  };
 }
 
 function sortTasks(list, mode){
@@ -14141,6 +14603,16 @@ setTimeout(()=>{
     // 🗓 退去立会カレンダー (クラ助/見積アプリ→shared-config) 取得・以後5分ごと
     fetchTaikyoSchedule({silent:true});
     setInterval(()=>fetchTaikyoSchedule({silent:true}).catch(()=>{}), 5*60*1000);
+    // 💬 立会コメント (全員共有) 取得・以後5分ごと
+    if(typeof fetchTaikyoComments_==='function'){
+      fetchTaikyoComments_({silent:true}).catch(()=>{});
+      setInterval(()=>fetchTaikyoComments_({silent:true}).catch(()=>{}), 5*60*1000);
+    }
+    // 🕐 立会 上書き(担当・日時/全員共有) 取得・初回はローカル分をpush(移行)・以後5分ごと
+    if(typeof fetchTaikyoOverrides_==='function'){
+      fetchTaikyoOverrides_({silent:true, push:true}).catch(()=>{});
+      setInterval(()=>fetchTaikyoOverrides_({silent:true}).catch(()=>{}), 5*60*1000);
+    }
     // 📄 立会「資料作成済」フラグ (見積アプリ→shared-config) 取得・以後5分ごと
     fetchTaikyoShiryoReady({silent:true});
     setInterval(()=>fetchTaikyoShiryoReady({silent:true}).catch(()=>{}), 5*60*1000);
