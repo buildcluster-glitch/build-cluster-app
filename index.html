@@ -932,6 +932,13 @@
     background:#dc2626;color:#fff;border-color:#dc2626;font-weight:700;
   }
   /* 月ビューチップ: 重要マーク強調装飾 — CSS変数 --imp で色を切替(JS側で設定) */
+  /* 複数人バッジ行を持つチップ: タイトル+バッジを1枚のカードに囲む(バッジが下に浮く問題の対策・v1.30.34) */
+  .event-chip.chip-has-staffs{
+    background:rgba(248,250,252,.92) !important;
+    border:1.5px solid rgba(148,163,184,.55);
+    border-radius:8px;
+    padding:2px;
+  }
   .event-chip.imp-flag{
     position:relative;
     --imp:#dc2626;  /* デフォ赤 */
@@ -2198,7 +2205,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.33</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.34</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -8945,6 +8952,7 @@ function renderCalendar(){
         const timeBox = isAnytime ? "" : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;
         // 参加者バッジは title 外(チップ直下)に独立行として配置
         el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${titleHtml}${commuteIcon}${memoIcon}${progIcon}${__progStaffBadge}${commentBadge}${shiryoBadge}${taikyoCmtBadge}${__linkInfoHtml}</span>${timeBox}${staffBadges}`;
+        if(staffBadges) el.classList.add('chip-has-staffs');
         if(impList.length){ el.classList.add("imp-flag"); if(impTopClass) el.classList.add(impTopClass); }
         el.title = fullTooltip;
       } else if(isFree){
@@ -8955,6 +8963,7 @@ function renderCalendar(){
         el.classList.add("event-chip");
         const timeBox = isAnytime ? "" : `<span class="chip-time">終日</span>`;
         el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${titleHtml}${commuteIcon}${memoIcon}${progIcon}${__progStaffBadge}${commentBadge}${shiryoBadge}${taikyoCmtBadge}${__linkInfoHtml}</span>${timeBox}${staffBadges}`;
+        if(staffBadges) el.classList.add('chip-has-staffs');
         if(impList.length){ el.classList.add("imp-flag"); if(impTopClass) el.classList.add(impTopClass); }
         el.title = fullTooltip;
       } else {
@@ -9067,6 +9076,7 @@ function renderCalendar(){
           ? `<span style="display:block;width:100%;font-size:10px;font-weight:500;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2">${escapeHtml(__descShort)}</span>`
           : "";
         el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis">${tagHtml}${escapeHtml(label)}${__vendorBadge}</span>${__descLine}</span><span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>${__repStaffBadges}`;
+        if(__repStaffBadges) el.classList.add('chip-has-staffs');
         attachRepairChipHover(el, r); // リッチtooltip
         el.classList.add("chip-locked"); // 🔒 ドラッグ移動不可(台帳=Driveが真データのため)
         // 単クリックは無効・ダブルクリックで作業担当者ピッカー(内側に✎詳細編集)— 他チップと統一(v1.24.6)
