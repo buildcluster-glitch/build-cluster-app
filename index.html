@@ -2191,7 +2191,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.30</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.31</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7984,6 +7984,21 @@ function isEventVisible(ev){
   }
   return true;
 }
+// 🔧 修繕アポを「スタッフバッジ選択 / マイモード」で絞る (events の isEventVisible 相当を修繕にも適用)
+//   修繕の担当 = 作業担当(worker・複数可) ＋ 連絡者(contactPerson) のいずれか
+function repairVisibleForStaff_(r){
+  const norm = (typeof normalizeStaffName==='function') ? normalizeStaffName : (s=>String(s||"").replace(/\s|　/g,""));
+  const people = ((typeof parseWorkers_==='function') ? parseWorkers_(r.worker||"") : String(r.worker||"").split(/[,、\/]/))
+    .map(s=>String(s).trim()).filter(Boolean);
+  if(r.contactPerson) people.push(String(r.contactPerson).trim());
+  const matchSet = (set)=> people.some(p => set.has(p) || set.has(norm(p)));
+  if(myEventsOnly){
+    const me = getMyself();
+    if(me){ const meN = norm(me); if(!people.some(p => p===me || norm(p)===meN)) return false; }
+  }
+  if(selectedStaffFilter.size > 0 && !matchSet(selectedStaffFilter)) return false;
+  return true;
+}
 
 // 🏢 選択中スタッフセット (localStorage 永続化・複数選択可)
 const SELECTED_STAFF_KEY = "buildcluster_schedule_selected_staff";
@@ -8412,6 +8427,8 @@ function renderCalendar(){
         // v1.12.3: 修繕アポも カテゴリ(元請け)フィルタを尊重
         const filterKey = r.contractor || "未分類";
         if(hiddenCategories.has(filterKey)) return false;
+        // v1.30.31: スタッフバッジ選択/マイモードも尊重(担当=作業担当/連絡者で絞る)
+        if(!repairVisibleForStaff_(r)) return false;
         return true;
       });
       dayRepairs.forEach(r=>{
