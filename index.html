@@ -1799,6 +1799,13 @@
     font-size:13px;font-weight:600;background:#f1f5f9;color:#0f172a;
   }
   .quick-add-sheet .qa-staff button.on{outline:2.5px solid #0f172a}
+  .quick-add-sheet .qa-label{font-size:11px;color:var(--muted);font-weight:700;margin:2px 0 5px}
+  .quick-add-sheet .qa-cat{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+  .quick-add-sheet .qa-cat button{
+    border:1.5px solid transparent;border-radius:999px;padding:7px 12px;
+    font-size:13px;font-weight:700;color:#0f172a;
+  }
+  .quick-add-sheet .qa-cat button.on{outline:2.5px solid #0f172a}
   .quick-add-sheet .qa-actions{display:flex;gap:8px}
   .quick-add-sheet .qa-actions button{flex:1;padding:12px;border:none;border-radius:10px;font-size:14px;font-weight:700}
 
@@ -2191,7 +2198,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.31</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.32</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -10504,6 +10511,7 @@ function openEventModal(ev, defaults){
   const cSel = document.getElementById("ev-category");
   cSel.innerHTML = `<option value="">（未分類）</option>` +
     CATEGORIES.map(c=>`<option value="${c.name}" ${ev&&ev.category===c.name?"selected":""} style="color:${c.color};font-weight:600">● ${c.name}</option>`).join("");
+  if(defaults && defaults.category) cSel.value = defaults.category;   // クイック追加→詳細 への引き継ぎ(v1.30.32)
   // contractor selector (主に立会用、その他でも選択可)
   // 各optionに ●+色 を付与（ブラウザによって色付き表示）
   const ctSel = document.getElementById("ev-contractor");
@@ -11034,6 +11042,10 @@ function showQuickAddSheet_(defaults={}){
   document.querySelectorAll('.quick-add-sheet-backdrop').forEach(x=>x.remove());
   const me = getMyself();
   let selStaff = (defaults.staff && STAFF.includes(defaults.staff)) ? defaults.staff : (STAFF.includes(me) ? me : "");
+  let selCat = defaults.category || "";   // カテゴリ(未分類="")
+  // 手動入力で選べるカテゴリ(立会(未定)は自動生成なので除外)＋先頭に未分類
+  const qaCats = [{name:"未分類", val:"", color:"#cbd5e1"}]
+    .concat(CATEGORIES.filter(c=>c.name!=="立会(未定)").map(c=>({name:c.name, val:c.name, color:c.color})));
   const dateV = defaults.date || fmtDate(currentDate || new Date());
   const startV = defaults.start || "";
   const timeOpts = ['<option value="">時間未定</option>'];
@@ -11051,6 +11063,11 @@ function showQuickAddSheet_(defaults={}){
       <input type="date" id="qa-date" value="${escapeHtml(dateV)}">
       <select id="qa-time">${timeOpts.join('')}</select>
     </div>
+    <div class="qa-label">カテゴリ</div>
+    <div class="qa-cat">${qaCats.map(c=>{
+      return `<button data-cat="${escapeHtml(c.val)}" class="${c.val===selCat?'on':''}" style="background:${c.color}40">${escapeHtml(c.name)}</button>`;
+    }).join('')}</div>
+    <div class="qa-label">担当</div>
     <div class="qa-staff">${STAFF.map(s=>{
       const c = STAFF_COLORS[s] || '#9ca3af';
       return `<button data-s="${escapeHtml(s)}" class="${s===selStaff?'on':''}" style="background:${c}40">${escapeHtml(s)}</button>`;
@@ -11069,13 +11086,19 @@ function showQuickAddSheet_(defaults={}){
       bd.querySelectorAll('.qa-staff button').forEach(x=>x.classList.toggle('on', x.dataset.s===selStaff));
     };
   });
+  bd.querySelectorAll('.qa-cat button').forEach(b=>{
+    b.onclick = ()=>{
+      selCat = b.dataset.cat;   // 単一選択(未分類="")
+      bd.querySelectorAll('.qa-cat button').forEach(x=>x.classList.toggle('on', x.dataset.cat===selCat));
+    };
+  });
   bd.querySelector('#qa-cancel').onclick = ()=>bd.remove();
   bd.querySelector('#qa-detail').onclick = ()=>{
     const t = bd.querySelector('#qa-title').value;
     const d = bd.querySelector('#qa-date').value;
     const st = bd.querySelector('#qa-time').value;
     bd.remove();
-    openEventModal(null, {date:d||undefined, staff:selStaff||undefined, start:st||undefined, end:st?endOf(st):undefined});
+    openEventModal(null, {date:d||undefined, staff:selStaff||undefined, start:st||undefined, end:st?endOf(st):undefined, category:selCat||undefined});
     try{ if(t) document.getElementById('ev-title').value = t; }catch(_){}
   };
   bd.querySelector('#qa-save').onclick = ()=>{
@@ -11084,7 +11107,7 @@ function showQuickAddSheet_(defaults={}){
     const d = bd.querySelector('#qa-date').value || fmtDate(new Date());
     const st = bd.querySelector('#qa-time').value;
     const ev = {
-      id: uid(), title, category:"", contractor:"", staff: selStaff||"", participants: [],
+      id: uid(), title, category: selCat||"", contractor:"", staff: selStaff||"", participants: [],
       date: d, start: st||"09:00", end: endOf(st), allday: false, timeMode: st ? "timed" : "anytime",
       color:"", memo:"", importance: [], updatedAt: new Date().toISOString(),
     };
