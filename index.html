@@ -1683,6 +1683,16 @@
     /* タッチターゲットを大きめに */
     .nav-btn{min-height:36px;padding:6px 10px;font-size:13px;flex-shrink:0}
     .nav-btn.icon-only{min-width:36px;padding:6px}
+    /* 📱 ☁同期ボタンを右上に固定(ヘッダー横スクロールで埋もれない・常に押しやすい) */
+    .nav-btn#cloudSyncBtn{
+      position:fixed;top:5px;right:8px;z-index:40;
+      min-height:42px;min-width:50px;padding:8px 13px;font-size:20px;
+      background:#fff;border:1px solid var(--border-strong);border-radius:12px;
+      box-shadow:0 2px 8px rgba(0,0,0,.18);
+    }
+    header.app-header{padding-right:62px}  /* 固定☁と末尾ボタンの重なり緩和(末尾に余白を確保) */
+    /* 🚫 リセットボタンは誤タップ事故防止でスマホ非表示(全データ消去のため) */
+    #resetBtn{display:none}
 
     /* モーダル: スマホで全画面風に
        ⚠ overlay の padding:16px を残したまま 100vh にすると flex中央寄せで上下にはみ出し、
@@ -2186,7 +2196,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.28</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.29</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
