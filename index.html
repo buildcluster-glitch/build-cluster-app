@@ -2205,7 +2205,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.36</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.37</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5443,7 +5443,8 @@ function buildTaikyoVirtualEvent_(r){
     start, end,
     allday, timeMode,
     color: chipColor,
-    memo: [r.address && `📍 ${r.address}`, r.koji && `工事: ${r.koji}`, effTime && !m && `時刻: ${effTime}`].filter(Boolean).join("\n"),
+    // ⚠ 「工事: 退去立会」は退去立会では自明で冗長なので memo に入れない(📝メモアイコンが付くのを防ぐ・v1.30.37)。住所/時刻は残す
+    memo: [r.address && `📍 ${r.address}`, effTime && !m && `時刻: ${effTime}`].filter(Boolean).join("\n"),
     importance: [],
     source: "taikyo-shared",  // 識別フラグ(編集不可・cloud syncに送らない)
     _readOnly: true,
