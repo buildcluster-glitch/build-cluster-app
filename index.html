@@ -2205,7 +2205,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.37</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.38</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5383,8 +5383,12 @@ function buildTaikyoVirtuals_(){
   const isTachiai = r => String(r.id||"").startsWith("tachiai_");
   if(recs.some(isTachiai)){
     const slotOf = r => normShiryoKey_(r.bukken, r.room) + "|" + (r.date||"");
+    const propOf = r => normShiryoKey_(r.bukken, r.room);
     const tachiaiSlots = new Set(recs.filter(isTachiai).map(slotOf));
-    recs = recs.filter(r=> isTachiai(r) || tachiaiSlots.has(slotOf(r)));
+    const tachiaiProps = new Set(recs.filter(isTachiai).map(propOf));
+    // ⚠ 見積由来は「クラ助が“同じ物件”を別スロットで持ってる(=山一立会表で別日付に変更/削除された残骸)」時だけ除外。
+    //   クラ助が同物件を全く持たない=JSB/みどり等の非山一立会は見積が唯一のソースなので残す(v1.30.38で誤除外を修正)。
+    recs = recs.filter(r=> isTachiai(r) || tachiaiSlots.has(slotOf(r)) || !tachiaiProps.has(propOf(r)));
   }
   // 🗓 防御的ローテ: 過去3ヶ月より古い立会は表示・集計から除外(共有configに古いデータが溜まっても膨張しない)
   if(typeof currentDate !== 'undefined'){
