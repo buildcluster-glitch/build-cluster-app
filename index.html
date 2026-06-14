@@ -2205,7 +2205,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.34</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.35</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -8884,14 +8884,16 @@ function renderCalendar(){
       ].filter(Boolean).join("\n");
       // コメントアイコン(メモあり時のみ)
       const memoIcon = ev.memo ? `<span class="chip-memo" title="📝 ${escapeHtml(ev.memo)}">📝</span>` : "";
-      // 📋 原状回復 進捗アイコン: ひもづく物件がある時のみ。押下でカレンダー上に進捗ダイアログ
+      // 立会チップ判定(原状回復由来の進捗アイコン/担当バッジを出さない)
+      const __isTachiaiChip = ev.source === "taikyo-shared" || String(ev.category||"").startsWith("立会");
+      // 📋 原状回復 進捗アイコン: ひもづく物件がある時のみ。押下でカレンダー上に進捗ダイアログ。
+      //   ⚠ 立会チップには出さない(v1.30.35): 立会は退去立会の予定で、物件名一致で原状回復進捗が誤って付いていた
       const __progResto = getEventResto_(ev);
-      const progIcon = __progResto
+      const progIcon = (__progResto && !__isTachiaiChip)
         ? `<span class="chip-prog" data-resto-id="${escapeHtml(String(__progResto.id))}" role="button" title="📋 原状回復の進捗を表示">📋</span>`
         : "";
       // 👤 担当者(見積作成者)バッジ — 📋進捗アイコンの隣に。スペース入り氏名でも色解決
       //   立会チップには出さない(立会担当ピッカーの担当と紛らわしいため。事前/最終確認等のみ)
-      const __isTachiaiChip = ev.source === "taikyo-shared" || String(ev.category||"").startsWith("立会");
       let __progStaffBadge = "";
       if(__progResto && __progResto.staff && !__isTachiaiChip && (typeof isHiddenStaffBadge_!=='function' || !isHiddenStaffBadge_(__progResto.staff))){
         const __psc = (STAFF_COLORS[__progResto.staff] || STAFF_COLORS[String(__progResto.staff).replace(/\s|　/g,"")]) || "#9ca3af";
