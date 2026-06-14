@@ -2208,7 +2208,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.43</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.44</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7944,12 +7944,14 @@ function renderCategoryFilter(){
   const taikyoVE = buildTaikyoVirtuals_();
   const inRange = [...state.events, ...taikyoVE].filter(ev=>ev.date>=rangeStart && ev.date<=rangeEnd);
 
-  // 🔑 山一の確定立会件数(category「立会」=確定 / 「立会(未定)」=仮置きは別カウント)
-  let taikyoConfirmed = 0, taikyoProvisional = 0;
+  // 🔑 元請けごとの立会件数(category「立会」=確定 / 「立会(未定)」=仮置き)。山一以外(JSB/みどり等)も集計(v1.30.44)
+  const taikyoByKey = new Map(); // key -> {confirmed, provisional}
   inRange.forEach(ev=>{
-    if(eventFilterKey(ev)!=="山一") return;
-    if(ev.category==="立会") taikyoConfirmed++;
-    else if(ev.category==="立会(未定)") taikyoProvisional++;
+    if(ev.category!=="立会" && ev.category!=="立会(未定)") return;
+    const k = eventFilterKey(ev);
+    if(!taikyoByKey.has(k)) taikyoByKey.set(k, {confirmed:0, provisional:0});
+    const t = taikyoByKey.get(k);
+    if(ev.category==="立会") t.confirmed++; else t.provisional++;
   });
 
   // キーごとの件数+代表色。予定+立会 に加え 修繕(responseDate)・最終確認(checkDate) も集計(v1.30.42)
@@ -7991,9 +7993,10 @@ function renderCategoryFilter(){
     const off = hiddenCategories.has(key);
     const chip = document.createElement("span");
     chip.className = "cat-chip" + (off ? " off" : "");
-    // 🔑 山一チップには確定立会件数を内包表示: 山一 13 🔑立会9(+仮M)
-    const taikyoBadge = (key==="山一" && (taikyoConfirmed||taikyoProvisional))
-      ? ` <span class="cat-taikyo" title="うち退去立会 確定${taikyoConfirmed}件${taikyoProvisional?` / 担当未定(仮)${taikyoProvisional}件`:''}">🏠立会${taikyoConfirmed}${taikyoProvisional?`+仮${taikyoProvisional}`:''}</span>`
+    // 🔑 各元請けチップに立会件数を内包表示(山一以外も): 山一 13 🏠立会9(+仮M)
+    const __tk = taikyoByKey.get(key);
+    const taikyoBadge = (__tk && (__tk.confirmed||__tk.provisional))
+      ? ` <span class="cat-taikyo" title="うち退去立会 確定${__tk.confirmed}件${__tk.provisional?` / 担当未定(仮)${__tk.provisional}件`:''}">🏠立会${__tk.confirmed}${__tk.provisional?`+仮${__tk.provisional}`:''}</span>`
       : "";
     chip.innerHTML = `<span class="swatch" style="background:${color}"></span>${escapeHtml(key)} <span class="cat-count">${count}</span>${taikyoBadge}`;
     chip.title = "クリック: このカテゴリのみ表示  /  Shift+クリック: ON/OFF切替";
