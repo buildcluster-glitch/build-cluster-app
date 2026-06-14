@@ -2221,7 +2221,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.51</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.52</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9173,8 +9173,11 @@ function renderCalendar(){
         el.style.borderLeft = `5px solid ${wfBar}`;
         el.dataset.repairId = r.id;
         el.title = tipLines;
-        // v1.30.51: 説明行(__descLine)は出さずカーサと同じ2行(タイトル+担当バッジ)に。説明はツールチップに残る。
-        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis">${tagHtml}${escapeHtml(label)}${__vendorBadge}</span></span><span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>${__repStaffBadges}`;
+        // 説明概要(電球交換 等)は残す。全面着色なので背景になじむよう半透明白の小行で表示(v1.30.52)
+        const __descLine = __descShort
+          ? `<span style="display:block;width:100%;font-size:10px;font-weight:500;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2">${escapeHtml(__descShort)}</span>`
+          : "";
+        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis">${tagHtml}${escapeHtml(label)}${__vendorBadge}</span>${__descLine}</span><span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>${__repStaffBadges}`;
         if(__repStaffBadges){ el.classList.add('chip-has-staffs'); el.style.setProperty('--card-bg', wColor); } // 担当色で全面着色(v1.30.51)
         attachRepairChipHover(el, r); // リッチtooltip
         el.classList.add("chip-locked"); // 🔒 ドラッグ移動不可(台帳=Driveが真データのため)
