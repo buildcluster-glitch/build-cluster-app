@@ -2208,7 +2208,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.41</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.42</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4222,7 +4222,7 @@ function renderChecks(){
   const wrap = document.getElementById("checksSection");
   const today = new Date(); today.setHours(0,0,0,0);
   // 🔧最終確認カードは原状回復のみ。修繕工事は除外(予定表の修繕チップ側で扱う)
-  const visibleChecks = dedupeChecks(state.checks).filter(c=>!isRepairCheck_(c));
+  const visibleChecks = dedupeChecks(state.checks).filter(c=>!isRepairCheck_(c) && !hiddenCategories.has(motoukeKey_(c.contractor)));  // 元請けカテゴリフィルタを最終確認にも適用(v1.30.42)
 
   // 列を作る（カレンダーの列構造に合わせる）
   let cols = [];
@@ -7890,15 +7890,29 @@ function renderStaffLegend(){
 }
 
 // 予定のフィルタ識別ラベル: 元請けのみ。元請けなし → "未分類"
+// 🏢 元請けの正規化キー: フル社名(株式会社みどり不動産 等)を短縮名(みどり/WRD/JA…)に寄せる(v1.30.42)
+//   修繕/最終確認の contractor はフル社名・表記ゆれが多いため、カテゴリフィルタの突合を1つに揃える
+function motoukeKey_(name){
+  const raw = String(name||"").trim();
+  if(!raw) return "未分類";
+  if(contractorInfo(raw)) return raw;                 // 既に短縮名(山一/みどり/JSB…)
+  const short = (typeof shortenCompany==='function') ? shortenCompany(raw) : raw;
+  if(contractorInfo(short)) return short;             // 短縮で一致
+  const s = raw.replace(/\s|　/g,"");
+  if(/みどり/.test(s)) return "みどり";
+  if(/山一/.test(s)) return "山一";
+  if(/ワールド/.test(s)) return "WRD";
+  if(/ジェイエイ|ＪＡ|JA仙台|泉不動産センター/.test(s)) return "JA";
+  if(/JSB/i.test(s)) return "JSB";
+  if(/光和/.test(s)) return "光和";
+  return short || raw;                                // 未知は短縮名(灰チップ)
+}
 function eventFilterKey(ev){
-  return ev.contractor || "未分類";
+  return motoukeKey_(ev.contractor);
 }
 function eventFilterColor(ev){
-  if(ev.contractor){
-    const c = contractorInfo(ev.contractor);
-    if(c) return c.color;
-  }
-  return "#e5e7eb";
+  const c = contractorInfo(motoukeKey_(ev.contractor));
+  return c ? c.color : "#e5e7eb";
 }
 
 function renderCategoryFilter(){
@@ -7929,13 +7943,16 @@ function renderCategoryFilter(){
     else if(ev.category==="立会(未定)") taikyoProvisional++;
   });
 
-  // キーごとの件数+代表色
+  // キーごとの件数+代表色。予定+立会 に加え 修繕(responseDate)・最終確認(checkDate) も集計(v1.30.42)
   const stats = new Map(); // key -> {count, color}
-  inRange.forEach(ev=>{
-    const key = eventFilterKey(ev);
-    if(!stats.has(key)) stats.set(key, {count:0, color:eventFilterColor(ev)});
+  const bumpCat = (contractor)=>{
+    const key = motoukeKey_(contractor);
+    if(!stats.has(key)){ const c = contractorInfo(key); stats.set(key, {count:0, color:c?c.color:"#e5e7eb"}); }
     stats.get(key).count++;
-  });
+  };
+  inRange.forEach(ev=> bumpCat(ev.contractor));
+  (state.repairs||[]).forEach(r=>{ const d=r.responseDate; if(d && d>=rangeStart && d<=rangeEnd) bumpCat(r.contractor); });
+  (state.checks||[]).forEach(c=>{ const d=c.checkDate; if(d && d>=rangeStart && d<=rangeEnd && !(typeof isRepairCheck_==='function' && isRepairCheck_(c))) bumpCat(c.contractor); });
 
   // 並び順: CONTRACTORS配列順 → 未分類
   const contractorOrder = new Map(CONTRACTORS.map((c,i)=>[c.name, i]));
@@ -8458,7 +8475,7 @@ function renderCalendar(){
       const dayRepairs = (state.repairs||[]).filter(r=>{
         if(!r.responseDate || r.responseDate!==c.contextDate) return false;
         // v1.12.3: 修繕アポも カテゴリ(元請け)フィルタを尊重
-        const filterKey = r.contractor || "未分類";
+        const filterKey = motoukeKey_(r.contractor);   // 元請け正規化キーでフィルタ突合(v1.30.42)
         if(hiddenCategories.has(filterKey)) return false;
         // v1.30.31: スタッフバッジ選択/マイモードも尊重(担当=作業担当/連絡者で絞る)
         if(!repairVisibleForStaff_(r)) return false;
