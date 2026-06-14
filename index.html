@@ -2208,7 +2208,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.39</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.40</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5377,6 +5377,16 @@ function dedupeTaikyoSlots_(virtuals){
   return [...byKey.values()];
 }
 // 立会仮想イベントの正規ビルダー: 生成 → スロット重複集約 → 手動との重複排除。全ての描画/集計はこれを使う
+// 🏢 立会の元請けを物件マスタ(state.bukken)から判定(無ければ空=後で山一フォールバック)。v1.30.40
+//   立会レコードに元請けが無いため、物件名で物件マスタを引いて JSB/みどり等を識別する。
+function taikyoMotouke_(bukken){
+  const norm = s => String(s||"").normalize("NFKC").replace(/\s|　/g,"");
+  const key = norm(bukken); if(!key) return "";
+  const list = state.bukken || [];
+  let hit = list.find(b => norm(b.name) === key);                                   // 完全一致優先
+  if(!hit) hit = list.find(b => { const bn = norm(b.name); return bn.length>=4 && key.startsWith(bn); }); // マスタ名で始まる
+  return hit ? (hit.motouke || "") : "";
+}
 function buildTaikyoVirtuals_(){
   let recs = state.taikyoEvents || [];
   // 🧹 クラ助が立会表を全件同期(authoritative)している場合の見積残骸除去。
@@ -5436,7 +5446,8 @@ function buildTaikyoVirtualEvent_(r){
     id: `_taikyo_${r.id}`,
     title: `${r.bukken}${r.room?" "+r.room:""}${effTime && !m ? ` (${effTime})` : ""}`,
     category: isProvisional ? "立会(未定)" : "立会",
-    contractor: "山一",  // この連携で入る立会は全部 山一立会(山一カテゴリで抽出・件数カウント)
+    contractor: (taikyoMotouke_(r.bukken) || "山一"),  // 元請けを物件マスタから判定(JSB/みどり等)・無ければ山一(v1.30.40)
+    _motouke: taikyoMotouke_(r.bukken) || "",          // 元請けバッジ表示用(空=不明→山一扱い)
     staff: effectiveStaff,
     _taikyoRawId: r.id,           // override 用に元id保持
     _taikyoOrigStaff: r.staff || "",
@@ -8861,9 +8872,15 @@ function renderCalendar(){
       const badgeTooltip = cont
         ? `元請: ${cont.name}${cat ? " ・ 種別: "+cat.name : ""}`
         : (cat ? `種別: ${cat.name}` : "");
-      const catPrefix = cat
-        ? `<span class="title-cat" title="${escapeHtml(badgeTooltip)}" style="background:${catBoxBg||"rgba(255,255,255,.35)"};color:${catBoxFg};padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;line-height:14px;height:16px;display:inline-flex;align-items:center;justify-content:center">${escapeHtml(cat.name)}</span>`
+      // 🏢 立会の元請けバッジ: 非山一(JSB/みどり等)だけ明示(山一は既定なので省略)。色=元請け色
+      const __isTkChip = ev.source === "taikyo-shared" || String(ev.category||"").startsWith("立会");
+      const __tkMotouke = (__isTkChip && ev._motouke && ev._motouke !== "山一") ? ev._motouke : "";
+      const __motoukeBadge = __tkMotouke
+        ? `<span class="title-cat" title="元請: ${escapeHtml(__tkMotouke)}" style="background:${(contractorInfo(__tkMotouke)?.color)||"#6b7280"};color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;line-height:14px;height:16px;display:inline-flex;align-items:center;justify-content:center;margin-left:2px">${escapeHtml(__tkMotouke)}</span>`
         : "";
+      const catPrefix = (cat
+        ? `<span class="title-cat" title="${escapeHtml(badgeTooltip)}" style="background:${catBoxBg||"rgba(255,255,255,.35)"};color:${catBoxFg};padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;line-height:14px;height:16px;display:inline-flex;align-items:center;justify-content:center">${escapeHtml(cat.name)}</span>`
+        : "") + __motoukeBadge;
       // チップ用: 1行目のみ表示。複数行/メモはホバーで全文表示。
       const titleFirstLine = (ev.title || "").split(/\r?\n/)[0];
       // 📋 簡易タスク: 箇条書きイベントは1行に集約(📋 done/total + ミニ進捗バー + 次のタスク) — taskInfoは上部で算出済
