@@ -2208,7 +2208,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.44</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.45</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9788,7 +9788,8 @@ function showRepairQuickPop(r, anchorEl){
   const __wlist = parseWorkers_(r.worker);   // 複数可
   const __vOn = __wlist.includes(VENDOR_WORKER) ? 'on' : '';
   const vendorWorkerBtn = `<button data-worker="${VENDOR_WORKER}" class="${__vOn}" style="${__vOn?`background:${VENDOR_WORKER_COLOR}22;border-color:${VENDOR_WORKER_COLOR}`:''}"><span class="qp-dot" style="background:${VENDOR_WORKER_COLOR}"></span>🛠${VENDOR_WORKER}</button>`;
-  const workerBtns = ['<button data-worker="" class="' + (__wlist.length===0?'on':'') + '"><span class="qp-dot" style="background:#cbd5e1"></span>未設定</button>']
+  // 未設定時はどのチップも選択しない=空白(「未設定」ボタンは選択解除/クリア用に常に非ハイライト) v1.30.45
+  const workerBtns = ['<button data-worker="" class=""><span class="qp-dot" style="background:#cbd5e1"></span>未設定</button>']
     .concat(STAFF.map(s=>{
       const display = (typeof getStaffDisplayName === 'function') ? getStaffDisplayName(s) : s;
       const on = __wlist.includes(s) ? 'on' : '';
