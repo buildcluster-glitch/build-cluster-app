@@ -243,7 +243,7 @@
   }
   .calendar-head{
     display:grid;border-bottom:1px solid var(--border-strong);
-    background:#e2e8f0;
+    background:#e2e8f0;min-width:max-content;  /* 横スクロールで左固定ヘッダーが消えないよう全列幅に(v1.30.39) */
   }
   .calendar-body{
     flex:1;overflow:scroll;position:relative;
@@ -276,9 +276,12 @@
   .sticky-row{position:sticky;background:#fafbfc;z-index:9}
   .calendar-head.sticky-row{top:0;z-index:11}
   /* 休暇帯はスクロール追従しない(日付ヘッダ直下に1回だけ) */
-  .allday-band{position:relative;background:#fafbfc;z-index:8}
+  .allday-band{position:relative;background:#fafbfc;z-index:8;min-width:max-content}
   .calendar-grid{
     display:grid;position:relative;min-height:100%;
+    /* ⚠ ボックス幅を内容(全列)幅に。これが無いと横スクロール時に時間列(sticky;left:0)の
+       コンテナがビューポート幅に制限され、1画面分スクロールで時間列が消える(v1.30.39で修正) */
+    min-width:max-content;
   }
   .time-col-header,.day-col-header{
     padding:6px 4px;text-align:center;border-right:1px solid var(--border);
@@ -2205,7 +2208,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.38</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.39</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
