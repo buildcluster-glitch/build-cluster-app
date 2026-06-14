@@ -2208,7 +2208,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.42</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.43</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7907,11 +7907,20 @@ function motoukeKey_(name){
   if(/光和/.test(s)) return "光和";
   return short || raw;                                // 未知は短縮名(灰チップ)
 }
+// イベントの元請け: contractorがあればそれ、無ければ物件マスタからタイトルで推定(事前等で空のケース・v1.30.43)
+function eventMotouke_(ev){
+  const k = motoukeKey_(ev && ev.contractor);
+  if(k !== "未分類") return k;
+  const t = String((ev && ev.title) || "").split(/\r?\n/)[0].replace(/^(事前|立会|修繕|見積|商談|事務)\s*/,"").trim();
+  if(!t) return "未分類";
+  const m = (typeof taikyoMotouke_==='function') ? taikyoMotouke_(t) : "";
+  return m ? motoukeKey_(m) : "未分類";
+}
 function eventFilterKey(ev){
-  return motoukeKey_(ev.contractor);
+  return eventMotouke_(ev);
 }
 function eventFilterColor(ev){
-  const c = contractorInfo(motoukeKey_(ev.contractor));
+  const c = contractorInfo(eventMotouke_(ev));
   return c ? c.color : "#e5e7eb";
 }
 
@@ -7950,7 +7959,7 @@ function renderCategoryFilter(){
     if(!stats.has(key)){ const c = contractorInfo(key); stats.set(key, {count:0, color:c?c.color:"#e5e7eb"}); }
     stats.get(key).count++;
   };
-  inRange.forEach(ev=> bumpCat(ev.contractor));
+  inRange.forEach(ev=> bumpCat(eventMotouke_(ev)));   // 予定/立会は元請け推定(事前等の空contractorも物件マスタで補完)
   (state.repairs||[]).forEach(r=>{ const d=r.responseDate; if(d && d>=rangeStart && d<=rangeEnd) bumpCat(r.contractor); });
   (state.checks||[]).forEach(c=>{ const d=c.checkDate; if(d && d>=rangeStart && d<=rangeEnd && !(typeof isRepairCheck_==='function' && isRepairCheck_(c))) bumpCat(c.contractor); });
 
