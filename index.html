@@ -2208,7 +2208,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.46</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.47</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3840,6 +3840,7 @@ function loadState(){
   return { events: [], leaves: [], checks: [], companyPeriods: [], tasks: [], taskTrash: [], bukken: [], bukkenFetchedAt: null, repairs: [], restorations: [], taikyoEvents: [] };
 }
 function saveState(){
+  if(typeof bumpTaikyoEpoch_==='function') bumpTaikyoEpoch_();  // 状態変更=立会キャッシュ無効化(v1.30.46)
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
@@ -4099,6 +4100,7 @@ function timeColumns(){
 
 // ===== レンダリング =====
 function render(){
+  if(typeof bumpTaikyoEpoch_==='function') bumpTaikyoEpoch_();  // 立会仮想イベントのフレームキャッシュを更新(v1.30.46)
   try{ localStorage.setItem(VIEW_STORAGE_KEY, currentView); }catch(_){}  // 📱 ビュー記憶
   // 📱 下部ナビのアクティブ表示
   const __mn = document.getElementById('mobileNav');
@@ -5379,15 +5381,40 @@ function dedupeTaikyoSlots_(virtuals){
 // 立会仮想イベントの正規ビルダー: 生成 → スロット重複集約 → 手動との重複排除。全ての描画/集計はこれを使う
 // 🏢 立会の元請けを物件マスタ(state.bukken)から判定(無ければ空=後で山一フォールバック)。v1.30.40
 //   立会レコードに元請けが無いため、物件名で物件マスタを引いて JSB/みどり等を識別する。
-function taikyoMotouke_(bukken){
-  const norm = s => String(s||"").normalize("NFKC").replace(/\s|　/g,"");
-  const key = norm(bukken); if(!key) return "";
+// 物件マスタ→元請けの索引(NFKC正規化済)。state.bukken が変わった時だけ再構築。
+// 描画1回で予定×物件の線形スキャン+正規化が大量に走り重かったため索引化(v1.30.46)
+function __motoukeNorm_(s){ return String(s||"").normalize("NFKC").replace(/\s|　/g,""); }
+let __motoukeIdx_ = { sig:null, exact:null, prefix:null, cache:null };
+function __ensureMotoukeIdx_(){
   const list = state.bukken || [];
-  let hit = list.find(b => norm(b.name) === key);                                   // 完全一致優先
-  if(!hit) hit = list.find(b => { const bn = norm(b.name); return bn.length>=4 && key.startsWith(bn); }); // マスタ名で始まる
-  return hit ? (hit.motouke || "") : "";
+  const last = list.length ? list[list.length-1] : null;
+  const sig = list.length + "|" + (list[0] && list[0].name || "") + "|" + (last && last.name || "");
+  if(__motoukeIdx_.sig === sig) return __motoukeIdx_;
+  const exact = new Map(); const prefix = [];
+  for(const b of list){
+    const bn = __motoukeNorm_(b.name); if(!bn) continue;
+    if(!exact.has(bn)) exact.set(bn, b.motouke || "");
+    if(bn.length>=4) prefix.push([bn, b.motouke || ""]);
+  }
+  __motoukeIdx_ = { sig, exact, prefix, cache:new Map() };
+  return __motoukeIdx_;
 }
+function taikyoMotouke_(bukken){
+  const key = __motoukeNorm_(bukken); if(!key) return "";
+  const idx = __ensureMotoukeIdx_();
+  if(idx.cache.has(key)) return idx.cache.get(key);
+  let mo = "";
+  if(idx.exact.has(key)) mo = idx.exact.get(key);                                   // 完全一致優先
+  else { const hit = idx.prefix.find(([bn]) => key.startsWith(bn)); mo = hit ? hit[1] : ""; } // マスタ名で始まる
+  idx.cache.set(key, mo);
+  return mo;
+}
+// 同一描画フレーム内で4回ほど呼ばれるため、render/saveState ごとのエポックでキャッシュ(v1.30.46)
+let __taikyoVCache_ = { epoch:-1, val:null };
+let __taikyoEpoch_ = 0;
+function bumpTaikyoEpoch_(){ __taikyoEpoch_++; }
 function buildTaikyoVirtuals_(){
+  if(__taikyoVCache_.epoch === __taikyoEpoch_ && __taikyoVCache_.val) return __taikyoVCache_.val;
   let recs = state.taikyoEvents || [];
   // 🧹 クラ助が立会表を全件同期(authoritative)している場合の見積残骸除去。
   //   ただし「クラ助と同じスロット(物件+号室+日付)に居る見積レコード」は実在立会なので残す
@@ -5410,7 +5437,9 @@ function buildTaikyoVirtuals_(){
     recs = recs.filter(r=> !r.date || r.date >= cutStr);
   }
   const ve = recs.map(buildTaikyoVirtualEvent_);
-  return dedupeTaikyoVirtuals_(dedupeTaikyoSlots_(ve));
+  const result = dedupeTaikyoVirtuals_(dedupeTaikyoSlots_(ve));
+  __taikyoVCache_ = { epoch: __taikyoEpoch_, val: result };
+  return result;
 }
 function buildTaikyoVirtualEvent_(r){
   // 🎨 上書き優先 (担当・日時。全員共有のtaikyo_overrides → 無ければ元レコード)
