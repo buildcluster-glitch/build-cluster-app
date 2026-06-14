@@ -2208,7 +2208,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.45</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.46</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -8523,7 +8523,8 @@ function renderCalendar(){
             : "";
           const worker = (r.worker||"").trim();
           const contactPerson = (r.contactPerson||"").trim();
-          const wKey = firstWorker_(worker) || repairContactCls(contactPerson);
+          // 作業担当者(worker)のみで背景色を決定。未設定=白(空白)。連絡者(contactPerson)へはフォールバックしない v1.30.45
+          const wKey = firstWorker_(worker);
           const wColor = repairWorkerColor_(wKey);
           const wFg = wColor === "#fff" ? "#0f172a" : textColorFor(wColor);
           const label = `🔧 ${r.name}${r.room?" "+r.room:""}${tStr}`;
@@ -9086,10 +9087,10 @@ function renderCalendar(){
         const cont = contractorInfo(contShort) || contractorInfo(r.contractor);
         const tagBg = cont ? cont.color : "#94a3b8";
         const tagHtml = `<span class="title-cat" style="background:${tagBg};color:${textColorFor(tagBg)};padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;line-height:14px;height:16px;display:inline-flex;align-items:center;justify-content:center" title="${escapeHtml(r.contractor||'')}">修繕</span>`;
-        // 作業担当者色 (worker > contactPerson 優先順) で背景色を決定
+        // 作業担当者(worker)のみで背景色を決定。未設定=白(空白)。連絡者(contactPerson)へはフォールバックしない v1.30.45
         const worker = (r.worker||"").trim();
         const contactPerson = (r.contactPerson||"").trim();
-        const wKey = firstWorker_(worker) || repairContactCls(contactPerson);
+        const wKey = firstWorker_(worker);
         const wColor = repairWorkerColor_(wKey);
         const wFg = wColor === "#fff" ? "#0f172a" : textColorFor(wColor);
         const __desc = (r.requestDesc || r.requestDescFull || "").trim();
@@ -9899,7 +9900,9 @@ function showRepairQuickPop(r, anchorEl){
       setTimeout(()=>{ btn.textContent='変更'; }, 1500);
     }
   };
-  // 担当者変更
+  // 担当者変更(カレンダー上=ローカルのみ。台帳/Driveへは書き戻さない)
+  // 重い saveState()+render() は毎クリックで叩くと激重 → ピッカーのチップは即時更新し、保存＋全再描画はデバウンス(連打1回) v1.30.45
+  let __workerSaveTimer = null;
   pop.querySelector('.qp-worker-pick').onclick = (e)=>{
     const btn = e.target.closest('[data-worker]');
     if(!btn) return;
@@ -9909,9 +9912,7 @@ function showRepairQuickPop(r, anchorEl){
     else if(list.includes(w)){ list = list.filter(x=>x!==w); } // 解除(トグル)
     else { list.push(w); }                                  // 追加
     r.worker = joinWorkers_(list);
-    saveState();
-    render();
-    // ボタン状態更新(複数on可)
+    // ボタン状態更新(複数on可)— 即時(体感を軽く)
     pop.querySelectorAll('[data-worker]').forEach(b=>{
       const bw = b.dataset.worker;
       const isOn = bw === "" ? list.length===0 : list.includes(bw);
@@ -9920,6 +9921,9 @@ function showRepairQuickPop(r, anchorEl){
       if(isOn && bw && col){ b.style.background = col+'22'; b.style.borderColor = col; }
       else { b.style.background = ''; b.style.borderColor = ''; }
     });
+    // localStorage保存 + カレンダー全再描画はまとめて遅延実行
+    clearTimeout(__workerSaveTimer);
+    __workerSaveTimer = setTimeout(()=>{ saveState(); render(); }, 300);
   };
   // コメント送信
   const sendBtn = pop.querySelector('#qp-comment-send');
