@@ -2249,7 +2249,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.67</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.68</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -6901,6 +6901,35 @@ function findHatchushoForResto_(p){
   for(const r of recs){ const h = r.header||{}; if(norm(h.bukken, h.room) === pk) return r; }
   return null;
 }
+// 事前等のイベントタイトル(物件名+号室)から発注書(hatchusho_data)を探す。resto紐づけ無し用(v1.30.68)
+function findHatchushoByTitle_(ev){
+  const recs = __hatchushoRecords || [];
+  if(!recs.length) return null;
+  const t = String((ev&&ev.title)||"").split(/\r?\n/)[0].replace(/^(事前|立会|修繕|見積|商談|事務|最終確認)\s*/,"").trim();
+  if(!t) return null;
+  const room = (typeof titleRoom_==='function') ? (titleRoom_(t)||"") : ((t.match(/(\d{1,4})\s*号?室?$/)||[])[1]||"");
+  const bukken = room ? t.replace(new RegExp("\\s*"+room+"\\s*号?室?\\s*$"),"").trim() : t;
+  const normNR = (n,rm)=> String(n||"").replace(/\s|　/g,"") + "|" + String(rm||"").replace(/[\s　号室]/g,"");
+  const pk = normNR(bukken, room);
+  for(const r of recs){ const h=r.header||{}; if(normNR(h.bukken,h.room)===pk) return r; }
+  const nk = String(bukken||"").replace(/\s|　/g,"");
+  if(nk) for(const r of recs){ const h=r.header||{}; if(String(h.bukken||"").replace(/\s|　/g,"")===nk) return r; } // 号室不問で物件名一致
+  return null;
+}
+// 事前予定の発注書を直接開く(原状回復データに紐づいていない場合)。未取得なら一度だけ取得。
+async function openJizenHatchusho_(ev){
+  let rec = findHatchushoByTitle_(ev);
+  if(!rec && (__hatchushoRecords||[]).length===0){
+    try{ await fetchHatchushoData({silent:true}); }catch(_){}
+    rec = findHatchushoByTitle_(ev);
+  }
+  if(rec){
+    try{ if(typeof openHatchushoPrint_==='function') openHatchushoPrint_(rec); }
+    catch(e){ console.warn('[hatchusho] preview失敗:', e.message); if(typeof showAutoSyncToast==='function') showAutoSyncToast("📄 発注書の表示に失敗しました"); }
+    return;
+  }
+  if(typeof showAutoSyncToast==='function') showAutoSyncToast("📄 この事前予定の発注書は未配信です(見積アプリで発注確定すると表示されます)");
+}
 // 工期/日付 → M/D(曜)。変換不可なら元文字列
 function fmtHatchuDate_(s){
   if(!s) return "";
@@ -10606,24 +10635,23 @@ function attachDragOrClick(el, ev){
         //   素クリックでは従来動作・修飾キーで選択に回す。
         if(isCopyableEvent_(ev)){
           const additive = upEv.ctrlKey || upEv.metaKey || upEv.shiftKey;
-          const hasSpecialClick = (typeof isJizenEvent_==='function' && isJizenEvent_(ev) && el.querySelector('.chip-prog'))
+          // 事前/チェックリストは素クリックで専用動作(下記)。修飾キーで選択に回す。それ以外は素クリックで選択。
+          const hasSpecialClick = (typeof isJizenEvent_==='function' && isJizenEvent_(ev))
             || (typeof getTaskInfo_==='function' && getTaskInfo_(ev));
           if(additive){ toggleEventSelection_(ev.id); return; }
           if(!hasSpecialClick){ selectSingleEvent_(ev.id); return; }
         }
-        // 事前予定: 1クリックで原状回復進捗ダイアログ(最終確認カードと同じ操作感)
+        // 事前予定: 1クリックで「原状回復進捗ダイアログ(発注書ボタン付き)」/ 紐づけ無しは発注書を直接(v1.30.68)
         //   ダブルクリック(担当者ピッカー)と競合しないよう250ms遅延・dblclickで取消。
-        //   物件紐づけは既存の📋アイコン(data-resto-id)を流用(紐づく時のみ存在)。
         if(typeof isJizenEvent_==='function' && isJizenEvent_(ev)){
           const progEl = el.querySelector('.chip-prog');
           const restoId = progEl ? progEl.dataset.restoId : null;
-          if(restoId){
-            if(el._jizenClickTimer) clearTimeout(el._jizenClickTimer);
-            el._jizenClickTimer = setTimeout(()=>{
-              el._jizenClickTimer = null;
-              if(typeof openRestoDialog==='function') openRestoDialog(restoId);
-            }, 250);
-          }
+          if(el._jizenClickTimer) clearTimeout(el._jizenClickTimer);
+          el._jizenClickTimer = setTimeout(()=>{
+            el._jizenClickTimer = null;
+            if(restoId && typeof openRestoDialog==='function'){ openRestoDialog(restoId); }
+            else if(typeof openJizenHatchusho_==='function'){ openJizenHatchusho_(ev); }  // 原状回復データに紐づかない事前→発注書を物件名で直接
+          }, 250);
         }
         // 📋 チェックリストイベント(箇条書き): 1クリックでチェックリストポップ(進捗トグル)
         else if(typeof getTaskInfo_==='function' && getTaskInfo_(ev)){
