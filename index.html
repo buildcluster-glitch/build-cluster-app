@@ -2249,7 +2249,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.68</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.69</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5918,6 +5918,14 @@ function showEventStaffPicker(el, ev){
       </div>
       ${ev.color ? `<div style="font-size:10px;color:var(--muted);margin-top:4px">※ 手動色が設定済みのため、担当を変えてもチップ色は変わりません(色は詳細編集で変更)</div>` : ""}
     </div>
+    <div class="qp-sec">
+      <div class="qp-label">💬 コメント <span class="evp-cmt-count" style="text-transform:none;color:var(--muted);font-weight:400"></span></div>
+      <div class="qp-comments-list evp-cmt-list"></div>
+      <div class="qp-comment-input">
+        <textarea class="evp-cmt-input" rows="1" placeholder="メッセージ (Enter送信)"></textarea>
+        <button class="evp-cmt-send">送信</button>
+      </div>
+    </div>
     <div class="qp-actions">
       <button class="qp-detail" data-role="open-modal">✏️ 編集</button>
       <button class="qp-del-event" data-role="delete">🗑 削除</button>
@@ -5963,6 +5971,48 @@ function showEventStaffPicker(el, ev){
     render();
   };
   pop.querySelector('[data-role="close"]').onclick = ()=>pop.remove();
+  // 💬 コメント(チャット風・全員共有=予定本体ev.commentsに保存→クラウド同期)v1.30.69
+  const me = getMyself();
+  const liveEv = ()=>(state.events||[]).find(e=>e.id===ev.id) || ev;
+  const listEl = pop.querySelector('.evp-cmt-list');
+  const countEl = pop.querySelector('.evp-cmt-count');
+  const inputEl = pop.querySelector('.evp-cmt-input');
+  const fmtT = iso=>{ const d=new Date(iso); if(isNaN(d)) return ''; const p=n=>String(n).padStart(2,'0'); const td=new Date(); td.setHours(0,0,0,0); return d>=td?`${p(d.getHours())}:${p(d.getMinutes())}`:`${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+  const renderC = ()=>{
+    const cs = (liveEv().comments)||[];
+    if(countEl) countEl.textContent = cs.length?`${cs.length}件`:'';
+    if(!cs.length){ listEl.innerHTML = '<div style="font-size:11px;color:var(--muted);text-align:center;padding:6px">まだコメント無し</div>'; return; }
+    listEl.innerHTML = cs.map((c,idx)=>{
+      const mine = c.author===me;
+      return `<div class="ev-comment-card ${mine?'mine':''}" style="padding:4px 6px;font-size:11px;position:relative">
+        ${mine?`<button class="ev-comment-del" data-delc="${idx}" style="font-size:11px;display:inline">✕</button>`:''}
+        <div class="ev-comment-head" style="font-size:10px"><span class="ev-comment-author">${escapeHtml(c.author||'?')}</span><span class="ev-comment-time">${escapeHtml(fmtT(c.at))}</span></div>
+        <div class="ev-comment-text" style="font-size:11px">${escapeHtml(c.text||'')}</div>
+      </div>`;
+    }).join('');
+    listEl.querySelectorAll('[data-delc]').forEach(b=>{
+      b.onclick = ()=>{ const i=+b.dataset.delc; const t=liveEv(); if(!Array.isArray(t.comments)||!t.comments[i]) return; if(!confirm('コメント削除？')) return;
+        pushHistory(); t.comments.splice(i,1); t.updatedAt=new Date().toISOString(); saveState();
+        if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(t,'upsert'); }catch(_){} } renderC(); render(); };
+    });
+    listEl.scrollTop = listEl.scrollHeight;
+  };
+  renderC();
+  const sendC = ()=>{
+    const v=(inputEl.value||'').trim(); if(!v) return;
+    if(!me){ alert('先に「👤 自分」を設定してください(タスク画面の👤から)'); return; }
+    const t = liveEv();
+    if(!Array.isArray(t.comments)) t.comments=[];
+    pushHistory();
+    t.comments.push({ id:'c_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5), author:me, text:v, at:new Date().toISOString() });
+    t.updatedAt=new Date().toISOString();
+    saveState();
+    if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(t,'upsert'); }catch(_){} }
+    inputEl.value=''; inputEl.style.height='';
+    renderC(); render();
+  };
+  pop.querySelector('.evp-cmt-send').onclick = sendC;
+  inputEl.onkeydown = e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendC(); } };
   const closeOnOutside = (ev2)=>{
     if(!pop.contains(ev2.target)){ pop.remove(); document.removeEventListener("pointerdown", closeOnOutside, true); }
   };
