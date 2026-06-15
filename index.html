@@ -2249,7 +2249,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.62</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.63</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9219,14 +9219,19 @@ function renderCalendar(){
       // 月ビューの通常イベントは hour-cell に append（セル単位スクロール）
       // 月ビュー終日 & その他ビューは従来通り sub-col に絶対配置
       if(isMonth && !isFree){
-        const startMin = timeToMin(ev.start) - HOUR_START*60;
-        const hour = Math.floor(startMin / 60) + HOUR_START;
+        const startMinAbs = timeToMin(ev.start);
+        const hour = Math.floor(startMinAbs / 60);
         const cell = dayCol.querySelector(`.hour-cell[data-hour="${hour}"]`);
         if(cell){
           // hour-cell 内では flex 縦積み。絶対配置プロパティをクリア
           el.style.top = "";
           el.style.left = "";
           el.style.right = "";
+          // 📍 開始分(15分等)を反映: そのセルの先頭チップは分ぶん下げて配置(単独予定は正しい時刻位置に)v1.30.63
+          const minOffset = startMinAbs % 60;
+          if(minOffset > 0 && cell.children.length === 0){
+            el.style.marginTop = (minOffset/60*HOUR_PX) + "px";
+          }
           cell.appendChild(el);
         } else {
           targetCol.appendChild(el); // フォールバック
