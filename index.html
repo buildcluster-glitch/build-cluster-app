@@ -2242,7 +2242,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.56</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.57</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9854,12 +9854,16 @@ function showChipTip(ev, mouseX, mouseY){
   }
   // メモ
   const memoHtml = ev.memo ? `<div class="tt-memo">📝 ${escapeHtml(ev.memo)}</div>` : "";
-  // 💬 コメント (直近2件まで・件数も)
+  // 💬 コメント (立会は全員共有の taikyo_comments、それ以外は ev.comments) ・直近4件まで表示(v1.30.57)
   let commentsHtml = '';
-  if(ev.comments && ev.comments.length){
-    const recent = ev.comments.slice(-2);
-    const preview = recent.map(c=>`<div style="font-size:11px;color:#374151;margin-top:2px"><b style="color:#1f2937">${escapeHtml(c.author||'?')}:</b> ${escapeHtml((c.text||'').slice(0,60))}${(c.text||'').length>60?'…':''}</div>`).join('');
-    commentsHtml = `<div class="tt-memo" style="border-top:1px dashed var(--border);margin-top:6px;padding-top:6px"><b style="font-size:11px">💬 コメント ${ev.comments.length}件</b>${preview}</div>`;
+  const __cmts = (ev.source === "taikyo-shared" && typeof getTaikyoComments_==='function')
+    ? getTaikyoComments_(ev._taikyoRawId || ev.id)
+    : (ev.comments || []);
+  if(__cmts && __cmts.length){
+    const recent = __cmts.slice(-4);
+    const preview = recent.map(c=>`<div style="font-size:11px;color:#374151;margin-top:2px"><b style="color:#1f2937">${escapeHtml(c.author||'?')}:</b> ${escapeHtml((c.text||'').slice(0,80))}${(c.text||'').length>80?'…':''}</div>`).join('');
+    const more = __cmts.length > recent.length ? `<div style="font-size:10px;color:var(--muted);margin-top:2px">…他${__cmts.length-recent.length}件</div>` : '';
+    commentsHtml = `<div class="tt-memo" style="border-top:1px dashed var(--border);margin-top:6px;padding-top:6px"><b style="font-size:11px">💬 コメント ${__cmts.length}件</b>${preview}${more}</div>`;
   }
   tip.innerHTML = titleHtml + rows.join("") + memoHtml + commentsHtml;
   // 位置決め(マウス右下、ウィンドウ範囲チェック)
