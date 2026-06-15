@@ -2242,7 +2242,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.54</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.55</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5202,6 +5202,82 @@ function setTaikyoDateTimeOverride_(taikyoId, patch){
   }catch(e){ console.warn('[migrate] override修復失敗', e); }
 })();
 // ===========================================================
+// 🎨 修繕アポの作業担当(worker)上書き — 全員共有(shared-config 'repair_overrides' = Drive json) v1.30.55
+//   見積アプリの台帳は触らず、カレンダー上で割り当てた作業担当を全ユーザーへ反映する専用オーバーレイ。
+//   entry = { worker, at, by }  ※worker="" は「担当なし(クリア)」。解除も delete でなく空worker(at新)でLWW。
+//   value(JSON) = { overrides:{ [repairId]: entry }, updatedAt }
+// ===========================================================
+const REPAIR_OVERRIDE_KEY = "buildcluster_repair_overrides";
+function loadRepairOverrides_(){
+  try{ const o = JSON.parse(localStorage.getItem(REPAIR_OVERRIDE_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; }
+}
+function saveRepairOverrides_(map){ try{ localStorage.setItem(REPAIR_OVERRIDE_KEY, JSON.stringify(map||{})); }catch(e){} }
+function mergeRepairOverrideMaps_(a,b){
+  const out={}; const keys=new Set([...Object.keys(a||{}),...Object.keys(b||{})]);
+  keys.forEach(k=>{ const ea=a?.[k], eb=b?.[k];
+    if(!ea){ out[k]=eb; return; } if(!eb){ out[k]=ea; return; }
+    out[k] = (String(eb.at||'')>=String(ea.at||'')) ? eb : ea; });   // last-write-wins
+  return out;
+}
+// オーバーレイを state.repairs.worker に反映(クラウド共有値が真値)
+function applyRepairOverridesToState_(){
+  const map = loadRepairOverrides_();
+  (state.repairs||[]).forEach(r=>{ const e=map[r.id]; if(e && e.at){ r.worker = e.worker||""; } });
+}
+async function fetchRepairOverrides_(opts={}){
+  const s = loadGasSettings();
+  const local = loadRepairOverrides_();
+  if(!s.url || !s.token){ applyRepairOverridesToState_(); return local; }
+  try{
+    const url = `${s.url}?action=get-shared-config&key=repair_overrides&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res = await fetch(url, {method:'GET', redirect:'follow'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json();
+    let raw = data.value;
+    if(raw==='' || raw==null) raw = {overrides:{}};
+    else if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(e){ raw={overrides:{}}; } }
+    const remote = (raw && raw.overrides && typeof raw.overrides==='object') ? raw.overrides : {};
+    const merged = mergeRepairOverrideMaps_(remote, local);
+    saveRepairOverrides_(merged);
+    applyRepairOverridesToState_();
+    if(opts.push && JSON.stringify(merged) !== JSON.stringify(remote)){ pushRepairOverridesMap_(merged).catch(()=>{}); }
+    if(!opts.silent && typeof render==='function') render();
+    return merged;
+  }catch(err){ if(!opts.silent) console.warn('[repair_overrides] fetch失敗:', err.message); applyRepairOverridesToState_(); return local; }
+}
+async function pushRepairOverridesMap_(map){
+  const s = loadGasSettings(); if(!s.url || !s.token) return;
+  const payload = { overrides: map||{}, updatedAt: new Date().toISOString() };
+  try{
+    await fetch(s.url, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ action:'save-shared-config', key:'repair_overrides', value: JSON.stringify(payload), token: s.token, savedBy:'calendar-app' }) });
+  }catch(e){ console.warn('[repair_overrides] push失敗:', e.message); }
+}
+// 最新remote取得→自分の変更を最新atで上書き→push(他端末の割当を消さない)。worker=カンマ区切り文字列。
+async function setRepairWorkerOverride_(repairId, worker){
+  const stamp = ()=>({ worker: worker||'', at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
+  let map = loadRepairOverrides_();
+  map[repairId] = stamp();                 // 楽観的にローカル即更新
+  saveRepairOverrides_(map);
+  const s = loadGasSettings();
+  if(s.url && s.token){
+    try{
+      const url = `${s.url}?action=get-shared-config&key=repair_overrides&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+      const res = await fetch(url, {method:'GET', redirect:'follow'});
+      if(res.ok){ const d=await res.json(); let raw=d.value;
+        if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(_){ raw=null; } }
+        if(raw && raw.overrides && typeof raw.overrides==='object'){
+          map = mergeRepairOverrideMaps_(raw.overrides, loadRepairOverrides_());
+          map[repairId] = stamp();         // 今回の変更を最新として確実に残す
+          saveRepairOverrides_(map);
+        }
+      }
+    }catch(_){}
+  }
+  await pushRepairOverridesMap_(map);
+  return map;
+}
+// ===========================================================
 // 💬 退去立会 コメント (全員共有・shared-config 'taikyo_comments')
 //   value = JSON { comments: { [taikyoId]: [ {id,author,text,at} ] }, updatedAt }
 //   マルチ著者なので「最新remoteを取得→1操作だけ適用→push」で他端末のコメントを消さない。
@@ -7617,6 +7693,7 @@ async function syncChecksFromGAS(opts){
     // 既存の gas-sync 由来を破棄して入れ替え。手動追加(source未設定)は保持
     state.checks = state.checks.filter(c => c.source !== "gas-sync").concat(imported);
     state.repairs = repairs;
+    if(typeof applyRepairOverridesToState_==='function') applyRepairOverridesToState_();  // 全員共有の作業担当を反映(v1.30.55)
     state.restorations = restorations;
     saveState();
     localStorage.setItem("buildcluster_gas_synced_at", new Date().toISOString());
@@ -9995,8 +10072,9 @@ function showRepairQuickPop(r, anchorEl){
       setTimeout(()=>{ btn.textContent='変更'; }, 1500);
     }
   };
-  // 担当者変更(カレンダー上=ローカルのみ。台帳/Driveへは書き戻さない)
-  // 重い saveState()+render() は毎クリックで叩くと激重 → ピッカーのチップは即時更新し、保存＋全再描画はデバウンス(連打1回) v1.30.45
+  // 担当者変更: 見積アプリの台帳は触らないが、作業担当(色)は全ユーザー共有が必要なので
+  //   shared-config 'repair_overrides' にpushして同期する(v1.30.55)。台帳への書き戻しは引き続き無し。
+  // 重い saveState()+render() は毎クリックで叩くと激重 → ピッカーのチップは即時更新し、保存＋全再描画＋クラウドpushはデバウンス(連打1回)
   let __workerSaveTimer = null;
   pop.querySelector('.qp-worker-pick').onclick = (e)=>{
     const btn = e.target.closest('[data-worker]');
@@ -10016,9 +10094,12 @@ function showRepairQuickPop(r, anchorEl){
       if(isOn && bw && col){ b.style.background = col+'22'; b.style.borderColor = col; }
       else { b.style.background = ''; b.style.borderColor = ''; }
     });
-    // localStorage保存 + カレンダー全再描画はまとめて遅延実行
+    // localStorage保存 + カレンダー全再描画 + 全員共有pushはまとめて遅延実行
     clearTimeout(__workerSaveTimer);
-    __workerSaveTimer = setTimeout(()=>{ saveState(); render(); }, 300);
+    __workerSaveTimer = setTimeout(()=>{
+      saveState(); render();
+      if(typeof setRepairWorkerOverride_==='function') setRepairWorkerOverride_(r.id, r.worker).catch(()=>{});
+    }, 300);
   };
   // コメント送信
   const sendBtn = pop.querySelector('#qp-comment-send');
@@ -15146,6 +15227,11 @@ setTimeout(()=>{
     if(typeof fetchTaikyoOverrides_==='function'){
       fetchTaikyoOverrides_({silent:true, push:true}).catch(()=>{});
       setInterval(()=>fetchTaikyoOverrides_({silent:true}).catch(()=>{}), 5*60*1000);
+    }
+    // 🎨 修繕 作業担当 上書き(全員共有) 取得・初回はローカル分をpush(移行)・以後5分ごと(v1.30.55)
+    if(typeof fetchRepairOverrides_==='function'){
+      fetchRepairOverrides_({silent:true, push:true}).catch(()=>{});
+      setInterval(()=>fetchRepairOverrides_({silent:true}).catch(()=>{}), 5*60*1000);
     }
     // 📄 立会「資料作成済」フラグ (見積アプリ→shared-config) 取得・以後5分ごと
     fetchTaikyoShiryoReady({silent:true});
