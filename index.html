@@ -2249,7 +2249,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.64</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.65</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -11458,11 +11458,13 @@ function showQuickAddSheet_(defaults={}){
   const qaCats = [{name:"未分類", val:"", color:"#cbd5e1"}]
     .concat(CATEGORIES.filter(c=>c.name!=="立会(未定)").map(c=>({name:c.name, val:c.name, color:c.color})));
   const dateV = defaults.date || fmtDate(currentDate || new Date());
-  const startV = defaults.start || "";
-  const timeOpts = ['<option value="">時間未定</option>'];
+  // クリック位置(アクティブセル/ダブルクリック)。時刻ドロップダウンは常に「時間未定」初期選択にし、
+  // 位置だけ posStart に保持 → 時間未定でも選んだ位置(例11:45)にチップを表示(v1.30.65)
+  const posStart = defaults.start || "";
+  const timeOpts = ['<option value="" selected>時間未定</option>'];
   for(let h=7; h<=19; h++) for(let m=0; m<60; m+=15){
     const v = `${pad(h)}:${pad(m)}`;
-    timeOpts.push(`<option value="${v}"${v===startV?' selected':''}>${v}</option>`);
+    timeOpts.push(`<option value="${v}">${v}</option>`);
   }
   const endOf = st => st ? `${pad(Math.min(+st.slice(0,2)+1, 23))}:${st.slice(3)}` : "10:00";
   const bd = document.createElement('div');
@@ -11508,8 +11510,9 @@ function showQuickAddSheet_(defaults={}){
     const t = bd.querySelector('#qa-title').value;
     const d = bd.querySelector('#qa-date').value;
     const st = bd.querySelector('#qa-time').value;
+    const posS = st || posStart || "";   // 時間未定でもクリック位置を引き継ぐ
     bd.remove();
-    openEventModal(null, {date:d||undefined, staff:selStaff||undefined, start:st||undefined, end:st?endOf(st):undefined, category:selCat||undefined});
+    openEventModal(null, {date:d||undefined, staff:selStaff||undefined, start:posS||undefined, end:posS?endOf(posS):undefined, category:selCat||undefined});
     try{ if(t) document.getElementById('ev-title').value = t; }catch(_){}
   };
   bd.querySelector('#qa-save').onclick = ()=>{
@@ -11517,9 +11520,11 @@ function showQuickAddSheet_(defaults={}){
     if(!title){ alert('タイトルを入れてください'); return; }
     const d = bd.querySelector('#qa-date').value || fmtDate(new Date());
     const st = bd.querySelector('#qa-time').value;
+    // 表示位置: 時刻を選べばその時刻(timed) / 時間未定でもクリック位置(posStart)があればそこに配置(anytime) / 無ければ09:00
+    const posS = st || posStart || "09:00";
     const ev = {
       id: uid(), title, category: selCat||"", contractor:"", staff: selStaff||"", participants: [],
-      date: d, start: st||"09:00", end: endOf(st), allday: false, timeMode: st ? "timed" : "anytime",
+      date: d, start: posS, end: endOf(posS), allday: false, timeMode: st ? "timed" : "anytime",
       color:"", memo:"", importance: [], updatedAt: new Date().toISOString(),
     };
     if(typeof pushHistory==='function') pushHistory();
@@ -11532,7 +11537,15 @@ function showQuickAddSheet_(defaults={}){
 // 新規予定の入口: PC/スマホとも簡易シート(タイトル/日付/時刻/カテゴリ/担当)。
 //   事前・最終確認・立会・修繕は自動登録されるので手動追加は最小限で十分。細かい設定は「✏️詳細」から従来フォームへ。(v1.30.53)
 function openQuickOrFullEvent_(defaults){
-  showQuickAddSheet_(defaults || {});
+  defaults = defaults || {};
+  // 📍 選択中のアクティブセル(クリック位置)があれば、時刻/日付/担当の初期位置に使う(v1.30.65)
+  if(!defaults.start && activeSlot && activeSlot.startMin!=null){
+    defaults = {...defaults};
+    defaults.start = `${pad(Math.floor(activeSlot.startMin/60))}:${pad(activeSlot.startMin%60)}`;
+    if(!defaults.date  && typeof activeSlot.colKey==='string' && activeSlot.colKey.startsWith('date-'))  defaults.date  = activeSlot.colKey.slice(5);
+    if(!defaults.staff && typeof activeSlot.colKey==='string' && activeSlot.colKey.startsWith('staff-')) defaults.staff = activeSlot.colKey.slice(6);
+  }
+  showQuickAddSheet_(defaults);
 }
 document.getElementById("addBtn").onclick = ()=>openQuickOrFullEvent_();
 document.getElementById("undoBtn").onclick = ()=>undo();
