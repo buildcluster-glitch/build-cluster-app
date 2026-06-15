@@ -2249,7 +2249,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.60</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.61</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9378,14 +9378,18 @@ function renderCalendar(){
             end: `${pad(endH)}:${pad(endM)}`
           });
         };
-        // 📋 空きセルのシングルクリック: 選択解除 + 📍アクティブセル表示 +(コピー中なら)貼付先設定(v1.30.54/59)
+        // 📋 空きセルのシングルクリック: 選択解除 + 📍アクティブセル(15分)表示 +(コピー中なら)貼付先設定(v1.30.54/59/61)
+        //   月もhour-cell内のクリック位置から15分slotを算出し、週/日と同じsub-colマーカーで細かく表示
         cell.onclick = (e)=>{
           if(e.target.closest(".event")) return;
           clearEventSelection_();
           const hour = parseInt(cell.dataset.hour, 10);
-          setActiveSlot_({ kind:'cell', colKey: (cell.closest('.day-col')?.dataset.colKey)||'', hour });
+          const rect = cell.getBoundingClientRect();
+          const within = Math.max(0, Math.min(59, Math.floor((e.clientY-rect.top)/rect.height*60)));
+          const startMin = hour*60 + Math.floor(within/SLOT_MIN)*SLOT_MIN;
+          setActiveSlot_({ kind:'subcol', colKey: cell.dataset.colKey, startMin });
           if(eventClipboard.length){
-            setPasteAnchor_(c.contextDate, hour*60, c.contextStaff || null);
+            setPasteAnchor_(c.contextDate, startMin, c.contextStaff || null);
           }
         };
       });
