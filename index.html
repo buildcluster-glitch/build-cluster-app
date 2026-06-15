@@ -2249,7 +2249,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.66</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.67</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5919,7 +5919,7 @@ function showEventStaffPicker(el, ev){
       ${ev.color ? `<div style="font-size:10px;color:var(--muted);margin-top:4px">※ 手動色が設定済みのため、担当を変えてもチップ色は変わりません(色は詳細編集で変更)</div>` : ""}
     </div>
     <div class="qp-actions">
-      <button class="qp-detail" data-role="open-modal">✏️ 詳細編集</button>
+      <button class="qp-detail" data-role="open-modal">✏️ 編集</button>
       <button class="qp-del-event" data-role="delete">🗑 削除</button>
       <button class="qp-close" data-role="close">閉じる</button>
     </div>`;
@@ -5949,7 +5949,8 @@ function showEventStaffPicker(el, ev){
       pop.remove();
     };
   });
-  pop.querySelector('[data-role="open-modal"]').onclick = ()=>{ pop.remove(); openEventModal(ev); };
+  // ✏️編集: 簡易シートで編集(さらに細かい設定はシート内の✏️詳細から従来フォーム) v1.30.67
+  pop.querySelector('[data-role="open-modal"]').onclick = ()=>{ pop.remove(); showQuickAddSheet_({}, ev); };
   // 🗑 予定削除(通常予定のみ・修繕/立会は別ピッカーなので対象外) v1.30.64
   pop.querySelector('[data-role="delete"]').onclick = ()=>{
     if(!confirm(`「${titleLine||"この予定"}」を削除しますか？`)) return;
@@ -11533,29 +11534,32 @@ document.querySelectorAll(".view-switch button").forEach(b=>{
 });
 // 📱 予定クイック追加シート (v1.30.19): スマホはフルモーダルだと大変なので最低限(タイトル/日付/時刻/担当)だけで登録。
 //   「✏️詳細」で従来モーダルへ引き継ぎ。PCは従来通りフルモーダル
-function showQuickAddSheet_(defaults={}){
+function showQuickAddSheet_(defaults={}, editEv=null){
   document.querySelectorAll('.quick-add-sheet-backdrop').forEach(x=>x.remove());
   const me = getMyself();
-  let selStaff = (defaults.staff && STAFF.includes(defaults.staff)) ? defaults.staff : (STAFF.includes(me) ? me : "");
-  let selCat = defaults.category || "";   // カテゴリ(未分類="")
+  const isEdit = !!editEv;   // 📝 既存予定の簡易編集モード(v1.30.67)
+  let selStaff = isEdit ? (editEv.staff||"") : ((defaults.staff && STAFF.includes(defaults.staff)) ? defaults.staff : (STAFF.includes(me) ? me : ""));
+  let selCat = isEdit ? (editEv.category||"") : (defaults.category || "");   // カテゴリ(未分類="")
   // 手動入力で選べるカテゴリ(立会(未定)は自動生成なので除外)＋先頭に未分類
   const qaCats = [{name:"未分類", val:"", color:"#cbd5e1"}]
     .concat(CATEGORIES.filter(c=>c.name!=="立会(未定)").map(c=>({name:c.name, val:c.name, color:c.color})));
-  const dateV = defaults.date || fmtDate(currentDate || new Date());
-  // クリック位置(アクティブセル/ダブルクリック)。時刻ドロップダウンは常に「時間未定」初期選択にし、
-  // 位置だけ posStart に保持 → 時間未定でも選んだ位置(例11:45)にチップを表示(v1.30.65)
-  const posStart = defaults.start || "";
-  const timeOpts = ['<option value="" selected>時間未定</option>'];
+  const dateV = (isEdit ? editEv.date : defaults.date) || fmtDate(currentDate || new Date());
+  const titleV = isEdit ? (editEv.title||"") : "";
+  // クリック位置(アクティブセル/ダブルクリック)。位置だけ posStart に保持 → 時間未定でも選んだ位置(例11:45)に表示(v1.30.65)
+  // 編集時は時刻指定ならその時刻を初期選択、時間未定/終日なら「時間未定」(位置は元のstartを保持)
+  const posStart = isEdit ? (editEv.start||"") : (defaults.start || "");
+  const selTime = isEdit ? (editEv.timeMode==="timed" ? (editEv.start||"") : "") : "";
+  const timeOpts = [`<option value=""${selTime?"":" selected"}>時間未定</option>`];
   for(let h=7; h<=19; h++) for(let m=0; m<60; m+=15){
     const v = `${pad(h)}:${pad(m)}`;
-    timeOpts.push(`<option value="${v}">${v}</option>`);
+    timeOpts.push(`<option value="${v}"${v===selTime?' selected':''}>${v}</option>`);
   }
   const endOf = st => st ? `${pad(Math.min(+st.slice(0,2)+1, 23))}:${st.slice(3)}` : "10:00";
   const bd = document.createElement('div');
   bd.className = 'quick-add-sheet-backdrop';
   bd.innerHTML = `<div class="quick-add-sheet">
-    <h3>＋ 予定を追加 <span style="font-weight:400;font-size:11px;color:var(--muted)">最低限だけ。細かい設定は✏️詳細から</span></h3>
-    <div class="qa-row"><input type="text" id="qa-title" placeholder="タイトル (例: 〇〇 立会)" autocomplete="off"></div>
+    <h3>${isEdit?'✏️ 予定を編集':'＋ 予定を追加'} <span style="font-weight:400;font-size:11px;color:var(--muted)">${isEdit?'簡易編集。細かい設定は✏️詳細から':'最低限だけ。細かい設定は✏️詳細から'}</span></h3>
+    <div class="qa-row"><input type="text" id="qa-title" placeholder="タイトル (例: 〇〇 立会)" autocomplete="off" value="${escapeHtml(titleV)}"></div>
     <div class="qa-row">
       <input type="date" id="qa-date" value="${escapeHtml(dateV)}">
       <select id="qa-time">${timeOpts.join('')}</select>
@@ -11572,7 +11576,7 @@ function showQuickAddSheet_(defaults={}){
     <div class="qa-actions">
       <button id="qa-cancel" style="background:#f1f5f9;color:#334155">キャンセル</button>
       <button id="qa-detail" style="background:#e0e7ff;color:#3730a3">✏️ 詳細</button>
-      <button id="qa-save" style="background:var(--accent);color:#fff">登録</button>
+      <button id="qa-save" style="background:var(--accent);color:#fff">${isEdit?'保存':'登録'}</button>
     </div>
   </div>`;
   document.body.appendChild(bd);
@@ -11596,6 +11600,7 @@ function showQuickAddSheet_(defaults={}){
     const st = bd.querySelector('#qa-time').value;
     const posS = st || posStart || "";   // 時間未定でもクリック位置を引き継ぐ
     bd.remove();
+    if(isEdit){ openEventModal(editEv); return; }   // 編集: 従来フォームで詳細編集
     openEventModal(null, {date:d||undefined, staff:selStaff||undefined, start:posS||undefined, end:posS?endOf(posS):undefined, category:selCat||undefined});
     try{ if(t) document.getElementById('ev-title').value = t; }catch(_){}
   };
@@ -11604,6 +11609,20 @@ function showQuickAddSheet_(defaults={}){
     if(!title){ alert('タイトルを入れてください'); return; }
     const d = bd.querySelector('#qa-date').value || fmtDate(new Date());
     const st = bd.querySelector('#qa-time').value;
+    if(isEdit){
+      // 📝 既存予定を上書き保存(title/カテゴリ/担当/日付/時刻)。時間未定なら位置は維持し元のmode/終日を尊重
+      const target = (state.events||[]).find(e=>e.id===editEv.id);
+      if(!target){ bd.remove(); return; }
+      if(typeof pushHistory==='function') pushHistory();
+      target.title = title; target.category = selCat||""; target.staff = selStaff||""; target.date = d;
+      if(st){ target.start = st; target.end = endOf(st); target.timeMode = "timed"; target.allday = false; }
+      else { const posS = posStart || target.start || "09:00"; target.start = posS; target.end = endOf(posS); target.timeMode = target.allday ? (target.timeMode||"allday") : "anytime"; }
+      target.updatedAt = new Date().toISOString();
+      saveState();
+      if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(target,'upsert'); }catch(_){} }
+      render(); bd.remove();
+      return;
+    }
     // 表示位置: 時刻を選べばその時刻(timed) / 時間未定でもクリック位置(posStart)があればそこに配置(anytime) / 無ければ09:00
     const posS = st || posStart || "09:00";
     const ev = {
