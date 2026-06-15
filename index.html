@@ -967,6 +967,13 @@
     padding:8px 14px; border-radius:999px; box-shadow:0 6px 20px rgba(0,0,0,.28);
     display:flex; align-items:center; gap:10px; max-width:92vw;
   }
+  /* 📍 Excel風アクティブセル(クリック位置)v1.30.59 */
+  .active-slot-marker{
+    position:absolute; left:1px; right:1px; z-index:6; pointer-events:none;
+    border:2px solid #2563eb; border-radius:4px; background:rgba(37,99,235,.10);
+    box-shadow:0 0 0 1px rgba(255,255,255,.6), inset 0 0 0 9999px rgba(37,99,235,.04);
+  }
+  .hour-cell.active-cell{ box-shadow:inset 0 0 0 2px #2563eb; background:rgba(37,99,235,.08); }
   #paste-banner b{ color:#93c5fd; }
   #paste-banner button{ background:#475569; color:#fff; border:none; border-radius:6px; padding:3px 9px; font-size:11px; font-weight:700; cursor:pointer; }
   #paste-banner button:hover{ background:#64748b; }
@@ -2242,7 +2249,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.58</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.59</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3856,6 +3863,7 @@ let hiddenCategories = new Set();  // 非表示中のカテゴリ名（"(未分�
 let selectedEventIds = new Set();  // 選択中の予定id
 let eventClipboard = [];           // Ctrl+Cでコピーした予定スナップショット配列
 let pasteAnchor = null;            // {date,startMin,staff} クリックした空きスロット=貼付先
+let activeSlot = null;             // 📍Excel風アクティブセル {kind:'subcol'|'cell', colKey, startMin?, hour?}
 
 function loadState(){
   try{
@@ -9341,14 +9349,15 @@ function renderCalendar(){
           end: `${pad(endH)}:${pad(endM)}`
         });
       };
-      // 📋 空きスロットのシングルクリック: 選択解除 +(コピー中なら)貼付先をここに設定(v1.30.54)
+      // 📋 空きスロットのシングルクリック: 選択解除 + 📍アクティブセル表示 +(コピー中なら)貼付先設定(v1.30.54/59)
       sc.onclick = (e)=>{
         if(e.target!==sc) return;
         clearEventSelection_();
+        const rect = sc.getBoundingClientRect();
+        const minutes = Math.floor((e.clientY - rect.top) / HOUR_PX * 60);
+        const startMin = HOUR_START*60 + Math.floor(minutes/SLOT_MIN)*SLOT_MIN;
+        setActiveSlot_({ kind:'subcol', colKey: sc.dataset.colKey, startMin });
         if(eventClipboard.length){
-          const rect = sc.getBoundingClientRect();
-          const minutes = Math.floor((e.clientY - rect.top) / HOUR_PX * 60);
-          const startMin = HOUR_START*60 + Math.floor(minutes/SLOT_MIN)*SLOT_MIN;
           setPasteAnchor_(c.contextDate, startMin, c.contextStaff || null);
         }
       };
@@ -9369,18 +9378,21 @@ function renderCalendar(){
             end: `${pad(endH)}:${pad(endM)}`
           });
         };
-        // 📋 空きセルのシングルクリック: 選択解除 +(コピー中なら)貼付先設定(v1.30.54)
+        // 📋 空きセルのシングルクリック: 選択解除 + 📍アクティブセル表示 +(コピー中なら)貼付先設定(v1.30.54/59)
         cell.onclick = (e)=>{
           if(e.target.closest(".event")) return;
           clearEventSelection_();
+          const hour = parseInt(cell.dataset.hour, 10);
+          setActiveSlot_({ kind:'cell', colKey: (cell.closest('.day-col')?.dataset.colKey)||'', hour });
           if(eventClipboard.length){
-            const hour = parseInt(cell.dataset.hour, 10);
             setPasteAnchor_(c.contextDate, hour*60, c.contextStaff || null);
           }
         };
       });
     }
   });
+  // 📍 アクティブセル(クリック位置)を再描画後に復元(v1.30.59)
+  if(typeof drawActiveSlot_==='function') drawActiveSlot_();
   // 月ビューの列幅: 列ごと個別管理に変更したため自動フィットは無効化
   if(__isMonth){
     attachColResizeHandles(colCount);
@@ -10571,6 +10583,26 @@ function refreshSelectionUI_(){
     el.classList.toggle('chip-selected', selectedEventIds.has(el.dataset.eventId));
   });
 }
+// 📍 Excel風アクティブセル: クリックした位置を枠でハイライト(再描画後も復元)。v1.30.59
+function setActiveSlot_(slot){ activeSlot = slot; drawActiveSlot_(); }
+function clearActiveSlot_(){ if(!activeSlot) return; activeSlot = null; drawActiveSlot_(); }
+function drawActiveSlot_(){
+  document.querySelectorAll('.active-slot-marker').forEach(m=>m.remove());
+  document.querySelectorAll('.hour-cell.active-cell').forEach(c=>c.classList.remove('active-cell'));
+  if(!activeSlot) return;
+  if(activeSlot.kind === 'cell'){
+    const dayCol = [...document.querySelectorAll('.day-col')].find(d=>d.dataset.colKey===activeSlot.colKey);
+    if(dayCol){ const cell=[...dayCol.querySelectorAll('.hour-cell')].find(c=>+c.dataset.hour===activeSlot.hour); if(cell) cell.classList.add('active-cell'); }
+  }else{
+    const sc = [...document.querySelectorAll('.sub-col')].find(s=>s.dataset.colKey===activeSlot.colKey);
+    if(sc && typeof HOUR_PX==='number'){
+      const m=document.createElement('div'); m.className='active-slot-marker';
+      const top=((activeSlot.startMin - HOUR_START*60)/60)*HOUR_PX;
+      m.style.top=Math.max(0,top)+'px'; m.style.height=HOUR_PX+'px';
+      sc.appendChild(m);
+    }
+  }
+}
 function copySelectedEvents_(){
   const ids = [...selectedEventIds];
   eventClipboard = ids.map(id=>(state.events||[]).find(e=>e.id===id))
@@ -10635,7 +10667,7 @@ document.addEventListener('keydown', e=>{
   }else if(mod && (e.key==='v' || e.key==='V')){
     if(eventClipboard.length){ e.preventDefault(); pasteEventsAtAnchor_(); }
   }else if(e.key==='Escape'){
-    if(selectedEventIds.size || eventClipboard.length){ clearEventSelection_(); eventClipboard=[]; pasteAnchor=null; updatePasteBanner_(); }
+    if(selectedEventIds.size || eventClipboard.length || activeSlot){ clearEventSelection_(); eventClipboard=[]; pasteAnchor=null; updatePasteBanner_(); clearActiveSlot_(); }
   }
 });
 
