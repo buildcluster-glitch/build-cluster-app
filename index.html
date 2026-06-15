@@ -2249,7 +2249,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.63</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.64</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5836,6 +5836,7 @@ function showEventStaffPicker(el, ev){
     </div>
     <div class="qp-actions">
       <button class="qp-detail" data-role="open-modal">✏️ 詳細編集</button>
+      <button class="qp-del-event" data-role="delete">🗑 削除</button>
       <button class="qp-close" data-role="close">閉じる</button>
     </div>`;
   document.body.appendChild(pop);
@@ -5865,6 +5866,17 @@ function showEventStaffPicker(el, ev){
     };
   });
   pop.querySelector('[data-role="open-modal"]').onclick = ()=>{ pop.remove(); openEventModal(ev); };
+  // 🗑 予定削除(通常予定のみ・修繕/立会は別ピッカーなので対象外) v1.30.64
+  pop.querySelector('[data-role="delete"]').onclick = ()=>{
+    if(!confirm(`「${titleLine||"この予定"}」を削除しますか？`)) return;
+    pushHistory();
+    const removed = (state.events||[]).find(e=>e.id===ev.id);
+    state.events = (state.events||[]).filter(e=>e.id!==ev.id);
+    saveState();
+    if(removed && typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(removed,'delete'); }catch(_){} }
+    pop.remove();
+    render();
+  };
   pop.querySelector('[data-role="close"]').onclick = ()=>pop.remove();
   const closeOnOutside = (ev2)=>{
     if(!pop.contains(ev2.target)){ pop.remove(); document.removeEventListener("pointerdown", closeOnOutside, true); }
