@@ -2249,7 +2249,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.61</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.62</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3743,7 +3743,7 @@ function buildMonthColTemplate(cols){
   return parts.join(' ');
 }
 const SLOT_MIN   = 15;  // スナップ単位(分) — ダブルクリック新規作成・時刻ステッパー用
-const DRAG_SNAP_MIN = 60; // ドラッグ&ドロップ移動時のスナップ単位(分) — 1時間刻み
+const DRAG_SNAP_MIN = 15; // ドラッグ&ドロップ移動時のスナップ単位(分) — 15分刻み(v1.30.62)
 const COLS_PER_DAY = 3; // 1日の列数
 const TIME_COL_W = 50;  // 時間列幅(px)
 const STORAGE_KEY = "buildcluster_schedule_v1";
