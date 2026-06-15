@@ -2249,7 +2249,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.65</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.66</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5284,6 +5284,90 @@ async function setRepairWorkerOverride_(repairId, worker){
   }
   await pushRepairOverridesMap_(map);
   return map;
+}
+// ===========================================================
+// 🗑 予定削除トゥームストーン — 全員共有(shared-config 'event_deletions' = Drive json) v1.30.66
+//   削除した予定idと削除時刻を記録し、各端末がそれを読んでローカルからも除去する(削除伝播)。
+//   value(JSON) = { deletions:{ [eventId]: deletedAtISO }, updatedAt }
+//   ・LWW: 予定の updatedAt が tombstone より新しい(=削除後に再作成/編集)なら誤って消さない。
+//   ・90日より古い tombstone はローテ除外(肥大防止)。
+// ===========================================================
+const EVENT_DELETIONS_KEY = "buildcluster_event_deletions";
+function loadEventDeletions_(){
+  try{ const o = JSON.parse(localStorage.getItem(EVENT_DELETIONS_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; }
+}
+function saveEventDeletions_(map){ try{ localStorage.setItem(EVENT_DELETIONS_KEY, JSON.stringify(map||{})); }catch(e){} }
+function mergeEventDeletions_(a,b){
+  const out={}; const keys=new Set([...Object.keys(a||{}),...Object.keys(b||{})]);
+  keys.forEach(k=>{ const ta=a&&a[k], tb=b&&b[k]; out[k] = (String(tb||'')>=String(ta||'')) ? (tb||ta) : (ta||tb); }); // 新しい削除時刻を採用
+  return out;
+}
+// 90日より古い tombstone を間引く
+function pruneEventDeletions_(map){
+  const cut = new Date(Date.now() - 90*86400000).toISOString();
+  Object.keys(map).forEach(id=>{ if(String(map[id]||'') < cut) delete map[id]; });
+  return map;
+}
+// tombstone を state.events に適用(更新が削除より後なら残す)。除去件数を返す。
+function applyEventDeletionsToState_(){
+  const map = loadEventDeletions_();
+  if(!Object.keys(map).length) return 0;
+  let n=0;
+  state.events = (state.events||[]).filter(ev=>{
+    const dAt = map[ev.id];
+    if(!dAt) return true;
+    const u = String(ev.updatedAt||'');
+    if(u && u > String(dAt)) return true;   // 削除後に再作成/編集 → 残す(誤消し防止)
+    n++; return false;                       // 削除トゥームストーンが有効 → 除去
+  });
+  if(n) saveState();
+  return n;
+}
+async function pushEventDeletionsMap_(map){
+  const s = loadGasSettings(); if(!s.url || !s.token) return;
+  const payload = { deletions: map||{}, updatedAt: new Date().toISOString() };
+  try{
+    await fetch(s.url, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ action:'save-shared-config', key:'event_deletions', value: JSON.stringify(payload), token: s.token, savedBy:'calendar-app' }) });
+  }catch(e){ console.warn('[event_deletions] push失敗:', e.message); }
+}
+async function fetchEventDeletions_(opts={}){
+  const s = loadGasSettings();
+  const local = loadEventDeletions_();
+  if(!s.url || !s.token){ if(applyEventDeletionsToState_() && !opts.silent && typeof render==='function') render(); return local; }
+  try{
+    const url = `${s.url}?action=get-shared-config&key=event_deletions&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res = await fetch(url, {method:'GET', redirect:'follow'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json();
+    let raw = data.value;
+    if(raw==='' || raw==null) raw = {deletions:{}};
+    else if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(e){ raw={deletions:{}}; } }
+    const remote = (raw && raw.deletions && typeof raw.deletions==='object') ? raw.deletions : {};
+    const merged = pruneEventDeletions_(mergeEventDeletions_(remote, local));
+    saveEventDeletions_(merged);
+    const removed = applyEventDeletionsToState_();
+    if(opts.push && JSON.stringify(merged) !== JSON.stringify(remote)){ pushEventDeletionsMap_(merged).catch(()=>{}); }
+    if(removed && !opts.silent && typeof render==='function') render();
+    return merged;
+  }catch(err){ if(!opts.silent) console.warn('[event_deletions] fetch失敗:', err.message); applyEventDeletionsToState_(); return local; }
+}
+// 予定削除時に呼ぶ: tombstone を立ててローカル除去＋全端末へpush
+function addEventDeletion_(eventId){
+  if(!eventId) return;
+  const map = loadEventDeletions_();
+  map[eventId] = new Date().toISOString();
+  saveEventDeletions_(map);
+  applyEventDeletionsToState_();
+  pushEventDeletionsMap_(map).catch(()=>{});
+}
+// 復活防止: サーバー由来の予定で、tombstone(削除時刻)が予定のupdatedAtより新しいものは取り込まない
+function isEventTombstoned_(ev){
+  if(!ev || !ev.id) return false;
+  const dAt = loadEventDeletions_()[ev.id];
+  if(!dAt) return false;
+  const u = String(ev.updatedAt||'');
+  return !(u && u > String(dAt));
 }
 // ===========================================================
 // 💬 退去立会 コメント (全員共有・shared-config 'taikyo_comments')
@@ -12140,7 +12224,11 @@ async function cloudSyncPull({ replace=false }={}){
         .filter(p => CLOUD_SYNC_ACTIONS_LOG.includes(p.action))
         .map(p => p.data?.id).filter(Boolean)
     );
-    cloudMergeById_(state.events,            (data.events||[]).map(normalizeCloudEvent_),    pendingEventIds);
+    // 🗑 削除トゥームストーン: 削除済idの予定はサーバーに残っていても取り込まない(復活防止) v1.30.66
+    const __remoteEvents = (data.events||[]).map(normalizeCloudEvent_)
+      .filter(e=> typeof isEventTombstoned_!=='function' || !isEventTombstoned_(e));
+    cloudMergeById_(state.events, __remoteEvents, pendingEventIds);
+    if(typeof applyEventDeletionsToState_==='function') applyEventDeletionsToState_();  // ローカルの削除済も除去
     if(!state.cloudProperties) state.cloudProperties = [];
     cloudMergeById_(state.cloudProperties,   (data.properties||[]).map(normalizeCloudProperty_), pendingPropertyIds);
     if(!state.cloudLogs) state.cloudLogs = [];
@@ -12631,6 +12719,8 @@ document.addEventListener('visibilitychange', ()=>{
 // (既存 saveEventFromModal / deleteEvent 等の呼び出し直後に
 //  cloudQueueEventChange(ev, 'upsert'|'delete') を入れる)
 function cloudQueueEventChange(ev, mode){
+  // 🗑 削除は全端末伝播のため tombstone を立てる(cloudSync未設定でもDrive GAS側に記録) v1.30.66
+  if(mode === 'delete' && ev && ev.id && typeof addEventDeletion_==='function'){ try{ addEventDeletion_(ev.id); }catch(_){} }
   if(!cloudSync.url || !cloudSync.autoSync) return;
   if(mode === 'delete'){
     queueCloudOp('deleteEvent', { id: ev.id });
@@ -15312,6 +15402,11 @@ setTimeout(()=>{
     if(typeof fetchRepairOverrides_==='function'){
       fetchRepairOverrides_({silent:true, push:true}).catch(()=>{});
       setInterval(()=>fetchRepairOverrides_({silent:true}).catch(()=>{}), 5*60*1000);
+    }
+    // 🗑 予定削除トゥームストーン(全員共有) 取得→ローカル除去・初回push(移行)・以後5分ごと(v1.30.66)
+    if(typeof fetchEventDeletions_==='function'){
+      fetchEventDeletions_({silent:true, push:true}).catch(()=>{});
+      setInterval(()=>fetchEventDeletions_({silent:true}).catch(()=>{}), 5*60*1000);
     }
     // 📄 立会「資料作成済」フラグ (見積アプリ→shared-config) 取得・以後5分ごと
     fetchTaikyoShiryoReady({silent:true});
