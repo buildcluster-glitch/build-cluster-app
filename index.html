@@ -2249,7 +2249,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.72</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.73</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -10127,7 +10127,14 @@ function showChipTip(ev, mouseX, mouseY){
     const more = __cmts.length > recent.length ? `<div style="font-size:10px;color:#cbd5e1;margin-top:2px">…他${__cmts.length-recent.length}件</div>` : '';
     commentsHtml = `<div class="tt-memo" style="margin-top:6px"><b style="font-size:11px">💬 コメント ${__cmts.length}件</b>${preview}${more}</div>`;
   }
-  tip.innerHTML = titleHtml + rows.join("") + memoHtml + commentsHtml;
+  // 通常予定(立会/事前以外)は時間/日付/担当の行を省き、タイトル+コメントだけのシンプル表示(v1.30.73)
+  //   立会/事前は時間・担当がホバーで見えると便利なので従来どおり詳細表示
+  const __isPlainEv = ev.source !== "taikyo-shared" && !(typeof isJizenEvent_==='function' && isJizenEvent_(ev));
+  if(__isPlainEv){
+    tip.innerHTML = titleHtml + commentsHtml;
+  } else {
+    tip.innerHTML = titleHtml + rows.join("") + memoHtml + commentsHtml;
+  }
   // 位置決め(マウス右下、ウィンドウ範囲チェック)
   const margin = 14;
   tip.style.left = "0px"; tip.style.top = "0px";
