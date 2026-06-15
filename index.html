@@ -2249,7 +2249,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.70</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.71</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5858,14 +5858,47 @@ function showTaikyoStaffPicker(el, ev){
     if(!listEl) return;
     const cs = getTaikyoComments_(cid);
     if(!cs.length){ listEl.innerHTML = `<div class="tk-cmt-empty">まだコメントはありません</div>`; return; }
-    listEl.innerHTML = cs.map(c=>`
+    listEl.innerHTML = cs.map(c=>{
+      // リアクション(誰が押したかは title=名前一覧でホバー表示) v1.30.71
+      const reactionsHtml = Object.entries(c.reactions||{})
+        .filter(([_,u])=>Array.isArray(u)&&u.length>0)
+        .map(([em,users])=>{ const on = me && users.includes(me)?'on':''; return `<button class="reaction-btn ${on}" data-react="${escapeHtml(em)}" data-rcid="${escapeHtml(c.id)}" title="${escapeHtml(users.join(', '))}" style="font-size:10px;padding:0 5px">${em}<span class="r-count">${users.length}</span></button>`; }).join('');
+      return `
       <div class="tk-cmt-card${c.author && c.author===me?' mine':''}">
         ${(c.author===me)?`<button class="tk-cmt-del" data-cid="${escapeHtml(c.id)}" title="削除">✕</button>`:''}
         <div class="tk-cmt-meta"><b>${escapeHtml(c.author||'?')}</b> <span>${escapeHtml(fmtCmtTime_(c.at))}</span></div>
         <div class="tk-cmt-text">${escapeHtml(c.text||'')}</div>
-      </div>`).join("");
+        <div class="ev-comment-reactions" style="margin-top:3px">${reactionsHtml}<button class="reaction-add" data-radd="${escapeHtml(c.id)}" style="font-size:10px;padding:0 5px">+</button></div>
+      </div>`;
+    }).join("");
     listEl.querySelectorAll('.tk-cmt-del').forEach(b=>{
       b.onclick = ()=>{ if(confirm('このコメントを削除しますか？')) deleteTaikyoComment_(cid, b.dataset.cid); };
+    });
+    // リアクション: 全員共有(taikyo_comments)を最新マージしてpush(他者コメントを消さない)
+    const __mutReact = (commentId, em, addOnly)=>{
+      const me2 = me; if(!me2){ alert('先に「👤 自分」を設定してください'); return; }
+      mutateTaikyoCommentsRemote_(cid, list => list.map(c=>{
+        if(c.id!==commentId) return c;
+        const rs = Object.assign({}, c.reactions||{}); const arr=(rs[em]||[]).slice();
+        const i=arr.indexOf(me2);
+        if(addOnly){ if(i<0) arr.push(me2); } else { if(i>=0) arr.splice(i,1); else arr.push(me2); }
+        if(arr.length) rs[em]=arr; else delete rs[em];
+        return Object.assign({}, c, {reactions:rs});
+      }));
+    };
+    listEl.querySelectorAll('[data-react]').forEach(b=>{ b.onclick=()=>__mutReact(b.dataset.rcid, b.dataset.react, false); });
+    listEl.querySelectorAll('[data-radd]').forEach(b=>{
+      b.onclick=()=>{ if(!me){ alert('先に「👤 自分」を設定してください'); return; }
+        document.querySelectorAll('.reaction-picker').forEach(x=>x.remove());
+        const rEmojis=['👍','✅','👀','❓','💪','🙏','🎉','⚠️'];
+        const picker=document.createElement('div'); picker.className='reaction-picker';
+        picker.innerHTML=rEmojis.map(em=>`<button data-em="${em}">${em}</button>`).join('');
+        document.body.appendChild(picker);
+        const r2=b.getBoundingClientRect(); picker.style.left=r2.left+'px'; picker.style.top=(r2.bottom+4)+'px';
+        const cidv=b.dataset.radd;
+        picker.querySelectorAll('button').forEach(pb=>{ pb.onclick=()=>{ picker.remove(); __mutReact(cidv, pb.dataset.em, true); }; });
+        setTimeout(()=>document.addEventListener('click', function close(e){ if(!picker.contains(e.target)){ picker.remove(); document.removeEventListener('click', close); } }), 10);
+      };
     });
   };
   __refreshOpenTaikyoCommentUI_ = renderComments;   // remote取得/push後に再描画される
@@ -5888,7 +5921,8 @@ function showTaikyoStaffPicker(el, ev){
   const cleanup_ = ()=>{ if(__refreshOpenTaikyoCommentUI_===renderComments) __refreshOpenTaikyoCommentUI_=null; };
   pop.querySelector('[data-role="close"]').onclick = ()=>{ cleanup_(); pop.remove(); };
   const closeOnOutside = (ev2)=>{
-    if(!pop.contains(ev2.target)){ cleanup_(); pop.remove(); document.removeEventListener("pointerdown", closeOnOutside, true); }
+    if(ev2.target.closest && ev2.target.closest('.reaction-picker')) return; // リアクションピッカー操作中は閉じない
+    if(!pop.contains(ev2.target)){ cleanup_(); pop.remove(); document.querySelectorAll('.reaction-picker').forEach(x=>x.remove()); document.removeEventListener("pointerdown", closeOnOutside, true); }
   };
   setTimeout(()=>document.addEventListener("pointerdown", closeOnOutside, true), 50);
 }
