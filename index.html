@@ -1831,6 +1831,12 @@
   .quick-add-sheet .qa-cat button.on{outline:2.5px solid #0f172a}
   .quick-add-sheet .qa-actions{display:flex;gap:8px}
   .quick-add-sheet .qa-actions button{flex:1;padding:12px;border:none;border-radius:10px;font-size:14px;font-weight:700}
+  /* 💻 PCでは中央モーダル風に(幅を絞って全角丸・縦中央)。スマホは従来のボトムシート(v1.30.53) */
+  @media (min-width:701px){
+    .quick-add-sheet-backdrop{align-items:center;justify-content:center}
+    .quick-add-sheet{width:460px;max-width:92vw;max-height:88vh;overflow:auto;border-radius:16px;padding:18px}
+    .quick-add-sheet input[type="text"], .quick-add-sheet input[type="date"], .quick-add-sheet select{font-size:14px}
+  }
 
   /* 📱 下部ナビ (スマホのみ。デスクトップは display:none のまま) */
   .mobile-nav{
@@ -2221,7 +2227,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.52</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.53</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -11243,10 +11249,10 @@ function showQuickAddSheet_(defaults={}){
     bd.remove();
   };
 }
-// 新規予定の入口: スマホ=クイックシート / PC=フルモーダル
+// 新規予定の入口: PC/スマホとも簡易シート(タイトル/日付/時刻/カテゴリ/担当)。
+//   事前・最終確認・立会・修繕は自動登録されるので手動追加は最小限で十分。細かい設定は「✏️詳細」から従来フォームへ。(v1.30.53)
 function openQuickOrFullEvent_(defaults){
-  if(window.innerWidth <= 700) showQuickAddSheet_(defaults || {});
-  else openEventModal(null, defaults);
+  showQuickAddSheet_(defaults || {});
 }
 document.getElementById("addBtn").onclick = ()=>openQuickOrFullEvent_();
 document.getElementById("undoBtn").onclick = ()=>undo();
