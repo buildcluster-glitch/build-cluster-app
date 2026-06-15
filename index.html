@@ -2249,7 +2249,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.69</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.70</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5984,16 +5984,45 @@ function showEventStaffPicker(el, ev){
     if(!cs.length){ listEl.innerHTML = '<div style="font-size:11px;color:var(--muted);text-align:center;padding:6px">まだコメント無し</div>'; return; }
     listEl.innerHTML = cs.map((c,idx)=>{
       const mine = c.author===me;
+      // リアクション(誰が押したかは title=名前一覧でホバー表示) v1.30.70
+      const reactionsHtml = Object.entries(c.reactions||{})
+        .filter(([_,u])=>Array.isArray(u)&&u.length>0)
+        .map(([em,users])=>{ const on = me && users.includes(me) ? 'on':''; return `<button class="reaction-btn ${on}" data-react="${escapeHtml(em)}" data-cidx="${idx}" title="${escapeHtml(users.join(', '))}" style="font-size:10px;padding:0 5px">${em}<span class="r-count">${users.length}</span></button>`; }).join('');
       return `<div class="ev-comment-card ${mine?'mine':''}" style="padding:4px 6px;font-size:11px;position:relative">
         ${mine?`<button class="ev-comment-del" data-delc="${idx}" style="font-size:11px;display:inline">✕</button>`:''}
         <div class="ev-comment-head" style="font-size:10px"><span class="ev-comment-author">${escapeHtml(c.author||'?')}</span><span class="ev-comment-time">${escapeHtml(fmtT(c.at))}</span></div>
         <div class="ev-comment-text" style="font-size:11px">${escapeHtml(c.text||'')}</div>
+        <div class="ev-comment-reactions" style="margin-top:2px">${reactionsHtml}<button class="reaction-add" data-addr="${idx}" style="font-size:10px;padding:0 5px">+</button></div>
       </div>`;
     }).join('');
     listEl.querySelectorAll('[data-delc]').forEach(b=>{
       b.onclick = ()=>{ const i=+b.dataset.delc; const t=liveEv(); if(!Array.isArray(t.comments)||!t.comments[i]) return; if(!confirm('コメント削除？')) return;
         pushHistory(); t.comments.splice(i,1); t.updatedAt=new Date().toISOString(); saveState();
         if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(t,'upsert'); }catch(_){} } renderC(); render(); };
+    });
+    // リアクション トグル(既存の絵文字をクリック=自分を付外し)
+    const __syncReact = ()=>{ const t=liveEv(); t.updatedAt=new Date().toISOString(); saveState(); if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(t,'upsert'); }catch(_){} } renderC(); render(); };
+    listEl.querySelectorAll('[data-react]').forEach(b=>{
+      b.onclick = ()=>{ const me2=getMyself(); if(!me2){ alert('先に「👤 自分」を設定してください'); return; }
+        const c = (liveEv().comments||[])[+b.dataset.cidx]; if(!c) return;
+        const em = b.dataset.react; if(!c.reactions) c.reactions={}; if(!c.reactions[em]) c.reactions[em]=[];
+        const i=c.reactions[em].indexOf(me2); if(i>=0) c.reactions[em].splice(i,1); else c.reactions[em].push(me2);
+        if(c.reactions[em].length===0) delete c.reactions[em];
+        __syncReact(); };
+    });
+    // リアクション追加(絵文字ピッカー)
+    listEl.querySelectorAll('[data-addr]').forEach(b=>{
+      b.onclick = ()=>{ const me2=getMyself(); if(!me2){ alert('先に「👤 自分」を設定してください'); return; }
+        const c = (liveEv().comments||[])[+b.dataset.addr]; if(!c) return;
+        document.querySelectorAll('.reaction-picker').forEach(x=>x.remove());
+        const rEmojis=['👍','✅','👀','❓','💪','🙏','🎉','⚠️'];
+        const picker=document.createElement('div'); picker.className='reaction-picker';
+        picker.innerHTML=rEmojis.map(em=>`<button data-em="${em}">${em}</button>`).join('');
+        document.body.appendChild(picker);
+        const r2=b.getBoundingClientRect(); picker.style.left=r2.left+'px'; picker.style.top=(r2.bottom+4)+'px';
+        picker.querySelectorAll('button').forEach(pb=>{ pb.onclick=()=>{ if(!c.reactions) c.reactions={}; if(!c.reactions[pb.dataset.em]) c.reactions[pb.dataset.em]=[]; if(!c.reactions[pb.dataset.em].includes(me2)) c.reactions[pb.dataset.em].push(me2); picker.remove(); __syncReact(); }; });
+        setTimeout(()=>document.addEventListener('click', function close(e){ if(!picker.contains(e.target)){ picker.remove(); document.removeEventListener('click', close); } }), 10);
+      };
     });
     listEl.scrollTop = listEl.scrollHeight;
   };
@@ -6014,7 +6043,8 @@ function showEventStaffPicker(el, ev){
   pop.querySelector('.evp-cmt-send').onclick = sendC;
   inputEl.onkeydown = e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendC(); } };
   const closeOnOutside = (ev2)=>{
-    if(!pop.contains(ev2.target)){ pop.remove(); document.removeEventListener("pointerdown", closeOnOutside, true); }
+    if(ev2.target.closest && ev2.target.closest('.reaction-picker')) return; // リアクションピッカー操作中は閉じない
+    if(!pop.contains(ev2.target)){ pop.remove(); document.querySelectorAll('.reaction-picker').forEach(x=>x.remove()); document.removeEventListener("pointerdown", closeOnOutside, true); }
   };
   setTimeout(()=>document.addEventListener("pointerdown", closeOnOutside, true), 50);
 }
