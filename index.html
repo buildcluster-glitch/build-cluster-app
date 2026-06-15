@@ -955,6 +955,21 @@
     border-radius:8px;
     padding:2px;
   }
+  /* 📋 コピペ選択中の枠(Excel風・v1.30.54) */
+  .event.chip-selected, .event-chip.chip-selected{
+    outline:3px solid #2563eb; outline-offset:1px;
+    box-shadow:0 0 0 2px #fff, 0 0 8px rgba(37,99,235,.55) !important;
+    z-index:40;
+  }
+  #paste-banner{
+    position:fixed; top:10px; left:50%; transform:translateX(-50%); z-index:9000;
+    background:#1e293b; color:#fff; font-size:12px; font-weight:600;
+    padding:8px 14px; border-radius:999px; box-shadow:0 6px 20px rgba(0,0,0,.28);
+    display:flex; align-items:center; gap:10px; max-width:92vw;
+  }
+  #paste-banner b{ color:#93c5fd; }
+  #paste-banner button{ background:#475569; color:#fff; border:none; border-radius:6px; padding:3px 9px; font-size:11px; font-weight:700; cursor:pointer; }
+  #paste-banner button:hover{ background:#64748b; }
   .event-chip.imp-flag{
     position:relative;
     --imp:#dc2626;  /* デフォ赤 */
@@ -2227,7 +2242,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.53</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.54</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3835,6 +3850,12 @@ const VIEW_STORAGE_KEY = "buildcluster_schedule_last_view";
 let editingEventId = null;
 let editingLeaveId = null;
 let hiddenCategories = new Set();  // 非表示中のカテゴリ名（"(未分類)"="" を含む）
+
+// ===== 📋 予定のコピペ/選択 (Excel風・v1.30.54) =====
+// 対象は state.events の通常予定のみ(立会/修繕=locked は対象外)。
+let selectedEventIds = new Set();  // 選択中の予定id
+let eventClipboard = [];           // Ctrl+Cでコピーした予定スナップショット配列
+let pasteAnchor = null;            // {date,startMin,staff} クリックした空きスロット=貼付先
 
 function loadState(){
   try{
@@ -9234,6 +9255,17 @@ function renderCalendar(){
           end: `${pad(endH)}:${pad(endM)}`
         });
       };
+      // 📋 空きスロットのシングルクリック: 選択解除 +(コピー中なら)貼付先をここに設定(v1.30.54)
+      sc.onclick = (e)=>{
+        if(e.target!==sc) return;
+        clearEventSelection_();
+        if(eventClipboard.length){
+          const rect = sc.getBoundingClientRect();
+          const minutes = Math.floor((e.clientY - rect.top) / HOUR_PX * 60);
+          const startMin = HOUR_START*60 + Math.floor(minutes/SLOT_MIN)*SLOT_MIN;
+          setPasteAnchor_(c.contextDate, startMin, c.contextStaff || null);
+        }
+      };
     });
     // 月ビュー: hour-cell の余白ダブルクリックでも新規予定モーダル
     if(__isMonth){
@@ -9250,6 +9282,15 @@ function renderCalendar(){
             start: `${pad(startH)}:${pad(startM)}`,
             end: `${pad(endH)}:${pad(endM)}`
           });
+        };
+        // 📋 空きセルのシングルクリック: 選択解除 +(コピー中なら)貼付先設定(v1.30.54)
+        cell.onclick = (e)=>{
+          if(e.target.closest(".event")) return;
+          clearEventSelection_();
+          if(eventClipboard.length){
+            const hour = parseInt(cell.dataset.hour, 10);
+            setPasteAnchor_(c.contextDate, hour*60, c.contextStaff || null);
+          }
         };
       });
     }
@@ -10216,6 +10257,9 @@ function showNoDragToast_(kind){
 function attachDragOrClick(el, ev){
   // 🔒 立会(taikyo-shared)/読取専用はドラッグ移動不可。掴むとカーソルと案内で明示
   if(ev.source === "taikyo-shared" || ev._readOnly){ el.classList.add("chip-locked"); }
+  // 📋 コピペ選択用: idを保持し、再描画後も選択枠を復元(v1.30.54)
+  el.dataset.eventId = ev.id;
+  if(selectedEventIds.has(ev.id)) el.classList.add('chip-selected');
   // ダブルクリック → 担当者ピッカー (全チップ共通・v1.14)
   //   taikyo-shared/読取専用 → 立会用ピッカー(見積アプリoverride) / それ以外 → 汎用ピッカー
   //   いずれも内側の「✏️ 詳細編集」で従来の編集モーダルへ
@@ -10344,6 +10388,16 @@ function attachDragOrClick(el, ev){
       document.removeEventListener("pointerup", onUp);
       document.removeEventListener("pointercancel", onUp);
       if(!started){
+        // 📋 コピペ選択(v1.30.54): 通常予定(locked以外)はクリックで選択。
+        //   修飾キー(Ctrl/⌘/Shift)で複数トグル。特殊1クリック動作(事前進捗/チェックリスト)を持つ予定は
+        //   素クリックでは従来動作・修飾キーで選択に回す。
+        if(isCopyableEvent_(ev)){
+          const additive = upEv.ctrlKey || upEv.metaKey || upEv.shiftKey;
+          const hasSpecialClick = (typeof isJizenEvent_==='function' && isJizenEvent_(ev) && el.querySelector('.chip-prog'))
+            || (typeof getTaskInfo_==='function' && getTaskInfo_(ev));
+          if(additive){ toggleEventSelection_(ev.id); return; }
+          if(!hasSpecialClick){ selectSingleEvent_(ev.id); return; }
+        }
         // 事前予定: 1クリックで原状回復進捗ダイアログ(最終確認カードと同じ操作感)
         //   ダブルクリック(担当者ピッカー)と競合しないよう250ms遅延・dblclickで取消。
         //   物件紐づけは既存の📋アイコン(data-resto-id)を流用(紐づく時のみ存在)。
@@ -10411,6 +10465,84 @@ function attachDragOrClick(el, ev){
     document.addEventListener("pointercancel", onUp);
   };
 }
+
+// ===== 📋 予定のコピペ/選択 (Excel風・v1.30.54) =====
+function isCopyableEvent_(ev){ return !!ev && !(ev.source==="taikyo-shared" || ev._readOnly); }
+function selectSingleEvent_(id){ selectedEventIds = new Set([id]); refreshSelectionUI_(); }
+function toggleEventSelection_(id){ if(selectedEventIds.has(id)) selectedEventIds.delete(id); else selectedEventIds.add(id); refreshSelectionUI_(); }
+function clearEventSelection_(){ if(!selectedEventIds.size) return; selectedEventIds.clear(); refreshSelectionUI_(); }
+function refreshSelectionUI_(){
+  document.querySelectorAll('[data-event-id]').forEach(el=>{
+    el.classList.toggle('chip-selected', selectedEventIds.has(el.dataset.eventId));
+  });
+}
+function copySelectedEvents_(){
+  const ids = [...selectedEventIds];
+  eventClipboard = ids.map(id=>(state.events||[]).find(e=>e.id===id))
+    .filter(isCopyableEvent_)
+    .map(e=>JSON.parse(JSON.stringify(e)));
+  pasteAnchor = null;
+  updatePasteBanner_();
+}
+function setPasteAnchor_(date, startMin, staff){
+  pasteAnchor = { date, startMin, staff: staff||null };
+  updatePasteBanner_();
+}
+function pasteEventsAtAnchor_(){
+  if(!eventClipboard.length) return;
+  if(typeof pushHistory==='function') pushHistory();
+  const timed = eventClipboard.filter(e=>!e.allday);
+  const baseMin = timed.length ? Math.min(...timed.map(e=>timeToMin(e.start))) : (HOUR_START*60);
+  const anc = pasteAnchor || { date: fmtDate(currentDate||new Date()), startMin: baseMin, staff: null };
+  const created = [];
+  eventClipboard.forEach(src=>{
+    const copy = JSON.parse(JSON.stringify(src));
+    copy.id = uid();
+    copy.date = anc.date;
+    if(!copy.allday){
+      const dur = Math.max(15, timeToMin(src.end) - timeToMin(src.start));
+      const offset = timeToMin(src.start) - baseMin;                 // 複数選択時の相対間隔を保持
+      let s = (anc.startMin!=null ? anc.startMin : baseMin) + offset;
+      s = Math.max(HOUR_START*60, Math.min(s, HOUR_END*60 - 15));
+      const e2 = Math.min(HOUR_END*60, s + dur);
+      copy.start = `${pad(Math.floor(s/60))}:${pad(s%60)}`;
+      copy.end   = `${pad(Math.floor(e2/60))}:${pad(e2%60)}`;
+    }
+    if(anc.staff) copy.staff = anc.staff;
+    copy.updatedAt = new Date().toISOString();
+    state.events.push(copy);
+    created.push(copy);
+    if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(copy,'upsert'); }catch(_){} }
+  });
+  saveState();
+  selectedEventIds = new Set(created.map(c=>c.id));  // 貼り付けた予定を選択状態に
+  render();
+  updatePasteBanner_();   // クリップボードは保持(連続貼付可)。Esc/解除でクリア
+}
+function updatePasteBanner_(){
+  let b = document.getElementById('paste-banner');
+  if(!eventClipboard.length){ if(b) b.remove(); return; }
+  if(!b){ b = document.createElement('div'); b.id = 'paste-banner'; document.body.appendChild(b); }
+  const anc = pasteAnchor
+    ? `貼付先 ${pasteAnchor.date.slice(5).replace('-','/')}${pasteAnchor.startMin!=null?' '+pad(Math.floor(pasteAnchor.startMin/60))+':'+pad(pasteAnchor.startMin%60):''}`
+    : '空きスロットをクリックで貼付先指定';
+  b.innerHTML = `📋 ${eventClipboard.length}件コピー中 ・ ${escapeHtml(anc)} ・ <b>Ctrl+V</b>で貼付 <button id="paste-cancel" type="button">解除</button>`;
+  const cb = b.querySelector('#paste-cancel');
+  if(cb) cb.onclick = ()=>{ eventClipboard=[]; pasteAnchor=null; clearEventSelection_(); updatePasteBanner_(); };
+}
+// グローバルキー: Ctrl/⌘+C=コピー / Ctrl/⌘+V=貼付 / Esc=選択&コピー解除
+document.addEventListener('keydown', e=>{
+  const t = e.target;
+  if(t && (t.tagName==='INPUT' || t.tagName==='TEXTAREA' || t.tagName==='SELECT' || t.isContentEditable)) return;
+  const mod = e.ctrlKey || e.metaKey;
+  if(mod && (e.key==='c' || e.key==='C')){
+    if(selectedEventIds.size){ e.preventDefault(); copySelectedEvents_(); }
+  }else if(mod && (e.key==='v' || e.key==='V')){
+    if(eventClipboard.length){ e.preventDefault(); pasteEventsAtAnchor_(); }
+  }else if(e.key==='Escape'){
+    if(selectedEventIds.size || eventClipboard.length){ clearEventSelection_(); eventClipboard=[]; pasteAnchor=null; updatePasteBanner_(); }
+  }
+});
 
 function layoutEvents(events){
   // 単純な重なり解決：開始時刻順に並べ、同時間帯に並ぶカラム数で割る
