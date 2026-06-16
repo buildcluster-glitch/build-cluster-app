@@ -2254,7 +2254,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.79</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.80</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5484,7 +5484,9 @@ let __taikyoShiryoInFlight = null;
 const TAIKYO_SHIRYO_TTL_MS = 5 * 60 * 1000;
 const TAIKYO_SHIRYO_CACHE_KEY = "buildcluster_taikyo_shiryo_cache";
 function normShiryoKey_(bukken, room){
-  return String(bukken||"").replace(/\s|　/g,"") + "|" + String(room||"").replace(/\s|　|号室|号|室/g,"");
+  // NFKC正規化で全角/半角(４０２=402)・ローマ数字等の表記ゆれを吸収(v1.30.80)
+  const nb = s => String(s||"").normalize("NFKC").replace(/\s|　/g,"");
+  return nb(bukken) + "|" + nb(room).replace(/号室|号|室/g,"");
 }
 function rebuildShiryoMap_(){
   __taikyoShiryoMap = {};
