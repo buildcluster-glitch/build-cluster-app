@@ -2254,7 +2254,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.80</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.81</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -6854,10 +6854,21 @@ function dedupeJizenEvents_(){
       if(as !== bs) return bs - as;                 // sid持ちを先頭に
       return (new Date(b.updatedAt||0)) - (new Date(a.updatedAt||0));
     });
+    const keep = list[0]; let mergedC = false;
     list.slice(1).forEach(e=>{
+      // 💬 コメント/リアクションを生存側へ統合(端末別idでコメントが消える問題の修正 v1.30.81)
+      if(Array.isArray(e.comments) && e.comments.length){
+        if(!Array.isArray(keep.comments)) keep.comments = [];
+        const byId = new Map(keep.comments.map(c=>[c.id,c]));
+        e.comments.forEach(c=>{ if(!c||!c.id) return; const ex=byId.get(c.id);
+          if(!ex){ keep.comments.push(c); byId.set(c.id,c); mergedC=true; }
+          else if(c.reactions){ ex.reactions=ex.reactions||{}; Object.entries(c.reactions).forEach(([em,us])=>{ const set=new Set([...(ex.reactions[em]||[]),...(us||[])]); if(set.size){ex.reactions[em]=[...set];}else{delete ex.reactions[em];} mergedC=true; }); }
+        });
+      }
       removeIds.add(e.id);
       if(typeof cloudQueueEventChange === 'function') cloudQueueEventChange(e, 'delete');
     });
+    if(mergedC){ keep.comments.sort((a,b)=>String(a.at||'').localeCompare(String(b.at||''))); keep.updatedAt=new Date().toISOString(); if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(keep,'upsert'); }catch(_){} } }
   });
   if(removeIds.size){
     state.events = evs.filter(e=> !removeIds.has(e.id));
@@ -10169,7 +10180,7 @@ function showChipTip(ev, mouseX, mouseY){
   }
   // ホバー操作可能チャット: 通常予定=タイトルのみ+コメント / 立会=詳細行+コメント(全員共有) / 事前=従来の読取専用(v1.30.77)
   const __isTaikyo = ev.source === "taikyo-shared";
-  const __isPlainEv = !__isTaikyo && !(typeof isJizenEvent_==='function' && isJizenEvent_(ev));
+  const __isPlainEv = !__isTaikyo;   // 事前含む通常予定はホバーで操作可能チャット(ev.comments)(v1.30.81)
   if(__isPlainEv){
     tip.classList.add('interactive');
     const liveEvT=()=>(state.events||[]).find(e=>e.id===ev.id)||ev;
