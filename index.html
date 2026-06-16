@@ -532,6 +532,7 @@
     transition:opacity .12s ease, transform .12s ease;
   }
   .chip-tooltip.is-show{opacity:1;transform:translateY(0)}
+  .chip-tooltip.interactive{pointer-events:auto}  /* チャット/リアクション操作用(v1.30.74) */
   .chip-tooltip .tt-title{
     font-size:13px;font-weight:700;line-height:1.4;margin-bottom:6px;
     white-space:pre-wrap;word-break:break-word;
@@ -2249,7 +2250,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.73</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.74</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -10046,17 +10047,26 @@ const DRAG_BLOCK_AFTER_CLICK_MS = 400; // 直前のクリックから400ms以内
 // ===== イベントチップ ホバー詳細ポップアップ =====
 let __chipTipEl = null;
 let __chipTipTimer = null;
+let __chipTipHideTimer = null;   // 操作可能ツールチップへマウス移動できるよう遅延hide(v1.30.74)
+let __tipReactIdx = -1;          // ツールチップ内インラインリアクション選択中のコメントidx
 function ensureChipTip(){
   if(!__chipTipEl){
     __chipTipEl = document.createElement("div");
     __chipTipEl.className = "chip-tooltip";
     document.body.appendChild(__chipTipEl);
+    // ツールチップに入ったら消さない / 出たら遅延hide(チャット操作のため)
+    __chipTipEl.addEventListener("mouseenter", cancelHideChipTip);
+    __chipTipEl.addEventListener("mouseleave", scheduleHideChipTip);
   }
   return __chipTipEl;
 }
+function cancelHideChipTip(){ if(__chipTipHideTimer){ clearTimeout(__chipTipHideTimer); __chipTipHideTimer=null; } }
+function scheduleHideChipTip(){ cancelHideChipTip(); __chipTipHideTimer = setTimeout(()=>hideChipTip(), 300); }
 function hideChipTip(){
   if(__chipTipTimer){ clearTimeout(__chipTipTimer); __chipTipTimer = null; }
-  if(__chipTipEl) __chipTipEl.classList.remove("is-show");
+  cancelHideChipTip();
+  __tipReactIdx = -1;
+  if(__chipTipEl){ __chipTipEl.classList.remove("is-show"); __chipTipEl.classList.remove("interactive"); }
 }
 function showChipTip(ev, mouseX, mouseY){
   const tip = ensureChipTip();
@@ -10131,8 +10141,38 @@ function showChipTip(ev, mouseX, mouseY){
   //   立会/事前は時間・担当がホバーで見えると便利なので従来どおり詳細表示
   const __isPlainEv = ev.source !== "taikyo-shared" && !(typeof isJizenEvent_==='function' && isJizenEvent_(ev));
   if(__isPlainEv){
-    tip.innerHTML = titleHtml + commentsHtml;
+    // 通常予定: 時間/日付/担当は省き、コメント+リアクション+チャット入力を操作可能に(v1.30.74)
+    tip.classList.add('interactive');
+    __tipReactIdx = -1;
+    const QUICK_EMOJIS=['👍','✅','👀','❓','💪','🙏','🎉','⚠️'];
+    const meName=(typeof getMyself==='function')?getMyself():"";
+    const liveEvT=()=>(state.events||[]).find(e=>e.id===ev.id)||ev;
+    const syncT=()=>{ const t=liveEvT(); if(t){ t.updatedAt=new Date().toISOString(); saveState(); if(typeof cloudQueueEventChange==='function'){try{cloudQueueEventChange(t,'upsert');}catch(_){}} } if(typeof render==='function') render(); buildPlain(); };
+    function buildPlain(){
+      const cs=(liveEvT().comments)||[];
+      const cmtHtml = cs.length ? cs.map((c,idx)=>{
+        const reacts=Object.entries(c.reactions||{}).filter(([_,u])=>Array.isArray(u)&&u.length).map(([em,users])=>{const on=meName&&users.includes(meName)?'on':'';return `<button class="reaction-btn ${on}" data-tr="${escapeHtml(em)}" data-ci="${idx}" title="${escapeHtml(users.join(', '))}" style="font-size:10px;padding:0 5px">${em}<span class="r-count">${users.length}</span></button>`;}).join('');
+        const picker = __tipReactIdx===idx ? `<div style="display:flex;flex-wrap:wrap;gap:2px;margin-top:2px">${QUICK_EMOJIS.map(em=>`<button class="reaction-btn" data-rae="${idx}" data-em="${em}" style="font-size:13px;padding:0 4px">${em}</button>`).join('')}</div>` : '';
+        return `<div style="margin-top:4px">
+          <div style="font-size:11px;color:#f3f4f6"><b style="color:#fde68a">${escapeHtml(c.author||'?')}:</b> ${escapeHtml(c.text||'')}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:1px;align-items:center">${reacts}<button class="reaction-add" data-ra="${idx}" style="font-size:10px;padding:0 5px">+</button></div>
+          ${picker}
+        </div>`;
+      }).join('') : '<div style="font-size:11px;color:#94a3b8;margin-top:2px">まだコメント無し</div>';
+      tip.innerHTML = titleHtml
+        + `<div class="tt-memo" style="margin-top:6px"><b style="font-size:11px">💬 コメント ${cs.length}件</b>${cmtHtml}</div>`
+        + `<div style="display:flex;gap:4px;margin-top:6px"><textarea class="cht-in" rows="1" placeholder="コメント (Enter送信)" style="flex:1;font-size:12px;padding:4px 6px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#fff;resize:none;min-height:26px"></textarea><button class="cht-send" style="background:#2563eb;color:#fff;border:0;border-radius:5px;font-size:11px;font-weight:700;padding:4px 10px;cursor:pointer">送信</button></div>`;
+      tip.querySelectorAll('[data-tr]').forEach(b=>b.onclick=()=>{ if(!meName){alert('先に「👤 自分」を設定してください');return;} const t=liveEvT(); const c=(t.comments||[])[+b.dataset.ci]; if(!c)return; const em=b.dataset.tr; if(!c.reactions)c.reactions={}; if(!c.reactions[em])c.reactions[em]=[]; const i=c.reactions[em].indexOf(meName); if(i>=0)c.reactions[em].splice(i,1);else c.reactions[em].push(meName); if(!c.reactions[em].length)delete c.reactions[em]; __tipReactIdx=-1; syncT(); });
+      tip.querySelectorAll('[data-ra]').forEach(b=>b.onclick=()=>{ __tipReactIdx=(__tipReactIdx===+b.dataset.ra)?-1:+b.dataset.ra; buildPlain(); });
+      tip.querySelectorAll('[data-rae]').forEach(b=>b.onclick=()=>{ if(!meName){alert('先に「👤 自分」を設定してください');return;} const t=liveEvT(); const c=(t.comments||[])[+b.dataset.rae]; if(!c)return; const em=b.dataset.em; if(!c.reactions)c.reactions={}; if(!c.reactions[em])c.reactions[em]=[]; if(!c.reactions[em].includes(meName))c.reactions[em].push(meName); __tipReactIdx=-1; syncT(); });
+      const inp=tip.querySelector('.cht-in'), snd=tip.querySelector('.cht-send');
+      const sendC=()=>{ const v=(inp.value||'').trim(); if(!v)return; if(!meName){alert('先に「👤 自分」を設定してください(👤マイ)');return;} const t=liveEvT(); if(!Array.isArray(t.comments))t.comments=[]; t.comments.push({id:'c_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),author:meName,text:v,at:new Date().toISOString()}); __tipReactIdx=-1; syncT(); };
+      if(snd)snd.onclick=sendC;
+      if(inp)inp.onkeydown=e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendC();} };
+    }
+    buildPlain();
   } else {
+    tip.classList.remove('interactive');
     tip.innerHTML = titleHtml + rows.join("") + memoHtml + commentsHtml;
   }
   // 位置決め(マウス右下、ウィンドウ範囲チェック)
@@ -10599,13 +10639,14 @@ function attachChipHover(el, ev){
   let lastX = 0, lastY = 0;
   el.addEventListener("mouseenter", (e)=>{
     lastX = e.clientX; lastY = e.clientY;
+    cancelHideChipTip();   // 別チップへ移動時の遅延hideを取消
     if(__chipTipTimer) clearTimeout(__chipTipTimer);
     __chipTipTimer = setTimeout(()=>{ showChipTip(ev, lastX, lastY); }, 350);
   });
   el.addEventListener("mousemove", (e)=>{
     lastX = e.clientX; lastY = e.clientY;
   });
-  el.addEventListener("mouseleave", ()=>{ hideChipTip(); });
+  el.addEventListener("mouseleave", ()=>{ scheduleHideChipTip(); });   // 遅延hide=ツールチップへ移動できる(v1.30.74)
   // ドラッグ開始時は隠す
   el.addEventListener("pointerdown", ()=>{ hideChipTip(); });
 }
