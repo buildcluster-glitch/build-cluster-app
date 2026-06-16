@@ -2254,7 +2254,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.77</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.78</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -10080,11 +10080,12 @@ function __reactAddObj_(c, em, who){ if(!c.reactions)c.reactions={}; if(!c.react
 function buildTipChat_(tip, headHtml, api){
   const me = api.me; const QUICK=['👍','✅','👀','❓','💪','🙏','🎉','⚠️'];
   const rerender = ()=> buildTipChat_(tip, headHtml, api);
+  const fmtT=iso=>{ const d=new Date(iso); if(isNaN(d))return''; const p=n=>String(n).padStart(2,'0'); const td=new Date(); td.setHours(0,0,0,0); return d>=td?`${p(d.getHours())}:${p(d.getMinutes())}`:`${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`; };
   const cs = api.list()||[];
   const cmtHtml = cs.length ? cs.map(c=>{
     const reacts=Object.entries(c.reactions||{}).filter(([_,u])=>Array.isArray(u)&&u.length).map(([em,users])=>{const on=me&&users.includes(me)?'on':'';return `<button class="reaction-btn ${on}" data-tr="${escapeHtml(em)}" data-cid="${escapeHtml(c.id)}" title="${escapeHtml(users.join(', '))}" style="font-size:14px;line-height:1;padding:2px 6px">${em}<span class="r-count" style="font-size:10px;margin-left:2px">${users.length}</span></button>`;}).join('');
     const picker = api.openIdx.v===c.id ? `<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px">${QUICK.map(em=>`<button class="reaction-btn" data-rae="${escapeHtml(c.id)}" data-em="${em}" style="font-size:16px;line-height:1;padding:2px 6px">${em}</button>`).join('')}</div>`:'';
-    return `<div style="margin-top:5px;border-top:1px solid rgba(255,255,255,.08);padding-top:5px"><div style="font-size:11px;line-height:1.3;color:#f3f4f6"><b style="color:#fde68a">${escapeHtml(c.author||'?')}:</b> ${escapeHtml(c.text||'')}</div><div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;align-items:center">${reacts}<button class="reaction-add" data-ra="${escapeHtml(c.id)}" style="font-size:14px;line-height:1;padding:1px 7px">+</button></div>${picker}</div>`;
+    return `<div style="margin-top:5px;border-top:1px solid rgba(255,255,255,.08);padding-top:5px"><div style="font-size:11px;line-height:1.3;color:#f3f4f6"><b style="color:#fde68a">${escapeHtml(c.author||'?')}</b> <span style="color:#9ca3af;font-size:10px;font-weight:400">${escapeHtml(fmtT(c.at))}</span>: ${escapeHtml(c.text||'')}</div><div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;align-items:center">${reacts}<button class="reaction-add" data-ra="${escapeHtml(c.id)}" style="font-size:14px;line-height:1;padding:1px 7px">+</button></div>${picker}</div>`;
   }).join('') : '<div style="font-size:11px;color:#94a3b8;margin-top:2px">まだコメント無し</div>';
   tip.innerHTML = (headHtml||"") + `<div class="tt-memo" style="margin-top:6px"><b style="font-size:11px">💬 コメント ${cs.length}件</b>${cmtHtml}</div><div style="display:flex;gap:4px;margin-top:6px"><textarea class="cht-in" rows="1" placeholder="コメント (Enter送信)" style="flex:1;font-size:12px;padding:4px 6px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#fff;resize:none;min-height:26px"></textarea><button class="cht-send" style="background:#2563eb;color:#fff;border:0;border-radius:5px;font-size:11px;font-weight:700;padding:4px 10px;cursor:pointer">送信</button></div>`;
   tip.querySelectorAll('[data-tr]').forEach(b=>b.onclick=()=>{ api.openIdx.v=null; api.onToggle(b.dataset.cid, b.dataset.tr, rerender); });
