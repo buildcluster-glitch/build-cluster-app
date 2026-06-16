@@ -2254,7 +2254,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.78</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.79</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -10189,7 +10189,7 @@ function showChipTip(ev, mouseX, mouseY){
       onToggle:(cid,em,rr)=>{ if(!api.me){alert('先に「👤 自分」を設定してください');return;} opt(cid,c=>__reactToggleObj_(c,em,api.me)); rr(); mutateTaikyoCommentsRemote_(tkId, list=>list.map(c=>{ if(c.id===cid)__reactToggleObj_(c,em,api.me); return c; })); },
       onAddReact:(cid,em,rr)=>{ if(!api.me){alert('先に「👤 自分」を設定してください');return;} opt(cid,c=>__reactAddObj_(c,em,api.me)); rr(); mutateTaikyoCommentsRemote_(tkId, list=>list.map(c=>{ if(c.id===cid)__reactAddObj_(c,em,api.me); return c; })); }
     };
-    buildTipChat_(tip, titleHtml + rows.join("") + memoHtml, api);   // 立会は詳細行も残す
+    buildTipChat_(tip, titleHtml, api);   // 立会も通常予定と同様、詳細行は省きコメント中心(v1.30.79)
   } else {
     tip.classList.remove('interactive');
     tip.innerHTML = titleHtml + rows.join("") + memoHtml + commentsHtml;
@@ -10263,7 +10263,7 @@ function showRepairTip(r, mouseX, mouseY){
     onToggle:(cid,em,rr)=>{ if(!apiR.me){alert('先に「👤 自分」を設定してください');return;} const t=liveR(); const c=(t.comments||[]).find(x=>x.id===cid); if(!c)return; __reactToggleObj_(c,em,apiR.me); persistR(); rr(); },
     onAddReact:(cid,em,rr)=>{ if(!apiR.me){alert('先に「👤 自分」を設定してください');return;} const t=liveR(); const c=(t.comments||[]).find(x=>x.id===cid); if(!c)return; __reactAddObj_(c,em,apiR.me); persistR(); rr(); }
   };
-  buildTipChat_(tip, titleHtml + rows.join("") + requestHtml + memoHtml, apiR);
+  buildTipChat_(tip, titleHtml, apiR);   // 修繕も詳細行は省きコメント中心(v1.30.79)
   // 位置決め
   const margin = 14;
   tip.style.left = "0px"; tip.style.top = "0px";

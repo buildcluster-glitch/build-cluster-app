@@ -2,7 +2,7 @@
 // オフラインでも localStorage データで動く + 起動が早い
 // 更新時はバージョンを上げる → ユーザー次回起動時にキャッシュ更新
 
-const CACHE = 'build-cluster-app-v1.30.78';
+const CACHE = 'build-cluster-app-v1.30.79';
 const ASSETS = [
   './',
   './index.html',
