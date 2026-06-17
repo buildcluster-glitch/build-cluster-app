@@ -2265,7 +2265,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.88</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.89</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -11798,7 +11798,10 @@ function showQuickAddSheet_(defaults={}, editEv=null){
   document.querySelectorAll('.quick-add-sheet-backdrop').forEach(x=>x.remove());
   const me = getMyself();
   const isEdit = !!editEv;   // 📝 既存予定の簡易編集モード(v1.30.67)
-  let selStaff = isEdit ? (editEv.staff||"") : ((defaults.staff && STAFF.includes(defaults.staff)) ? defaults.staff : (STAFF.includes(me) ? me : ""));
+  // 担当は複数選択可・配列の先頭=リーダー(v1.30.89)
+  let selStaff = isEdit
+    ? [editEv.staff, ...(editEv.participants||[])].filter(Boolean)
+    : ((defaults.staff && STAFF.includes(defaults.staff)) ? [defaults.staff] : (STAFF.includes(me) ? [me] : []));
   let selCat = isEdit ? (editEv.category||"") : (defaults.category || "");   // カテゴリ(未分類="")
   // 手動入力で選べるカテゴリ(立会(未定)は自動生成なので除外)＋先頭に未分類
   const qaCats = [{name:"未分類", val:"", color:"#cbd5e1"}]
@@ -11828,11 +11831,8 @@ function showQuickAddSheet_(defaults={}, editEv=null){
     <div class="qa-cat">${qaCats.map(c=>{
       return `<button data-cat="${escapeHtml(c.val)}" class="${c.val===selCat?'on':''}" style="background:${c.color}40">${escapeHtml(c.name)}</button>`;
     }).join('')}</div>
-    <div class="qa-label">担当</div>
-    <div class="qa-staff">${STAFF.map(s=>{
-      const c = STAFF_COLORS[s] || '#9ca3af';
-      return `<button data-s="${escapeHtml(s)}" class="${s===selStaff?'on':''}" style="background:${c}40">${escapeHtml(s)}</button>`;
-    }).join('')}</div>
+    <div class="qa-label">担当 <span style="font-weight:400;color:var(--muted);font-size:10px">(複数可・最初の人がリーダー★)</span></div>
+    <div class="qa-staff"></div>
     <div class="qa-actions">
       <button id="qa-cancel" style="background:#f1f5f9;color:#334155">キャンセル</button>
       <button id="qa-detail" style="background:#e0e7ff;color:#3730a3">✏️ 詳細</button>
@@ -11841,12 +11841,21 @@ function showQuickAddSheet_(defaults={}, editEv=null){
   </div>`;
   document.body.appendChild(bd);
   bd.onclick = (e)=>{ if(e.target===bd) bd.remove(); };
-  bd.querySelectorAll('.qa-staff button').forEach(b=>{
-    b.onclick = ()=>{
-      selStaff = (selStaff === b.dataset.s) ? "" : b.dataset.s;
-      bd.querySelectorAll('.qa-staff button').forEach(x=>x.classList.toggle('on', x.dataset.s===selStaff));
-    };
-  });
+  // 担当 複数選択(配列先頭=リーダー★)。クリックで追加/解除、再描画(v1.30.89)
+  const staffBox = bd.querySelector('.qa-staff');
+  const paintStaff = ()=>{
+    staffBox.innerHTML = STAFF.map(s=>{
+      const c = STAFF_COLORS[s] || '#9ca3af';
+      const on = selStaff.includes(s);
+      const leader = selStaff[0]===s;
+      const style = on ? `background:${c};color:${textColorFor(c)}` : `background:${c}40`;
+      return `<button data-s="${escapeHtml(s)}" class="${on?'on':''}" style="${style}">${leader?'★':''}${escapeHtml(s)}</button>`;
+    }).join('');
+    staffBox.querySelectorAll('button').forEach(b=>{
+      b.onclick = ()=>{ const s=b.dataset.s; const i=selStaff.indexOf(s); if(i>=0) selStaff.splice(i,1); else selStaff.push(s); paintStaff(); };
+    });
+  };
+  paintStaff();
   bd.querySelectorAll('.qa-cat button').forEach(b=>{
     b.onclick = ()=>{
       selCat = b.dataset.cat;   // 単一選択(未分類="")
@@ -11861,7 +11870,7 @@ function showQuickAddSheet_(defaults={}, editEv=null){
     const posS = st || posStart || "";   // 時間未定でもクリック位置を引き継ぐ
     bd.remove();
     if(isEdit){ openEventModal(editEv); return; }   // 編集: 従来フォームで詳細編集
-    openEventModal(null, {date:d||undefined, staff:selStaff||undefined, start:posS||undefined, end:posS?endOf(posS):undefined, category:selCat||undefined});
+    openEventModal(null, {date:d||undefined, staff:selStaff[0]||undefined, participants:selStaff.slice(1), start:posS||undefined, end:posS?endOf(posS):undefined, category:selCat||undefined});
     try{ if(t) document.getElementById('ev-title').value = t; }catch(_){}
   };
   bd.querySelector('#qa-save').onclick = ()=>{
@@ -11874,7 +11883,7 @@ function showQuickAddSheet_(defaults={}, editEv=null){
       const target = (state.events||[]).find(e=>e.id===editEv.id);
       if(!target){ bd.remove(); return; }
       if(typeof pushHistory==='function') pushHistory();
-      target.title = title; target.category = selCat||""; target.staff = selStaff||""; target.date = d;
+      target.title = title; target.category = selCat||""; target.staff = selStaff[0]||""; target.participants = selStaff.slice(1); target.date = d;
       if(st){ target.start = st; target.end = endOf(st); target.timeMode = "timed"; target.allday = false; }
       else { const posS = posStart || target.start || "09:00"; target.start = posS; target.end = endOf(posS); target.timeMode = target.allday ? (target.timeMode||"allday") : "anytime"; }
       target.updatedAt = new Date().toISOString();
@@ -11886,7 +11895,7 @@ function showQuickAddSheet_(defaults={}, editEv=null){
     // 表示位置: 時刻を選べばその時刻(timed) / 時間未定でもクリック位置(posStart)があればそこに配置(anytime) / 無ければ09:00
     const posS = st || posStart || "09:00";
     const ev = {
-      id: uid(), title, category: selCat||"", contractor:"", staff: selStaff||"", participants: [],
+      id: uid(), title, category: selCat||"", contractor:"", staff: selStaff[0]||"", participants: selStaff.slice(1),
       date: d, start: posS, end: endOf(posS), allday: false, timeMode: st ? "timed" : "anytime",
       color:"", memo:"", importance: [], updatedAt: new Date().toISOString(),
     };
