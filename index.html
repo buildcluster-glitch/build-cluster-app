@@ -1433,9 +1433,10 @@
   .resto-card.st-done{border-left-color:#16a34a}
   .resto-card:hover{box-shadow:0 2px 6px rgba(0,0,0,.08)}
   /* 1行レイアウト: 物件名 | 進捗テキスト | 進捗バー | 確認日 | 退去 | ステータスピル */
-  .resto-card .rc-row{display:flex;align-items:center;gap:10px;min-width:0}
-  .resto-card .rc-name{font-weight:700;font-size:15px;color:#0f172a;
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto;max-width:38%}
+  .resto-card .rc-row{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
+  /* 物件名は独立行(全幅)で常に表示。バッジ群に押されて潰れないように(v1.30.82) */
+  .resto-card .rc-name{font-weight:700;font-size:15px;color:#0f172a;display:block;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:4px}
   .resto-card .rc-name .rc-room{color:#475569;font-weight:600;font-size:13px}
   .resto-card .rc-sub{font-size:11px;color:var(--muted);margin-top:4px;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -2254,7 +2255,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.81</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.82</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -13935,8 +13936,8 @@ function renderRestoCard(p){
   const extraBadgesHtml = keyBadge + disBadge + cleanBadge;
   return `
     <div class="resto-card st-${st}" data-id="${p.id}">
+      <div class="rc-name">${escapeHtml(p.name||"(物件名なし)")} <span class="rc-room">${roomStr}</span></div>
       <div class="rc-row">
-        <div class="rc-name">${escapeHtml(p.name)} <span class="rc-room">${roomStr}</span></div>
         ${volBadgeHtml}
         ${extraBadgesHtml}
         <span class="rc-progress-label">${progressLabel}</span>
