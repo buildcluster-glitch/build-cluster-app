@@ -2265,7 +2265,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.83</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.84</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2360,14 +2360,15 @@
   <div class="repair-toolbar repair-main-bar">
     <input id="repairSearch" placeholder="🔎 物件名/住所/お客様/業者">
     <button class="nav-btn" id="repairReload" title="Drive再同期">🔄</button>
-    <button class="rf-toggle" id="repairFilterToggle" title="絞り込み(状態/担当/元請け/並び)">▾ 絞り込み</button>
+    <button class="rf-toggle" id="repairFilterToggle" title="絞り込み(状態/元請け/並び)">▾ 絞り込み</button>
+  </div>
+  <!-- 担当(人別)バッジは常時表示(山田の希望 v1.30.84) -->
+  <div class="repair-toolbar">
+    <div class="repair-filters" id="repairPersonFilters"></div>
   </div>
   <div class="repair-filterbox" id="repairFilterBox">
     <div class="repair-toolbar">
       <div class="repair-filters" id="repairFilters"></div>
-    </div>
-    <div class="repair-toolbar">
-      <div class="repair-filters" id="repairPersonFilters"></div>
     </div>
     <div class="repair-toolbar">
       <div class="repair-filters" id="repairClientFilters"></div>
