@@ -2265,7 +2265,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.86</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.87</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9274,9 +9274,11 @@ function renderCalendar(){
       // 文字数 25 以下 → 1行(14px) / それ以上 → 2行(28px)
       const __linkRow = __linkText ? (__linkText.length <= 25 ? 14 : 28) : 0;
       // 📌 事前: 工事内容(memoの「工事:◯◯」)をチップ2行目に表示(v1.30.56)
-      const __jizenKoji = (typeof isJizenEvent_==='function' && isJizenEvent_(ev))
+      //   汎用の工事種別(原状回復工事/修繕工事 等)は自明なので非表示。具体的な作業内容だけ出す(v1.30.87)
+      let __jizenKoji = (typeof isJizenEvent_==='function' && isJizenEvent_(ev))
         ? (String(ev.memo||"").split(/\r?\n/).find(l=>/^工事[:：]/.test(l.trim()))||"").replace(/^\s*工事[:：]\s*/,"").trim()
         : "";
+      if(/^(原状回復工事|原状回復|修繕工事|修繕|その他工事)$/.test(__jizenKoji)) __jizenKoji = "";
       const __jizenRow = __jizenKoji ? 14 : 0;
       // __staffRows>0 のチップは chip-has-staffs のカード枠(padding2px+border1.5px ≈ 7px・border-box)分を
       //   足さないとバッジ行が下で見切れる(v1.30.36)
