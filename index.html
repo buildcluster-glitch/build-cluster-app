@@ -2265,7 +2265,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.84</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.85</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2457,6 +2457,10 @@
       <span class="sep"></span>
       <input id="restoSearch" placeholder="🔎 物件名/住所/業者で絞り込み">
       <button class="nav-btn" id="restoReload" title="Drive再同期">🔄</button>
+    </div>
+    <!-- 👤 見積作成者別バッジ(常時表示・クリックで絞り込み) v1.30.85 -->
+    <div class="resto-toolbar">
+      <div class="resto-filters" id="restoPersonFilters"></div>
     </div>
     <div class="resto-list" id="restoList"></div>
   </div>
@@ -13673,6 +13677,7 @@ repairSheet.onclick = e=>{ if(e.target===repairSheet) closeRepairSheet(); };
 // ===========================================================
 let restoClientFilter = "all";     // 'all' or clientCat
 let restoStatusFilter = "active";  // 'active'|'all'|'todo'|'wip'|'archived'
+let restoPersonFilter = "all";     // 見積作成者(p.staff)別 絞り込み 'all'|名前|""(未設定) v1.30.85
 let restoSearch = "";
 let restoDetailId = null;          // 詳細表示中の物件id (null=リスト)
 let restoTaskStatusFilter = null;  // 詳細内ステータス絞込
@@ -13823,6 +13828,27 @@ function renderRestoList(){
   });
   // 発注日新しい順
   items.sort((a,b)=>(b.orderDate||"0000").localeCompare(a.orderDate||"0000"));
+
+  // 👤 見積作成者別バッジ(p.staff)。件数は状態+検索後の集合で算出 → クリックで絞り込み(v1.30.85)
+  const personCounts = {};
+  items.forEach(p=>{ const k=(p.staff||"").trim(); personCounts[k]=(personCounts[k]||0)+1; });
+  const personKeys = (typeof STAFF!=='undefined'?STAFF:[]).filter(s=>personCounts[s])
+    .concat(Object.keys(personCounts).filter(k=>k && (typeof STAFF==='undefined'||!STAFF.includes(k))))
+    .concat(personCounts[""]?[""]:[]);
+  const pEl = document.getElementById("restoPersonFilters");
+  if(pEl){
+    pEl.innerHTML = [`<button class="rf-chip ${restoPersonFilter==="all"?"active":""}" data-p="all">👤 全作成者<span class="count">${items.length}</span></button>`]
+      .concat(personKeys.map(k=>{
+        const disp = k===""?"未設定":k;
+        const col = k===""?"#cbd5e1":((typeof staffColor_==='function')?staffColor_(k):"#9ca3af");
+        const active = restoPersonFilter===k;
+        const style = active ? `background:${col};border-color:${col};color:${textColorFor(col)}` : `box-shadow:inset 0 -2.5px 0 ${col}`;
+        return `<button class="rf-chip ${active?"active":""}" data-p="${escapeHtml(k)}" style="${style}">${escapeHtml(disp)}<span class="count">${personCounts[k]}</span></button>`;
+      })).join("");
+    pEl.querySelectorAll(".rf-chip").forEach(b=>{ b.onclick=()=>{ const p=b.dataset.p; restoPersonFilter=(p==="all"||restoPersonFilter===p)?"all":p; renderRestoList(); }; });
+  }
+  // 作成者で絞り込み
+  if(restoPersonFilter!=="all") items = items.filter(p=>(p.staff||"").trim()===restoPersonFilter);
 
   const listEl = document.getElementById("restoList");
   if(items.length === 0){
