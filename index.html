@@ -2265,7 +2265,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.90</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.91</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2490,6 +2490,10 @@
       <div class="rd-group">
         <div class="rd-group-head">✂️ 減工事 <span class="rd-group-sum" id="rdSumRed"></span></div>
         <div id="rdListRed"></div>
+      </div>
+      <div class="rd-group" id="rdGroupProp" style="display:none">
+        <div class="rd-group-head">📋 提案・要手配 <span style="font-size:11px;color:#94a3b8;font-weight:400">(自社工事進捗の対象外)</span> <span class="rd-group-sum" id="rdSumProp"></span></div>
+        <div id="rdListProp"></div>
       </div>
       <div class="rd-group">
         <div class="rd-group-head" style="cursor:pointer" id="rdTrashHead">🗑 ゴミ箱(完了) <span class="rd-group-sum" id="rdSumTrash"></span> <button class="nav-btn" id="rdTrashToggle" style="padding:2px 8px;font-size:11px">▼ 開く</button></div>
@@ -7149,7 +7153,8 @@ function restoTaskToHatchuRow_(t, contractorOverride){
 }
 // 外注タスク行 (業者初出順 → 業者内工期順)
 function restoOutsourceRows_(p){
-  const tasks = (p.tasks||[]).filter(t=> t.category==="outsource" && (typeof isExcludedRestoTask!=='function' || !isExcludedRestoTask(t)));
+  // v1.30.91: 実効カテゴリ(未割当の外注定番工種=クロス/床等も外注として発注書に載せる)
+  const tasks = (p.tasks||[]).filter(t=> (typeof restoEffCategory==='function'?restoEffCategory(t):t.category)==="outsource" && (typeof isExcludedRestoTask!=='function' || !isExcludedRestoTask(t)));
   const order = [];
   tasks.forEach(t=>{ const c=t.contractor||"(業者未設定)"; if(!order.includes(c)) order.push(c); });
   return tasks.slice().sort((a,b)=>{
@@ -7160,7 +7165,8 @@ function restoOutsourceRows_(p){
 }
 // 自社工事(ビルドクラスタ)行 — 工事店名を「自社工事(ビルドクラスタ)」に
 function restoInhouseRows_(p){
-  const tasks = (p.tasks||[]).filter(t=> t.category==="inhouse" && (typeof isExcludedRestoTask!=='function' || !isExcludedRestoTask(t)));
+  // v1.30.91: 実効カテゴリ(提案/未割当の外注定番工種は自社発注書から除外)
+  const tasks = (p.tasks||[]).filter(t=> (typeof restoEffCategory==='function'?restoEffCategory(t):t.category)==="inhouse" && (typeof isExcludedRestoTask!=='function' || !isExcludedRestoTask(t)));
   return tasks.map(t=>restoTaskToHatchuRow_(t, "自社工事(ビルドクラスタ)"));
 }
 // カレンダー手持ちの原状回復データから発注書recを生成 (外注+自社工事)
@@ -9196,7 +9202,8 @@ function renderCalendar(){
       textParts.push(r.workVolume);
     }
     // 🛠 自社工事進捗 % (inhouse タスクの完了率) — 諸経費系は除外
-    const inhouseTasks = (r.tasks||[]).filter(t2=>t2.category==="inhouse" && !isExcludedRestoTask(t2));
+    // v1.30.91: 実効カテゴリで判定(未割当の外注定番工種/提案は自社工事に数えない)
+    const inhouseTasks = (r.tasks||[]).filter(t2=>(typeof restoEffCategory==="function"?restoEffCategory(t2):t2.category)==="inhouse" && !isExcludedRestoTask(t2));
     if(inhouseTasks.length){
       const doneN = inhouseTasks.filter(t2=>t2.status==="done").length;
       const pct = Math.round(doneN/inhouseTasks.length*100);
@@ -13732,9 +13739,29 @@ function isExcludedRestoTask(t){
   return RESTO_EXCLUDED_TASK_NAMES.test(String(t?.name||""));
 }
 
-function restoActiveTasks(p){ return (p.tasks||[]).filter(t=>t.category!=="reduced" && !isExcludedRestoTask(t)); }
+// v1.30.91: 発注先(業者)未割当の見積は上流GASが自動で category="inhouse"(自社)に振るため、
+//   本来は外注の工種(クロス/内装/床/塗装/襖/畳/清掃 等)や、確定工事でない「提案・業者手配依頼」まで
+//   自社工事進捗に混ざる(大村まどか報告・ネオパレス台原203)。表示・集計上は自社工事から外す。
+// 外注定番工種(発注先未割当でも自社工事には数えない)
+const RESTO_GAICHU_TRADE_RE = /クロス|ｸﾛｽ|内装|クッションフロア|ｸｯｼｮﾝ|フロアタイル|Ｐタイル|Pタイル|フローリング|ﾌﾛｰﾘﾝｸﾞ|床貼|ＣＦ貼|CF貼|塗装|襖|ふすま|障子|畳|ハウスクリーニング|ﾊｳｽｸﾘｰﾆﾝｸﾞ|清掃|FKK/i;
+// 提案・業者手配依頼(交換提案/○○をお願い致します 等) — 確定工事でないため進捗対象外
+const RESTO_PROPOSAL_RE = /提案|お願い致します|手配をお願い|確認・手配|確認手配/;
+function _restoTaskText(t){ return `${t?.name||""} ${t?.spec||""}`; }
+function restoIsProposal(t){ return RESTO_PROPOSAL_RE.test(_restoTaskText(t)); }
+function restoIsGaichuTrade(t){ return RESTO_GAICHU_TRADE_RE.test(_restoTaskText(t)); }
+// 表示・集計上の「実効カテゴリ」: 自社(inhouse)でも 提案→"proposal" / 外注定番工種→"outsource" に振り直す。
+//   ※t.category(保存値)自体は変えない(合計(外注)は保存値ベースのまま=未割当工種で外注額を膨らませない)。
+function restoEffCategory(t){
+  if(!t) return "";
+  if(t.category!=="inhouse") return t.category;
+  if(restoIsProposal(t)) return "proposal";
+  if(restoIsGaichuTrade(t)) return "outsource";
+  return "inhouse";
+}
+
+function restoActiveTasks(p){ return (p.tasks||[]).filter(t=>{ const ec=restoEffCategory(t); return ec!=="reduced" && ec!=="proposal" && !isExcludedRestoTask(t); }); }
 function restoProgress(p){
-  const inhouse = (p.tasks||[]).filter(t=>t.category==="inhouse" && !isExcludedRestoTask(t));
+  const inhouse = (p.tasks||[]).filter(t=>restoEffCategory(t)==="inhouse" && !isExcludedRestoTask(t));
   const total = inhouse.length;
   const done = inhouse.filter(t=>t.status==="done").length;
   return {total, done, pct: total ? Math.round(done/total*100) : 0};
@@ -14150,6 +14177,7 @@ function renderRestoDetail(){
   // タスクグループ
   renderRestoTaskGroup(p, "outsource", "rdListOut", "rdSumOut");
   renderRestoTaskGroup(p, "inhouse", "rdListIn", "rdSumIn");
+  renderRestoTaskGroup(p, "proposal", "rdListProp", "rdSumProp"); // v1.30.91: 提案・要手配(自社工事対象外)
   renderRestoTaskGroup(p, "reduced", "rdListRed", "rdSumRed");
   renderRestoTrash(p);
   renderRestoComments(p);
@@ -14157,16 +14185,23 @@ function renderRestoDetail(){
 
 function renderRestoTaskGroup(p, cat, listId, sumId){
   // 諸経費系(運搬/廃棄物/管理費)は表示・カウント両方から除外
-  const all = (p.tasks||[]).filter(t=>t.category===cat && !isExcludedRestoTask(t));
+  // v1.30.91: 実効カテゴリで振り分け(未割当の外注定番工種は外注へ・提案はproposalへ)
+  const all = (p.tasks||[]).filter(t=>restoEffCategory(t)===cat && !isExcludedRestoTask(t));
+  const noStatusFilter = (cat==="reduced" || cat==="proposal"); // 減工事・提案はステータス絞込の対象外
   // v1.7: 完了タスクも一覧に残す(取消線+✅で識別)。完了タブを開いた時のみ done絞込
   let tasks = all;
-  if(restoTaskStatusFilter && cat!=="reduced") tasks = tasks.filter(t=>t.status===restoTaskStatusFilter);
+  if(restoTaskStatusFilter && !noStatusFilter) tasks = tasks.filter(t=>t.status===restoTaskStatusFilter);
   const el = document.getElementById(listId);
   const sum = document.getElementById(sumId);
+  // 提案グループは項目がある時だけ表示(ステータス絞込中は対象外なので隠す)
+  if(cat==="proposal"){
+    const grp = document.getElementById("rdGroupProp");
+    if(grp) grp.style.display = (all.length && !restoTaskStatusFilter) ? "" : "none";
+  }
   const doneCount = all.filter(t=>t.status==="done").length;
   const amt = cat==="outsource" ? all.reduce((s,t)=>s+(+t.amount||0),0) : 0;
-  sum.textContent = cat==="reduced" ? `${all.length}件` : `${doneCount}/${all.length} 完了${amt?`　¥${amt.toLocaleString()}`:""}`;
-  if(restoTaskStatusFilter && cat==="reduced"){ el.innerHTML=""; sum.textContent="—"; return; }
+  sum.textContent = (cat==="reduced"||cat==="proposal") ? `${all.length}件` : `${doneCount}/${all.length} 完了${amt?`　¥${amt.toLocaleString()}`:""}`;
+  if(restoTaskStatusFilter && noStatusFilter){ el.innerHTML=""; sum.textContent="—"; return; }
   if(!tasks.length){
     el.innerHTML = `<div class="resto-empty" style="padding:10px;font-size:12px">${all.length>doneCount?"なし":"全て完了（ゴミ箱へ）"}</div>`;
     return;
