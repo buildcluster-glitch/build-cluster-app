@@ -2265,7 +2265,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.89</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.90</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -6504,6 +6504,13 @@ function getOrConsolidateJimuEvent_(staff){
   rest.forEach(ev=>{
     // 先頭(ヘッダ「事務」)を除いた本文行を canonical に移植(空行除外)
     String(ev.title||'').split(/\r?\n/).slice(1).forEach(ln=>{ if(ln.trim()) lines.push(ln); });
+    // 💬 業務連絡(messages)も canonical へ統合(端末別重複でメッセージが消えるのを防ぐ) v1.30.90
+    if(Array.isArray(ev.messages) && ev.messages.length){
+      if(!Array.isArray(canon.messages)) canon.messages=[];
+      const ids=new Set(canon.messages.map(m=>m.id));
+      ev.messages.forEach(m=>{ if(m&&m.id&&!ids.has(m.id)){ canon.messages.push(m); ids.add(m.id); } });
+      canon.messages.sort((a,b)=>String(a.at||'').localeCompare(String(b.at||'')));
+    }
   });
   canon.title = dedupeTaskLines_(lines.join('\n'));   // 統合時に行重複を排除(再追記での増殖防止)
   canon.updatedAt = new Date().toISOString();
@@ -6582,6 +6589,7 @@ function showTaskChecklistPopup(el, ev){
   let trashCollapsed = true;   // ゴミ箱は初期は畳む
   let archiveCollapsed = true; // アーカイブは初期は畳む
   let focusAdd = false;        // 追加後に入力へ再フォーカス
+  let msgReactPickerId = null; // 💬業務連絡 リアクション絵文字ピッカー表示中のmsg id(v1.30.90)
   // タイトルを transform で更新→保存→再描画
   const mutate = (transform)=>{
     const target = (state.events||[]).find(e=>e.id===ev.id);
@@ -6706,6 +6714,17 @@ function showTaskChecklistPopup(el, ev){
         <button class="tp-unarchive" data-line="${t.index}" title="アーカイブから戻す">↩</button>
         <button class="tp-purge" data-line="${t.index}" title="完全に削除">🗑</button>
       </div>`;
+    // 💬 業務連絡(休日スタッフ宛・全端末共有=ev.messages) v1.30.90
+    const meSelf = (typeof getMyself==='function')?getMyself():"";
+    const fmtMsgT = iso=>{ const d=new Date(iso); if(isNaN(d))return''; const p=n=>String(n).padStart(2,'0'); const td=new Date();td.setHours(0,0,0,0); return d>=td?`${p(d.getHours())}:${p(d.getMinutes())}`:`${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+    const MSG_EMOJIS=['👍','✅','👀','🙏','💪','🆗'];
+    const msgs = (cur.messages)||[];
+    const msgsHtml = msgs.length ? msgs.map(m=>{
+      const reacts=Object.entries(m.reactions||{}).filter(([_,u])=>Array.isArray(u)&&u.length).map(([em,users])=>{const on=meSelf&&users.includes(meSelf)?'on':'';return `<button class="reaction-btn ${on}" data-mtr="${escapeHtml(em)}" data-mi="${escapeHtml(m.id)}" title="${escapeHtml(users.join(', '))}">${em}<span class="r-count">${users.length}</span></button>`;}).join('');
+      const picker = msgReactPickerId===m.id ? `<span style="display:inline-flex;gap:2px;margin-left:4px">${MSG_EMOJIS.map(em=>`<button class="reaction-btn" data-mrae="${escapeHtml(m.id)}" data-em="${em}" style="font-size:14px">${em}</button>`).join('')}</span>` : '';
+      return `<div class="tp-msg-card" style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:4px 7px;font-size:11px;position:relative">${m.author===meSelf?`<button class="tp-msg-del" data-mi="${escapeHtml(m.id)}" style="position:absolute;right:3px;top:3px;border:0;background:transparent;color:#cbd5e1;cursor:pointer;font-size:11px">✕</button>`:''}<div style="font-size:10px;color:#64748b"><b style="color:#1e293b">${escapeHtml(m.author||'?')}</b> ${escapeHtml(fmtMsgT(m.at))}</div><div style="white-space:pre-wrap;color:#0f172a">${escapeHtml(m.text||'')}</div><div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;align-items:center">${reacts}<button class="reaction-add" data-mrad="${escapeHtml(m.id)}" style="font-size:12px;padding:0 5px">+</button>${picker}</div></div>`;
+    }).join('') : '<div style="font-size:11px;color:#94a3b8;text-align:center;padding:3px">まだ業務連絡はありません</div>';
+    const msgSectionHtml = (cur.category==='事務') ? `<div class="tp-msg" style="border-top:1px solid #eef2f7;margin-top:8px;padding-top:8px"><div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:5px">💬 業務連絡 <span style="font-weight:400;color:#94a3b8;font-size:10px">(${escapeHtml(cur.staff||'')}さんへ・出社時に確認)</span></div><div class="tp-msg-list" style="max-height:170px;overflow:auto;display:flex;flex-direction:column;gap:4px">${msgsHtml}</div><div style="display:flex;gap:4px;margin-top:6px"><textarea class="tp-msg-input" rows="1" placeholder="業務連絡を書く (Enter送信)" style="flex:1;font-size:12px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;resize:vertical;min-height:30px"></textarea><button class="tp-msg-send btn primary" style="font-size:12px;padding:5px 12px">送信</button></div></div>` : '';
     pop.innerHTML = `
       <div class="qp-title">📋 ${head}タスク <span class="tp-count ${allDone?'done':''}">${allDone?'✓ ':''}${ti.done}/${ti.total}</span></div>
       <div class="tp-bar"><i style="width:${pct}%;background:${allDone?'#16a34a':'#3b82f6'}"></i></div>
@@ -6730,6 +6749,7 @@ function showTaskChecklistPopup(el, ev){
         })()}
         <button class="tp-add-btn">追加</button>
       </div>
+      ${msgSectionHtml}
       <div class="qp-actions">
         <button class="qp-detail" data-role="open-modal">✏️ 本文編集</button>
         <button class="qp-del-event" data-role="del-event" title="この事務タスク予定を丸ごと削除">🗑 予定削除</button>
@@ -6816,6 +6836,17 @@ function showTaskChecklistPopup(el, ev){
       pop.remove();
     };
     pop.querySelector('[data-role="close"]').onclick = ()=>pop.remove();
+    // 💬 業務連絡 配線(ev.messages・全端末共有) v1.30.90
+    const liveTarget_ = ()=>(state.events||[]).find(e=>e.id===ev.id);
+    const persistMsgs_ = ()=>{ const t=liveTarget_(); if(t){ t.updatedAt=new Date().toISOString(); saveState(); if(typeof cloudQueueEventChange==='function'){try{cloudQueueEventChange(t,'upsert');}catch(_){}} } if(typeof render==='function') render(); ({cur,ti}=build()); if(ti) renderInner(); };
+    const sendMsg_ = (text)=>{ text=String(text||'').trim(); if(!text) return; if(!meSelf){ alert('先に「👤 自分」を設定してください(👤マイ)'); return; } const t=liveTarget_(); if(!t) return; if(!Array.isArray(t.messages)) t.messages=[]; t.messages.push({id:'m_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),author:meSelf,text,at:new Date().toISOString(),reactions:{}}); msgReactPickerId=null; persistMsgs_(); };
+    const msgInput = pop.querySelector('.tp-msg-input'), msgSend = pop.querySelector('.tp-msg-send');
+    if(msgSend) msgSend.onclick = ()=>sendMsg_(msgInput.value);
+    if(msgInput) msgInput.onkeydown = e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMsg_(msgInput.value); } };
+    pop.querySelectorAll('.tp-msg-del').forEach(b=>b.onclick=()=>{ const t=liveTarget_(); if(!t||!Array.isArray(t.messages)) return; if(!confirm('この業務連絡を削除しますか？')) return; t.messages=t.messages.filter(m=>m.id!==b.dataset.mi); persistMsgs_(); });
+    pop.querySelectorAll('[data-mtr]').forEach(b=>b.onclick=()=>{ if(!meSelf){alert('先に「👤 自分」を設定してください');return;} const t=liveTarget_(); const m=(t&&t.messages||[]).find(x=>x.id===b.dataset.mi); if(!m)return; __reactToggleObj_(m,b.dataset.mtr,meSelf); msgReactPickerId=null; persistMsgs_(); });
+    pop.querySelectorAll('[data-mrad]').forEach(b=>b.onclick=()=>{ msgReactPickerId=(msgReactPickerId===b.dataset.mrad)?null:b.dataset.mrad; renderInner(); });
+    pop.querySelectorAll('[data-mrae]').forEach(b=>b.onclick=()=>{ if(!meSelf){alert('先に「👤 自分」を設定してください');return;} const t=liveTarget_(); const m=(t&&t.messages||[]).find(x=>x.id===b.dataset.mrae); if(!m)return; __reactAddObj_(m,b.dataset.em,meSelf); msgReactPickerId=null; persistMsgs_(); });
     if(focusAdd){ focusAdd=false; addInput.focus(); }
   };
   renderInner();
