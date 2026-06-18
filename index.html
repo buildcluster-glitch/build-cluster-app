@@ -2267,7 +2267,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.111</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.112</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9218,7 +9218,10 @@ function renderLeaveBand(){
       </span>
       ${(()=>{
         // 📞 電話番: 事務まどかが今日休みの時だけ、出社メンバーから選ぶ(全員共有・日付ごと) v1.30.111
-        if(!offStaff.has("まどか")) return "";
+        // ⚠ 日祝はまどか基本休みだが会社も休みなので電話番不要→出さない(v1.30.112)
+        const __td = (typeof parseDate==='function') ? parseDate(todayStr) : new Date(todayStr);
+        const __isNichiShuku = __td && !isNaN(__td) && (__td.getDay()===0 || (typeof isHoliday==='function' && isHoliday(__td)));
+        if(!offStaff.has("まどか") || __isNichiShuku) return "";
         const cur = getPhoneDuty_(todayStr);
         const undecided = !cur;
         return `<span class="sec-divider"></span>
