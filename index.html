@@ -2267,7 +2267,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.112</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.113</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3618,6 +3618,7 @@
           <option value="有給（病休）">有給（病休）</option>
           <option value="有給（忌引）">有給（忌引）</option>
           <option value="当番">🔄 当番 (週次ローテ・休みではない)</option>
+          <option value="出社">🏢 出社 (日祝などに出勤・休みにカウントしない)</option>
         </select>
       </div>
       <div class="field">
@@ -4956,7 +4957,7 @@ function buildAttendancePayload(){
     const d = addDays(today, i);
     const dStr = fmtDate(d);
     const dayLeaves = state.leaves.filter(l => dStr>=l.start && dStr<=l.end);
-    const offEntries = dayLeaves.filter(l => l.type !== "当番");
+    const offEntries = dayLeaves.filter(l => l.type !== "当番" && l.type !== "出社");  // 出社=出勤なので欠勤に数えない
     const dutyEntries = dayLeaves.filter(l => l.type === "当番");
     const offStaffSet = new Set(offEntries.map(l => l.staff));
     const present = STAFF.filter(s => !offStaffSet.has(s));
@@ -9056,18 +9057,25 @@ function renderLeaveSummary(){
   //   対象=有給/年休/半休(0.5)/休暇/別件/体調不良/会社休日(取得) 等。除外=当番/出張/研修(休みではない)
   //   → 誰も取ってなければ 0/会社休日 になる
   const HALF = new Set(["半休","有給(AM)","有給(PM)"]);
-  const NONREST = new Set(["当番","出張","研修"]);
+  const NONREST = new Set(["当番","出張","研修","出社"]);   // 「休みではない」種別(出社=日祝に出勤)
+  // 📅 日祝(日曜 or 祝日)は基本全員休み → 自動で休みカウント。ただし「出社」レコードがあればその日はカウントしない(v1.30.113)
+  const lastDay = new Date(year,month,0).getDate();
+  const isNichiShuku_ = (ds)=>{ const dt=parseDate(ds); return !!(dt && !isNaN(dt) && (dt.getDay()===0 || (typeof isHoliday==='function' && isHoliday(dt)))); };
   const staffHtml = STAFF.filter(s=> s!=="山田裕貴").map(s=>{   // 社長(山田)は休みカウント対象外
     let x = 0;
-    (state.leaves||[]).forEach(l=>{
-      if(l.staff!==s || NONREST.has(l.type)) return;
-      const days = overlapDays(l); if(!days) return;
-      x += days * (HALF.has(l.type) ? 0.5 : 1);
-    });
+    const myLeaves = (state.leaves||[]).filter(l=> l.staff===s);
+    for(let dd=1; dd<=lastDay; dd++){
+      const ds = `${year}-${pad(month)}-${pad(dd)}`;
+      const recs = myLeaves.filter(l=> l.start<=ds && l.end>=ds);
+      if(recs.some(l=> l.type==="出社")) continue;            // 出社した日は(日祝でも)休みにしない
+      const rest = recs.find(l=> !NONREST.has(l.type));       // 有給/年休/半休/会社休日/別件/体調不良 等
+      if(rest){ x += HALF.has(rest.type) ? 0.5 : 1; continue; }
+      if(isNichiShuku_(ds)) x += 1;                           // 日祝は自動で全員休み
+    }
     const frac = `${num(x)}/${num(holN)}`;
     const taken = x > 0;
     const bg = (typeof STAFF_COLORS!=='undefined' && STAFF_COLORS[s]) ? STAFF_COLORS[s] : "#9ca3af";
-    return `<span class="ls-staff ${taken?'taken':''}" title="${escapeHtml(s)} ${month}月の取得休み ${num(x)}日 / 会社休日${num(holN)}日 (有給/年休/半休/休暇/別件/体調不良 等・当番/出張/研修は除外)"><span class="ls-dot" style="background:${bg}"></span>${escapeHtml(s)} <span class="frac">${frac}</span></span>`;
+    return `<span class="ls-staff ${taken?'taken':''}" title="${escapeHtml(s)} ${month}月の休み ${num(x)}日 / 会社休日${num(holN)}日 (日祝は自動カウント＋有給/年休/半休/休暇 等。当番/出張/研修/出社は休みに数えない・出社レコードがある日祝は相殺)"><span class="ls-dot" style="background:${bg}"></span>${escapeHtml(s)} <span class="frac">${frac}</span></span>`;
   }).join("");
   // 🔑 確定立会件数は カテゴリ「山一」バッジ内に統合表示(renderCategoryFilter)に移動
 
@@ -9082,9 +9090,9 @@ function renderLeaveBand(){
   const todayStr = fmtDate(today);
   const band = document.getElementById("leaveBand");
 
-  // 今日の休み (有給/半休/年休/休暇/別件/体調不良/会社休日 など 当番以外)
+  // 今日の休み (有給/半休/年休/休暇/別件/体調不良/会社休日 など 当番・出社以外)
   const todayOff = state.leaves.filter(l =>
-    l.type !== "当番" && todayStr >= l.start && todayStr <= l.end
+    l.type !== "当番" && l.type !== "出社" && todayStr >= l.start && todayStr <= l.end
   );
   const offStaff = new Set(todayOff.map(l => l.staff));
   // 在席 = STAFF にいて今日休みじゃない人
