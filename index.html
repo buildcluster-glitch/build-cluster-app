@@ -2267,7 +2267,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.107</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.108</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -6106,6 +6106,8 @@ function showEventStaffPicker(el, ev){
   pop.style.left = "0"; pop.style.top = "0";
   // 複数選択可。先頭=リーダー(チップ色を決める)。staff=リーダー / participants=残り
   let selStaff = [ev.staff, ...((ev.participants)||[])].filter(Boolean);
+  // 🚗 直行/直帰(任意)。両方=直行直帰。v1.30.108
+  let selCommute = { go:(ev.commute||"").includes("直行"), home:(ev.commute||"").includes("直帰") };
   const titleLine = (ev.title||"").split(/\r?\n/)[0];
   pop.innerHTML = `
     <div class="qp-title">🚗 担当を選択 <span style="font-size:11px;color:#64748b;font-weight:400">${escapeHtml(titleLine)}</span></div>
@@ -6121,6 +6123,13 @@ function showEventStaffPicker(el, ev){
         }).join("")}
       </div>
       ${ev.color ? `<div style="font-size:10px;color:var(--muted);margin-top:4px">※ 手動色が設定済みのため、担当を変えてもチップ色は変わりません(色は詳細編集で変更)</div>` : ""}
+    </div>
+    <div class="qp-sec">
+      <div class="qp-label">🚗 勤怠 <span style="font-weight:400;color:#94a3b8;font-size:10px">(直行/直帰)</span></div>
+      <div class="qp-worker-pick" id="evCommutePick">
+        <button data-c="go" class="${selCommute.go?"on":""}" style="background:#dbeafe">🚗→ 直行</button>
+        <button data-c="home" class="${selCommute.home?"on":""}" style="background:#dcfce7">→🏠 直帰</button>
+      </div>
     </div>
     <div class="qp-sec">
       <div class="qp-label">💬 コメント <span class="evp-cmt-count" style="text-transform:none;color:var(--muted);font-weight:400"></span></div>
@@ -6173,6 +6182,23 @@ function showEventStaffPicker(el, ev){
         render();
       }
       repaintEvStaff();   // 複数選択を続けられるよう閉じない
+    };
+  });
+  // 🚗 直行/直帰 トグル(両方on=直行直帰)。即保存・閉じない
+  pop.querySelectorAll('#evCommutePick button').forEach(btn=>{
+    btn.onclick = ()=>{
+      const k = btn.dataset.c;
+      selCommute[k] = !selCommute[k];
+      btn.classList.toggle('on', selCommute[k]);
+      const target = (state.events||[]).find(e=>e.id===ev.id);
+      if(target){
+        pushHistory();
+        target.commute = (selCommute.go && selCommute.home) ? "直行直帰" : selCommute.go ? "直行" : selCommute.home ? "直帰" : "";
+        target.updatedAt = new Date().toISOString();
+        saveState();
+        if(typeof cloudQueueEventChange === 'function') cloudQueueEventChange(target, 'upsert');
+        render();
+      }
     };
   });
   // ✏️編集: 簡易シートで編集(さらに細かい設定はシート内の✏️詳細から従来フォーム) v1.30.67
