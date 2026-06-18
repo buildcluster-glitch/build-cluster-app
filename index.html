@@ -2267,7 +2267,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.101</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.102</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9697,7 +9697,9 @@ function renderCalendar(){
         // タイトル文字は flex:1+省略で縮める→アイコン(📋等)が2行目に折返さず1行目に収まる(連携情報行が3行目以降に押し出されるのを防止)v1.30.97
         const __titleInner = (isMulti && !taskInfo)
           ? titleHtml
-          : `<span class="ct-text" style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${taskInfo ? compactTaskHtml : escapeHtml(__nameMain)}</span>${(!taskInfo && __roomTail) ? `<span class="ct-room" style="flex-shrink:0;font-weight:600;margin-left:3px">${escapeHtml(__roomTail)}</span>` : ""}`;
+          : (taskInfo
+              ? `<span class="ct-text" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${compactTaskHtml}</span>`
+              : `<span style="display:inline-flex;min-width:0;flex:0 1 auto;align-items:baseline"><span class="ct-text" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(__nameMain)}</span>${__roomTail ? `<span class="ct-room" style="flex-shrink:0;font-weight:600">${escapeHtml(__roomTail)}</span>` : ""}</span>`);
         const timeBox = isAnytime ? "" : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;
         // 参加者バッジ/見積行は title 外(チップ直下)に独立行として配置。工事ボリュームは号室の隣(__volBadge)。
         el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}`;
@@ -9712,7 +9714,9 @@ function renderCalendar(){
         el.classList.add("event-chip");
         const __titleInner = (isMulti && !taskInfo)
           ? titleHtml
-          : `<span class="ct-text" style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${taskInfo ? compactTaskHtml : escapeHtml(__nameMain)}</span>${(!taskInfo && __roomTail) ? `<span class="ct-room" style="flex-shrink:0;font-weight:600;margin-left:3px">${escapeHtml(__roomTail)}</span>` : ""}`;
+          : (taskInfo
+              ? `<span class="ct-text" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${compactTaskHtml}</span>`
+              : `<span style="display:inline-flex;min-width:0;flex:0 1 auto;align-items:baseline"><span class="ct-text" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(__nameMain)}</span>${__roomTail ? `<span class="ct-room" style="flex-shrink:0;font-weight:600">${escapeHtml(__roomTail)}</span>` : ""}</span>`);
         const timeBox = isAnytime ? "" : `<span class="chip-time">終日</span>`;
         el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}`;
         if(staffBadges){ el.classList.add('chip-has-staffs'); if(!__whiteBg) el.style.setProperty('--card-bg', chipBg); } // 担当色で全面着色、色無しは薄グレー地(v1.30.51)
