@@ -2269,7 +2269,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.95</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.96</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4700,7 +4700,7 @@ function renderCheckCard(ck, today){
   // 📐 見積作成者バッジ(作業担当とは別物・色は付けずグレーのゴーストバッジで「見積：◯◯」)v1.30.95
   const __estName = ck.estimatorName || "";
   const __estBadge = (__estName && !isHiddenStaffBadge_(__estName))
-    ? `<span class="badge-sm est-badge" title="見積作成者: ${escapeHtml(__estName)}" style="background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1;font-weight:600">見積:${escapeHtml(__estName)}</span>`
+    ? `<span class="badge-sm est-badge" title="見積作成者: ${escapeHtml(__estName)}" style="background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1;font-weight:600">見積:${escapeHtml(surnameOf_(__estName))}</span>`
     : "";
   // 工事ボリュームバッジ (v1.4.218 workloadStatus 対応)
   // 色: 無→非表示 / 軽→緑 / 普→黄 / 重→オレンジ / 激重→赤
@@ -5035,6 +5035,8 @@ function saveCachedStaffMaster(members, full){
 // 名前を詰め表記に正規化 (例: "山田 裕貴" → "山田裕貴")
 // master_sync staffMaster は氏名にスペース入り・STAFF 配列は詰め表記なので統一する
 function normalizeStaffName(s){ return String(s==null?'':s).replace(/\s+/g,''); }
+// 姓だけ取り出す (山田裕貴→山田 / "山田 裕貴"→山田)。スペース無しは先頭2文字。見積バッジ表示用 v1.30.96
+function surnameOf_(n){ n=String(n||"").trim(); if(!n) return ""; if(/[\s　]/.test(n)) return n.split(/[\s　]+/)[0]; return n.length<=3 ? n : n.slice(0,2); }
 // 実在スタッフ名か (「光和工業」等の会社名はスタッフ扱いしない)
 function isRealStaffName_(s){ return !!(s && (STAFF_COLORS[s] || STAFF_COLORS[normalizeStaffName(s)])); }
 
@@ -6104,18 +6106,20 @@ function showEventStaffPicker(el, ev){
   const rect = el.getBoundingClientRect();
   pop.style.visibility = "hidden";
   pop.style.left = "0"; pop.style.top = "0";
-  const current = ev.staff || "";
+  // 複数選択可。先頭=リーダー(チップ色を決める)。staff=リーダー / participants=残り
+  let selStaff = [ev.staff, ...((ev.participants)||[])].filter(Boolean);
   const titleLine = (ev.title||"").split(/\r?\n/)[0];
   pop.innerHTML = `
     <div class="qp-title">🚗 担当を選択 <span style="font-size:11px;color:#64748b;font-weight:400">${escapeHtml(titleLine)}</span></div>
     <div class="qp-sec">
-      <div class="qp-label">スタッフ</div>
-      <div class="qp-worker-pick">
-        <button data-staff="" class="${current?"":"on"}" style="background:#f3f4f6;color:#64748b"><span class="qp-dot" style="background:#cbd5e1"></span>未指定</button>
+      <div class="qp-label">スタッフ <span style="font-weight:400;color:#94a3b8;font-size:10px">(複数選択可・先頭=色/リーダー★)</span></div>
+      <div class="qp-worker-pick" id="evStaffPickerList">
+        <button data-staff="" class="${selStaff.length===0?"on":""}" style="background:#f3f4f6;color:#64748b"><span class="qp-dot" style="background:#cbd5e1"></span>未指定</button>
         ${STAFF.map(s=>{
           const sc = STAFF_COLORS[s] || "#9ca3af";
-          const on = current === s;
-          return `<button data-staff="${escapeHtml(s)}" class="${on?"on":""}" style="background:${sc};color:${textColorFor(sc)}"><span class="qp-dot" style="background:${textColorFor(sc)==='#ffffff'?'rgba(255,255,255,.6)':'rgba(0,0,0,.3)'}"></span>${escapeHtml(s)}</button>`;
+          const on = selStaff.includes(s);
+          const leader = selStaff[0]===s;
+          return `<button data-staff="${escapeHtml(s)}" class="${on?"on":""}" style="background:${sc};color:${textColorFor(sc)}"><span class="qp-dot" style="background:${textColorFor(sc)==='#ffffff'?'rgba(255,255,255,.6)':'rgba(0,0,0,.3)'}"></span>${leader?"★":""}${escapeHtml(s)}</button>`;
         }).join("")}
       </div>
       ${ev.color ? `<div style="font-size:10px;color:var(--muted);margin-top:4px">※ 手動色が設定済みのため、担当を変えてもチップ色は変わりません(色は詳細編集で変更)</div>` : ""}
@@ -6144,19 +6148,33 @@ function showEventStaffPicker(el, ev){
     if(left < mg) left = mg;
     pop.style.top = top + "px"; pop.style.left = left + "px"; pop.style.visibility = "visible";
   });
-  pop.querySelectorAll("[data-staff]").forEach(btn=>{
+  const repaintEvStaff = ()=>{
+    pop.querySelectorAll("#evStaffPickerList [data-staff]").forEach(b=>{
+      const bs=b.dataset.staff;
+      const on = bs==="" ? selStaff.length===0 : selStaff.includes(bs);
+      b.classList.toggle('on', on);
+      // ★リーダー表示を更新
+      const sc = bs ? (STAFF_COLORS[bs]||"#9ca3af") : "#cbd5e1";
+      if(bs) b.innerHTML = `<span class="qp-dot" style="background:${textColorFor(sc)==='#ffffff'?'rgba(255,255,255,.6)':'rgba(0,0,0,.3)'}"></span>${selStaff[0]===bs?"★":""}${escapeHtml(bs)}`;
+    });
+  };
+  pop.querySelectorAll("#evStaffPickerList [data-staff]").forEach(btn=>{
     btn.onclick = ()=>{
-      const newStaff = btn.dataset.staff;
+      const s = btn.dataset.staff;
+      if(s===""){ selStaff=[]; }
+      else if(selStaff.includes(s)){ selStaff=selStaff.filter(x=>x!==s); }
+      else { selStaff.push(s); }
       const target = (state.events||[]).find(e=>e.id===ev.id);
-      if(target && target.staff !== newStaff){
+      if(target){
         pushHistory();
-        target.staff = newStaff;
+        target.staff = selStaff[0]||"";
+        target.participants = selStaff.slice(1);
         target.updatedAt = new Date().toISOString();
         saveState();
         if(typeof cloudQueueEventChange === 'function') cloudQueueEventChange(target, 'upsert');
         render();
       }
-      pop.remove();
+      repaintEvStaff();   // 複数選択を続けられるよう閉じない
     };
   });
   // ✏️編集: 簡易シートで編集(さらに細かい設定はシート内の✏️詳細から従来フォーム) v1.30.67
@@ -9476,8 +9494,14 @@ function renderCalendar(){
         : "";
       if(/^(原状回復工事|原状回復|修繕工事|修繕|その他工事)$/.test(__jizenKoji)) __jizenKoji = "";
       const __jizenRow = __jizenKoji ? 14 : 0;
-      // 📐 見積作成者「見積:◯◯」を専用行で表示する分の高さ(事前/最終確認・列幅220pxでも見切れない)v1.30.95
-      const __estRow = ev.estimatorName ? 14 : 0;
+      // 📐 見積作成者(姓のみ)を専用行で表示。ev.estimatorName(事前) > 紐づく原状回復(__progResto.staff)。立会は出さない。
+      //   高さ計算と描画で同じ判定を使う(片方だけだと0高さで見切れる)v1.30.96
+      const __isTachiaiChip = ev.source === "taikyo-shared" || String(ev.category||"").startsWith("立会");
+      const __progResto = getEventResto_(ev);
+      const __estNameRaw = ev.estimatorName || (__progResto && __progResto.staff) || "";
+      const __estName2 = (!__isTachiaiChip && __estNameRaw && (typeof isHiddenStaffBadge_!=='function' || !isHiddenStaffBadge_(__estNameRaw))) ? __estNameRaw : "";
+      const __estShort = surnameOf_(__estName2);   // 姓だけ表示(山田裕貴→山田)
+      const __estRow = __estName2 ? 14 : 0;
       // __staffRows>0 のチップは chip-has-staffs のカード枠(padding2px+border1.5px ≈ 7px・border-box)分を
       //   足さないとバッジ行が下で見切れる(v1.30.36)
       const chipHeight = (lineCount === 1 ? 28 : lineCount * 18 + 14) + __staffRows * 24 + (__staffRows > 0 ? 10 : 0) + __linkRow + __jizenRow + __estRow;
@@ -9580,22 +9604,17 @@ function renderCalendar(){
       ].filter(Boolean).join("\n");
       // コメントアイコン(メモあり時のみ)
       const memoIcon = ev.memo ? `<span class="chip-memo" title="📝 ${escapeHtml(ev.memo)}">📝</span>` : "";
-      // 立会チップ判定(原状回復由来の進捗アイコン/担当バッジを出さない)
-      const __isTachiaiChip = ev.source === "taikyo-shared" || String(ev.category||"").startsWith("立会");
       // 📋 原状回復 進捗アイコン: ひもづく物件がある時のみ。押下でカレンダー上に進捗ダイアログ。
-      //   ⚠ 立会チップには出さない(v1.30.35): 立会は退去立会の予定で、物件名一致で原状回復進捗が誤って付いていた
-      const __progResto = getEventResto_(ev);
+      //   ⚠ 立会チップには出さない(v1.30.35)。__isTachiaiChip/__progResto は高さ計算前に算出済(v1.30.96)
       const progIcon = (__progResto && !__isTachiaiChip)
         ? `<span class="chip-prog" data-resto-id="${escapeHtml(String(__progResto.id))}" role="button" title="📋 原状回復の進捗を表示">📋</span>`
         : "";
-      // 📐 見積作成者バッジ「見積:◯◯」— 作業担当(チップ色/丸バッジ)とは別物と分かるグレーのゴーストバッジ(v1.30.95)
-      //   ev.estimatorName(事前) > 紐づく原状回復の見積作成者(__progResto.staff)。立会チップには出さない。
-      //   月/終日チップは列幅が狭く見切れるので専用行(__estRowHtml)、縦長ビューはインライン(__progStaffBadge)。
+      // 📐 見積作成者バッジ「見積:姓」— 作業担当(チップ色/丸バッジ)とは別物と分かるグレーのゴーストバッジ。
+      //   月/終日チップは列幅が狭いので専用行(__estRowHtml)、縦長ビューはインライン(__progStaffBadge)。__estName2/__estShort は算出済。
       let __progStaffBadge = "", __estRowHtml = "";
-      const __estName2 = ev.estimatorName || (__progResto && __progResto.staff) || "";
-      if(__estName2 && !__isTachiaiChip && (typeof isHiddenStaffBadge_!=='function' || !isHiddenStaffBadge_(__estName2))){
-        __progStaffBadge = `<span class="chip-progstaff est-ghost" style="align-self:center;flex-shrink:0;background:rgba(255,255,255,.75);color:#475569;border:1px solid rgba(100,116,139,.45);font-size:9px;font-weight:600;padding:0 5px;border-radius:4px;margin-left:3px;white-space:nowrap" title="見積作成者: ${escapeHtml(__estName2)}">見積:${escapeHtml(__estName2)}</span>`;
-        __estRowHtml = `<span class="chip-est-row"><span class="est-ghost" style="display:inline-block;max-width:100%;font-size:9px;font-weight:600;padding:0 5px;border-radius:4px;background:rgba(255,255,255,.82);color:#475569;border:1px solid rgba(100,116,139,.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-sizing:border-box;vertical-align:middle" title="見積作成者: ${escapeHtml(__estName2)}">見積:${escapeHtml(__estName2)}</span></span>`;
+      if(__estShort){
+        __progStaffBadge = `<span class="chip-progstaff est-ghost" style="align-self:center;flex-shrink:0;background:rgba(255,255,255,.75);color:#475569;border:1px solid rgba(100,116,139,.45);font-size:9px;font-weight:600;padding:0 5px;border-radius:4px;margin-left:3px;white-space:nowrap" title="見積作成者: ${escapeHtml(__estName2)}">見積:${escapeHtml(__estShort)}</span>`;
+        __estRowHtml = `<span class="chip-est-row"><span class="est-ghost" style="display:inline-block;max-width:100%;font-size:9px;font-weight:600;padding:0 5px;border-radius:4px;background:rgba(255,255,255,.82);color:#475569;border:1px solid rgba(100,116,139,.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-sizing:border-box;vertical-align:middle" title="見積作成者: ${escapeHtml(__estName2)}">見積:${escapeHtml(__estShort)}</span></span>`;
       }
       // 💬コメント数バッジ (チャット)
       const commentCount = (ev.comments && ev.comments.length) || 0;
