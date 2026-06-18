@@ -2267,7 +2267,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.110</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.111</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5490,6 +5490,51 @@ async function setCheckCommuteOverride_(checkId, commute){
   return map;
 }
 // ===========================================================
+// 📞 電話番(まどか休みの日)を全端末共有 — shared-config 'phone_duty' v1.30.111
+//   まどかが休みの日は出社メンバーから電話番を1人決める。日付ごとに保存(プルダウン選択)。
+//   value(JSON) = { duties:{ [date(YYYY-MM-DD)]: {staff, at, by} }, updatedAt }
+// ===========================================================
+const PHONE_DUTY_KEY = "buildcluster_phone_duty";
+function loadPhoneDuty_(){ try{ const o=JSON.parse(localStorage.getItem(PHONE_DUTY_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
+function savePhoneDuty_(map){ try{ localStorage.setItem(PHONE_DUTY_KEY, JSON.stringify(map||{})); }catch(e){} }
+function mergePhoneDutyMaps_(a,b){ const out={}; const keys=new Set([...Object.keys(a||{}),...Object.keys(b||{})]); keys.forEach(k=>{ const ea=a&&a[k], eb=b&&b[k]; if(!ea){out[k]=eb;return;} if(!eb){out[k]=ea;return;} out[k]=(String(eb.at||'')>=String(ea.at||''))?eb:ea; }); return out; } // last-write-wins
+function getPhoneDuty_(date){ const e=loadPhoneDuty_()[date]; return (e&&e.staff)||""; }
+async function fetchPhoneDuty_(opts={}){
+  const s=loadGasSettings(); const local=loadPhoneDuty_();
+  if(!s.url||!s.token){ return local; }
+  try{
+    const url=`${s.url}?action=get-shared-config&key=phone_duty&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res=await fetch(url,{method:'GET',redirect:'follow'}); if(!res.ok) throw new Error('HTTP '+res.status);
+    const data=await res.json(); let raw=data.value;
+    if(raw===''||raw==null) raw={duties:{}}; else if(typeof raw==='string'){ try{raw=JSON.parse(raw);}catch(e){raw={duties:{}};} }
+    const remote=(raw&&raw.duties&&typeof raw.duties==='object')?raw.duties:{};
+    const merged=mergePhoneDutyMaps_(remote, local);
+    savePhoneDuty_(merged);
+    if(opts.push && JSON.stringify(merged)!==JSON.stringify(remote)){ pushPhoneDutyMap_(merged).catch(()=>{}); }
+    if(!opts.silent && typeof render==='function') render();
+    return merged;
+  }catch(err){ if(!opts.silent) console.warn('[phone_duty] fetch失敗:', err.message); return local; }
+}
+async function pushPhoneDutyMap_(map){
+  const s=loadGasSettings(); if(!s.url||!s.token) return;
+  const payload={ duties:map||{}, updatedAt:new Date().toISOString() };
+  try{ await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'phone_duty',value:JSON.stringify(payload),token:s.token,savedBy:'calendar-app'})}); }catch(e){ console.warn('[phone_duty] push失敗:', e.message); }
+}
+async function setPhoneDuty_(date, staff){
+  const stamp=()=>({ staff:staff||'', at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
+  let map=loadPhoneDuty_(); map[date]=stamp(); savePhoneDuty_(map);
+  const s=loadGasSettings();
+  if(s.url&&s.token){
+    try{ const url=`${s.url}?action=get-shared-config&key=phone_duty&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+      const res=await fetch(url,{method:'GET',redirect:'follow'});
+      if(res.ok){ const d=await res.json(); let raw=d.value; if(typeof raw==='string'){ try{raw=JSON.parse(raw);}catch(_){raw=null;} }
+        if(raw&&raw.duties&&typeof raw.duties==='object'){ map=mergePhoneDutyMaps_(raw.duties, loadPhoneDuty_()); map[date]=stamp(); savePhoneDuty_(map); } }
+    }catch(_){}
+  }
+  await pushPhoneDutyMap_(map);
+  return map;
+}
+// ===========================================================
 // 🌴 休暇(state.leaves)を全端末共有 — shared-config 'staff_leaves'(Drive json) v1.30.94
 //   従来 休暇はPC間で同期されずローカルのみだった。id単位のオーバーレイ(LWW+削除tombstone)で共有する。
 //   value(JSON) = { leaves:{ [id]:{id,staff,start,end,type,memo,at,deleted?} }, updatedAt }
@@ -8329,6 +8374,8 @@ async function syncChecksFromGAS(opts){
     if(typeof fetchRepairOverrides_==='function') fetchRepairOverrides_({silent:true}).catch(()=>{});
     // 🏷 再同期時は最終確認の作業担当も最新を取りに行く(v1.30.95)
     if(typeof fetchCheckWorkers_==='function') fetchCheckWorkers_({silent:true}).catch(()=>{});
+    // 📞 再同期時は電話番も最新を取りに行く(v1.30.111)
+    if(typeof fetchPhoneDuty_==='function') fetchPhoneDuty_({silent:true}).catch(()=>{});
     // 🌴 再同期時は休暇も最新を取りに行く→他PCの休日設定が即反映(v1.30.94)
     if(typeof fetchLeaves_==='function') fetchLeaves_({silent:true}).catch(()=>{});
     state.restorations = restorations;
@@ -9169,10 +9216,27 @@ function renderLeaveBand(){
         <button class="add-duty-inline" id="addDutyInline" title="当番(週次)を追加">＋</button>
         ${todayDuty.length===0 ? '<span class="leave-empty">当番未登録</span>' : todayDuty.map(l=>leaveChip(l,true)).join('')}
       </span>
+      ${(()=>{
+        // 📞 電話番: 事務まどかが今日休みの時だけ、出社メンバーから選ぶ(全員共有・日付ごと) v1.30.111
+        if(!offStaff.has("まどか")) return "";
+        const cur = getPhoneDuty_(todayStr);
+        const undecided = !cur;
+        return `<span class="sec-divider"></span>
+        <span class="sec sec-phone">
+          <span class="sec-title" title="まどか休み→出社メンバーで電話番を決める">📞電話番</span>
+          <select id="phoneDutySel" class="phone-duty-sel" style="font-size:12px;padding:3px 6px;border-radius:6px;border:1.5px solid ${undecided?'#dc2626':'var(--border-strong)'};background:${undecided?'#fef2f2':'#fff'};font-weight:600;color:#0f172a">
+            <option value="">${undecided?'⚠ 未定':'未定'}</option>
+            ${present.map(s=>`<option value="${escapeHtml(s)}" ${s===cur?'selected':''}>${escapeHtml((typeof getStaffDisplayName==='function')?getStaffDisplayName(s):s)}</option>`).join('')}
+          </select>
+        </span>`;
+      })()}
     </div>
   `;
   document.getElementById("addLeaveInline").onclick = ()=>openLeaveModal(null, {type:"会社休日"});
   document.getElementById("addDutyInline").onclick = ()=>openLeaveModal(null, {type:"当番"});
+  // 📞 電話番 選択(まどか休み日のみ表示)
+  const __phoneSel = document.getElementById("phoneDutySel");
+  if(__phoneSel){ __phoneSel.onchange = ()=>{ if(typeof setPhoneDuty_==='function') setPhoneDuty_(todayStr, __phoneSel.value).catch(()=>{}); render(); }; }
   // 🏢 出社スタッフチップ クリック → フィルタトグル
   band.querySelectorAll("[data-staff-filter]").forEach(chip=>{
     chip.onclick = (e)=>{
@@ -16193,6 +16257,11 @@ setTimeout(()=>{
     if(typeof fetchCheckWorkers_==='function'){
       fetchCheckWorkers_({silent:true, push:true}).catch(()=>{});
       setInterval(()=>fetchCheckWorkers_({silent:true}).catch(()=>{}), 5*60*1000);
+    }
+    // 📞 電話番(まどか休み日・全員共有) 取得・初回push・以後5分ごと(v1.30.111)
+    if(typeof fetchPhoneDuty_==='function'){
+      fetchPhoneDuty_({silent:true, push:true}).catch(()=>{});
+      setInterval(()=>fetchPhoneDuty_({silent:true}).catch(()=>{}), 5*60*1000);
     }
     // 🗑 予定削除トゥームストーン(全員共有) 取得→ローカル除去・初回push(移行)・以後5分ごと(v1.30.66)
     if(typeof fetchEventDeletions_==='function'){
