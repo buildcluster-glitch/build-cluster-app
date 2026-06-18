@@ -2267,7 +2267,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.104</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.105</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4771,13 +4771,14 @@ function renderCheckCard(ck, today){
     if(diffDays <= 0) urgCls = "overdue";
     else if(diffDays <= 2) urgCls = "soon";
   }
-  // 担当が設定されたらカード背景をその担当色で薄く着色 (手動色があればそちら優先・緊急度ボーダーは維持)
+  // 担当が設定されたらカード背景をその担当色で着色 (手動色があればそちら優先・緊急度ボーダーは維持)
   // ⚠ 複数担当は ck.staff が "大村,山田" 等のカンマ区切り→先頭(リーダー)の色で着色(v1.30.104・複数人で背景が消える不具合修正)
+  // 🎨 v1.30.105: 事前チップと同じ「ベタ塗り(全不透明)」に統一(従来は66=薄塗りで微妙に違って見えた)。文字色は背景に応じて反転
   const __ckLeader = (typeof firstWorker_==='function') ? firstWorker_(ck.staff) : String(ck.staff||"").split(/[,、]/)[0].trim();
   const __staffCol = (__showStaff && __ckLeader) ? (STAFF_COLORS[__ckLeader] || STAFF_COLORS[String(__ckLeader).replace(/\s|　/g,"")] || "") : "";
   const styleAttr = ck.color
     ? `style="border-left-color:${ck.color};background:${ck.color}33"`
-    : (__staffCol ? `style="background:${__staffCol}66"` : "");
+    : (__staffCol ? `style="background:${__staffCol};color:${textColorFor(__staffCol)}"` : "");
   const statusCls = checkStatusClass(ck.status);
   // 入居予定日（参考表示）
   let moveInHtml = "";
