@@ -2267,7 +2267,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.100</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.101</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9503,9 +9503,9 @@ function renderCalendar(){
       // 列幅~196px=1行22字前後。行間gap/余白込みで余裕を持たせる(2行=32px)→2行目の見切れ防止(v1.30.97)
       const __linkRow = __linkRowText ? (__linkRowText.length <= 22 ? 18 : 32) : 0;
       const __estRow = (__estText && !__foldEst) ? 16 : 0;   // 連携情報が無い時だけ見積を独立行に
-      // __staffRows>0 のチップは chip-has-staffs のカード枠(padding2px+border1.5px ≈ 7px・border-box)分を
-      //   足さないとバッジ行が下で見切れる(v1.30.36)
-      const chipHeight = (lineCount === 1 ? 28 : lineCount * 18 + 14) + __staffRows * 24 + (__staffRows > 0 ? 10 : 0) + __linkRow + __jizenRow + __estRow;
+      // 担当バッジは号室の隣(タイトル行)にインライン化したので専用行の高さは不要(v1.30.101)。
+      //   2名以上は chip-has-staffs のカード枠(padding2px+border1.5px ≈ border-box)分だけ少し足す。
+      const chipHeight = (lineCount === 1 ? 28 : lineCount * 18 + 14) + __linkRow + __jizenRow + __estRow + (__staffN >= 2 ? 8 : 0);
       // 月ビュー/終日 はチップ高さ、それ以外は duration に応じた縦長ブロック
       const height = (isMonth || isFree)
         ? chipHeight
@@ -9579,6 +9579,15 @@ function renderCalendar(){
       let titleFirstLine = (ev.title || "").split(/\r?\n/)[0];
       // カテゴリバッジ(事前等)と同じ語がタイトル先頭にあれば重複なので除去(「事前 事前 物件」→「物件」)v1.30.100
       if(cat && cat.name){ const __cre = new RegExp("^\\s*"+cat.name.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"[\\s　]*"); titleFirstLine = titleFirstLine.replace(__cre, ""); }
+      // 🏠 号室を分離してピン留め(建物名だけ省略・号室+ボリューム+担当バッジは常に見える)v1.30.101
+      let __nameMain = titleFirstLine, __roomTail = "";
+      const __rm = (__progResto && __progResto.room) ? String(__progResto.room).trim() : "";
+      if(__rm && titleFirstLine.endsWith(__rm)){
+        __roomTail = __rm; __nameMain = titleFirstLine.slice(0, titleFirstLine.length-__rm.length).replace(/[\s　]+$/,"");
+      } else {
+        const __mm = titleFirstLine.match(/^(.*\S)[\s　]+(\d[\dA-Za-z\-]*|\S{1,5}号(?:室)?)$/);
+        if(__mm){ __nameMain = __mm[1]; __roomTail = __mm[2]; }
+      }
       // 🏷 工事ボリューム(昔/普/重/激重)バッジ: 号室の隣(タイトル末尾)に。連携情報行から移設(v1.30.100)
       const __volLevel = (__progResto && __progResto.workVolume && __progResto.workVolume!=="無") ? __progResto.workVolume : "";
       const __volBadge = __volLevel
@@ -9659,14 +9668,14 @@ function renderCalendar(){
         for(const k of IMP_PRIORITY) if(impList.includes(k)) return IMP_CLASS[k];
         return "";
       })();
-      // 参加者バッジ: 2名以上の時のみ表示（単独時は背景色で識別済）
-      // リーダー(ev.staff) はリングで強調。chip下端の独立行として表示
+      // 参加者バッジ: 2名以上の時のみ表示（単独時は背景色で識別済）。号室の隣(タイトル行)にインライン表示(v1.30.101)
+      // リーダー(ev.staff) はリングで強調。
       const staffBadges = staffList.length >= 2
-        ? `<div class="chip-staffs">${staffList.map(s=>{
+        ? `<span class="chip-staffs-inline" style="display:inline-flex;gap:2px;flex-shrink:0;align-items:center;margin-left:3px">${staffList.map(s=>{
             const sc = STAFF_COLORS[s] || "#9ca3af";
             const isLeader = s === ev.staff;
             return `<span class="chip-staff-tag${isLeader?' is-leader':''}" style="background:${sc};color:${textColorFor(sc)}" title="${escapeHtml(s)}${isLeader?' (リーダー)':''}">${escapeHtml(s.slice(0,1))}</span>`;
-          }).join("")}</div>`
+          }).join("")}</span>`
         : "";
       // 🔗 連携情報行 (チップ共通) - 重い/着工/最終確認/入居 + 見積(同居)。タイトル箱の中に2行目として配置(最大2行クランプはCSS)
       // 重い等は HTML バッジ含むので escape しない (内部生成HTML)。display は CSS(-webkit-box)に任せる(inline display:block で潰さない)
@@ -9686,10 +9695,12 @@ function renderCalendar(){
           : (isMulti ? escapeHtml(ev.title || "").replace(/\n/g, "<br>") : escapeHtml(titleFirstLine));
         const titleClass = (taskInfo ? "chip-checklist " : "") + ((taskInfo || !isMulti) ? "chip-title single-line" : "chip-title multi-line");
         // タイトル文字は flex:1+省略で縮める→アイコン(📋等)が2行目に折返さず1行目に収まる(連携情報行が3行目以降に押し出されるのを防止)v1.30.97
-        const __titleInner = (taskInfo || !isMulti) ? `<span class="ct-text" style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${titleHtml}</span>` : titleHtml;
+        const __titleInner = (isMulti && !taskInfo)
+          ? titleHtml
+          : `<span class="ct-text" style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${taskInfo ? compactTaskHtml : escapeHtml(__nameMain)}</span>${(!taskInfo && __roomTail) ? `<span class="ct-room" style="flex-shrink:0;font-weight:600;margin-left:3px">${escapeHtml(__roomTail)}</span>` : ""}`;
         const timeBox = isAnytime ? "" : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;
         // 参加者バッジ/見積行は title 外(チップ直下)に独立行として配置。工事ボリュームは号室の隣(__volBadge)。
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${staffBadges}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}`;
         if(staffBadges){ el.classList.add('chip-has-staffs'); if(!__whiteBg) el.style.setProperty('--card-bg', chipBg); } // 担当色で全面着色、色無しは薄グレー地(v1.30.51)
         if(impList.length){ el.classList.add("imp-flag"); if(impTopClass) el.classList.add(impTopClass); }
         el.title = fullTooltip;
@@ -9699,9 +9710,11 @@ function renderCalendar(){
           : (isMulti ? escapeHtml(ev.title || "").replace(/\n/g, "<br>") : escapeHtml(titleFirstLine));
         const titleClass = (taskInfo ? "chip-checklist " : "") + ((taskInfo || !isMulti) ? "chip-title single-line" : "chip-title multi-line");
         el.classList.add("event-chip");
-        const __titleInner = (taskInfo || !isMulti) ? `<span class="ct-text" style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${titleHtml}</span>` : titleHtml;
+        const __titleInner = (isMulti && !taskInfo)
+          ? titleHtml
+          : `<span class="ct-text" style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${taskInfo ? compactTaskHtml : escapeHtml(__nameMain)}</span>${(!taskInfo && __roomTail) ? `<span class="ct-room" style="flex-shrink:0;font-weight:600;margin-left:3px">${escapeHtml(__roomTail)}</span>` : ""}`;
         const timeBox = isAnytime ? "" : `<span class="chip-time">終日</span>`;
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${staffBadges}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}`;
         if(staffBadges){ el.classList.add('chip-has-staffs'); if(!__whiteBg) el.style.setProperty('--card-bg', chipBg); } // 担当色で全面着色、色無しは薄グレー地(v1.30.51)
         if(impList.length){ el.classList.add("imp-flag"); if(impTopClass) el.classList.add(impTopClass); }
         el.title = fullTooltip;
