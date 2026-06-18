@@ -2267,7 +2267,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.109</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.110</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3200,8 +3200,8 @@
       <div class="field">
         <label>勤怠 <span style="font-weight:400;color:var(--muted);font-size:11px">(直行=事務所寄らず現地へ / 直帰=事務所戻らず帰宅)</span></label>
         <div class="commute-pick" id="ev-commute">
-          <label><input type="checkbox" id="ev-commute-go"><span>🚗→ 直行</span></label>
-          <label><input type="checkbox" id="ev-commute-home"><span>→🏠 直帰</span></label>
+          <label><input type="checkbox" id="ev-commute-go"><span>🚗 直行</span></label>
+          <label><input type="checkbox" id="ev-commute-home"><span>🏠 直帰</span></label>
         </div>
       </div>
       <div class="field">
@@ -4437,6 +4437,13 @@ function showCheckStaffPicker(el, ck){
         }).join("")}
       </div>
     </div>
+    <div class="qp-sec">
+      <div class="qp-label">🚗 勤怠 <span style="font-weight:400;color:#94a3b8;font-size:10px">(直行/直帰)</span></div>
+      <div class="qp-worker-pick" id="ckCommutePick">
+        <button data-c="go" class="${(ck.commute||'').includes('直行')?'on':''}" style="background:#dbeafe">🚗 直行</button>
+        <button data-c="home" class="${(ck.commute||'').includes('直帰')?'on':''}" style="background:#dcfce7">🏠 直帰</button>
+      </div>
+    </div>
     <div class="qp-actions">
       <button class="qp-detail" data-role="open-modal">✏️ 詳細編集</button>
       <button class="qp-close" data-role="close">閉じる</button>
@@ -4481,6 +4488,18 @@ function showCheckStaffPicker(el, ck){
         const bs=b.dataset.staff;
         b.classList.toggle('on', bs===""?list.length===0:list.includes(bs));
       });
+    };
+  });
+  // 🚗 直行/直帰 トグル(全員共有・閉じない)
+  let __ckCommute = { go:(ck.commute||'').includes('直行'), home:(ck.commute||'').includes('直帰') };
+  pop.querySelectorAll('#ckCommutePick button').forEach(btn=>{
+    btn.onclick = ()=>{
+      const k = btn.dataset.c;
+      __ckCommute[k] = !__ckCommute[k];
+      btn.classList.toggle('on', __ckCommute[k]);
+      const cm = (__ckCommute.go && __ckCommute.home) ? "直行直帰" : __ckCommute.go ? "直行" : __ckCommute.home ? "直帰" : "";
+      const target = state.checks.find(c=>c.id===ck.id);
+      if(target){ pushHistory(); target.commute = cm; target.updatedAt = new Date().toISOString(); saveState(); if(typeof setCheckCommuteOverride_==='function') setCheckCommuteOverride_(target.id, cm).catch(()=>{}); render(); }
     };
   });
   pop.querySelector('[data-role="open-modal"]').onclick = ()=>{ pop.remove(); openCheckModal(ck); };
@@ -4696,6 +4715,8 @@ function renderCheckCard(ck, today){
   // 複数担当は略称バッジ列(大 木 南…)、1名はフルネーム
   const staffBadge = __showStaff ? staffBadgesMini_(ck.staff, {full:true, markLeader:true}) : "";
   // 📐 見積作成者バッジ(作業担当とは別物・色は付けずグレーのゴーストバッジで「見積：◯◯」)v1.30.95
+  // 🚗 直行/直帰 バッジ(文字入り)
+  const __ckCommuteBadge = ck.commute ? `<span class="badge-sm" title="${escapeHtml(ck.commute)}" style="background:#eef2ff;color:#3730a3;font-weight:700;white-space:nowrap">${commuteLabel_(ck.commute)}</span>` : "";
   const __estName = ck.estimatorName || "";
   const __estBadge = (__estName && !isHiddenStaffBadge_(__estName))
     ? `<span class="badge-sm est-badge" title="見積作成者: ${escapeHtml(__estName)}" style="background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1;font-weight:600">見:${escapeHtml(surnameOf_(__estName))}</span>`
@@ -4833,7 +4854,7 @@ function renderCheckCard(ck, today){
   // ステータス完了系はグレースケール表示
   const __isDoneCk = /完了|完工|完成/.test(ck.status||"") && ck.status !== "清掃完了";
   return `<div class="check-card ${urgCls}${isClickable?" clickable":""}${__isDoneCk?" done-gray":""}" data-check-id="${ck.id}" ${styleAttr}>
-    <div class="ck-title" style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">${syncMark}${finalCheckBadge}<span class="ck-name">${escapeHtml(ck.title)}</span>${volBadge}${staffBadge?`<span style="display:inline-flex;gap:2px;align-items:center">${staffBadge}</span>`:""}</div>
+    <div class="ck-title" style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">${syncMark}${finalCheckBadge}<span class="ck-name">${escapeHtml(ck.title)}</span>${volBadge}${staffBadge?`<span style="display:inline-flex;gap:2px;align-items:center">${staffBadge}</span>`:""}${__ckCommuteBadge}</div>
     <div class="row">
       ${__estBadge}
       ${apptBadge}
@@ -5384,6 +5405,7 @@ function applyCheckWorkersToState_(){
     if(ck.estimatorName===undefined){ ck.estimatorName = ck.staff||""; ck.staff=""; }
     const e = map[ck.id];
     ck.staff = (e && e.at) ? (e.worker||"") : "";
+    ck.commute = (e && e.at) ? (e.commute||"") : "";   // 🚗 直行/直帰(全員共有)
   });
 }
 async function fetchCheckWorkers_(opts={}){
@@ -5417,7 +5439,35 @@ async function pushCheckWorkersMap_(map){
 }
 // 最新remote取得→自分の変更を最新atで上書き→push(他端末の割当を消さない)。worker=カンマ区切り文字列。
 async function setCheckWorkerOverride_(checkId, worker){
-  const stamp = ()=>({ worker: worker||'', at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
+  const __keepCm = (loadCheckWorkers_()[checkId]||{}).commute || '';
+  const stamp = ()=>({ worker: worker||'', commute: __keepCm, at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
+  let map = loadCheckWorkers_();
+  map[checkId] = stamp();
+  saveCheckWorkers_(map);
+  const s = loadGasSettings();
+  if(s.url && s.token){
+    try{
+      const url = `${s.url}?action=get-shared-config&key=check_workers&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+      const res = await fetch(url, {method:'GET', redirect:'follow'});
+      if(res.ok){ const d=await res.json(); let raw=d.value;
+        if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(_){ raw=null; } }
+        if(raw && raw.overrides && typeof raw.overrides==='object'){
+          map = mergeCheckWorkerMaps_(raw.overrides, loadCheckWorkers_());
+          map[checkId] = stamp();
+          saveCheckWorkers_(map);
+        }
+      }
+    }catch(_){}
+  }
+  await pushCheckWorkersMap_(map);
+  return map;
+}
+// 🚗 最終確認アポの直行/直帰 上書き(全員共有)。worker は保持(既存override→無ければ現ck.staff)。commute="" で解除
+async function setCheckCommuteOverride_(checkId, commute){
+  const __curOv = loadCheckWorkers_()[checkId] || {};
+  const __ck = (state.checks||[]).find(x=>x.id===checkId);
+  const __keepW = __curOv.at ? (__curOv.worker||'') : (__ck ? (__ck.staff||'') : '');
+  const stamp = ()=>({ worker: __keepW, commute: commute||'', at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
   let map = loadCheckWorkers_();
   map[checkId] = stamp();
   saveCheckWorkers_(map);
@@ -5958,8 +6008,8 @@ function showTaikyoStaffPicker(el, ev){
     <div class="qp-sec">
       <div class="qp-label">🚗 勤怠 <span style="font-weight:400;color:#94a3b8;font-size:10px">(直行/直帰・全員で共有)</span></div>
       <div class="qp-worker-pick" id="tkCommutePick">
-        <button data-c="go" class="${(ev.commute||'').includes('直行')?'on':''}" style="background:#dbeafe">🚗→ 直行</button>
-        <button data-c="home" class="${(ev.commute||'').includes('直帰')?'on':''}" style="background:#dcfce7">→🏠 直帰</button>
+        <button data-c="go" class="${(ev.commute||'').includes('直行')?'on':''}" style="background:#dbeafe">🚗 直行</button>
+        <button data-c="home" class="${(ev.commute||'').includes('直帰')?'on':''}" style="background:#dcfce7">🏠 直帰</button>
       </div>
     </div>
     <div class="qp-sec tk-cmt-sec">
@@ -6189,8 +6239,8 @@ function showEventStaffPicker(el, ev){
     <div class="qp-sec">
       <div class="qp-label">🚗 勤怠 <span style="font-weight:400;color:#94a3b8;font-size:10px">(直行/直帰)</span></div>
       <div class="qp-worker-pick" id="evCommutePick">
-        <button data-c="go" class="${selCommute.go?"on":""}" style="background:#dbeafe">🚗→ 直行</button>
-        <button data-c="home" class="${selCommute.home?"on":""}" style="background:#dcfce7">→🏠 直帰</button>
+        <button data-c="go" class="${selCommute.go?"on":""}" style="background:#dbeafe">🚗 直行</button>
+        <button data-c="home" class="${selCommute.home?"on":""}" style="background:#dcfce7">🏠 直帰</button>
       </div>
     </div>
     <div class="qp-sec">
@@ -9273,7 +9323,7 @@ function renderCalendar(){
             ? `<div class="chip-staffs">${__repWorkersB.map(s=>{ const sc=staffColor_(s); return `<span class="chip-staff-tag" style="background:${sc};color:${textColorFor(sc)}" title="${escapeHtml(s)}">${escapeHtml(staffAbbrev_(s))}</span>`; }).join("")}</div>`
             : "";
           // 🚗 直行/直帰 アイコン(v1.30.108)
-          const __repCommuteB = r.commute ? `<span class="chip-commute" title="${escapeHtml(r.commute)}" style="flex-shrink:0;margin-left:2px">${r.commute==="直行直帰"?"🚗⇄":r.commute==="直行"?"🚗→":"→🏠"}</span>` : "";
+          const __repCommuteB = r.commute ? `<span class="chip-commute" title="${escapeHtml(r.commute)}" style="flex-shrink:0;margin-left:2px;white-space:nowrap">${commuteLabel_(r.commute)}</span>` : "";
           const tipLines = [
             `🔧 修繕アポ: ${r.contractor?r.contractor+" / ":""}${r.name}${r.room?" "+r.room:""}`,
             `${wf}${t?" / "+t:""}`,
@@ -9743,7 +9793,7 @@ function renderCalendar(){
         ? `<span class="chip-comment-badge" title="💬 立会コメント ${__tkCmtN}件">💬${__tkCmtN}</span>` : "";
       // 直行/直帰バッジ
       const commuteIcon = ev.commute
-        ? `<span class="chip-commute" title="${escapeHtml(ev.commute)}">${ev.commute==="直行直帰"?"🚗⇄":ev.commute==="直行"?"🚗→":"→🏠"}</span>`
+        ? `<span class="chip-commute" title="${escapeHtml(ev.commute)}" style="white-space:nowrap">${commuteLabel_(ev.commute)}</span>`
         : "";
       // 重要マークバッジ
       const IMP_ICONS = {"緊急":"🚨","重要":"⭐","要注意":"❗","期限":"⏰"};
@@ -9818,7 +9868,7 @@ function renderCalendar(){
         const inlineCatPrefix = cat
           ? `<span class="title-cat" style="background:rgba(255,255,255,.35);color:${fg};padding:0 4px;border-radius:3px;margin-right:4px;font-size:9px;font-weight:700">${escapeHtml(cat.name)}</span>`
           : "";
-        const commuteInline = ev.commute ? ` <span class="chip-commute" style="font-size:9px;padding:0 3px">${ev.commute==="直行直帰"?"🚗⇄":ev.commute==="直行"?"🚗→":"→🏠"}</span>` : "";
+        const commuteInline = ev.commute ? ` <span class="chip-commute" style="font-size:9px;padding:0 3px;white-space:nowrap">${commuteLabel_(ev.commute)}</span>` : "";
         el.innerHTML = isShort
           ? `<div class="title">${inlineCatPrefix}${taskInfo?compactTaskHtml:escapeHtml(titleFirstLine)}${commuteInline}${showStaff&&staffList.length?` <span style="opacity:.8">/${multi?staffList.length+"名":escapeHtml(staffList[0].slice(0,2))}</span>`:""}${progIcon}${__progStaffBadge}${__linkInfoHtml}</div>`
           : `<div class="time">${window.innerWidth<=700 ? ev.start : `${ev.start}〜${ev.end}`}${commuteInline}</div>
@@ -9905,7 +9955,7 @@ function renderCalendar(){
           ? `<div class="chip-staffs">${__repWorkers.map(s=>{ const sc=staffColor_(s); return `<span class="chip-staff-tag" style="background:${sc};color:${textColorFor(sc)}" title="${escapeHtml(s)}">${escapeHtml(staffAbbrev_(s))}</span>`; }).join("")}</div>`
           : "";
         // 🚗 直行/直帰 アイコン(v1.30.108)
-        const __repCommute = r.commute ? `<span class="chip-commute" title="${escapeHtml(r.commute)}" style="flex-shrink:0">${r.commute==="直行直帰"?"🚗⇄":r.commute==="直行"?"🚗→":"→🏠"}</span>` : "";
+        const __repCommute = r.commute ? `<span class="chip-commute" title="${escapeHtml(r.commute)}" style="flex-shrink:0;white-space:nowrap">${commuteLabel_(r.commute)}</span>` : "";
         // ホバー詳細(連絡者・作業担当・メモ含む)
         const tipLines = [
           `🔧 修繕アポ: ${r.contractor?r.contractor+" / ":""}${r.name}${r.room?" "+r.room:""}`,
@@ -10752,8 +10802,8 @@ function showRepairQuickPop(r, anchorEl){
     <div class="qp-sec">
       <div class="qp-label">🚗 勤怠 <span style="font-weight:400;color:#94a3b8;font-size:10px">(直行/直帰)</span></div>
       <div class="qp-worker-pick" id="qp-commute-pick">
-        <button data-c="go" class="${(r.commute||'').includes('直行')?'on':''}" style="background:#dbeafe">🚗→ 直行</button>
-        <button data-c="home" class="${(r.commute||'').includes('直帰')?'on':''}" style="background:#dcfce7">→🏠 直帰</button>
+        <button data-c="go" class="${(r.commute||'').includes('直行')?'on':''}" style="background:#dbeafe">🚗 直行</button>
+        <button data-c="home" class="${(r.commute||'').includes('直帰')?'on':''}" style="background:#dcfce7">🏠 直帰</button>
       </div>
     </div>
     <div class="qp-sec">
@@ -12207,8 +12257,8 @@ function showQuickAddSheet_(defaults={}, editEv=null){
     <div class="qa-staff"></div>
     <div class="qa-label">勤怠 <span style="font-weight:400;color:var(--muted);font-size:10px">(任意・直行/直帰)</span></div>
     <div class="qa-cat" id="qa-commute" style="margin-bottom:12px">
-      <button data-c="go" class="${selCommute.go?'on':''}" style="background:#dbeafe">🚗→ 直行</button>
-      <button data-c="home" class="${selCommute.home?'on':''}" style="background:#dcfce7">→🏠 直帰</button>
+      <button data-c="go" class="${selCommute.go?'on':''}" style="background:#dbeafe">🚗 直行</button>
+      <button data-c="home" class="${selCommute.home?'on':''}" style="background:#dcfce7">🏠 直帰</button>
     </div>
     <div class="qa-actions">
       <button id="qa-cancel" style="background:#f1f5f9;color:#334155">キャンセル</button>
@@ -13550,6 +13600,8 @@ function joinWorkers_(arr){ return (arr||[]).filter(Boolean).join(","); }
 function firstWorker_(w){ return parseWorkers_(w)[0] || ""; }
 // 担当者の略称(姓頭1文字)。外注業者=🛠
 function staffAbbrev_(s){ if(s===VENDOR_WORKER) return "🛠"; return String(s||"").replace(/\s|　/g,"").slice(0,1); }
+// 🚗 直行/直帰のチップ表示ラベル(文字入り)。v1.30.110
+function commuteLabel_(c){ return c==="直行直帰" ? "🚗🏠直行直帰" : c==="直行" ? "🚗直行" : c==="直帰" ? "🏠直帰" : ""; }
 function staffColor_(s){ return (s===VENDOR_WORKER) ? VENDOR_WORKER_COLOR : (STAFF_COLORS[s] || STAFF_COLORS[String(s||"").replace(/\s|　/g,"")] || "#9ca3af"); }
 // 複数担当を略称バッジ列で描画。1名なら略称、複数なら 大 木 南 … と並べる。空=""
 //   opts.full=true で1名時はフルネーム表示
