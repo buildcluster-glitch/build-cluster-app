@@ -2267,7 +2267,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.98</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.99</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4698,7 +4698,7 @@ function renderCheckCard(ck, today){
   // 📐 見積作成者バッジ(作業担当とは別物・色は付けずグレーのゴーストバッジで「見積：◯◯」)v1.30.95
   const __estName = ck.estimatorName || "";
   const __estBadge = (__estName && !isHiddenStaffBadge_(__estName))
-    ? `<span class="badge-sm est-badge" title="見積作成者: ${escapeHtml(__estName)}" style="background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1;font-weight:600">見積:${escapeHtml(surnameOf_(__estName))}</span>`
+    ? `<span class="badge-sm est-badge" title="見積作成者: ${escapeHtml(__estName)}" style="background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1;font-weight:600">見:${escapeHtml(surnameOf_(__estName))}</span>`
     : "";
   // 工事ボリュームバッジ (v1.4.218 workloadStatus 対応)
   // 色: 無→非表示 / 軽→緑 / 普→黄 / 重→オレンジ / 激重→赤
@@ -9402,17 +9402,17 @@ function renderCalendar(){
     if(r.finalDate){
       const d = parseDate(r.finalDate);
       if(!isNaN(d)){
-        const s = `最終確認${d.getMonth()+1}/${d.getDate()}`;
-        htmlParts.push(escapeHtml(s));
-        textParts.push(s);
+        const md = `${d.getMonth()+1}/${d.getDate()}`;
+        htmlParts.push(`最確${escapeHtml(md)}`);   // 最終確認→最確(省略)
+        textParts.push(`最確${md}`);
       }
     }
     if(r.moveinDate){
       const d = parseDate(r.moveinDate);
       if(!isNaN(d)){
-        const s = `入居${d.getMonth()+1}/${d.getDate()}`;
-        htmlParts.push(escapeHtml(s));
-        textParts.push(s);
+        const md = `${d.getMonth()+1}/${d.getDate()}`;
+        htmlParts.push(`<span style="color:#dc2626;font-weight:700">入:${escapeHtml(md)}</span>`);   // 入居→入:(赤字)
+        textParts.push(`入:${md}`);
       }
     }
     // 🔑 鍵交換日 (日付のみ・業者名は除外)
@@ -9433,7 +9433,9 @@ function renderCalendar(){
       textParts.push("🦠無");
     }
     // 各セグメントは nowrap で1かたまり維持(「自社0/5(0%)」が"/"で分断され行数が膨らむのを防ぐ)。折返しはセグメント間のみ。
-    return { html: htmlParts.map(p=>`<span style="white-space:nowrap">${p}</span>`).join(" ／ "), text: textParts.join(" ／ ") };
+    // 区切りは細い中黒(薄色)で詰めて表示(ぎちぎち緩和・v1.30.99)
+    const SEP = `<span style="opacity:.35;margin:0 1px">·</span>`;
+    return { html: htmlParts.map(p=>`<span style="white-space:nowrap">${p}</span>`).join(SEP), text: textParts.join("·") };
   }
   // イベントタイトルにひもづく原状回復物件を返す(なければnull)。📋進捗アイコン用。
   function getEventResto_(ev){
@@ -9619,8 +9621,8 @@ function renderCalendar(){
       let __progStaffBadge = "", __estRowHtml = "", __estInline = "";
       if(__estShort){
         const __ghostStyle = `display:inline-block;max-width:100%;font-size:9px;font-weight:600;padding:0 5px;border-radius:4px;background:rgba(255,255,255,.82);color:#475569;border:1px solid rgba(100,116,139,.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-sizing:border-box;vertical-align:middle`;
-        __estInline = `<span class="est-ghost" style="${__ghostStyle}" title="見積作成者: ${escapeHtml(__estName2)}">見積:${escapeHtml(__estShort)}</span>`;
-        __progStaffBadge = `<span class="chip-progstaff est-ghost" style="align-self:center;flex-shrink:0;background:rgba(255,255,255,.75);color:#475569;border:1px solid rgba(100,116,139,.45);font-size:9px;font-weight:600;padding:0 5px;border-radius:4px;margin-left:3px;white-space:nowrap" title="見積作成者: ${escapeHtml(__estName2)}">見積:${escapeHtml(__estShort)}</span>`;
+        __estInline = `<span class="est-ghost" style="${__ghostStyle}" title="見積作成者: ${escapeHtml(__estName2)}">見:${escapeHtml(__estShort)}</span>`;
+        __progStaffBadge = `<span class="chip-progstaff est-ghost" style="align-self:center;flex-shrink:0;background:rgba(255,255,255,.75);color:#475569;border:1px solid rgba(100,116,139,.45);font-size:9px;font-weight:600;padding:0 5px;border-radius:4px;margin-left:3px;white-space:nowrap" title="見積作成者: ${escapeHtml(__estName2)}">見:${escapeHtml(__estShort)}</span>`;
         if(!__foldEst) __estRowHtml = `<span class="chip-est-row">${__estInline}</span>`;
       }
       // 💬コメント数バッジ (チャット)
@@ -9666,8 +9668,8 @@ function renderCalendar(){
         : "";
       // 🔗 連携情報行 (チップ共通) - 重い/着工/最終確認/入居 + 見積(同居)。タイトル箱の中に2行目として配置(最大2行クランプはCSS)
       // 重い等は HTML バッジ含むので escape しない (内部生成HTML)。display は CSS(-webkit-box)に任せる(inline display:block で潰さない)
-      // 見積は連携情報行の先頭に置く(末尾だと2行クランプで見切れるため・必ず表示)
-      const __linkRowInner = [__foldEst ? __estInline : "", __linkInfo?.html].filter(Boolean).join(" ／ ");
+      // 見積は連携情報行の先頭に置く(末尾だと2行クランプで見切れるため・必ず表示)。区切りは細い中黒。
+      const __linkRowInner = [__foldEst ? __estInline : "", __linkInfo?.html].filter(Boolean).join(`<span style="opacity:.35;margin:0 1px">·</span>`);
       const __linkInfoHtml = __linkRowInner
         ? `<span class="chip-link-info" style="font-size:9px;line-height:13px;opacity:.92;margin-top:2px">${__linkRowInner}</span>`
         : "";
