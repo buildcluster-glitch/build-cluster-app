@@ -2267,7 +2267,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.99</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.100</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9370,12 +9370,7 @@ function renderCalendar(){
     if(!r) return { html:"", text:"" };
     const htmlParts = [];
     const textParts = []; // 文字数推定用
-    // 重い/軽い → カラーバッジ (赤/緑等)
-    if(r.workVolume && r.workVolume !== "無"){
-      const bg = __VOL_COLORS[r.workVolume] || "#6b7280";
-      htmlParts.push(`<span style="background:${bg};color:#fff;padding:0 5px;border-radius:4px;font-weight:700">${escapeHtml(r.workVolume)}</span>`);
-      textParts.push(r.workVolume);
-    }
+    // ⚠ 工事ボリューム(昔/普/重/激重)バッジは連携情報行ではなく「タイトルの号室の隣」に移動した(v1.30.100)。ここでは出さない。
     // 🛠 自社工事進捗 % (inhouse タスクの完了率) — 諸経費系は除外
     // v1.30.91: 実効カテゴリで判定(未割当の外注定番工種/提案は自社工事に数えない)
     const inhouseTasks = (r.tasks||[]).filter(t2=>(typeof restoEffCategory==="function"?restoEffCategory(t2):t2.category)==="inhouse" && !isExcludedRestoTask(t2));
@@ -9581,7 +9576,14 @@ function renderCalendar(){
         ? `<span class="title-cat" title="${escapeHtml(badgeTooltip)}" style="background:${catBoxBg||"rgba(255,255,255,.35)"};color:${catBoxFg};padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;line-height:14px;height:16px;display:inline-flex;align-items:center;justify-content:center">${escapeHtml(cat.name)}</span>`
         : "";
       // チップ用: 1行目のみ表示。複数行/メモはホバーで全文表示。
-      const titleFirstLine = (ev.title || "").split(/\r?\n/)[0];
+      let titleFirstLine = (ev.title || "").split(/\r?\n/)[0];
+      // カテゴリバッジ(事前等)と同じ語がタイトル先頭にあれば重複なので除去(「事前 事前 物件」→「物件」)v1.30.100
+      if(cat && cat.name){ const __cre = new RegExp("^\\s*"+cat.name.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"[\\s　]*"); titleFirstLine = titleFirstLine.replace(__cre, ""); }
+      // 🏷 工事ボリューム(昔/普/重/激重)バッジ: 号室の隣(タイトル末尾)に。連携情報行から移設(v1.30.100)
+      const __volLevel = (__progResto && __progResto.workVolume && __progResto.workVolume!=="無") ? __progResto.workVolume : "";
+      const __volBadge = __volLevel
+        ? `<span class="chip-vol" style="flex-shrink:0;background:${__VOL_COLORS[__volLevel]||'#6b7280'};color:#fff;font-size:9px;font-weight:700;padding:0 5px;border-radius:3px;margin-left:4px;white-space:nowrap" title="工事ボリューム: ${escapeHtml(__volLevel)}">${escapeHtml(__volLevel)}</span>`
+        : "";
       // 📋 簡易タスク: 箇条書きイベントは1行に集約(📋 done/total + ミニ進捗バー + 次のタスク) — taskInfoは上部で算出済
       let compactTaskHtml = "";
       if(taskInfo){
@@ -9686,8 +9688,8 @@ function renderCalendar(){
         // タイトル文字は flex:1+省略で縮める→アイコン(📋等)が2行目に折返さず1行目に収まる(連携情報行が3行目以降に押し出されるのを防止)v1.30.97
         const __titleInner = (taskInfo || !isMulti) ? `<span class="ct-text" style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${titleHtml}</span>` : titleHtml;
         const timeBox = isAnytime ? "" : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;
-        // 参加者バッジ/見積行は title 外(チップ直下)に独立行として配置
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${staffBadges}`;
+        // 参加者バッジ/見積行は title 外(チップ直下)に独立行として配置。工事ボリュームは号室の隣(__volBadge)。
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${staffBadges}`;
         if(staffBadges){ el.classList.add('chip-has-staffs'); if(!__whiteBg) el.style.setProperty('--card-bg', chipBg); } // 担当色で全面着色、色無しは薄グレー地(v1.30.51)
         if(impList.length){ el.classList.add("imp-flag"); if(impTopClass) el.classList.add(impTopClass); }
         el.title = fullTooltip;
@@ -9699,7 +9701,7 @@ function renderCalendar(){
         el.classList.add("event-chip");
         const __titleInner = (taskInfo || !isMulti) ? `<span class="ct-text" style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${titleHtml}</span>` : titleHtml;
         const timeBox = isAnytime ? "" : `<span class="chip-time">終日</span>`;
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${staffBadges}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${staffBadges}`;
         if(staffBadges){ el.classList.add('chip-has-staffs'); if(!__whiteBg) el.style.setProperty('--card-bg', chipBg); } // 担当色で全面着色、色無しは薄グレー地(v1.30.51)
         if(impList.length){ el.classList.add("imp-flag"); if(impTopClass) el.classList.add(impTopClass); }
         el.title = fullTooltip;
