@@ -2267,7 +2267,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.106</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.107</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -12059,6 +12059,10 @@ function showQuickAddSheet_(defaults={}, editEv=null){
     ? [editEv.staff, ...(editEv.participants||[])].filter(Boolean)
     : ((defaults.staff && STAFF.includes(defaults.staff)) ? [defaults.staff] : (STAFF.includes(me) ? [me] : []));
   let selCat = isEdit ? (editEv.category||"") : (defaults.category || "");   // カテゴリ(未分類="")
+  // 🚗 直行/直帰(任意)。go+home=直行直帰。v1.30.107
+  const __initCommute = (isEdit ? (editEv.commute||"") : (defaults.commute||""));
+  let selCommute = { go: __initCommute.includes("直行"), home: __initCommute.includes("直帰") };
+  const __commuteStr = ()=> (selCommute.go && selCommute.home) ? "直行直帰" : selCommute.go ? "直行" : selCommute.home ? "直帰" : "";
   // 手動入力で選べるカテゴリ(立会(未定)は自動生成なので除外)＋先頭に未分類
   const qaCats = [{name:"未分類", val:"", color:"#cbd5e1"}]
     .concat(CATEGORIES.filter(c=>c.name!=="立会(未定)").map(c=>({name:c.name, val:c.name, color:c.color})));
@@ -12089,6 +12093,11 @@ function showQuickAddSheet_(defaults={}, editEv=null){
     }).join('')}</div>
     <div class="qa-label">担当 <span style="font-weight:400;color:var(--muted);font-size:10px">(複数可・最初の人がリーダー★)</span></div>
     <div class="qa-staff"></div>
+    <div class="qa-label">勤怠 <span style="font-weight:400;color:var(--muted);font-size:10px">(任意・直行/直帰)</span></div>
+    <div class="qa-cat" id="qa-commute" style="margin-bottom:12px">
+      <button data-c="go" class="${selCommute.go?'on':''}" style="background:#dbeafe">🚗→ 直行</button>
+      <button data-c="home" class="${selCommute.home?'on':''}" style="background:#dcfce7">→🏠 直帰</button>
+    </div>
     <div class="qa-actions">
       <button id="qa-cancel" style="background:#f1f5f9;color:#334155">キャンセル</button>
       <button id="qa-detail" style="background:#e0e7ff;color:#3730a3">✏️ 詳細</button>
@@ -12118,6 +12127,14 @@ function showQuickAddSheet_(defaults={}, editEv=null){
       bd.querySelectorAll('.qa-cat button').forEach(x=>x.classList.toggle('on', x.dataset.cat===selCat));
     };
   });
+  // 🚗 直行/直帰 トグル(両方on=直行直帰)
+  bd.querySelectorAll('#qa-commute button').forEach(b=>{
+    b.onclick = ()=>{
+      const k = b.dataset.c;   // 'go' | 'home'
+      selCommute[k] = !selCommute[k];
+      b.classList.toggle('on', selCommute[k]);
+    };
+  });
   bd.querySelector('#qa-cancel').onclick = ()=>bd.remove();
   bd.querySelector('#qa-detail').onclick = ()=>{
     const t = bd.querySelector('#qa-title').value;
@@ -12128,6 +12145,8 @@ function showQuickAddSheet_(defaults={}, editEv=null){
     if(isEdit){ openEventModal(editEv); return; }   // 編集: 従来フォームで詳細編集
     openEventModal(null, {date:d||undefined, staff:selStaff[0]||undefined, participants:selStaff.slice(1), start:posS||undefined, end:posS?endOf(posS):undefined, category:selCat||undefined});
     try{ if(t) document.getElementById('ev-title').value = t; }catch(_){}
+    // 🚗 直行/直帰の選択を詳細フォームへ引き継ぎ
+    try{ document.getElementById('ev-commute-go').checked = selCommute.go; document.getElementById('ev-commute-home').checked = selCommute.home; }catch(_){}
   };
   bd.querySelector('#qa-save').onclick = ()=>{
     const title = bd.querySelector('#qa-title').value.trim();
@@ -12139,7 +12158,7 @@ function showQuickAddSheet_(defaults={}, editEv=null){
       const target = (state.events||[]).find(e=>e.id===editEv.id);
       if(!target){ bd.remove(); return; }
       if(typeof pushHistory==='function') pushHistory();
-      target.title = title; target.category = selCat||""; target.staff = selStaff[0]||""; target.participants = selStaff.slice(1); target.date = d;
+      target.title = title; target.category = selCat||""; target.staff = selStaff[0]||""; target.participants = selStaff.slice(1); target.date = d; target.commute = __commuteStr();
       if(st){ target.start = st; target.end = endOf(st); target.timeMode = "timed"; target.allday = false; }
       else { const posS = posStart || target.start || "09:00"; target.start = posS; target.end = endOf(posS); target.timeMode = target.allday ? (target.timeMode||"allday") : "anytime"; }
       target.updatedAt = new Date().toISOString();
@@ -12153,7 +12172,7 @@ function showQuickAddSheet_(defaults={}, editEv=null){
     const ev = {
       id: uid(), title, category: selCat||"", contractor:"", staff: selStaff[0]||"", participants: selStaff.slice(1),
       date: d, start: posS, end: endOf(posS), allday: false, timeMode: st ? "timed" : "anytime",
-      color:"", memo:"", importance: [], updatedAt: new Date().toISOString(),
+      color:"", memo:"", commute: __commuteStr(), importance: [], updatedAt: new Date().toISOString(),
     };
     if(typeof pushHistory==='function') pushHistory();
     state.events.push(ev);
