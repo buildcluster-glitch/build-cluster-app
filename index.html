@@ -2267,7 +2267,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.105</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.106</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4694,7 +4694,7 @@ function renderCheckCard(ck, today){
   const __showStaff = ck.staff && !isHiddenStaffBadge_(ck.staff);  // 「大村まどか」等は非表示
   // 色: スペース入り氏名(「鈴木 悠平」)でも詰め表記キーで引けるよう正規化
   // 複数担当は略称バッジ列(大 木 南…)、1名はフルネーム
-  const staffBadge = __showStaff ? staffBadgesMini_(ck.staff, {full:true}) : "";
+  const staffBadge = __showStaff ? staffBadgesMini_(ck.staff, {full:true, markLeader:true}) : "";
   // 📐 見積作成者バッジ(作業担当とは別物・色は付けずグレーのゴーストバッジで「見積：◯◯」)v1.30.95
   const __estName = ck.estimatorName || "";
   const __estBadge = (__estName && !isHiddenStaffBadge_(__estName))
@@ -13426,10 +13426,14 @@ function staffBadgesMini_(staffStr, opts){
   const list = parseWorkers_(staffStr).filter(s=> typeof isHiddenStaffBadge_!=='function' || !isHiddenStaffBadge_(s));
   if(!list.length) return "";
   const single = list.length === 1;
-  return list.map(s=>{
+  return list.map((s,i)=>{
     const c = staffColor_(s);
     const label = (single && opts && opts.full) ? s : staffAbbrev_(s);
-    return `<span class="badge-sm staff-mini" title="${escapeHtml(s)}" style="background:${c};color:${textColorFor(c)};padding:0 ${single&&opts&&opts.full?'5px':'4px'};font-weight:700">${escapeHtml(label)}</span>`;
+    // 先頭=リーダー: opts.markLeader 指定時、複数人なら先頭にリング+★(事前チップと統一)v1.30.106
+    const isLeader = !!(opts && opts.markLeader && !single && i===0);
+    const leaderStyle = isLeader ? "box-shadow:inset 0 0 0 1.5px #b45309;position:relative;" : "";
+    const star = isLeader ? `<span style="position:absolute;top:-7px;right:-3px;font-size:8px;color:#f59e0b;line-height:1;text-shadow:0 0 2px #fff,0 0 2px #fff">★</span>` : "";
+    return `<span class="badge-sm staff-mini${isLeader?' is-leader':''}" title="${escapeHtml(s)}${isLeader?' (リーダー)':''}" style="background:${c};color:${textColorFor(c)};padding:0 ${single&&opts&&opts.full?'5px':'4px'};font-weight:700;${leaderStyle}">${star}${escapeHtml(label)}</span>`;
   }).join("");
 }
 
