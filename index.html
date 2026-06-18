@@ -2265,7 +2265,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.93</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.94</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5317,6 +5317,55 @@ async function setRepairWorkerOverride_(repairId, worker){
   return map;
 }
 // ===========================================================
+// 🌴 休暇(state.leaves)を全端末共有 — shared-config 'staff_leaves'(Drive json) v1.30.94
+//   従来 休暇はPC間で同期されずローカルのみだった。id単位のオーバーレイ(LWW+削除tombstone)で共有する。
+//   value(JSON) = { leaves:{ [id]:{id,staff,start,end,type,memo,at,deleted?} }, updatedAt }
+// ===========================================================
+const STAFF_LEAVES_KEY = "buildcluster_staff_leaves_overlay";
+function loadLeaveOverlay_(){ try{ const o=JSON.parse(localStorage.getItem(STAFF_LEAVES_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
+function saveLeaveOverlay_(map){ try{ localStorage.setItem(STAFF_LEAVES_KEY, JSON.stringify(map||{})); }catch(e){} }
+function mergeLeaveMaps_(a,b){ const out={}; const keys=new Set([...Object.keys(a||{}),...Object.keys(b||{})]); keys.forEach(k=>{ const ea=a&&a[k], eb=b&&b[k]; if(!ea){out[k]=eb;return;} if(!eb){out[k]=ea;return;} out[k]=(String(eb.at||'')>=String(ea.at||''))?eb:ea; }); return out; } // last-write-wins
+function leaveToEntry_(l){ return {id:l.id, staff:l.staff||'', start:l.start||'', end:l.end||'', type:l.type||'', memo:l.memo||'', at:l.updatedAt||new Date().toISOString()}; }
+// オーバーレイ(map)から state.leaves を再構築(削除tombstoneは除外)
+function applyLeavesFromOverlay_(){ const map=loadLeaveOverlay_(); if(!Object.keys(map).length) return; state.leaves=Object.values(map).filter(e=>e&&e.id&&!e.deleted).map(e=>({id:e.id,staff:e.staff,start:e.start,end:e.end,type:e.type,memo:e.memo,updatedAt:e.at})); saveState(); }
+async function pushLeaveMap_(map){ const s=loadGasSettings(); if(!s.url||!s.token) return; try{ await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'staff_leaves',value:JSON.stringify({leaves:map||{},updatedAt:new Date().toISOString()}),token:s.token,savedBy:'calendar-app'})}); }catch(e){ console.warn('[staff_leaves] push失敗:',e.message); } }
+async function fetchLeaves_(opts={}){
+  const s=loadGasSettings();
+  // 現在のstate.leavesをマップ化(未pushの手動分を移行・消失防止)
+  const localFromState={}; (state.leaves||[]).forEach(l=>{ if(l&&l.id) localFromState[l.id]=leaveToEntry_(l); });
+  let base=mergeLeaveMaps_(loadLeaveOverlay_(), localFromState);
+  if(!s.url||!s.token){ saveLeaveOverlay_(base); applyLeavesFromOverlay_(); return base; }
+  try{
+    const url=`${s.url}?action=get-shared-config&key=staff_leaves&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res=await fetch(url,{method:'GET',redirect:'follow'}); if(!res.ok) throw new Error('HTTP '+res.status);
+    const data=await res.json(); let raw=data.value;
+    if(raw===''||raw==null) raw={leaves:{}}; else if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(e){ raw={leaves:{}}; } }
+    const remote=(raw&&raw.leaves&&typeof raw.leaves==='object')?raw.leaves:{};
+    const merged=mergeLeaveMaps_(remote, base);
+    saveLeaveOverlay_(merged); applyLeavesFromOverlay_();
+    if(opts.push && JSON.stringify(merged)!==JSON.stringify(remote)) pushLeaveMap_(merged).catch(()=>{});
+    if(!opts.silent && typeof render==='function') render();
+    return merged;
+  }catch(err){ if(!opts.silent) console.warn('[staff_leaves] fetch失敗:',err.message); saveLeaveOverlay_(base); applyLeavesFromOverlay_(); return base; }
+}
+// 休暇 追加/編集 → 最新remoteとマージして自分の変更を最新atで残しpush
+async function setLeaveOverlay_(leave){
+  if(!leave||!leave.id) return;
+  leave = Object.assign({}, leave, {updatedAt:new Date().toISOString()});
+  let map=loadLeaveOverlay_(); map[leave.id]=leaveToEntry_(leave); saveLeaveOverlay_(map);
+  const s=loadGasSettings();
+  if(s.url&&s.token){ try{ const url=`${s.url}?action=get-shared-config&key=staff_leaves&token=${encodeURIComponent(s.token)}&t=${Date.now()}`; const res=await fetch(url,{method:'GET',redirect:'follow'}); if(res.ok){ const d=await res.json(); let raw=d.value; if(typeof raw==='string'){try{raw=JSON.parse(raw);}catch(_){raw=null;}} if(raw&&raw.leaves){ map=mergeLeaveMaps_(raw.leaves, loadLeaveOverlay_()); map[leave.id]=leaveToEntry_(leave); saveLeaveOverlay_(map); } } }catch(_){} }
+  await pushLeaveMap_(map);
+}
+// 休暇 削除 → tombstone+push
+async function deleteLeaveOverlay_(id){
+  if(!id) return; const ts={id,deleted:true,at:new Date().toISOString()};
+  let map=loadLeaveOverlay_(); map[id]=ts; saveLeaveOverlay_(map);
+  const s=loadGasSettings();
+  if(s.url&&s.token){ try{ const url=`${s.url}?action=get-shared-config&key=staff_leaves&token=${encodeURIComponent(s.token)}&t=${Date.now()}`; const res=await fetch(url,{method:'GET',redirect:'follow'}); if(res.ok){ const d=await res.json(); let raw=d.value; if(typeof raw==='string'){try{raw=JSON.parse(raw);}catch(_){raw=null;}} if(raw&&raw.leaves){ map=mergeLeaveMaps_(raw.leaves, loadLeaveOverlay_()); map[id]=ts; saveLeaveOverlay_(map); } } }catch(_){} }
+  await pushLeaveMap_(map);
+}
+// ===========================================================
 // 🗑 予定削除トゥームストーン — 全員共有(shared-config 'event_deletions' = Drive json) v1.30.66
 //   削除した予定idと削除時刻を記録し、各端末がそれを読んでローカルからも除去する(削除伝播)。
 //   value(JSON) = { deletions:{ [eventId]: deletedAtISO }, updatedAt }
@@ -8023,6 +8072,8 @@ async function syncChecksFromGAS(opts){
     if(typeof applyRepairOverridesToState_==='function') applyRepairOverridesToState_();  // 全員共有の作業担当を反映(v1.30.55・キャッシュ即適用)
     // 🔄 再同期時は修繕担当の最新オーバーレイも取りに行く→他PCの担当変更が即反映(v1.30.93)
     if(typeof fetchRepairOverrides_==='function') fetchRepairOverrides_({silent:true}).catch(()=>{});
+    // 🌴 再同期時は休暇も最新を取りに行く→他PCの休日設定が即反映(v1.30.94)
+    if(typeof fetchLeaves_==='function') fetchLeaves_({silent:true}).catch(()=>{});
     state.restorations = restorations;
     saveState();
     localStorage.setItem("buildcluster_gas_synced_at", new Date().toISOString());
@@ -11687,6 +11738,7 @@ document.getElementById("lv-save").onclick = ()=>{
     state.leaves.push(data);
   }
   saveState(); closeLeaveModal(); render();
+  setLeaveOverlay_(data).catch(()=>{}); // 🌴 休暇を全端末共有(shared-config staff_leaves)
   scheduleAttendancePush();
   scheduleAvailabilityPush(); // 🌴 master_sync (クラ助等)へ休暇情報を共有
 };
@@ -11694,8 +11746,10 @@ document.getElementById("lv-delete").onclick = ()=>{
   if(!editingLeaveId) return;
   if(!confirm("この有給/休暇を削除しますか？")) return;
   pushHistory();
+  const delId = editingLeaveId;
   state.leaves = state.leaves.filter(l=>l.id!==editingLeaveId);
   saveState(); closeLeaveModal(); render();
+  deleteLeaveOverlay_(delId).catch(()=>{}); // 🌴 削除を全端末へ伝播
   scheduleAttendancePush();
   scheduleAvailabilityPush(); // 🌴 master_sync (クラ助等)へ休暇情報を共有
 };
@@ -15792,6 +15846,11 @@ setTimeout(()=>{
     if(typeof fetchEventDeletions_==='function'){
       fetchEventDeletions_({silent:true, push:true}).catch(()=>{});
       setInterval(()=>fetchEventDeletions_({silent:true}).catch(()=>{}), 5*60*1000);
+    }
+    // 🌴 休暇(全端末共有) 取得→state.leaves再構築・初回はローカル分push(移行)・以後5分ごと(v1.30.94)
+    if(typeof fetchLeaves_==='function'){
+      fetchLeaves_({silent:true, push:true}).catch(()=>{});
+      setInterval(()=>fetchLeaves_({silent:true}).catch(()=>{}), 5*60*1000);
     }
     // 📄 立会「資料作成済」フラグ (見積アプリ→shared-config) 取得・以後5分ごと
     fetchTaikyoShiryoReady({silent:true});
