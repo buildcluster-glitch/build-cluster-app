@@ -426,6 +426,10 @@
     flex-basis:100%;width:100%;display:block;
     white-space:normal;  /* タイトル箱内で折返し可 */
   }
+  /* 📐 見積作成者行: チップ直下(title外)の独立行。title の nowrap に巻き込まれず常に1行確保 v1.30.95 */
+  .event-chip > .chip-est-row{
+    flex-basis:100%;width:100%;display:block;padding:0 8px;line-height:13px;
+  }
   /* 単行モード(改行なし) — 自然折返しを禁止して1行省略 */
   .event-chip .chip-title.single-line{
     white-space:nowrap;text-overflow:ellipsis;
@@ -2265,7 +2269,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.94</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.95</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4471,6 +4475,8 @@ function showCheckStaffPicker(el, ck){
       target.staff = joinWorkers_(list);
       target.updatedAt = new Date().toISOString();
       saveState();
+      // 🏷 作業担当を全PC共有(check_workers)→Drive再同期でも消えない(v1.30.95)
+      if(typeof setCheckWorkerOverride_==='function') setCheckWorkerOverride_(target.id, target.staff).catch(()=>{});
       render();
       // ボタン状態更新(複数on可・閉じない)
       pop.querySelectorAll("[data-staff]").forEach(b=>{
@@ -4691,6 +4697,11 @@ function renderCheckCard(ck, today){
   // 色: スペース入り氏名(「鈴木 悠平」)でも詰め表記キーで引けるよう正規化
   // 複数担当は略称バッジ列(大 木 南…)、1名はフルネーム
   const staffBadge = __showStaff ? staffBadgesMini_(ck.staff, {full:true}) : "";
+  // 📐 見積作成者バッジ(作業担当とは別物・色は付けずグレーのゴーストバッジで「見積：◯◯」)v1.30.95
+  const __estName = ck.estimatorName || "";
+  const __estBadge = (__estName && !isHiddenStaffBadge_(__estName))
+    ? `<span class="badge-sm est-badge" title="見積作成者: ${escapeHtml(__estName)}" style="background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1;font-weight:600">見積:${escapeHtml(__estName)}</span>`
+    : "";
   // 工事ボリュームバッジ (v1.4.218 workloadStatus 対応)
   // 色: 無→非表示 / 軽→緑 / 普→黄 / 重→オレンジ / 激重→赤
   const volColors = {
@@ -4825,6 +4836,7 @@ function renderCheckCard(ck, today){
     <div class="row">
       ${finalCheckBadge}
       ${staffBadge}
+      ${__estBadge}
       ${volBadge}
       ${apptBadge}
       ${/* 着工/受注（工事指示有） は表示スキップ ─ デフォの「清掃完了」も非表示 */""}
@@ -5314,6 +5326,80 @@ async function setRepairWorkerOverride_(repairId, worker){
     }catch(_){}
   }
   await pushRepairOverridesMap_(map);
+  return map;
+}
+// ===========================================================
+// 🏷 最終確認(checks)の作業担当(worker)上書き — 全員共有(shared-config 'check_workers' = Drive json) v1.30.95
+//   ck.staff の初期値は見積作成者(estimatedBy)だったが、それは ck.estimatorName に分離。
+//   作業担当はここで割り当て、全PC共有＋Drive再同期で消えないようにする(repair_overridesと同型)。
+//   entry = { worker, at, by }  ※worker="" は「担当なし(クリア)」。value(JSON) = { overrides:{ [ckId]: entry }, updatedAt }
+// ===========================================================
+const CHECK_WORKERS_KEY = "buildcluster_check_workers";
+function loadCheckWorkers_(){ try{ const o=JSON.parse(localStorage.getItem(CHECK_WORKERS_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
+function saveCheckWorkers_(map){ try{ localStorage.setItem(CHECK_WORKERS_KEY, JSON.stringify(map||{})); }catch(e){} }
+function mergeCheckWorkerMaps_(a,b){ const out={}; const keys=new Set([...Object.keys(a||{}),...Object.keys(b||{})]); keys.forEach(k=>{ const ea=a&&a[k], eb=b&&b[k]; if(!ea){out[k]=eb;return;} if(!eb){out[k]=ea;return;} out[k]=(String(eb.at||'')>=String(ea.at||''))?eb:ea; }); return out; } // last-write-wins
+// オーバーレイを state.checks.staff(=作業担当) に反映。gas-sync由来は overlay が真値(無ければ空)。
+//   旧データ移行: estimatorName 未設定(=旧staff=見積作成者)なら estimatorName へ退避して staff を空に。
+function applyCheckWorkersToState_(){
+  const map = loadCheckWorkers_();
+  (state.checks||[]).forEach(ck=>{
+    if(ck.source!=='gas-sync') return;
+    if(ck.estimatorName===undefined){ ck.estimatorName = ck.staff||""; ck.staff=""; }
+    const e = map[ck.id];
+    ck.staff = (e && e.at) ? (e.worker||"") : "";
+  });
+}
+async function fetchCheckWorkers_(opts={}){
+  const s = loadGasSettings();
+  const local = loadCheckWorkers_();
+  if(!s.url || !s.token){ applyCheckWorkersToState_(); return local; }
+  try{
+    const url = `${s.url}?action=get-shared-config&key=check_workers&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res = await fetch(url, {method:'GET', redirect:'follow'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json();
+    let raw = data.value;
+    if(raw==='' || raw==null) raw = {overrides:{}};
+    else if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(e){ raw={overrides:{}}; } }
+    const remote = (raw && raw.overrides && typeof raw.overrides==='object') ? raw.overrides : {};
+    const merged = mergeCheckWorkerMaps_(remote, local);
+    saveCheckWorkers_(merged);
+    applyCheckWorkersToState_();
+    if(opts.push && JSON.stringify(merged) !== JSON.stringify(remote)){ pushCheckWorkersMap_(merged).catch(()=>{}); }
+    if(!opts.silent && typeof render==='function') render();
+    return merged;
+  }catch(err){ if(!opts.silent) console.warn('[check_workers] fetch失敗:', err.message); applyCheckWorkersToState_(); return local; }
+}
+async function pushCheckWorkersMap_(map){
+  const s = loadGasSettings(); if(!s.url || !s.token) return;
+  const payload = { overrides: map||{}, updatedAt: new Date().toISOString() };
+  try{
+    await fetch(s.url, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ action:'save-shared-config', key:'check_workers', value: JSON.stringify(payload), token: s.token, savedBy:'calendar-app' }) });
+  }catch(e){ console.warn('[check_workers] push失敗:', e.message); }
+}
+// 最新remote取得→自分の変更を最新atで上書き→push(他端末の割当を消さない)。worker=カンマ区切り文字列。
+async function setCheckWorkerOverride_(checkId, worker){
+  const stamp = ()=>({ worker: worker||'', at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
+  let map = loadCheckWorkers_();
+  map[checkId] = stamp();
+  saveCheckWorkers_(map);
+  const s = loadGasSettings();
+  if(s.url && s.token){
+    try{
+      const url = `${s.url}?action=get-shared-config&key=check_workers&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+      const res = await fetch(url, {method:'GET', redirect:'follow'});
+      if(res.ok){ const d=await res.json(); let raw=d.value;
+        if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(_){ raw=null; } }
+        if(raw && raw.overrides && typeof raw.overrides==='object'){
+          map = mergeCheckWorkerMaps_(raw.overrides, loadCheckWorkers_());
+          map[checkId] = stamp();
+          saveCheckWorkers_(map);
+        }
+      }
+    }catch(_){}
+  }
+  await pushCheckWorkersMap_(map);
   return map;
 }
 // ===========================================================
@@ -6987,6 +7073,16 @@ function applyJizenRecords_(records){
   const seen = loadJizenSeenIds_();
   const currentIds = new Set(records.map(r=>r.id));
   let inserted = 0;
+  // 🔁 旧事前イベント移行(v1.30.95): staff(=見積作成者)を estimatorName へ退避し作業担当を空に。
+  //   estimatorName 未設定のものだけ処理(冪等)。clearした作業担当を全PCへ伝播するため updatedAt 更新＋push。
+  (state.events||[]).forEach(e=>{
+    if(isJizenEvent_(e) && e.estimatorName===undefined){
+      e.estimatorName = e.staff||"";
+      e.staff = "";
+      e.updatedAt = new Date().toISOString();
+      if(typeof cloudQueueEventChange==='function') cloudQueueEventChange(e, 'upsert');
+    }
+  });
   const deduped = dedupeJizenEvents_(); // 既存の二重分を先に掃除
   records.forEach(r=>{
     const title = `事前 ${r.bukken}${r.room?" "+r.room:""}`;
@@ -7000,6 +7096,8 @@ function applyJizenRecords_(records){
     if(existing){
       if(!existing._jizenSourceId) existing._jizenSourceId = r.id; // sid治癒
       if(!existing.contractor) existing.contractor = r.contractor || r.motouke || "山一"; // 元請を後付け治癒
+      // 見積作成者は台帳(r.staff)が正本。各PCが自前で治癒(同期不要・v1.30.95)
+      if(r.staff && existing.estimatorName !== r.staff) existing.estimatorName = r.staff;
       seen.add(r.id);
       return;
     }
@@ -7018,7 +7116,8 @@ function applyJizenRecords_(records){
       title: `事前 ${r.bukken}${r.room?" "+r.room:""}`,
       category: "事前",
       contractor: r.contractor || r.motouke || "山一",  // 元請(jizen_schedule にあれば使う・無ければ山一工事)
-      staff: r.staff || "",
+      staff: "",                       // 作業担当=初期は空(白)。ピッカーで割当→担当色で着色(v1.30.95)
+      estimatorName: r.staff || "",    // 見積作成者(「見積：◯◯」バッジ用・色は付けない)
       participants: [],
       date: r.date,
       start: "09:00",
@@ -8008,7 +8107,8 @@ async function syncChecksFromGAS(opts){
         id: "gas-" + (p.driveFileId || p.estimateId || p.no || p.id || (p.name+"|"+(p.room||""))),
         title: (p.name || "(物件名なし)") + (p.room ? " " + p.room : ""),
         contractor: p.contractor || p.contractorName || p.clientRaw || p.clientCat || "",
-        staff: p.estimatedBy || p.staff || p.assignee || p.pic || p.salesPerson || "",  // バッジ=見積作成者(estimatedBy)優先
+        staff: "",  // 作業担当(現地担当)=初期は空。割当は check_workers オーバーレイで適用(v1.30.95)
+        estimatorName: p.estimatedBy || p.staff || p.assignee || p.pic || p.salesPerson || "",  // 見積作成者(「見積：◯◯」バッジ用・色は付けない)
         checkDate: pickIsoDate_(p.finalCheckDateIso, p.finalCheckDate, p.checkDate, p.finalDate),   // ISOアンカー優先(v1.30.27)
         originalCheckDate: normalizeDate(p.originalFinalDate || p.originalFinalCheckDate),
         moveInDate: normalizeDate(p.moveInDate || p.moveIn || p.movein),
@@ -8070,8 +8170,11 @@ async function syncChecksFromGAS(opts){
     state.checks = state.checks.filter(c => c.source !== "gas-sync").concat(imported);
     state.repairs = repairs;
     if(typeof applyRepairOverridesToState_==='function') applyRepairOverridesToState_();  // 全員共有の作業担当を反映(v1.30.55・キャッシュ即適用)
+    if(typeof applyCheckWorkersToState_==='function') applyCheckWorkersToState_();  // 🏷 最終確認の作業担当(全員共有)を反映(v1.30.95・キャッシュ即適用)
     // 🔄 再同期時は修繕担当の最新オーバーレイも取りに行く→他PCの担当変更が即反映(v1.30.93)
     if(typeof fetchRepairOverrides_==='function') fetchRepairOverrides_({silent:true}).catch(()=>{});
+    // 🏷 再同期時は最終確認の作業担当も最新を取りに行く(v1.30.95)
+    if(typeof fetchCheckWorkers_==='function') fetchCheckWorkers_({silent:true}).catch(()=>{});
     // 🌴 再同期時は休暇も最新を取りに行く→他PCの休日設定が即反映(v1.30.94)
     if(typeof fetchLeaves_==='function') fetchLeaves_({silent:true}).catch(()=>{});
     state.restorations = restorations;
@@ -9373,9 +9476,11 @@ function renderCalendar(){
         : "";
       if(/^(原状回復工事|原状回復|修繕工事|修繕|その他工事)$/.test(__jizenKoji)) __jizenKoji = "";
       const __jizenRow = __jizenKoji ? 14 : 0;
+      // 📐 見積作成者「見積:◯◯」を専用行で表示する分の高さ(事前/最終確認・列幅220pxでも見切れない)v1.30.95
+      const __estRow = ev.estimatorName ? 14 : 0;
       // __staffRows>0 のチップは chip-has-staffs のカード枠(padding2px+border1.5px ≈ 7px・border-box)分を
       //   足さないとバッジ行が下で見切れる(v1.30.36)
-      const chipHeight = (lineCount === 1 ? 28 : lineCount * 18 + 14) + __staffRows * 24 + (__staffRows > 0 ? 10 : 0) + __linkRow + __jizenRow;
+      const chipHeight = (lineCount === 1 ? 28 : lineCount * 18 + 14) + __staffRows * 24 + (__staffRows > 0 ? 10 : 0) + __linkRow + __jizenRow + __estRow;
       // 月ビュー/終日 はチップ高さ、それ以外は duration に応じた縦長ブロック
       const height = (isMonth || isFree)
         ? chipHeight
@@ -9483,12 +9588,14 @@ function renderCalendar(){
       const progIcon = (__progResto && !__isTachiaiChip)
         ? `<span class="chip-prog" data-resto-id="${escapeHtml(String(__progResto.id))}" role="button" title="📋 原状回復の進捗を表示">📋</span>`
         : "";
-      // 👤 担当者(見積作成者)バッジ — 📋進捗アイコンの隣に。スペース入り氏名でも色解決
-      //   立会チップには出さない(立会担当ピッカーの担当と紛らわしいため。事前/最終確認等のみ)
-      let __progStaffBadge = "";
-      if(__progResto && __progResto.staff && !__isTachiaiChip && (typeof isHiddenStaffBadge_!=='function' || !isHiddenStaffBadge_(__progResto.staff))){
-        const __psc = (STAFF_COLORS[__progResto.staff] || STAFF_COLORS[String(__progResto.staff).replace(/\s|　/g,"")]) || "#9ca3af";
-        __progStaffBadge = `<span class="chip-progstaff" style="align-self:center;flex-shrink:0;background:${__psc};color:${textColorFor(__psc)};font-size:9px;font-weight:700;padding:0 5px;border-radius:4px;margin-left:3px;white-space:nowrap">${escapeHtml(__progResto.staff)}</span>`;
+      // 📐 見積作成者バッジ「見積:◯◯」— 作業担当(チップ色/丸バッジ)とは別物と分かるグレーのゴーストバッジ(v1.30.95)
+      //   ev.estimatorName(事前) > 紐づく原状回復の見積作成者(__progResto.staff)。立会チップには出さない。
+      //   月/終日チップは列幅が狭く見切れるので専用行(__estRowHtml)、縦長ビューはインライン(__progStaffBadge)。
+      let __progStaffBadge = "", __estRowHtml = "";
+      const __estName2 = ev.estimatorName || (__progResto && __progResto.staff) || "";
+      if(__estName2 && !__isTachiaiChip && (typeof isHiddenStaffBadge_!=='function' || !isHiddenStaffBadge_(__estName2))){
+        __progStaffBadge = `<span class="chip-progstaff est-ghost" style="align-self:center;flex-shrink:0;background:rgba(255,255,255,.75);color:#475569;border:1px solid rgba(100,116,139,.45);font-size:9px;font-weight:600;padding:0 5px;border-radius:4px;margin-left:3px;white-space:nowrap" title="見積作成者: ${escapeHtml(__estName2)}">見積:${escapeHtml(__estName2)}</span>`;
+        __estRowHtml = `<span class="chip-est-row"><span class="est-ghost" style="display:inline-block;max-width:100%;font-size:9px;font-weight:600;padding:0 5px;border-radius:4px;background:rgba(255,255,255,.82);color:#475569;border:1px solid rgba(100,116,139,.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-sizing:border-box;vertical-align:middle" title="見積作成者: ${escapeHtml(__estName2)}">見積:${escapeHtml(__estName2)}</span></span>`;
       }
       // 💬コメント数バッジ (チャット)
       const commentCount = (ev.comments && ev.comments.length) || 0;
@@ -9547,8 +9654,8 @@ function renderCalendar(){
           : (isMulti ? escapeHtml(ev.title || "").replace(/\n/g, "<br>") : escapeHtml(titleFirstLine));
         const titleClass = (taskInfo ? "chip-checklist " : "") + ((taskInfo || !isMulti) ? "chip-title single-line" : "chip-title multi-line");
         const timeBox = isAnytime ? "" : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;
-        // 参加者バッジは title 外(チップ直下)に独立行として配置
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${titleHtml}${commuteIcon}${memoIcon}${progIcon}${__progStaffBadge}${commentBadge}${shiryoBadge}${taikyoCmtBadge}${__linkInfoHtml}${__jizenKojiHtml}</span>${timeBox}${staffBadges}`;
+        // 参加者バッジ/見積行は title 外(チップ直下)に独立行として配置
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${titleHtml}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}${__linkInfoHtml}${__jizenKojiHtml}</span>${timeBox}${__estRowHtml}${staffBadges}`;
         if(staffBadges){ el.classList.add('chip-has-staffs'); if(!__whiteBg) el.style.setProperty('--card-bg', chipBg); } // 担当色で全面着色、色無しは薄グレー地(v1.30.51)
         if(impList.length){ el.classList.add("imp-flag"); if(impTopClass) el.classList.add(impTopClass); }
         el.title = fullTooltip;
@@ -9559,7 +9666,7 @@ function renderCalendar(){
         const titleClass = (taskInfo ? "chip-checklist " : "") + ((taskInfo || !isMulti) ? "chip-title single-line" : "chip-title multi-line");
         el.classList.add("event-chip");
         const timeBox = isAnytime ? "" : `<span class="chip-time">終日</span>`;
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${titleHtml}${commuteIcon}${memoIcon}${progIcon}${__progStaffBadge}${commentBadge}${shiryoBadge}${taikyoCmtBadge}${__linkInfoHtml}${__jizenKojiHtml}</span>${timeBox}${staffBadges}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${titleHtml}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}${__linkInfoHtml}${__jizenKojiHtml}</span>${timeBox}${__estRowHtml}${staffBadges}`;
         if(staffBadges){ el.classList.add('chip-has-staffs'); if(!__whiteBg) el.style.setProperty('--card-bg', chipBg); } // 担当色で全面着色、色無しは薄グレー地(v1.30.51)
         if(impList.length){ el.classList.add("imp-flag"); if(impTopClass) el.classList.add(impTopClass); }
         el.title = fullTooltip;
@@ -12640,7 +12747,7 @@ function cloudMergeById_(localArr, serverArr, pendingIds){
   //
   // 1. 既存ローカル行をサーバー値で更新 (pending保護)
   // ⚠ v1.13.1: ローカル限定フィールド (freeTop, _jizenSourceId, etc) は server値で潰さず保持
-  const LOCAL_ONLY_KEYS = ['freeTop', '_jizenSourceId', '_taikyoRawId', '_taikyoOrigStaff', '_readOnly'];
+  const LOCAL_ONLY_KEYS = ['freeTop', '_jizenSourceId', '_taikyoRawId', '_taikyoOrigStaff', '_readOnly', 'estimatorName'];
   for(let i=0; i<localArr.length; i++){
     const lid = localArr[i].id;
     if(serverMap.has(lid)){
@@ -15841,6 +15948,11 @@ setTimeout(()=>{
     if(typeof fetchRepairOverrides_==='function'){
       fetchRepairOverrides_({silent:true, push:true}).catch(()=>{});
       setInterval(()=>fetchRepairOverrides_({silent:true}).catch(()=>{}), 5*60*1000);
+    }
+    // 🏷 最終確認 作業担当 上書き(全員共有) 取得・初回はローカル分push(移行)・以後5分ごと(v1.30.95)
+    if(typeof fetchCheckWorkers_==='function'){
+      fetchCheckWorkers_({silent:true, push:true}).catch(()=>{});
+      setInterval(()=>fetchCheckWorkers_({silent:true}).catch(()=>{}), 5*60*1000);
     }
     // 🗑 予定削除トゥームストーン(全員共有) 取得→ローカル除去・初回push(移行)・以後5分ごと(v1.30.66)
     if(typeof fetchEventDeletions_==='function'){
