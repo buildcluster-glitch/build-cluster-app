@@ -2267,7 +2267,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.108</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.109</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5209,7 +5209,7 @@ async function mutateTaikyoOverrideRemote_(taikyoId, patch){
     }catch(_){}
   }
   const cur = map[taikyoId] || {};
-  const next = { staff: cur.staff||'', date: cur.date||'', time: cur.time||'', ...patch,
+  const next = { staff: cur.staff||'', date: cur.date||'', time: cur.time||'', commute: cur.commute||'', ...patch,
                  at: new Date().toISOString(), by: (typeof getMyself==='function'?getMyself():'')||'' };
   map[taikyoId] = next;
   saveTaikyoOverrides_(map);
@@ -5222,15 +5222,23 @@ function setTaikyoStaffOverride_(taikyoId, staff){
   // 楽観的にローカル即更新
   const map = loadTaikyoOverrides_();
   const cur = map[taikyoId] || {};
-  map[taikyoId] = { staff: staff||'', date: cur.date||'', time: cur.time||'', at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' };
+  map[taikyoId] = { staff: staff||'', date: cur.date||'', time: cur.time||'', commute: cur.commute||'', at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' };
   saveTaikyoOverrides_(map);
   mutateTaikyoOverrideRemote_(taikyoId, { staff: staff||'' });
+}
+// 🚗 直行/直帰 上書き(全員共有)。commute="" で解除
+function setTaikyoCommuteOverride_(taikyoId, commute){
+  const map = loadTaikyoOverrides_();
+  const cur = map[taikyoId] || {};
+  map[taikyoId] = { staff: cur.staff||'', date: cur.date||'', time: cur.time||'', commute: commute||'', at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' };
+  saveTaikyoOverrides_(map);
+  mutateTaikyoOverrideRemote_(taikyoId, { commute: commute||'' });
 }
 // 🕐 日時上書き。date/time のうち渡されたものだけ変更(time="" で時間未定)
 function setTaikyoDateTimeOverride_(taikyoId, patch){
   const map = loadTaikyoOverrides_();
   const cur = map[taikyoId] || {};
-  map[taikyoId] = { staff: cur.staff||'', date: (patch.date!==undefined?patch.date:cur.date)||'', time: (patch.time!==undefined?patch.time:cur.time)||'', at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' };
+  map[taikyoId] = { staff: cur.staff||'', date: (patch.date!==undefined?patch.date:cur.date)||'', time: (patch.time!==undefined?patch.time:cur.time)||'', commute: cur.commute||'', at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' };
   saveTaikyoOverrides_(map);
   mutateTaikyoOverrideRemote_(taikyoId, patch);
 }
@@ -5273,7 +5281,7 @@ function mergeRepairOverrideMaps_(a,b){
 // オーバーレイを state.repairs.worker に反映(クラウド共有値が真値)
 function applyRepairOverridesToState_(){
   const map = loadRepairOverrides_();
-  (state.repairs||[]).forEach(r=>{ const e=map[r.id]; if(e && e.at){ r.worker = e.worker||""; } });
+  (state.repairs||[]).forEach(r=>{ const e=map[r.id]; if(e && e.at){ r.worker = e.worker||""; r.commute = e.commute||""; } });
 }
 async function fetchRepairOverrides_(opts={}){
   const s = loadGasSettings();
@@ -5306,7 +5314,8 @@ async function pushRepairOverridesMap_(map){
 }
 // 最新remote取得→自分の変更を最新atで上書き→push(他端末の割当を消さない)。worker=カンマ区切り文字列。
 async function setRepairWorkerOverride_(repairId, worker){
-  const stamp = ()=>({ worker: worker||'', at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
+  const __keepCm = (loadRepairOverrides_()[repairId]||{}).commute || '';
+  const stamp = ()=>({ worker: worker||'', commute: __keepCm, at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
   let map = loadRepairOverrides_();
   map[repairId] = stamp();                 // 楽観的にローカル即更新
   saveRepairOverrides_(map);
@@ -5320,6 +5329,34 @@ async function setRepairWorkerOverride_(repairId, worker){
         if(raw && raw.overrides && typeof raw.overrides==='object'){
           map = mergeRepairOverrideMaps_(raw.overrides, loadRepairOverrides_());
           map[repairId] = stamp();         // 今回の変更を最新として確実に残す
+          saveRepairOverrides_(map);
+        }
+      }
+    }catch(_){}
+  }
+  await pushRepairOverridesMap_(map);
+  return map;
+}
+// 🚗 修繕アポの直行/直帰 上書き(全員共有)。worker は保持。commute="" で解除
+async function setRepairCommuteOverride_(repairId, commute){
+  // worker は消さない: 既存overrideがあればその worker、無ければ台帳(state.repairs)の現worker を引き継ぐ
+  const __curOv = loadRepairOverrides_()[repairId] || {};
+  const __rec = (state.repairs||[]).find(x=>x.id===repairId);
+  const __keepW = __curOv.at ? (__curOv.worker||'') : (__rec ? (__rec.worker||'') : '');
+  const stamp = ()=>({ worker: __keepW, commute: commute||'', at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
+  let map = loadRepairOverrides_();
+  map[repairId] = stamp();
+  saveRepairOverrides_(map);
+  const s = loadGasSettings();
+  if(s.url && s.token){
+    try{
+      const url = `${s.url}?action=get-shared-config&key=repair_overrides&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+      const res = await fetch(url, {method:'GET', redirect:'follow'});
+      if(res.ok){ const d=await res.json(); let raw=d.value;
+        if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(_){ raw=null; } }
+        if(raw && raw.overrides && typeof raw.overrides==='object'){
+          map = mergeRepairOverrideMaps_(raw.overrides, loadRepairOverrides_());
+          map[repairId] = stamp();
           saveRepairOverrides_(map);
         }
       }
@@ -5865,6 +5902,7 @@ function buildTaikyoVirtualEvent_(r){
     _taikyoOrigTime: r.time||"",
     start, end,
     allday, timeMode,
+    commute: (__ovEntry && __ovEntry.commute) || "",   // 🚗 直行/直帰(全員共有・立会)
     color: chipColor,
     // ⚠ 「工事: 退去立会」は退去立会では自明で冗長なので memo に入れない(📝メモアイコンが付くのを防ぐ・v1.30.37)。住所/時刻は残す
     memo: [r.address && `📍 ${r.address}`, effTime && !m && `時刻: ${effTime}`].filter(Boolean).join("\n"),
@@ -5917,6 +5955,13 @@ function showTaikyoStaffPicker(el, ev){
       </div>
       <div class="tk-dt-hint" style="font-size:10px;color:var(--muted);margin-top:4px"></div>
     </div>
+    <div class="qp-sec">
+      <div class="qp-label">🚗 勤怠 <span style="font-weight:400;color:#94a3b8;font-size:10px">(直行/直帰・全員で共有)</span></div>
+      <div class="qp-worker-pick" id="tkCommutePick">
+        <button data-c="go" class="${(ev.commute||'').includes('直行')?'on':''}" style="background:#dbeafe">🚗→ 直行</button>
+        <button data-c="home" class="${(ev.commute||'').includes('直帰')?'on':''}" style="background:#dcfce7">→🏠 直帰</button>
+      </div>
+    </div>
     <div class="qp-sec tk-cmt-sec">
       <div class="qp-label">💬 コメント <span style="font-weight:400;color:#94a3b8;font-size:10px">(全員で共有)</span></div>
       <div class="tk-cmt-list"></div>
@@ -5963,6 +6008,23 @@ function showTaikyoStaffPicker(el, ev){
         const bs=b.dataset.staff;
         b.classList.toggle('on', bs===""?__tkcur.length===0:__tkcur.includes(bs));
       });
+    };
+  });
+  // 🚗 直行/直帰 トグル(全員共有・閉じない)
+  let __tkCommute = { go:(ev.commute||'').includes('直行'), home:(ev.commute||'').includes('直帰') };
+  pop.querySelectorAll('#tkCommutePick button').forEach(btn=>{
+    btn.onclick = ()=>{
+      const k = btn.dataset.c;
+      __tkCommute[k] = !__tkCommute[k];
+      btn.classList.toggle('on', __tkCommute[k]);
+      const cm = (__tkCommute.go && __tkCommute.home) ? "直行直帰" : __tkCommute.go ? "直行" : __tkCommute.home ? "直帰" : "";
+      if(taikyoId){
+        setTaikyoCommuteOverride_(taikyoId, cm);
+      }else{
+        const real = (state.events||[]).find(x=>x.id===ev.id);
+        if(real){ real.commute = cm; real.updatedAt = new Date().toISOString(); saveState(); if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(real,'upsert'); }catch(_){} } }
+      }
+      render();
     };
   });
   const restoreBtn = pop.querySelector('[data-role="restore-orig"]');
@@ -9210,6 +9272,8 @@ function renderCalendar(){
           const __repStaffBadgesB = __repWorkersB.length>=2
             ? `<div class="chip-staffs">${__repWorkersB.map(s=>{ const sc=staffColor_(s); return `<span class="chip-staff-tag" style="background:${sc};color:${textColorFor(sc)}" title="${escapeHtml(s)}">${escapeHtml(staffAbbrev_(s))}</span>`; }).join("")}</div>`
             : "";
+          // 🚗 直行/直帰 アイコン(v1.30.108)
+          const __repCommuteB = r.commute ? `<span class="chip-commute" title="${escapeHtml(r.commute)}" style="flex-shrink:0;margin-left:2px">${r.commute==="直行直帰"?"🚗⇄":r.commute==="直行"?"🚗→":"→🏠"}</span>` : "";
           const tipLines = [
             `🔧 修繕アポ: ${r.contractor?r.contractor+" / ":""}${r.name}${r.room?" "+r.room:""}`,
             `${wf}${t?" / "+t:""}`,
@@ -9223,7 +9287,7 @@ function renderCalendar(){
             "\n(クリックで編集シート)",
           ].filter(Boolean).join("\n");
           // 左カラーバーは廃止(v1.30.15): ピルの角丸に沿って曲がり「謎のピンクの三日月」に見えていた。状態は📞未等のミニバッジで表現
-          inner += `<span class="repair-appt-chip${__repStaffBadgesB?' has-staffs':''}" data-repair-id="${r.id}" style="background:${wColor};color:${wFg}" title="${escapeHtml(tipLines)}"><span class="rac-row">${tagSpan}${wfMiniSpan}<span class="rac-label">${escapeHtml(label)}</span>${__vendorBadgeB}</span>${__repStaffBadgesB}</span>`;
+          inner += `<span class="repair-appt-chip${__repStaffBadgesB?' has-staffs':''}" data-repair-id="${r.id}" style="background:${wColor};color:${wFg}" title="${escapeHtml(tipLines)}"><span class="rac-row">${tagSpan}${wfMiniSpan}<span class="rac-label">${escapeHtml(label)}</span>${__vendorBadgeB}${__repCommuteB}</span>${__repStaffBadgesB}</span>`;
         }
       });
     }
@@ -9840,6 +9904,8 @@ function renderCalendar(){
         const __repStaffBadges = __repWorkers.length>=2
           ? `<div class="chip-staffs">${__repWorkers.map(s=>{ const sc=staffColor_(s); return `<span class="chip-staff-tag" style="background:${sc};color:${textColorFor(sc)}" title="${escapeHtml(s)}">${escapeHtml(staffAbbrev_(s))}</span>`; }).join("")}</div>`
           : "";
+        // 🚗 直行/直帰 アイコン(v1.30.108)
+        const __repCommute = r.commute ? `<span class="chip-commute" title="${escapeHtml(r.commute)}" style="flex-shrink:0">${r.commute==="直行直帰"?"🚗⇄":r.commute==="直行"?"🚗→":"→🏠"}</span>` : "";
         // ホバー詳細(連絡者・作業担当・メモ含む)
         const tipLines = [
           `🔧 修繕アポ: ${r.contractor?r.contractor+" / ":""}${r.name}${r.room?" "+r.room:""}`,
@@ -9864,7 +9930,7 @@ function renderCalendar(){
         const __descLine = __descShort
           ? `<span style="display:block;width:100%;font-size:10px;font-weight:500;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2">${escapeHtml(__descShort)}</span>`
           : "";
-        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis">${tagHtml}${escapeHtml(label)}${__vendorBadge}</span>${__descLine}</span><span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>${__repStaffBadges}`;
+        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis">${tagHtml}${escapeHtml(label)}${__vendorBadge}${__repCommute}</span>${__descLine}</span><span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>${__repStaffBadges}`;
         if(__repStaffBadges){ el.classList.add('chip-has-staffs'); el.style.setProperty('--card-bg', wColor); } // 担当色で全面着色(v1.30.51)
         attachRepairChipHover(el, r); // リッチtooltip
         el.classList.add("chip-locked"); // 🔒 ドラッグ移動不可(台帳=Driveが真データのため)
@@ -10684,6 +10750,13 @@ function showRepairQuickPop(r, anchorEl){
       <div class="qp-worker-pick">${workerBtns}</div>
     </div>
     <div class="qp-sec">
+      <div class="qp-label">🚗 勤怠 <span style="font-weight:400;color:#94a3b8;font-size:10px">(直行/直帰)</span></div>
+      <div class="qp-worker-pick" id="qp-commute-pick">
+        <button data-c="go" class="${(r.commute||'').includes('直行')?'on':''}" style="background:#dbeafe">🚗→ 直行</button>
+        <button data-c="home" class="${(r.commute||'').includes('直帰')?'on':''}" style="background:#dcfce7">→🏠 直帰</button>
+      </div>
+    </div>
+    <div class="qp-sec">
       <div class="qp-label">💬 コメント <span id="qp-comment-count" style="text-transform:none;color:var(--muted);font-weight:400"></span></div>
       <div class="qp-comments-list" id="qp-comments-list">${renderComments()}</div>
       <div class="qp-comment-input">
@@ -10768,6 +10841,19 @@ function showRepairQuickPop(r, anchorEl){
       if(typeof setRepairWorkerOverride_==='function') setRepairWorkerOverride_(r.id, r.worker).catch(()=>{});
     }, 300);
   };
+  // 🚗 直行/直帰 トグル(全員共有・閉じない)
+  let __rCommute = { go:(r.commute||'').includes('直行'), home:(r.commute||'').includes('直帰') };
+  pop.querySelectorAll('#qp-commute-pick button').forEach(btn=>{
+    btn.onclick = ()=>{
+      const k = btn.dataset.c;
+      __rCommute[k] = !__rCommute[k];
+      btn.classList.toggle('on', __rCommute[k]);
+      const cm = (__rCommute.go && __rCommute.home) ? "直行直帰" : __rCommute.go ? "直行" : __rCommute.home ? "直帰" : "";
+      r.commute = cm;
+      saveState(); render();
+      if(typeof setRepairCommuteOverride_==='function') setRepairCommuteOverride_(r.id, cm).catch(()=>{});
+    };
+  });
   // コメント送信
   const sendBtn = pop.querySelector('#qp-comment-send');
   const inputEl = pop.querySelector('#qp-comment-input');
