@@ -2271,7 +2271,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.115</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.116</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5310,7 +5310,33 @@ function mergeRepairOverrideMaps_(a,b){
 // オーバーレイを state.repairs.worker に反映(クラウド共有値が真値)
 function applyRepairOverridesToState_(){
   const map = loadRepairOverrides_();
-  (state.repairs||[]).forEach(r=>{ const e=map[r.id]; if(e && e.at){ r.worker = e.worker||""; r.commute = e.commute||""; } });
+  (state.repairs||[]).forEach(r=>{ const e=map[r.id]; if(e && e.at){ r.worker = e.worker||""; r.commute = e.commute||""; if(e.vendor) r.responseContractor = e.vendor; } });
+}
+// 🛠 対応業者(responseContractor)をカレンダー側で上書き(全員共有)。worker/commuteは保持。vendor=""で解除(台帳値に戻る)
+async function setRepairVendorOverride_(repairId, vendor){
+  const __curOv = loadRepairOverrides_()[repairId] || {};
+  const __rec = (state.repairs||[]).find(x=>x.id===repairId);
+  const __keepW = __curOv.at ? (__curOv.worker||'') : (__rec ? (__rec.worker||'') : '');
+  const __keepCm = __curOv.commute || '';
+  const stamp = ()=>({ worker: __keepW, commute: __keepCm, vendor: (vendor||'').trim(), at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
+  let map = loadRepairOverrides_(); map[repairId] = stamp(); saveRepairOverrides_(map);
+  const s = loadGasSettings();
+  if(s.url && s.token){
+    try{ const url = `${s.url}?action=get-shared-config&key=repair_overrides&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+      const res = await fetch(url, {method:'GET', redirect:'follow'});
+      if(res.ok){ const d=await res.json(); let raw=d.value; if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(_){ raw=null; } }
+        if(raw && raw.overrides && typeof raw.overrides==='object'){ map=mergeRepairOverrideMaps_(raw.overrides, loadRepairOverrides_()); map[repairId]=stamp(); saveRepairOverrides_(map); } }
+    }catch(_){}
+  }
+  await pushRepairOverridesMap_(map);
+  return map;
+}
+// 🛠 同期データから外注業者(対応業者/外注先)の一覧を収集(重複除去・五十音)
+function collectVendors_(){
+  const set=new Set();
+  (state.repairs||[]).forEach(r=>{ const v=(r.responseContractor||'').trim(); if(v) set.add(v); });
+  (state.restorations||[]).forEach(p=>(p.tasks||[]).forEach(t=>{ if(t && t.category==='outsource'){ const c=(t.contractor||'').trim(); if(c && c!=='ビルドクラスタ') set.add(c); } }));
+  return [...set].sort((a,b)=>a.localeCompare(b,'ja'));
 }
 async function fetchRepairOverrides_(opts={}){
   const s = loadGasSettings();
@@ -5343,8 +5369,10 @@ async function pushRepairOverridesMap_(map){
 }
 // 最新remote取得→自分の変更を最新atで上書き→push(他端末の割当を消さない)。worker=カンマ区切り文字列。
 async function setRepairWorkerOverride_(repairId, worker){
-  const __keepCm = (loadRepairOverrides_()[repairId]||{}).commute || '';
-  const stamp = ()=>({ worker: worker||'', commute: __keepCm, at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
+  const __ov0 = loadRepairOverrides_()[repairId]||{};
+  const __keepCm = __ov0.commute || '';
+  const __keepV = __ov0.vendor || '';
+  const stamp = ()=>({ worker: worker||'', commute: __keepCm, vendor: __keepV, at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
   let map = loadRepairOverrides_();
   map[repairId] = stamp();                 // 楽観的にローカル即更新
   saveRepairOverrides_(map);
@@ -5372,7 +5400,8 @@ async function setRepairCommuteOverride_(repairId, commute){
   const __curOv = loadRepairOverrides_()[repairId] || {};
   const __rec = (state.repairs||[]).find(x=>x.id===repairId);
   const __keepW = __curOv.at ? (__curOv.worker||'') : (__rec ? (__rec.worker||'') : '');
-  const stamp = ()=>({ worker: __keepW, commute: commute||'', at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
+  const __keepV = __curOv.vendor || '';
+  const stamp = ()=>({ worker: __keepW, commute: commute||'', vendor: __keepV, at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
   let map = loadRepairOverrides_();
   map[repairId] = stamp();
   saveRepairOverrides_(map);
@@ -10964,6 +10993,19 @@ function showRepairQuickPop(r, anchorEl){
       <div class="qp-label">🔨 作業担当者</div>
       <div class="qp-worker-pick">${workerBtns}</div>
     </div>
+    ${(()=>{
+      // 🛠 対応業者(外注先): 同期データから収集してプルダウン選択(v1.30.116)
+      const __vendors = (typeof collectVendors_==='function') ? collectVendors_() : [];
+      const __curV = (r.responseContractor||'').trim();
+      const __opts = [__curV, ...__vendors].filter((v,i,a)=> v && a.indexOf(v)===i);
+      return `<div class="qp-sec">
+        <div class="qp-label">🛠 対応業者 <span style="font-weight:400;color:#94a3b8;font-size:10px">(外注先・プルダウン)</span></div>
+        <select id="qp-vendor-sel" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px;background:#fff;font-weight:600;color:#0f172a">
+          <option value="">未指定</option>
+          ${__opts.map(v=>`<option value="${escapeHtml(v)}" ${v===__curV?'selected':''}>${escapeHtml(v)}</option>`).join('')}
+        </select>
+      </div>`;
+    })()}
     <div class="qp-sec">
       <div class="qp-label">🚗 勤怠 <span style="font-weight:400;color:#94a3b8;font-size:10px">(直行/直帰)</span></div>
       <div class="qp-worker-pick" id="qp-commute-pick">
@@ -11058,6 +11100,15 @@ function showRepairQuickPop(r, anchorEl){
       if(typeof setRepairWorkerOverride_==='function') setRepairWorkerOverride_(r.id, r.worker).catch(()=>{});
     }, 300);
   };
+  // 🛠 対応業者 プルダウン(全員共有・閉じない)
+  const __vendorSel = pop.querySelector('#qp-vendor-sel');
+  if(__vendorSel){
+    __vendorSel.onchange = ()=>{
+      r.responseContractor = __vendorSel.value;
+      saveState(); render();
+      if(typeof setRepairVendorOverride_==='function') setRepairVendorOverride_(r.id, __vendorSel.value).catch(()=>{});
+    };
+  }
   // 🚗 直行/直帰 トグル(全員共有・閉じない)
   let __rCommute = { go:(r.commute||'').includes('直行'), home:(r.commute||'').includes('直帰') };
   pop.querySelectorAll('#qp-commute-pick button').forEach(btn=>{
