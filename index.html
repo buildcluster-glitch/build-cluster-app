@@ -2277,7 +2277,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.128</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.129</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -6183,6 +6183,7 @@ function showTaikyoStaffPicker(el, ev){
         <input type="time" class="tk-dt-time" value="${(ev.timeMode==='timed' && ev.start)?escapeHtml(ev.start):''}">
         <button class="tk-dt-restore" title="元の日時に戻す">↺</button>
       </div>
+      <button class="tk-dt-dotakyan" style="margin-top:6px;padding:5px 10px;border:1px solid #cbd5e1;background:#f1f5f9;color:#475569;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">🚫 ドタキャン(この日を取消跡に)</button>
       <div class="tk-dt-hint" style="font-size:10px;color:var(--muted);margin-top:4px"></div>
     </div>
     <div class="qp-sec">
@@ -6265,6 +6266,17 @@ function showTaikyoStaffPicker(el, ev){
       pop.remove(); render();
     };
   }
+  // 🚫 ドタキャン: 現在の立会日(入力欄の値)をグレー跡として残す→新しい日付に変えて反映
+  const __tkDota = pop.querySelector('.tk-dt-dotakyan');
+  if(__tkDota){ __tkDota.onclick = ()=>{
+    const d = pop.querySelector('.tk-dt-date').value;
+    const t = pop.querySelector('.tk-dt-time').value.trim();
+    if(!d){ alert('元の立会日付が空です'); return; }
+    const lbl = (`${ev._bukken||''} ${ev._room||''}`).trim() || (ev.title||'').split(/\r?\n/)[0].replace(/^立会\s*/,'');
+    if(!confirm(`立会 ${d}${t?(" "+t):""} をドタキャン跡(グレー)として残しますか？\nこの後、日付を新しい日に変えてください。`)) return;
+    createDotakyanGhost_(`立会 ${lbl}`, d, t);
+    __tkDota.textContent = '✓ ドタキャン跡を残しました'; __tkDota.disabled = true;
+  }; }
   // 🕐 日時変更 (全員共有)
   const dateEl = pop.querySelector('.tk-dt-date');
   const timeEl = pop.querySelector('.tk-dt-time');
@@ -10984,6 +10996,31 @@ function __quickPopOutsideClick(e){
 function __quickPopKey(e){
   if(e.key === 'Escape') closeQuickPop();
 }
+// 🚫 ドタキャン跡: 古い日付にグレーのマーカー予定を1件作る(普通の予定=全PC同期・削除可)v1.30.129
+//   本体(立会/修繕)は別途新しい日付へ変更する運用。マーカーは「🚫ドタキャン 物件名」グレーチップ。
+function createDotakyanGhost_(label, date, time){
+  if(!date){ alert('元の日付が取得できませんでした'); return null; }
+  const m = String(time||"").match(/^(\d{1,2})[:：](\d{2})/);
+  const ev = {
+    id: uid(),
+    title: `🚫ドタキャン ${label}${time?(" "+time):""}`.trim(),
+    category:"", contractor:"", staff:"", participants:[],
+    date: date,
+    start: m ? `${String(m[1]).padStart(2,'0')}:${m[2]}` : "09:00",
+    end:   m ? `${String(Math.min(+m[1]+1,18)).padStart(2,'0')}:${m[2]}` : "10:00",
+    allday:false, timeMode: m ? "timed" : "anytime",
+    color:"#cbd5e1",   // グレー=ドタキャン跡
+    memo:`ドタキャン(日程変更)\n元の予定: ${date}${time?(" "+time):""}`,
+    importance:[], updatedAt:new Date().toISOString(),
+  };
+  if(typeof pushHistory==='function') pushHistory();
+  state.events.push(ev);
+  if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(ev,'upsert'); }catch(_){} }
+  saveState();
+  if(typeof render==='function') render();
+  if(typeof showAutoSyncToast==='function') showAutoSyncToast(`🚫 ${date} にドタキャン跡を残しました。新しい日付に変更してください`);
+  return ev;
+}
 function showRepairQuickPop(r, anchorEl){
   closeQuickPop();
   const pop = document.createElement('div');
@@ -11051,6 +11088,7 @@ function showRepairQuickPop(r, anchorEl){
         <input type="text" id="qp-resp-time" value="${escapeHtml(r.responseTime||'')}" placeholder="10:00" style="width:70px;padding:5px 6px;font-size:12px;border:1px solid var(--border);border-radius:6px">
         <button id="qp-resp-apply" class="qp-detail" style="padding:5px 10px;flex-shrink:0">変更</button>
       </div>
+      <button id="qp-dotakyan" style="margin-top:6px;padding:5px 10px;border:1px solid #cbd5e1;background:#f1f5f9;color:#475569;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">🚫 ドタキャン(この日を取消跡に)</button>
     </div>
     <div class="qp-sec">
       <div class="qp-label">🔨 作業担当者</div>
@@ -11106,6 +11144,16 @@ function showRepairQuickPop(r, anchorEl){
   pop.style.left = x + 'px'; pop.style.top = y + 'px';
 
   // 📅 アポ日時変更 (saveRepairSheet と同じ作法: 楽観更新→Drive書き戻し→失敗ならロールバック)
+  // 🚫 ドタキャン: 現在のアポ日(入力欄の値)をグレー跡として残す→そのあと日付を新しい日に変更して「変更」
+  const __dotaBtn = pop.querySelector('#qp-dotakyan');
+  if(__dotaBtn){ __dotaBtn.onclick = ()=>{
+    const d = pop.querySelector('#qp-resp-date').value;
+    const t = pop.querySelector('#qp-resp-time').value.trim();
+    if(!d){ alert('元のアポ日付が空です'); return; }
+    if(!confirm(`${d}${t?(" "+t):""} をドタキャン跡(グレー)として残しますか？\nこの後、日付を新しい日に変えて「変更」を押してください。`)) return;
+    createDotakyanGhost_(`${r.name}${r.room?" "+r.room:""}`, d, t);
+    __dotaBtn.textContent = '✓ ドタキャン跡を残しました'; __dotaBtn.disabled = true;
+  }; }
   pop.querySelector('#qp-resp-apply').onclick = async ()=>{
     const btn = pop.querySelector('#qp-resp-apply');
     const nd = pop.querySelector('#qp-resp-date').value;
