@@ -2274,7 +2274,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.121</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.122</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3930,7 +3930,29 @@ function loadState(){
 }
 function saveState(){
   if(typeof bumpTaikyoEpoch_==='function') bumpTaikyoEpoch_();  // 状態変更=立会キャッシュ無効化(v1.30.46)
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  const json = JSON.stringify(state);
+  try{
+    localStorage.setItem(STORAGE_KEY, json);
+    return;
+  }catch(e){
+    // 💾 v1.30.122: 容量オーバーで保存失敗=タスク消失の主因。古い自動バックアップ(snap)を消して空きを作り再試行。
+    //   本体state(STORAGE_KEY)はバックアップより最優先で必ず保存する。
+    try{
+      const snaps = (typeof listSnapshots_==='function') ? listSnapshots_() : [];
+      for(let i=0;i<snaps.length;i++){
+        localStorage.removeItem(snaps[i]);   // 古い順に削除
+        try{ localStorage.setItem(STORAGE_KEY, json); return; }catch(_){}
+      }
+    }catch(_){}
+    // それでも入らない: 再取得可能な共有オーバーレイのローカルキャッシュも一時削除(最後の手段)
+    try{
+      ['buildcluster_alerts','buildcluster_phone_duty','buildcluster_repair_overrides','buildcluster_check_workers','buildcluster_staff_leaves_overlay','buildcluster_taikyo_overrides','buildcluster_taikyo_comments','buildcluster_event_deletions'].forEach(k=>{ try{ localStorage.removeItem(k); }catch(_){} });
+      localStorage.setItem(STORAGE_KEY, json);
+      return;
+    }catch(_){}
+    console.error('[saveState] localStorage容量オーバーで保存できません', e);
+    try{ if(!window.__quotaWarned){ window.__quotaWarned=true; alert('⚠ ブラウザの保存容量がいっぱいで、予定/タスクが保存できませんでした。\n古い自動バックアップを消しても不足しています。\n(☁クラウド同期は有効です) このPCのブラウザのサイト容量を空けてください。'); } }catch(_){}
+  }
 }
 
 // ===== 🗄 自動バックアップ(スナップショット) =====
@@ -3938,7 +3960,8 @@ function saveState(){
 // 直近スナップと内容が同じならスキップ。保存期間14日(古いものから自動削除)。
 const SNAP_PREFIX = "buildcluster_schedule_snap_";
 const SNAP_SLOTS = [9, 13, 18];
-const SNAP_KEEP_DAYS = 14;
+const SNAP_KEEP_DAYS = 7;     // v1.30.122: 容量逼迫対策で14→7日に短縮
+const SNAP_MAX_COUNT = 14;    // 直近この数だけ保持(古いものから削除)
 function snapDateStr_(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 function listSnapshots_(){
   const ks = [];
@@ -3954,6 +3977,9 @@ function pruneSnapshots_(){
     const dateStr = k.slice(SNAP_PREFIX.length, SNAP_PREFIX.length+10); // YYYY-MM-DD
     if(dateStr < cutoff) localStorage.removeItem(k);
   });
+  // 件数上限: 直近 SNAP_MAX_COUNT 件だけ残す(古い順に削除)v1.30.122
+  let ks = listSnapshots_();
+  while(ks.length > SNAP_MAX_COUNT){ localStorage.removeItem(ks.shift()); }
 }
 function takeSnapshotIfDue_(){
   try{
