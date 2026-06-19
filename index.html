@@ -2277,7 +2277,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.129</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.130</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -11357,9 +11357,9 @@ async function pushStaffAvailability_(){
   const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const minStr = fmt(minDate), maxStr = fmt(maxDate);
 
-  // 当番(勤務)以外で範囲内の休暇のみ
+  // 当番(勤務)・出社(日祝出勤=休みではない)以外で範囲内の休暇のみ(v1.30.130: 出社をクラ助の休み情報に混ぜない)
   const filtered = (state.leaves||[]).filter(l =>
-    l.type !== '当番' &&
+    l.type !== '当番' && l.type !== '出社' &&
     l.end >= minStr && l.start <= maxStr
   ).map(l => ({
     staff: normalizeStaffName(l.staff||''), // 詰め表記で統一
