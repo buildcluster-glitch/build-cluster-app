@@ -2267,7 +2267,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.113</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.114</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -10026,11 +10026,12 @@ function renderCalendar(){
         // 複数作業担当(2名以上)は chip下段にバッジ行(イベント/立会と統一・v1.30.33)。1名は背景色で表現済み
         // 外注業者(VENDOR_WORKER)も作業担当バッジに含める(会社名フィルタで落とさない)。色/略称はstaffColor_/staffAbbrev_(🛠) v1.30.98
         const __repWorkers = parseWorkers_(r.worker||"").filter(s => s===VENDOR_WORKER || (typeof isRealStaffName_!=='function') || isRealStaffName_(s));
-        const __repStaffBadges = __repWorkers.length>=2
-          ? `<div class="chip-staffs">${__repWorkers.map(s=>{ const sc=staffColor_(s); return `<span class="chip-staff-tag" style="background:${sc};color:${textColorFor(sc)}" title="${escapeHtml(s)}">${escapeHtml(staffAbbrev_(s))}</span>`; }).join("")}</div>`
+        // 🚗 直行/直帰 は担当バッジ行に同居(タイトル行だと長い物件名で見切れるため右端に)v1.30.114
+        const __repTags = __repWorkers.length>=2
+          ? __repWorkers.map(s=>{ const sc=staffColor_(s); return `<span class="chip-staff-tag" style="background:${sc};color:${textColorFor(sc)}" title="${escapeHtml(s)}">${escapeHtml(staffAbbrev_(s))}</span>`; }).join("")
           : "";
-        // 🚗 直行/直帰 アイコン(v1.30.108)
-        const __repCommute = r.commute ? `<span class="chip-commute" title="${escapeHtml(r.commute)}" style="flex-shrink:0;white-space:nowrap">${commuteLabel_(r.commute)}</span>` : "";
+        const __repCommute = r.commute ? `<span class="chip-commute" title="${escapeHtml(r.commute)}" style="flex-shrink:0;white-space:nowrap;margin-left:auto">${commuteLabel_(r.commute)}</span>` : "";
+        const __repBottom = (__repTags || __repCommute) ? `<div class="chip-staffs" style="align-items:center">${__repTags}${__repCommute}</div>` : "";
         // ホバー詳細(連絡者・作業担当・メモ含む)
         const tipLines = [
           `🔧 修繕アポ: ${r.contractor?r.contractor+" / ":""}${r.name}${r.room?" "+r.room:""}`,
@@ -10055,8 +10056,8 @@ function renderCalendar(){
         const __descLine = __descShort
           ? `<span style="display:block;width:100%;font-size:10px;font-weight:500;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2">${escapeHtml(__descShort)}</span>`
           : "";
-        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis">${tagHtml}${escapeHtml(label)}${__vendorBadge}${__repCommute}</span>${__descLine}</span><span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>${__repStaffBadges}`;
-        if(__repStaffBadges){ el.classList.add('chip-has-staffs'); el.style.setProperty('--card-bg', wColor); } // 担当色で全面着色(v1.30.51)
+        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis">${tagHtml}${escapeHtml(label)}${__vendorBadge}</span>${__descLine}</span><span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>${__repBottom}`;
+        if(__repBottom){ el.classList.add('chip-has-staffs'); el.style.setProperty('--card-bg', wColor); } // 担当色で全面着色(v1.30.51)
         attachRepairChipHover(el, r); // リッチtooltip
         el.classList.add("chip-locked"); // 🔒 ドラッグ移動不可(台帳=Driveが真データのため)
         // 単クリックは無効・ダブルクリックで作業担当者ピッカー(内側に✎詳細編集)— 他チップと統一(v1.24.6)
