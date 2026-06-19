@@ -1515,6 +1515,8 @@
   /* 減工事/提案の各行もグレー地に(やらない工事を行単位でも明示)v1.30.126 */
   .rd-group-muted .rtask,
   .rd-group-muted .rtask.reduced{background:#e6e9ee;border-color:#d3d9e0}
+  /* 🚫 事前「行かない(訪問不要)」= 軽い工事で現地に行かない。グレーアウトで一目で区別(v1.30.131) */
+  .event-chip.chip-skip-visit{filter:grayscale(.7);opacity:.7}
   .rd-group-head{font-size:12px;font-weight:700;color:var(--text);padding:3px 2px;display:flex;align-items:center;gap:8px}
   .rd-group-sum{font-size:11px;color:var(--muted);font-weight:500}
   /* タスク行 (コンパクト) */
@@ -2277,7 +2279,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.130</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.131</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5670,6 +5672,52 @@ function wireAlertInput_(pop){
   inp.addEventListener('blur', save);
 }
 // ===========================================================
+// 🚫 事前「行かない(訪問不要)」を全端末共有 — shared-config 'skip_visit' v1.30.131
+//   軽い工事で現地に行かなくていい事前をグレー化+🚫行かない印に。台帳NO(_jizenSourceId)で突合(端末ごとにev.idが違うため)。
+//   value(JSON) = { skips:{ [key]:{skip,at,by} }, updatedAt }   key= sid:台帳NO or t:正規化物件名
+// ===========================================================
+const SKIP_VISIT_KEY = "buildcluster_skip_visit";
+function loadSkipVisit_(){ try{ const o=JSON.parse(localStorage.getItem(SKIP_VISIT_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
+function saveSkipVisit_(map){ try{ localStorage.setItem(SKIP_VISIT_KEY, JSON.stringify(map||{})); }catch(e){} }
+function mergeSkipVisitMaps_(a,b){ const out={}; const keys=new Set([...Object.keys(a||{}),...Object.keys(b||{})]); keys.forEach(k=>{ const ea=a&&a[k], eb=b&&b[k]; if(!ea){out[k]=eb;return;} if(!eb){out[k]=ea;return;} out[k]=(String(eb.at||'')>=String(ea.at||''))?eb:ea; }); return out; }
+function jizenSkipKey_(ev){ if(!ev) return ""; if(ev._jizenSourceId) return "sid:"+ev._jizenSourceId; const t=String(ev.title||"").replace(/^事前\s*/,"").replace(/\s*[(（]\d+日目[)）]\s*$/,"").normalize("NFKC").replace(/\s|　/g,""); return t?("t:"+t):""; }
+function isSkipVisit_(ev){ const k=jizenSkipKey_(ev); if(!k) return false; const e=loadSkipVisit_()[k]; return !!(e&&e.skip); }
+async function fetchSkipVisit_(opts={}){
+  const s=loadGasSettings(); const local=loadSkipVisit_();
+  if(!s.url||!s.token){ return local; }
+  try{
+    const url=`${s.url}?action=get-shared-config&key=skip_visit&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res=await fetch(url,{method:'GET',redirect:'follow'}); if(!res.ok) throw new Error('HTTP '+res.status);
+    const data=await res.json(); let raw=data.value;
+    if(raw===''||raw==null) raw={skips:{}}; else if(typeof raw==='string'){ try{raw=JSON.parse(raw);}catch(e){raw={skips:{}};} }
+    const remote=(raw&&raw.skips&&typeof raw.skips==='object')?raw.skips:{};
+    const merged=mergeSkipVisitMaps_(remote, local);
+    saveSkipVisit_(merged);
+    if(opts.push && JSON.stringify(merged)!==JSON.stringify(remote)){ pushSkipVisitMap_(merged).catch(()=>{}); }
+    if(!opts.silent && typeof render==='function') render();
+    return merged;
+  }catch(err){ if(!opts.silent) console.warn('[skip_visit] fetch失敗:', err.message); return local; }
+}
+async function pushSkipVisitMap_(map){
+  const s=loadGasSettings(); if(!s.url||!s.token) return;
+  const payload={ skips:map||{}, updatedAt:new Date().toISOString() };
+  try{ await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'skip_visit',value:JSON.stringify(payload),token:s.token,savedBy:'calendar-app'})}); }catch(e){ console.warn('[skip_visit] push失敗:', e.message); }
+}
+async function setSkipVisit_(ev, skip){
+  const k=jizenSkipKey_(ev); if(!k) return;
+  let map=loadSkipVisit_(); map[k]={ skip:!!skip, at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' }; saveSkipVisit_(map);
+  const s=loadGasSettings();
+  if(s.url&&s.token){
+    try{ const url=`${s.url}?action=get-shared-config&key=skip_visit&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+      const res=await fetch(url,{method:'GET',redirect:'follow'});
+      if(res.ok){ const d=await res.json(); let raw=d.value; if(typeof raw==='string'){ try{raw=JSON.parse(raw);}catch(_){raw=null;} }
+        if(raw&&raw.skips&&typeof raw.skips==='object'){ map=mergeSkipVisitMaps_(raw.skips, loadSkipVisit_()); map[k]={ skip:!!skip, at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' }; saveSkipVisit_(map); } }
+    }catch(_){}
+  }
+  await pushSkipVisitMap_(map);
+  return map;
+}
+// ===========================================================
 // 🌴 休暇(state.leaves)を全端末共有 — shared-config 'staff_leaves'(Drive json) v1.30.94
 //   従来 休暇はPC間で同期されずローカルのみだった。id単位のオーバーレイ(LWW+削除tombstone)で共有する。
 //   value(JSON) = { leaves:{ [id]:{id,staff,start,end,type,memo,at,deleted?} }, updatedAt }
@@ -6445,6 +6493,12 @@ function showEventStaffPicker(el, ev){
         <button id="evJizenCopyBtn" class="qp-detail" style="padding:6px 10px;flex-shrink:0;background:#e0e7ff;color:#3730a3">＋この日にも</button>
       </div>
     </div>` : ""}
+    ${isJizenEvent_(ev) ? `<div class="qp-sec">
+      <div class="qp-label">🚫 行かない <span style="font-weight:400;color:#94a3b8;font-size:10px">(軽い工事で訪問不要)</span></div>
+      <div class="qp-worker-pick" id="evSkipPick">
+        <button data-skip="1" class="${isSkipVisit_(ev)?"on":""}" style="background:#e5e7eb;color:#475569">🚫 行かない</button>
+      </div>
+    </div>` : ""}
     ${alertInputHtml_(ev.id)}
     <div class="qp-sec">
       <div class="qp-label">💬 コメント <span class="evp-cmt-count" style="text-transform:none;color:var(--muted);font-weight:400"></span></div>
@@ -6534,6 +6588,16 @@ function showEventStaffPicker(el, ev){
       saveState(); render();
       __jCopyBtn.textContent = '✓ '+d+'に追加'; __jCopyBtn.disabled = true;
       setTimeout(()=>{ try{ __jCopyBtn.textContent='＋この日にも'; __jCopyBtn.disabled=false; }catch(_){} }, 1600);
+    };
+  }
+  // 🚫 行かない(訪問不要)トグル: 軽い工事で現地に行かない事前をグレー化+🚫印。台帳NOで全PC共有 v1.30.131
+  const __skipBtn = pop.querySelector('#evSkipPick button[data-skip="1"]');
+  if(__skipBtn){
+    __skipBtn.onclick = ()=>{
+      const next = !isSkipVisit_(ev);
+      __skipBtn.classList.toggle('on', next);
+      if(typeof setSkipVisit_==='function') setSkipVisit_(ev, next).catch(()=>{});
+      render();
     };
   }
   // ✏️編集: 簡易シートで編集(さらに細かい設定はシート内の✏️詳細から従来フォーム) v1.30.67
@@ -8554,6 +8618,8 @@ async function syncChecksFromGAS(opts){
     if(typeof fetchPhoneDuty_==='function') fetchPhoneDuty_({silent:true}).catch(()=>{});
     // ⚠ 再同期時はアラートも最新を取りに行く(v1.30.115)
     if(typeof fetchAlerts_==='function') fetchAlerts_({silent:true}).catch(()=>{});
+    // 🚫 再同期時は事前「行かない」も最新を取りに行く(v1.30.131)
+    if(typeof fetchSkipVisit_==='function') fetchSkipVisit_({silent:true}).catch(()=>{});
     // 🌴 再同期時は休暇も最新を取りに行く→他PCの休日設定が即反映(v1.30.94)
     if(typeof fetchLeaves_==='function') fetchLeaves_({silent:true}).catch(()=>{});
     state.restorations = restorations;
@@ -9964,9 +10030,14 @@ function renderCalendar(){
         : "";
       const isAnytime = ev.timeMode === "anytime";
       const cont = contractorInfo(ev.contractor);
-      // チップ背景 = 手動色 > リーダー色(ev.staff) > 透明(リーダー未指定 or 事前デフォ)
-      const chipBg = __whiteBg ? "transparent" : (ev.color || STAFF_COLORS[ev.staff]);
-      const chipFg = __whiteBg ? "#0f172a" : textColorFor(chipBg);
+      // 🚫 事前「行かない(訪問不要)」: グレー化+🚫行かない印(台帳NOで全PC共有)v1.30.131
+      const __jizenSkip = isJizenEvent_(ev) && typeof isSkipVisit_==='function' && isSkipVisit_(ev);
+      const __skipBadge = __jizenSkip
+        ? `<span class="chip-skip" style="flex-shrink:0;background:#9ca3af;color:#fff;font-size:9px;font-weight:700;padding:0 5px;border-radius:3px;margin-left:4px;white-space:nowrap" title="軽い工事で訪問不要">🚫行かない</span>`
+        : "";
+      // チップ背景 = 行かない=グレー > 手動色 > リーダー色(ev.staff) > 透明(リーダー未指定 or 事前デフォ)
+      const chipBg = __jizenSkip ? "#cbd5e1" : (__whiteBg ? "transparent" : (ev.color || STAFF_COLORS[ev.staff]));
+      const chipFg = __jizenSkip ? "#475569" : (__whiteBg ? "#0f172a" : textColorFor(chipBg));
       // カテゴリプレフィクスの色 = 元請け色 > カテゴリ色 > 半透明白
       const catBoxBg = cont ? cont.color : (cat ? cat.color : null);
       const catBoxFg = catBoxBg ? textColorFor(catBoxBg) : chipFg;
@@ -10105,9 +10176,10 @@ function renderCalendar(){
               : `<span style="display:inline-flex;min-width:0;flex:0 1 auto;align-items:baseline"><span class="ct-text" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(__nameMain)}</span>${__roomTail ? `<span class="ct-room" style="flex-shrink:0;font-weight:600">${escapeHtml(__roomTail)}</span>` : ""}</span>`);
         const timeBox = isAnytime ? "" : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;
         // 参加者バッジ/見積行は title 外(チップ直下)に独立行として配置。工事ボリュームは号室の隣(__volBadge)。
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${__alertHtml}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${__skipBadge}${staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${__alertHtml}`;
         // 担当色がある(1名でも)ならチップ全面を着色(v1.30.124: 単独担当で半分しか色が付かない問題)。色無し+複数バッジは薄グレー地
-        if(staffBadges || !__whiteBg){ el.classList.add('chip-has-staffs'); if(!__whiteBg) el.style.setProperty('--card-bg', chipBg); }
+        if(__jizenSkip || staffBadges || !__whiteBg){ el.classList.add('chip-has-staffs'); if(__jizenSkip || !__whiteBg) el.style.setProperty('--card-bg', chipBg); }
+        if(__jizenSkip) el.classList.add('chip-skip-visit');
         if(impList.length){ el.classList.add("imp-flag"); if(impTopClass) el.classList.add(impTopClass); }
         el.title = fullTooltip;
       } else if(isFree){
@@ -10122,9 +10194,10 @@ function renderCalendar(){
               ? `<span class="ct-text" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${compactTaskHtml}</span>`
               : `<span style="display:inline-flex;min-width:0;flex:0 1 auto;align-items:baseline"><span class="ct-text" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(__nameMain)}</span>${__roomTail ? `<span class="ct-room" style="flex-shrink:0;font-weight:600">${escapeHtml(__roomTail)}</span>` : ""}</span>`);
         const timeBox = isAnytime ? "" : `<span class="chip-time">終日</span>`;
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${__alertHtml}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${__skipBadge}${staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${__alertHtml}`;
         // 担当色がある(1名でも)ならチップ全面を着色(v1.30.124: 単独担当で半分しか色が付かない問題)。色無し+複数バッジは薄グレー地
-        if(staffBadges || !__whiteBg){ el.classList.add('chip-has-staffs'); if(!__whiteBg) el.style.setProperty('--card-bg', chipBg); }
+        if(__jizenSkip || staffBadges || !__whiteBg){ el.classList.add('chip-has-staffs'); if(__jizenSkip || !__whiteBg) el.style.setProperty('--card-bg', chipBg); }
+        if(__jizenSkip) el.classList.add('chip-skip-visit');
         if(impList.length){ el.classList.add("imp-flag"); if(impTopClass) el.classList.add(impTopClass); }
         el.title = fullTooltip;
       } else {
@@ -16520,6 +16593,11 @@ setTimeout(()=>{
     if(typeof fetchAlerts_==='function'){
       fetchAlerts_({silent:true, push:true}).catch(()=>{});
       setInterval(()=>fetchAlerts_({silent:true}).catch(()=>{}), 5*60*1000);
+    }
+    // 🚫 事前「行かない」(全員共有) 取得・初回push・以後5分ごと(v1.30.131)
+    if(typeof fetchSkipVisit_==='function'){
+      fetchSkipVisit_({silent:true, push:true}).catch(()=>{});
+      setInterval(()=>fetchSkipVisit_({silent:true}).catch(()=>{}), 5*60*1000);
     }
     // 🗑 予定削除トゥームストーン(全員共有) 取得→ローカル除去・初回push(移行)・以後5分ごと(v1.30.66)
     if(typeof fetchEventDeletions_==='function'){
