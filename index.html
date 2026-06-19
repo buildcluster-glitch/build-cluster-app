@@ -430,6 +430,10 @@
   .event-chip > .chip-est-row{
     flex-basis:100%;width:100%;display:block;padding:0 8px;line-height:13px;
   }
+  /* ⚠ アラート行(常時赤字): チップ直下の独立行 v1.30.115 */
+  .event-chip > .chip-alert{
+    flex-basis:100%;width:100%;display:block;padding:0 8px;line-height:13px;
+  }
   /* 単行モード(改行なし) — タイトル+アイコンを1行に固定(折返さない)。連携情報/見積はtitle外の独立行へ(v1.30.97) */
   .event-chip .chip-title.single-line{
     white-space:nowrap;text-overflow:ellipsis;flex-wrap:nowrap;
@@ -2267,7 +2271,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.114</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.115</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4445,11 +4449,13 @@ function showCheckStaffPicker(el, ck){
         <button data-c="home" class="${(ck.commute||'').includes('直帰')?'on':''}" style="background:#dcfce7">🏠 直帰</button>
       </div>
     </div>
+    ${alertInputHtml_(ck.id)}
     <div class="qp-actions">
       <button class="qp-detail" data-role="open-modal">✏️ 詳細編集</button>
       <button class="qp-close" data-role="close">閉じる</button>
     </div>`;
   document.body.appendChild(pop);
+  wireAlertInput_(pop);
   // 🪧 位置調整: 下に出すスペースがなければ上に出す、右はみ出しはクランプ
   requestAnimationFrame(()=>{
     const popRect = pop.getBoundingClientRect();
@@ -4856,6 +4862,7 @@ function renderCheckCard(ck, today){
   const __isDoneCk = /完了|完工|完成/.test(ck.status||"") && ck.status !== "清掃完了";
   return `<div class="check-card ${urgCls}${isClickable?" clickable":""}${__isDoneCk?" done-gray":""}" data-check-id="${ck.id}" ${styleAttr}>
     <div class="ck-title" style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">${syncMark}${finalCheckBadge}<span class="ck-name">${escapeHtml(ck.title)}</span>${volBadge}${staffBadge?`<span style="display:inline-flex;gap:2px;align-items:center">${staffBadge}</span>`:""}${__ckCommuteBadge}</div>
+    ${(typeof alertChipHtml_==='function' && alertChipHtml_(ck.id)) ? `<div style="margin-top:2px">${alertChipHtml_(ck.id)}</div>` : ""}
     <div class="row">
       ${__estBadge}
       ${apptBadge}
@@ -5536,6 +5543,75 @@ async function setPhoneDuty_(date, staff){
   return map;
 }
 // ===========================================================
+// ⚠ アラートコメント(チップに常時赤字表示)を全端末共有 — shared-config 'alerts' v1.30.115
+//   コメント(ホバー)とは別。1案件1アラート。id=予定/事前ev.id・立会_taikyoRawId・修繕r.id・最終確認ck.id(全て安定id)。
+//   value(JSON) = { alerts:{ [id]:{text, author, at} }, updatedAt }  ※text="" で解除
+// ===========================================================
+const ALERTS_KEY = "buildcluster_alerts";
+function loadAlerts_(){ try{ const o=JSON.parse(localStorage.getItem(ALERTS_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
+function saveAlerts_(map){ try{ localStorage.setItem(ALERTS_KEY, JSON.stringify(map||{})); }catch(e){} }
+function mergeAlertMaps_(a,b){ const out={}; const keys=new Set([...Object.keys(a||{}),...Object.keys(b||{})]); keys.forEach(k=>{ const ea=a&&a[k], eb=b&&b[k]; if(!ea){out[k]=eb;return;} if(!eb){out[k]=ea;return;} out[k]=(String(eb.at||'')>=String(ea.at||''))?eb:ea; }); return out; } // last-write-wins
+function getAlert_(id){ const e=loadAlerts_()[id]; return (e && e.text) ? e : null; }
+function alertChipHtml_(id, opts){
+  const e = getAlert_(id); if(!e) return "";
+  const txt = `⚠${e.text}${e.author?(' '+e.author):''}`;
+  const inline = opts&&opts.inline;
+  const st = inline
+    ? `display:inline-block;max-width:100%;font-size:9px;font-weight:700;color:#dc2626;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom`
+    : `display:block;font-size:9px;font-weight:700;color:#dc2626;line-height:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis`;
+  return `<span class="chip-alert" style="${st}" title="${escapeHtml('⚠ '+e.text+(e.author?(' ('+e.author+')'):''))}">${escapeHtml(txt)}</span>`;
+}
+async function fetchAlerts_(opts={}){
+  const s=loadGasSettings(); const local=loadAlerts_();
+  if(!s.url||!s.token){ return local; }
+  try{
+    const url=`${s.url}?action=get-shared-config&key=alerts&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res=await fetch(url,{method:'GET',redirect:'follow'}); if(!res.ok) throw new Error('HTTP '+res.status);
+    const data=await res.json(); let raw=data.value;
+    if(raw===''||raw==null) raw={alerts:{}}; else if(typeof raw==='string'){ try{raw=JSON.parse(raw);}catch(e){raw={alerts:{}};} }
+    const remote=(raw&&raw.alerts&&typeof raw.alerts==='object')?raw.alerts:{};
+    const merged=mergeAlertMaps_(remote, local);
+    saveAlerts_(merged);
+    if(opts.push && JSON.stringify(merged)!==JSON.stringify(remote)){ pushAlertsMap_(merged).catch(()=>{}); }
+    if(!opts.silent && typeof render==='function') render();
+    return merged;
+  }catch(err){ if(!opts.silent) console.warn('[alerts] fetch失敗:', err.message); return local; }
+}
+async function pushAlertsMap_(map){
+  const s=loadGasSettings(); if(!s.url||!s.token) return;
+  const payload={ alerts:map||{}, updatedAt:new Date().toISOString() };
+  try{ await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'alerts',value:JSON.stringify(payload),token:s.token,savedBy:'calendar-app'})}); }catch(e){ console.warn('[alerts] push失敗:', e.message); }
+}
+async function setAlert_(id, text){
+  const stamp=()=>({ text:(text||'').trim(), author:(typeof getMyself==='function'?getMyself():'')||'', at:new Date().toISOString() });
+  let map=loadAlerts_(); map[id]=stamp(); saveAlerts_(map);
+  const s=loadGasSettings();
+  if(s.url&&s.token){
+    try{ const url=`${s.url}?action=get-shared-config&key=alerts&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+      const res=await fetch(url,{method:'GET',redirect:'follow'});
+      if(res.ok){ const d=await res.json(); let raw=d.value; if(typeof raw==='string'){ try{raw=JSON.parse(raw);}catch(_){raw=null;} }
+        if(raw&&raw.alerts&&typeof raw.alerts==='object'){ map=mergeAlertMaps_(raw.alerts, loadAlerts_()); map[id]=stamp(); saveAlerts_(map); } }
+    }catch(_){}
+  }
+  await pushAlertsMap_(map);
+  return map;
+}
+// ピッカー用: ⚠アラート入力欄HTML + 配線(全ピッカー共通) v1.30.115
+function alertInputHtml_(id){
+  const e=getAlert_(id); const cur=e?e.text:"";
+  return `<div class="qp-sec">
+    <div class="qp-label">⚠ アラート <span style="font-weight:400;color:#94a3b8;font-size:10px">(常時赤字でチップ表示・全員共有)</span></div>
+    <input type="text" class="qp-alert-input" data-alert-id="${escapeHtml(String(id))}" value="${escapeHtml(cur)}" placeholder="例: 電気メーター写真お願いします" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px;color:#dc2626;font-weight:600">
+  </div>`;
+}
+function wireAlertInput_(pop){
+  const inp=pop.querySelector('.qp-alert-input'); if(!inp) return;
+  let __last=inp.value;
+  const save=()=>{ if(inp.value===__last) return; __last=inp.value; if(typeof setAlert_==='function') setAlert_(inp.dataset.alertId, inp.value).catch(()=>{}); if(typeof render==='function') render(); };
+  inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); save(); inp.blur(); } });
+  inp.addEventListener('blur', save);
+}
+// ===========================================================
 // 🌴 休暇(state.leaves)を全端末共有 — shared-config 'staff_leaves'(Drive json) v1.30.94
 //   従来 休暇はPC間で同期されずローカルのみだった。id単位のオーバーレイ(LWW+削除tombstone)で共有する。
 //   value(JSON) = { leaves:{ [id]:{id,staff,start,end,type,memo,at,deleted?} }, updatedAt }
@@ -6058,6 +6134,7 @@ function showTaikyoStaffPicker(el, ev){
         <button data-c="home" class="${(ev.commute||'').includes('直帰')?'on':''}" style="background:#dcfce7">🏠 直帰</button>
       </div>
     </div>
+    ${alertInputHtml_(taikyoId || ev.id)}
     <div class="qp-sec tk-cmt-sec">
       <div class="qp-label">💬 コメント <span style="font-weight:400;color:#94a3b8;font-size:10px">(全員で共有)</span></div>
       <div class="tk-cmt-list"></div>
@@ -6071,6 +6148,7 @@ function showTaikyoStaffPicker(el, ev){
       <button class="qp-close" data-role="close">閉じる</button>
     </div>`;
   document.body.appendChild(pop);
+  wireAlertInput_(pop);
   requestAnimationFrame(()=>{
     const rc = pop.getBoundingClientRect();
     const vw = window.innerWidth, vh = window.innerHeight, mg=8;
@@ -6289,6 +6367,7 @@ function showEventStaffPicker(el, ev){
         <button data-c="home" class="${selCommute.home?"on":""}" style="background:#dcfce7">🏠 直帰</button>
       </div>
     </div>
+    ${alertInputHtml_(ev.id)}
     <div class="qp-sec">
       <div class="qp-label">💬 コメント <span class="evp-cmt-count" style="text-transform:none;color:var(--muted);font-weight:400"></span></div>
       <div class="qp-comments-list evp-cmt-list"></div>
@@ -6303,6 +6382,7 @@ function showEventStaffPicker(el, ev){
       <button class="qp-close" data-role="close">閉じる</button>
     </div>`;
   document.body.appendChild(pop);
+  wireAlertInput_(pop);
   requestAnimationFrame(()=>{
     const rc = pop.getBoundingClientRect();
     const vw = window.innerWidth, vh = window.innerHeight, mg=8;
@@ -8377,6 +8457,8 @@ async function syncChecksFromGAS(opts){
     if(typeof fetchCheckWorkers_==='function') fetchCheckWorkers_({silent:true}).catch(()=>{});
     // 📞 再同期時は電話番も最新を取りに行く(v1.30.111)
     if(typeof fetchPhoneDuty_==='function') fetchPhoneDuty_({silent:true}).catch(()=>{});
+    // ⚠ 再同期時はアラートも最新を取りに行く(v1.30.115)
+    if(typeof fetchAlerts_==='function') fetchAlerts_({silent:true}).catch(()=>{});
     // 🌴 再同期時は休暇も最新を取りに行く→他PCの休日設定が即反映(v1.30.94)
     if(typeof fetchLeaves_==='function') fetchLeaves_({silent:true}).catch(()=>{});
     state.restorations = restorations;
@@ -9399,6 +9481,8 @@ function renderCalendar(){
             : "";
           // 🚗 直行/直帰 アイコン(v1.30.108)
           const __repCommuteB = r.commute ? `<span class="chip-commute" title="${escapeHtml(r.commute)}" style="flex-shrink:0;margin-left:2px;white-space:nowrap">${commuteLabel_(r.commute)}</span>` : "";
+          // ⚠ アラート(常時赤字) v1.30.115
+          const __repAlertB = (typeof alertChipHtml_==='function') ? alertChipHtml_(r.id) : "";
           const tipLines = [
             `🔧 修繕アポ: ${r.contractor?r.contractor+" / ":""}${r.name}${r.room?" "+r.room:""}`,
             `${wf}${t?" / "+t:""}`,
@@ -9412,7 +9496,7 @@ function renderCalendar(){
             "\n(クリックで編集シート)",
           ].filter(Boolean).join("\n");
           // 左カラーバーは廃止(v1.30.15): ピルの角丸に沿って曲がり「謎のピンクの三日月」に見えていた。状態は📞未等のミニバッジで表現
-          inner += `<span class="repair-appt-chip${__repStaffBadgesB?' has-staffs':''}" data-repair-id="${r.id}" style="background:${wColor};color:${wFg}" title="${escapeHtml(tipLines)}"><span class="rac-row">${tagSpan}${wfMiniSpan}<span class="rac-label">${escapeHtml(label)}</span>${__vendorBadgeB}${__repCommuteB}</span>${__repStaffBadgesB}</span>`;
+          inner += `<span class="repair-appt-chip${(__repStaffBadgesB||__repAlertB)?' has-staffs':''}" data-repair-id="${r.id}" style="background:${wColor};color:${wFg}" title="${escapeHtml(tipLines)}"><span class="rac-row">${tagSpan}${wfMiniSpan}<span class="rac-label">${escapeHtml(label)}</span>${__vendorBadgeB}${__repCommuteB}</span>${__repAlertB}${__repStaffBadgesB}</span>`;
         }
       });
     }
@@ -9718,9 +9802,13 @@ function renderCalendar(){
       // 列幅~196px=1行22字前後。行間gap/余白込みで余裕を持たせる(2行=32px)→2行目の見切れ防止(v1.30.97)
       const __linkRow = __linkRowText ? (__linkRowText.length <= 22 ? 18 : 32) : 0;
       const __estRow = (__estText && !__foldEst) ? 16 : 0;   // 連携情報が無い時だけ見積を独立行に
+      // ⚠ アラート(常時赤字・全員共有)。立会は_taikyoRawId、それ以外はev.idで引く(v1.30.115)
+      const __alertKey = ev._taikyoRawId || ev.id;
+      const __alertHtml = (typeof alertChipHtml_==='function') ? alertChipHtml_(__alertKey) : "";
+      const __alertRow = __alertHtml ? 15 : 0;
       // 担当バッジは号室の隣(タイトル行)にインライン化したので専用行の高さは不要(v1.30.101)。
       //   2名以上は chip-has-staffs のカード枠(padding2px+border1.5px ≈ border-box)分だけ少し足す。
-      const chipHeight = (lineCount === 1 ? 28 : lineCount * 18 + 14) + __linkRow + __jizenRow + __estRow + (__staffN >= 2 ? 8 : 0);
+      const chipHeight = (lineCount === 1 ? 28 : lineCount * 18 + 14) + __linkRow + __jizenRow + __estRow + __alertRow + (__staffN >= 2 ? 8 : 0);
       // 月ビュー/終日 はチップ高さ、それ以外は duration に応じた縦長ブロック
       const height = (isMonth || isFree)
         ? chipHeight
@@ -9917,7 +10005,7 @@ function renderCalendar(){
               : `<span style="display:inline-flex;min-width:0;flex:0 1 auto;align-items:baseline"><span class="ct-text" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(__nameMain)}</span>${__roomTail ? `<span class="ct-room" style="flex-shrink:0;font-weight:600">${escapeHtml(__roomTail)}</span>` : ""}</span>`);
         const timeBox = isAnytime ? "" : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;
         // 参加者バッジ/見積行は title 外(チップ直下)に独立行として配置。工事ボリュームは号室の隣(__volBadge)。
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__alertHtml}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}`;
         if(staffBadges){ el.classList.add('chip-has-staffs'); if(!__whiteBg) el.style.setProperty('--card-bg', chipBg); } // 担当色で全面着色、色無しは薄グレー地(v1.30.51)
         if(impList.length){ el.classList.add("imp-flag"); if(impTopClass) el.classList.add(impTopClass); }
         el.title = fullTooltip;
@@ -9933,7 +10021,7 @@ function renderCalendar(){
               ? `<span class="ct-text" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${compactTaskHtml}</span>`
               : `<span style="display:inline-flex;min-width:0;flex:0 1 auto;align-items:baseline"><span class="ct-text" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(__nameMain)}</span>${__roomTail ? `<span class="ct-room" style="flex-shrink:0;font-weight:600">${escapeHtml(__roomTail)}</span>` : ""}</span>`);
         const timeBox = isAnytime ? "" : `<span class="chip-time">終日</span>`;
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__alertHtml}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}`;
         if(staffBadges){ el.classList.add('chip-has-staffs'); if(!__whiteBg) el.style.setProperty('--card-bg', chipBg); } // 担当色で全面着色、色無しは薄グレー地(v1.30.51)
         if(impList.length){ el.classList.add("imp-flag"); if(impTopClass) el.classList.add(impTopClass); }
         el.title = fullTooltip;
@@ -10032,6 +10120,7 @@ function renderCalendar(){
           : "";
         const __repCommute = r.commute ? `<span class="chip-commute" title="${escapeHtml(r.commute)}" style="flex-shrink:0;white-space:nowrap;margin-left:auto">${commuteLabel_(r.commute)}</span>` : "";
         const __repBottom = (__repTags || __repCommute) ? `<div class="chip-staffs" style="align-items:center">${__repTags}${__repCommute}</div>` : "";
+        const __repAlert = (typeof alertChipHtml_==='function') ? alertChipHtml_(r.id) : "";   // ⚠ アラート(常時赤字)
         // ホバー詳細(連絡者・作業担当・メモ含む)
         const tipLines = [
           `🔧 修繕アポ: ${r.contractor?r.contractor+" / ":""}${r.name}${r.room?" "+r.room:""}`,
@@ -10056,8 +10145,8 @@ function renderCalendar(){
         const __descLine = __descShort
           ? `<span style="display:block;width:100%;font-size:10px;font-weight:500;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2">${escapeHtml(__descShort)}</span>`
           : "";
-        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis">${tagHtml}${escapeHtml(label)}${__vendorBadge}</span>${__descLine}</span><span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>${__repBottom}`;
-        if(__repBottom){ el.classList.add('chip-has-staffs'); el.style.setProperty('--card-bg', wColor); } // 担当色で全面着色(v1.30.51)
+        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis">${tagHtml}${escapeHtml(label)}${__vendorBadge}</span>${__descLine}</span><span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>${__repAlert}${__repBottom}`;
+        if(__repBottom || __repAlert){ el.classList.add('chip-has-staffs'); el.style.setProperty('--card-bg', wColor); } // 担当色で全面着色(v1.30.51)
         attachRepairChipHover(el, r); // リッチtooltip
         el.classList.add("chip-locked"); // 🔒 ドラッグ移動不可(台帳=Driveが真データのため)
         // 単クリックは無効・ダブルクリックで作業担当者ピッカー(内側に✎詳細編集)— 他チップと統一(v1.24.6)
@@ -10882,6 +10971,7 @@ function showRepairQuickPop(r, anchorEl){
         <button data-c="home" class="${(r.commute||'').includes('直帰')?'on':''}" style="background:#dcfce7">🏠 直帰</button>
       </div>
     </div>
+    ${alertInputHtml_(r.id)}
     <div class="qp-sec">
       <div class="qp-label">💬 コメント <span id="qp-comment-count" style="text-transform:none;color:var(--muted);font-weight:400"></span></div>
       <div class="qp-comments-list" id="qp-comments-list">${renderComments()}</div>
@@ -10896,6 +10986,7 @@ function showRepairQuickPop(r, anchorEl){
     </div>
   `;
   document.body.appendChild(pop);
+  wireAlertInput_(pop);
   __quickPopEl = pop;
   __quickPopOpenedAt = Date.now();
   // 位置: チップの下に配置
@@ -16274,6 +16365,11 @@ setTimeout(()=>{
     if(typeof fetchPhoneDuty_==='function'){
       fetchPhoneDuty_({silent:true, push:true}).catch(()=>{});
       setInterval(()=>fetchPhoneDuty_({silent:true}).catch(()=>{}), 5*60*1000);
+    }
+    // ⚠ アラート(全員共有) 取得・初回push・以後5分ごと(v1.30.115)
+    if(typeof fetchAlerts_==='function'){
+      fetchAlerts_({silent:true, push:true}).catch(()=>{});
+      setInterval(()=>fetchAlerts_({silent:true}).catch(()=>{}), 5*60*1000);
     }
     // 🗑 予定削除トゥームストーン(全員共有) 取得→ローカル除去・初回push(移行)・以後5分ごと(v1.30.66)
     if(typeof fetchEventDeletions_==='function'){
