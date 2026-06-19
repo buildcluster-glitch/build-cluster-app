@@ -2277,7 +2277,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.127</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.128</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2433,10 +2433,7 @@
         <div class="field"><label>営業担当</label><input id="rs-salesrep" readonly></div>
         <div class="field"><label>連絡者(自社)</label><input id="rs-contact" readonly></div>
       </div>
-      <div class="field">
-        <label>👤 作業担当者 <span style="font-weight:400;color:var(--muted);font-size:11px">(現場対応する人・連絡者と別に設定可・空白OK)</span></label>
-        <div class="participants-pick" id="rs-worker-pick"></div>
-      </div>
+      <!-- 👤 作業担当者ピッカーは廃止(v1.30.128): 担当はチップのダブルクリック(クイックポップ)で設定する。詳細シートからは外した。 -->
       <div class="field">
         <label>営業ステータス</label>
         <div class="rs-pick" id="rs-status-pick"></div>
@@ -14321,18 +14318,7 @@ function openRepairSheet(id){
   document.getElementById("rs-salesrep").value = r.salesRep || "";
   document.getElementById("rs-contact").value  = r.contactPerson || "";
   document.getElementById("rs-creatormemo").value = r.creatorMemo || "";
-  // 作業担当者ピッカー (空白OK・単一選択)
-  const workerPick = document.getElementById("rs-worker-pick");
-  const __wcur = parseWorkers_(r.worker);   // 複数可(チェックボックス・無チェック=未設定)
-  const __vck = __wcur.includes(VENDOR_WORKER);
-  const vendorLabel = `<label class="${__vck?"checked":""}" data-staff="${VENDOR_WORKER}"><input type="checkbox" name="rs-worker" value="${VENDOR_WORKER}" ${__vck?"checked":""}><span class="p-dot" style="background:${VENDOR_WORKER_COLOR}"></span>🛠${VENDOR_WORKER}</label>`;
-  workerPick.innerHTML = STAFF.map(s=>{
-      const ck = __wcur.includes(s);
-      return `<label class="${ck?"checked":""}" data-staff="${s}"><input type="checkbox" name="rs-worker" value="${s}" ${ck?"checked":""}><span class="p-dot" style="background:${STAFF_COLORS[s]}"></span>${s}</label>`;
-    }).concat([vendorLabel]).join("");
-  workerPick.querySelectorAll("input").forEach(cb=>{
-    cb.onchange = ()=>{ cb.closest("label").classList.toggle("checked", cb.checked); }; // 複数可: クリックしたものだけトグル
-  });
+  // 👤 作業担当者ピッカーは廃止(v1.30.128): 担当はチップのダブルクリック(クイックポップ)で設定。
   // 営業ステータス 7値ピッカー
   const stPick = document.getElementById("rs-status-pick");
   const curSt = r.status || "見積作成中";
@@ -14373,7 +14359,6 @@ async function saveRepairSheet(){
   const newRespDate = document.getElementById("rs-respdate").value;
   const newRespTime = document.getElementById("rs-resptime").value.trim();
   const newMemo = document.getElementById("rs-creatormemo").value;
-  const newWorker = joinWorkers_(Array.from(document.querySelectorAll('input[name="rs-worker"]:checked')).map(c=>c.value));
   // 楽観的更新
   const prev = {status:r.status, workflowStatus:r.workflowStatus, responseDate:r.responseDate, responseTime:r.responseTime, creatorMemo:r.creatorMemo, worker:r.worker};
   r.status = newSt;
@@ -14381,7 +14366,7 @@ async function saveRepairSheet(){
   r.responseDate = newRespDate;
   r.responseTime = newRespTime;
   r.creatorMemo = newMemo;
-  r.worker = newWorker;  // 作業担当者はローカルのみ保持(GAS未対応・既存のcontactPersonと別管理)
+  // 作業担当者(r.worker)は詳細シートでは触らない(v1.30.128・ピッカー廃止)。クイックポップ/overlayが管理。
   saveState();
   // Drive書戻し (差分があるフィールドだけ送る)
   if(r.extDriveFileId){
