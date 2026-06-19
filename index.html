@@ -2271,7 +2271,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.119</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.120</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4862,7 +4862,6 @@ function renderCheckCard(ck, today){
   const __isDoneCk = /完了|完工|完成/.test(ck.status||"") && ck.status !== "清掃完了";
   return `<div class="check-card ${urgCls}${isClickable?" clickable":""}${__isDoneCk?" done-gray":""}" data-check-id="${ck.id}" ${styleAttr}>
     <div class="ck-title" style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">${syncMark}${finalCheckBadge}<span class="ck-name">${escapeHtml(ck.title)}</span>${volBadge}${staffBadge?`<span style="display:inline-flex;gap:2px;align-items:center">${staffBadge}</span>`:""}${__ckCommuteBadge}</div>
-    ${(typeof alertChipHtml_==='function' && alertChipHtml_(ck.id)) ? `<div style="margin-top:2px">${alertChipHtml_(ck.id)}</div>` : ""}
     <div class="row">
       ${__estBadge}
       ${apptBadge}
@@ -4878,6 +4877,7 @@ function renderCheckCard(ck, today){
       ${moveInHtml}
     </div>
     ${ck.memo ? `<div class="ck-memo">${escapeHtml(ck.memo)}</div>` : ""}
+    ${(typeof alertChipHtml_==='function' && alertChipHtml_(ck.id)) ? `<div style="margin-top:2px">${alertChipHtml_(ck.id)}</div>` : ""}
   </div>`;
 }
 
@@ -9527,7 +9527,7 @@ function renderCalendar(){
             "\n(クリックで編集シート)",
           ].filter(Boolean).join("\n");
           // 左カラーバーは廃止(v1.30.15): ピルの角丸に沿って曲がり「謎のピンクの三日月」に見えていた。状態は📞未等のミニバッジで表現
-          inner += `<span class="repair-appt-chip${(__repStaffBadgesB||__repAlertB)?' has-staffs':''}" data-repair-id="${r.id}" style="background:${wColor};color:${wFg}" title="${escapeHtml(tipLines)}"><span class="rac-row">${tagSpan}${wfMiniSpan}<span class="rac-label">${escapeHtml(label)}</span>${__vendorBadgeB}${__repCommuteB}${__repCmtB}</span>${__repAlertB}${__repStaffBadgesB}</span>`;
+          inner += `<span class="repair-appt-chip${(__repStaffBadgesB||__repAlertB)?' has-staffs':''}" data-repair-id="${r.id}" style="background:${wColor};color:${wFg}" title="${escapeHtml(tipLines)}"><span class="rac-row">${tagSpan}${wfMiniSpan}<span class="rac-label">${escapeHtml(label)}</span>${__vendorBadgeB}${__repCommuteB}${__repCmtB}</span>${__repStaffBadgesB}${__repAlertB}</span>`;
         }
       });
     }
@@ -10036,7 +10036,7 @@ function renderCalendar(){
               : `<span style="display:inline-flex;min-width:0;flex:0 1 auto;align-items:baseline"><span class="ct-text" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(__nameMain)}</span>${__roomTail ? `<span class="ct-room" style="flex-shrink:0;font-weight:600">${escapeHtml(__roomTail)}</span>` : ""}</span>`);
         const timeBox = isAnytime ? "" : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;
         // 参加者バッジ/見積行は title 外(チップ直下)に独立行として配置。工事ボリュームは号室の隣(__volBadge)。
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__alertHtml}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${__alertHtml}`;
         if(staffBadges){ el.classList.add('chip-has-staffs'); if(!__whiteBg) el.style.setProperty('--card-bg', chipBg); } // 担当色で全面着色、色無しは薄グレー地(v1.30.51)
         if(impList.length){ el.classList.add("imp-flag"); if(impTopClass) el.classList.add(impTopClass); }
         el.title = fullTooltip;
@@ -10052,7 +10052,7 @@ function renderCalendar(){
               ? `<span class="ct-text" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${compactTaskHtml}</span>`
               : `<span style="display:inline-flex;min-width:0;flex:0 1 auto;align-items:baseline"><span class="ct-text" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(__nameMain)}</span>${__roomTail ? `<span class="ct-room" style="flex-shrink:0;font-weight:600">${escapeHtml(__roomTail)}</span>` : ""}</span>`);
         const timeBox = isAnytime ? "" : `<span class="chip-time">終日</span>`;
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__alertHtml}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${__alertHtml}`;
         if(staffBadges){ el.classList.add('chip-has-staffs'); if(!__whiteBg) el.style.setProperty('--card-bg', chipBg); } // 担当色で全面着色、色無しは薄グレー地(v1.30.51)
         if(impList.length){ el.classList.add("imp-flag"); if(impTopClass) el.classList.add(impTopClass); }
         el.title = fullTooltip;
@@ -10178,7 +10178,7 @@ function renderCalendar(){
         const __descLine = __descShort
           ? `<span style="display:block;width:100%;font-size:10px;font-weight:500;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2">${escapeHtml(__descShort)}</span>`
           : "";
-        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis">${tagHtml}${escapeHtml(label)}${__vendorBadge}${__repCmt}</span>${__descLine}</span><span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>${__repAlert}${__repBottom}`;
+        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis">${tagHtml}${escapeHtml(label)}${__vendorBadge}${__repCmt}</span>${__descLine}</span><span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>${__repBottom}${__repAlert}`;
         if(__repBottom || __repAlert){ el.classList.add('chip-has-staffs'); el.style.setProperty('--card-bg', wColor); } // 担当色で全面着色(v1.30.51)
         attachRepairChipHover(el, r); // リッチtooltip
         el.classList.add("chip-locked"); // 🔒 ドラッグ移動不可(台帳=Driveが真データのため)
