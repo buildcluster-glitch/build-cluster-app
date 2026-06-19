@@ -430,9 +430,9 @@
   .event-chip > .chip-est-row{
     flex-basis:100%;width:100%;display:block;padding:0 8px;line-height:13px;
   }
-  /* ⚠ アラート行(常時赤字): チップ直下の独立行 v1.30.115 */
+  /* ⚠ アラート行(常時赤字): チップ直下の独立行 v1.30.115 (v1.30.117 行高に余裕=見切れ防止) */
   .event-chip > .chip-alert{
-    flex-basis:100%;width:100%;display:block;padding:0 8px;line-height:13px;
+    flex-basis:100%;width:100%;display:block;padding:0 8px 1px;line-height:15px;
   }
   /* 単行モード(改行なし) — タイトル+アイコンを1行に固定(折返さない)。連携情報/見積はtitle外の独立行へ(v1.30.97) */
   .event-chip .chip-title.single-line{
@@ -2271,7 +2271,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.116</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.117</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5587,7 +5587,7 @@ function alertChipHtml_(id, opts){
   const inline = opts&&opts.inline;
   const st = inline
     ? `display:inline-block;max-width:100%;font-size:9px;font-weight:700;color:#dc2626;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom`
-    : `display:block;font-size:9px;font-weight:700;color:#dc2626;line-height:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis`;
+    : `display:block;font-size:9px;font-weight:700;color:#dc2626;line-height:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis`;
   return `<span class="chip-alert" style="${st}" title="${escapeHtml('⚠ '+e.text+(e.author?(' ('+e.author+')'):''))}">${escapeHtml(txt)}</span>`;
 }
 async function fetchAlerts_(opts={}){
@@ -9834,7 +9834,7 @@ function renderCalendar(){
       // ⚠ アラート(常時赤字・全員共有)。立会は_taikyoRawId、それ以外はev.idで引く(v1.30.115)
       const __alertKey = ev._taikyoRawId || ev.id;
       const __alertHtml = (typeof alertChipHtml_==='function') ? alertChipHtml_(__alertKey) : "";
-      const __alertRow = __alertHtml ? 15 : 0;
+      const __alertRow = __alertHtml ? 23 : 0;   // 行高15+余白+flex gap分(見切れ防止 v1.30.117)
       // 担当バッジは号室の隣(タイトル行)にインライン化したので専用行の高さは不要(v1.30.101)。
       //   2名以上は chip-has-staffs のカード枠(padding2px+border1.5px ≈ border-box)分だけ少し足す。
       const chipHeight = (lineCount === 1 ? 28 : lineCount * 18 + 14) + __linkRow + __jizenRow + __estRow + __alertRow + (__staffN >= 2 ? 8 : 0);
