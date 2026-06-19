@@ -2271,7 +2271,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.118</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.119</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9511,6 +9511,9 @@ function renderCalendar(){
           const __repCommuteB = r.commute ? `<span class="chip-commute" title="${escapeHtml(r.commute)}" style="flex-shrink:0;margin-left:2px;white-space:nowrap">${commuteLabel_(r.commute)}</span>` : "";
           // ⚠ アラート(常時赤字) v1.30.115
           const __repAlertB = (typeof alertChipHtml_==='function') ? alertChipHtml_(r.id) : "";
+          // 💬 コメント数バッジ v1.30.119
+          const __repCmtN_B = (r.comments && r.comments.length) || 0;
+          const __repCmtB = __repCmtN_B>0 ? `<span class="chip-comment-badge" title="💬 コメント ${__repCmtN_B}件" style="flex-shrink:0">💬${__repCmtN_B}</span>` : "";
           const tipLines = [
             `🔧 修繕アポ: ${r.contractor?r.contractor+" / ":""}${r.name}${r.room?" "+r.room:""}`,
             `${wf}${t?" / "+t:""}`,
@@ -9524,7 +9527,7 @@ function renderCalendar(){
             "\n(クリックで編集シート)",
           ].filter(Boolean).join("\n");
           // 左カラーバーは廃止(v1.30.15): ピルの角丸に沿って曲がり「謎のピンクの三日月」に見えていた。状態は📞未等のミニバッジで表現
-          inner += `<span class="repair-appt-chip${(__repStaffBadgesB||__repAlertB)?' has-staffs':''}" data-repair-id="${r.id}" style="background:${wColor};color:${wFg}" title="${escapeHtml(tipLines)}"><span class="rac-row">${tagSpan}${wfMiniSpan}<span class="rac-label">${escapeHtml(label)}</span>${__vendorBadgeB}${__repCommuteB}</span>${__repAlertB}${__repStaffBadgesB}</span>`;
+          inner += `<span class="repair-appt-chip${(__repStaffBadgesB||__repAlertB)?' has-staffs':''}" data-repair-id="${r.id}" style="background:${wColor};color:${wFg}" title="${escapeHtml(tipLines)}"><span class="rac-row">${tagSpan}${wfMiniSpan}<span class="rac-label">${escapeHtml(label)}</span>${__vendorBadgeB}${__repCommuteB}${__repCmtB}</span>${__repAlertB}${__repStaffBadgesB}</span>`;
         }
       });
     }
@@ -10149,6 +10152,8 @@ function renderCalendar(){
         const __repCommute = r.commute ? `<span class="chip-commute" title="${escapeHtml(r.commute)}" style="flex-shrink:0;white-space:nowrap;margin-left:auto">${commuteLabel_(r.commute)}</span>` : "";
         const __repBottom = (__repTags || __repCommute) ? `<div class="chip-staffs" style="align-items:center">${__repTags}${__repCommute}</div>` : "";
         const __repAlert = (typeof alertChipHtml_==='function') ? alertChipHtml_(r.id) : "";   // ⚠ アラート(常時赤字)
+        const __repCmtN = (r.comments && r.comments.length) || 0;   // 💬 コメント数 v1.30.119
+        const __repCmt = __repCmtN>0 ? `<span class="chip-comment-badge" title="💬 コメント ${__repCmtN}件" style="flex-shrink:0">💬${__repCmtN}</span>` : "";
         // ホバー詳細(連絡者・作業担当・メモ含む)
         const tipLines = [
           `🔧 修繕アポ: ${r.contractor?r.contractor+" / ":""}${r.name}${r.room?" "+r.room:""}`,
@@ -10173,7 +10178,7 @@ function renderCalendar(){
         const __descLine = __descShort
           ? `<span style="display:block;width:100%;font-size:10px;font-weight:500;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2">${escapeHtml(__descShort)}</span>`
           : "";
-        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis">${tagHtml}${escapeHtml(label)}${__vendorBadge}</span>${__descLine}</span><span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>${__repAlert}${__repBottom}`;
+        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis">${tagHtml}${escapeHtml(label)}${__vendorBadge}${__repCmt}</span>${__descLine}</span><span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>${__repAlert}${__repBottom}`;
         if(__repBottom || __repAlert){ el.classList.add('chip-has-staffs'); el.style.setProperty('--card-bg', wColor); } // 担当色で全面着色(v1.30.51)
         attachRepairChipHover(el, r); // リッチtooltip
         el.classList.add("chip-locked"); // 🔒 ドラッグ移動不可(台帳=Driveが真データのため)
