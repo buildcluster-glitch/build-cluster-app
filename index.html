@@ -1512,6 +1512,9 @@
   /* ✂️減工事・📋提案 = やらない工事。グレーアウトで一目で区別(v1.30.121) */
   .rd-group-muted{filter:grayscale(.85);opacity:.62;background:#f1f5f9;border-radius:8px;padding:4px 6px}
   .rd-group-muted .rd-group-head{color:#64748b}
+  /* 減工事/提案の各行もグレー地に(やらない工事を行単位でも明示)v1.30.126 */
+  .rd-group-muted .rtask,
+  .rd-group-muted .rtask.reduced{background:#e6e9ee;border-color:#d3d9e0}
   .rd-group-head{font-size:12px;font-weight:700;color:var(--text);padding:3px 2px;display:flex;align-items:center;gap:8px}
   .rd-group-sum{font-size:11px;color:var(--muted);font-weight:500}
   /* タスク行 (コンパクト) */
@@ -2274,7 +2277,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.125</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.126</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
