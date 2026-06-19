@@ -2271,7 +2271,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.117</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.118</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -6173,7 +6173,6 @@ function showTaikyoStaffPicker(el, ev){
       </div>
     </div>
     <div class="qp-actions">
-      ${origStaff && current !== origStaff ? `<button class="qp-detail" data-role="restore-orig">↺ ${origIsStaff ? `元に戻す(${escapeHtml(origStaff)})` : "上書きを解除"}</button>` : ""}
       <button class="qp-close" data-role="close">閉じる</button>
     </div>`;
   document.body.appendChild(pop);
