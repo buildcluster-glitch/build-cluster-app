@@ -2277,7 +2277,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.126</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.127</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7598,7 +7598,8 @@ function findHatchushoForResto_(p){
   if(p.extEstimateId)  cand.add(String(p.extEstimateId));
   if(p.id){ cand.add(String(p.id)); cand.add(String(p.id).replace(/^resto-/, "")); }
   for(const r of recs){ if(cand.has(String(r.id))) return r; }
-  const norm = (n,rm)=> String(n||"").replace(/\s/g,"") + "|" + String(rm||"").replace(/[\s　号室]/g,"");
+  // NFKC正規化(全角ローマ数字Ⅲ⇄III等のズレ吸収)＋空白除去で物件名+号室を突合(v1.30.127)
+  const norm = (n,rm)=> String(n||"").normalize("NFKC").replace(/\s|　/g,"") + "|" + String(rm||"").normalize("NFKC").replace(/[\s　号室]/g,"");
   const pk = norm(p.name, p.room);
   for(const r of recs){ const h = r.header||{}; if(norm(h.bukken, h.room) === pk) return r; }
   return null;
@@ -7611,11 +7612,11 @@ function findHatchushoByTitle_(ev){
   if(!t) return null;
   const room = (typeof titleRoom_==='function') ? (titleRoom_(t)||"") : ((t.match(/(\d{1,4})\s*号?室?$/)||[])[1]||"");
   const bukken = room ? t.replace(new RegExp("\\s*"+room+"\\s*号?室?\\s*$"),"").trim() : t;
-  const normNR = (n,rm)=> String(n||"").replace(/\s|　/g,"") + "|" + String(rm||"").replace(/[\s　号室]/g,"");
+  const normNR = (n,rm)=> String(n||"").normalize("NFKC").replace(/\s|　/g,"") + "|" + String(rm||"").normalize("NFKC").replace(/[\s　号室]/g,"");
   const pk = normNR(bukken, room);
   for(const r of recs){ const h=r.header||{}; if(normNR(h.bukken,h.room)===pk) return r; }
-  const nk = String(bukken||"").replace(/\s|　/g,"");
-  if(nk) for(const r of recs){ const h=r.header||{}; if(String(h.bukken||"").replace(/\s|　/g,"")===nk) return r; } // 号室不問で物件名一致
+  const nk = String(bukken||"").normalize("NFKC").replace(/\s|　/g,"");
+  if(nk) for(const r of recs){ const h=r.header||{}; if(String(h.bukken||"").normalize("NFKC").replace(/\s|　/g,"")===nk) return r; } // 号室不問で物件名一致
   return null;
 }
 // 事前予定の発注書を直接開く(原状回復データに紐づいていない場合)。未取得なら一度だけ取得。
