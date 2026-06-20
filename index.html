@@ -2061,6 +2061,36 @@
   #inventoryView .inv-card .effective{font-size:10px;color:var(--inv-mute);margin-top:1px}
   #inventoryView .inv-card .effective b{font-size:12px;color:var(--inv-accent);font-weight:700}
 
+  /* ===== 🖥 PC版レイアウト: 画面が広い時はコンテナを広げてカードを多段グリッドに(v1.30.140) ===== */
+  @media (min-width: 769px){
+    #inventoryView .inv-app{max-width:1180px}
+    /* 一覧・発注中・棚卸・ログ をカード多段グリッド(自動列数) */
+    #inventoryView #inv-item-list,
+    #inventoryView #inv-orders-list,
+    #inventoryView #inv-st-rows,
+    #inventoryView #inv-logs{
+      display:grid;
+      grid-template-columns:repeat(auto-fill, minmax(340px, 1fr));
+      gap:10px;
+      padding:10px 14px;
+      align-items:start;
+    }
+    /* グリッド内は各カードの個別マージンを消して gap に任せる */
+    #inventoryView #inv-item-list .inv-card,
+    #inventoryView #inv-orders-list .inv-ord-row,
+    #inventoryView #inv-logs .inv-log,
+    #inventoryView #inv-st-rows .st-wrap,
+    #inventoryView #inv-st-rows .inv-st-row,
+    #inventoryView #inv-st-rows .inv-st-reason{margin:0}
+    #inventoryView #inv-st-rows .inv-st-reason{margin-top:6px}
+    /* 見出し・空メッセージは全列ぶち抜き(グリッドの列に収めない) */
+    #inventoryView #inv-st-rows .inv-st-loc-header,
+    #inventoryView #inv-item-list .inv-empty,
+    #inventoryView #inv-orders-list .inv-ord-empty,
+    #inventoryView #inv-st-rows .inv-empty,
+    #inventoryView #inv-logs .inv-empty{grid-column:1 / -1; margin:0}
+  }
+
   /* ---------- stocktake ---------- */
   #inventoryView .inv-st-head{padding:14px;background:#fff;border-bottom:1px solid var(--inv-line)}
   #inventoryView .inv-st-head h2{margin:0 0 8px;font-size:17px}
@@ -2301,7 +2331,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.139</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.140</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
