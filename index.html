@@ -2279,7 +2279,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.132</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.133</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7238,7 +7238,7 @@ function showTaskChecklistPopup(el, ev){
     let fin=false;
     const commit=()=>{ if(fin)return; fin=true; const nv=inp.value.trim();
       if(nv && nv!==cur0){ mutate(t=>editTaskLine_(t, li, nv)); } else { renderInner(); } };
-    inp.onkeydown=e=>{ if(e.key==='Enter'){e.preventDefault();commit();} else if(e.key==='Escape'){fin=true;renderInner();} };
+    inp.onkeydown=e=>{ if(e.key==='Enter' && !e.isComposing && e.keyCode!==229){e.preventDefault();commit();} else if(e.key==='Escape'){fin=true;renderInner();} };
     inp.onblur=commit;
   };
   const renderInner = ()=>{
@@ -7402,7 +7402,8 @@ function showTaskChecklistPopup(el, ev){
       focusAdd=true; mutate(t=>addTaskLine_(t, v, by));
     };
     pop.querySelector('.tp-add-btn').onclick = doAdd;
-    addInput.onkeydown = e=>{ if(e.key==='Enter'){ e.preventDefault(); doAdd(); } };
+    // Enter で追加。日本語IMEの変換確定Enter(isComposing/keyCode229)は除外しないと「変換確定の瞬間に空で発火→何も追加されない」(v1.30.133)
+    addInput.onkeydown = e=>{ if(e.key==='Enter' && !e.isComposing && e.keyCode!==229){ e.preventDefault(); doAdd(); } };
     pop.querySelector('[data-role="open-modal"]').onclick = ()=>{ pop.remove(); openEventModal(cur); };
     pop.querySelector('[data-role="del-event"]').onclick = ()=>{
       if(!confirm('この事務タスク(予定)を丸ごと削除しますか？\n中のタスクも全部消えます(直後なら ↶Undo で戻せます)')) return;
