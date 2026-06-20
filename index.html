@@ -2354,7 +2354,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.151</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.152</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4038,8 +4038,22 @@ function saveState(){
 // 直近スナップと内容が同じならスキップ。保存期間14日(古いものから自動削除)。
 const SNAP_PREFIX = "buildcluster_schedule_snap_";
 const SNAP_SLOTS = [9, 13, 18];
-const SNAP_KEEP_DAYS = 7;     // v1.30.122: 容量逼迫対策で14→7日に短縮
-const SNAP_MAX_COUNT = 14;    // 直近この数だけ保持(古いものから削除)
+// v1.30.152: スナップショットを「予定/事務タスク/休暇」だけの軽量形式に変更(1個数十KB)。
+//   原状回復/物件マスタ/立会/修繕/最終確認はクラウド/Driveから再取得できるのでバックアップに含めない。
+//   軽くなったので保持期間・件数を元に戻す(2週間×3枠ぶん)。
+const SNAP_KEEP_DAYS = 14;
+const SNAP_MAX_COUNT = 42;
+// 🪶 軽量バックアップの中身: ローカル編集で失うと困るデータだけ(events に事務タスクも含まれる)
+function buildLightSnap_(){
+  return JSON.stringify({
+    _light: 1,
+    events: state.events || [],
+    leaves: state.leaves || [],
+    tasks: state.tasks || [],
+    taskTrash: state.taskTrash || [],
+    companyPeriods: state.companyPeriods || [],
+  });
+}
 function snapDateStr_(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 function listSnapshots_(){
   const ks = [];
@@ -4068,7 +4082,7 @@ function takeSnapshotIfDue_(){
     const key = SNAP_PREFIX + snapDateStr_(now) + "_" + String(slot).padStart(2,"0");
     if(localStorage.getItem(key) !== null) return; // この枠は撮影済
     pruneSnapshots_();
-    const json = JSON.stringify(state);
+    const json = buildLightSnap_();   // v1.30.152: 軽量形式(予定/タスク/休暇のみ)
     const ks = listSnapshots_();
     const last = ks.length ? localStorage.getItem(ks[ks.length-1]) : null;
     if(last === json) return; // 前回から変化なし → 容量節約でスキップ
@@ -4093,11 +4107,23 @@ function restoreSnapshot_(key){
   try{ parsed = JSON.parse(raw); }catch(e){ alert("バックアップデータが壊れています"); return; }
   const label = snapLabel_(key);
   if(!confirm(`「${label}」のバックアップに復元します。\n\n現在のデータは「復元前」として退避されます。\n復元後にページを再読込します。よろしいですか？`)) return;
-  // 現在データを退避(誤復元しても戻れる)
+  // 現在データを退避(誤復元しても戻れる)。退避も軽量形式
   const now = new Date();
   const preKey = SNAP_PREFIX + snapDateStr_(now) + "_pre" + String(now.getHours()).padStart(2,"0") + String(now.getMinutes()).padStart(2,"0");
-  try{ localStorage.setItem(preKey, JSON.stringify(state)); }catch(_){}
-  localStorage.setItem(STORAGE_KEY, raw);
+  try{ localStorage.setItem(preKey, buildLightSnap_()); }catch(_){}
+  if(parsed._light){
+    // 軽量バックアップ: 予定/タスク/休暇だけ現行データに上書きマージ(原状回復/物件マスタ等は維持・クラウド/Driveから来る)v1.30.152
+    let cur = {};
+    try{ cur = JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}"); }catch(_){ cur = {}; }
+    cur.events = parsed.events || [];
+    cur.leaves = parsed.leaves || [];
+    cur.tasks = parsed.tasks || [];
+    cur.taskTrash = parsed.taskTrash || [];
+    cur.companyPeriods = parsed.companyPeriods || [];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cur));
+  }else{
+    localStorage.setItem(STORAGE_KEY, raw);   // 旧形式(全データ)バックアップはそのまま復元
+  }
   location.reload();
 }
 function snapLabel_(key){
