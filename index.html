@@ -2301,7 +2301,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.138</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.139</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -17174,9 +17174,9 @@ function renderItemList(){
         <div class="main">
           <button class="edit-btn" data-edit="${i.id}" title="編集・削除">✎</button>
           <div class="top" style="padding-right:30px">
-            <span class="cat-tag ${catCls}">${esc(i.category)}</span>
+            <span class="inv-cat-tag ${catCls}">${esc(i.category)}</span>
             <span class="sku">${esc(i.sku)}</span>
-            ${i.location?`<span class="loc-tag ${LOC_CLASS[i.location]||'warehouse'}">${LOC_ICON[i.location]||'🏠'}${esc(i.location)}</span>`:''}
+            ${i.location?`<span class="inv-loc-tag ${LOC_CLASS[i.location]||'warehouse'}">${LOC_ICON[i.location]||'🏠'}${esc(i.location)}</span>`:''}
           </div>
           <div class="name" style="padding-right:30px">${esc(i.name)}</div>
           ${i.maker?`<div class="maker">${esc(i.maker)}</div>`:''}
@@ -17409,7 +17409,7 @@ function renderDetail(){
     (i.price ? ` <span style="margin-left:10px;color:var(--mute);font-size:12px">価格 <b style="color:var(--ink)">¥${Number(i.price).toLocaleString()}</b>${i.priceDate?` (${fmtD(i.priceDate)}時点)`:''}</span>` : '');
   $('#inv-d-hero').innerHTML = `
     <h2>${esc(i.name)}</h2>
-    <div class="sub"><span class="cat-tag ${catCls}">${esc(i.category)}</span> ${i.location?`<span class="loc-tag ${locCls}">${LOC_ICON[i.location]||'🏠'}${esc(i.location)}</span>`:''} &nbsp; ${esc(i.sku)}${i.maker?' · '+esc(i.maker):''}</div>
+    <div class="sub"><span class="inv-cat-tag ${catCls}">${esc(i.category)}</span> ${i.location?`<span class="inv-loc-tag ${locCls}">${LOC_ICON[i.location]||'🏠'}${esc(i.location)}</span>`:''} &nbsp; ${esc(i.sku)}${i.maker?' · '+esc(i.maker):''}</div>
     <div class="kv">
       <span>所在地</span><span>${LOC_ICON[i.location]||''} ${esc(i.location||'-')}</span>
       <span>注文先</span><span>${supplierLine}</span>
