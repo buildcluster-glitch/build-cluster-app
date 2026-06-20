@@ -2354,7 +2354,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.152</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.153</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4073,31 +4073,32 @@ function pruneSnapshots_(){
   let ks = listSnapshots_();
   while(ks.length > SNAP_MAX_COUNT){ localStorage.removeItem(ks.shift()); }
 }
+// v1.30.153: 軽量化したので「9/13/18時の枠」ではなく、内容が変わったら最短8分間隔でこまめにバックアップ。
+//   →スロット間(例14時)に追加して消えたタスクも数分以内にバックアップされ、消失しても戻せる。
+let __lastSnapMs = 0;
+const SNAP_MIN_INTERVAL_MS = 8*60*1000;
 function takeSnapshotIfDue_(){
   try{
     const now = new Date();
-    let slot = null;
-    SNAP_SLOTS.forEach(h=>{ if(now.getHours()>=h) slot = h; });
-    if(slot===null) return; // 9時前は撮らない
-    const key = SNAP_PREFIX + snapDateStr_(now) + "_" + String(slot).padStart(2,"0");
-    if(localStorage.getItem(key) !== null) return; // この枠は撮影済
-    pruneSnapshots_();
-    const json = buildLightSnap_();   // v1.30.152: 軽量形式(予定/タスク/休暇のみ)
+    const json = buildLightSnap_();   // 軽量形式(予定/事務タスク/休暇のみ)
     const ks = listSnapshots_();
     const last = ks.length ? localStorage.getItem(ks[ks.length-1]) : null;
-    if(last === json) return; // 前回から変化なし → 容量節約でスキップ
+    if(last === json) return;          // 前回から変化なし → 撮らない
+    if(__lastSnapMs && (now.getTime() - __lastSnapMs) < SNAP_MIN_INTERVAL_MS) return;  // 撮りすぎ防止(最短8分)
+    pruneSnapshots_();
+    const key = SNAP_PREFIX + snapDateStr_(now) + "_" + String(now.getHours()).padStart(2,"0") + String(now.getMinutes()).padStart(2,"0");
     try{
-      localStorage.setItem(key, json);
+      localStorage.setItem(key, json); __lastSnapMs = now.getTime();
     }catch(e){
       // 容量オーバー → 古いスナップから削除して再試行(最大5回)
       for(let i=0;i<5;i++){
         const olds = listSnapshots_();
         if(!olds.length) break;
         localStorage.removeItem(olds[0]);
-        try{ localStorage.setItem(key, json); break; }catch(_){}
+        try{ localStorage.setItem(key, json); __lastSnapMs = now.getTime(); break; }catch(_){}
       }
     }
-    console.log("[snapshot] 自動バックアップ保存:", key, Math.round(json.length/1024)+"KB");
+    console.log("[snapshot] 軽量バックアップ保存:", key, Math.round(json.length/1024)+"KB");
   }catch(e){ console.warn("[snapshot] 失敗", e); }
 }
 function restoreSnapshot_(key){
@@ -4134,7 +4135,8 @@ function snapLabel_(key){
   const yobi = ["日","月","火","水","木","金","土"][d.getDay()];
   const m = d.getMonth()+1, day = d.getDate();
   if(tag.indexOf("pre")===0) return `${m}/${day}(${yobi}) ${tag.slice(3,5)}:${tag.slice(5,7)} 復元前の退避`;
-  return `${m}/${day}(${yobi}) ${parseInt(tag,10)}時のバックアップ`;
+  if(tag.length>=4) return `${m}/${day}(${yobi}) ${tag.slice(0,2)}:${tag.slice(2,4)} のバックアップ`;  // HHMM(v1.30.153)
+  return `${m}/${day}(${yobi}) ${parseInt(tag,10)}時のバックアップ`;   // 旧 HH 形式
 }
 // 起動15秒後(クラウド同期が落ち着いてから)＋以後5分おきに枠チェック
 setTimeout(takeSnapshotIfDue_, 15000);
