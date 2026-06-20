@@ -2301,7 +2301,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.137</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.138</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -17100,7 +17100,7 @@ function renderOrderSummary(){
   if(delayed) pills += `<span class="pill delayed">遅延 ${delayed}</span>`;
   if(soon) pills += `<span class="pill soon">3日以内 ${soon}</span>`;
   box.innerHTML = `
-    <div class="ord-summary" data-goto-orders="1">
+    <div class="inv-ord-summary" data-goto-orders="1">
       <span class="ico">📦</span>
       <div class="body">
         <div class="head">発注中</div>
@@ -17158,7 +17158,7 @@ function renderItemList(){
   });
 
   if(!items.length){
-    $('#inv-item-list').innerHTML = `<div class="empty">該当する品目はありません</div>`;
+    $('#inv-item-list').innerHTML = `<div class="inv-empty">該当する品目はありません</div>`;
     return;
   }
 
@@ -17170,7 +17170,7 @@ function renderItemList(){
     const cls = zero ? 'zero' : (low ? 'low':'');
     const catCls = CAT_CLASS[i.category]||'other';
     return `
-      <div class="card ${cls}" data-id="${i.id}">
+      <div class="inv-card ${cls}" data-id="${i.id}">
         <div class="main">
           <button class="edit-btn" data-edit="${i.id}" title="編集・削除">✎</button>
           <div class="top" style="padding-right:30px">
@@ -17229,7 +17229,7 @@ function renderOrders(){
   $('#inv-ord-delayed').textContent = orders.filter(o=>orderStatus(o)==='delayed').length;
 
   if(!orders.length){
-    $('#inv-orders-list').innerHTML = `<div class="ord-empty">発注中の品目はありません<br><small>FAB ＋ から「📦 発注を記録」</small></div>`;
+    $('#inv-orders-list').innerHTML = `<div class="inv-ord-empty">発注中の品目はありません<br><small>FAB ＋ から「📦 発注を記録」</small></div>`;
     return;
   }
 
@@ -17250,7 +17250,7 @@ function renderOrders(){
       else dueLabel = `あと${d}日`;
     }
     return `
-      <div class="ord-row ${cls}" data-oid="${o.id}">
+      <div class="inv-ord-row ${cls}" data-oid="${o.id}">
         <div class="ot">
           <span class="sku">${esc(sku)}</span>
           <span class="due ${cls}">${o.expectedDate?`${fmtD(o.expectedDate)} (${esc(dueLabel)})`:'納期未設定'}</span>
@@ -17306,24 +17306,24 @@ function renderStocktake(){
     const cls = d!==null && d!==0 ? 'diff' : '';
     const badge = d===null ? '' :
       (d===0 ? '' :
-      (d>0 ? `<span class="st-diffbadge plus">+${d}</span>` :
-             `<span class="st-diffbadge minus">${d}</span>`));
+      (d>0 ? `<span class="inv-st-diffbadge plus">+${d}</span>` :
+             `<span class="inv-st-diffbadge minus">${d}</span>`));
     // reason selector shown only when there's a non-zero diff
     const reasonVal = reasons[i.id] || '';
     const reasonOpts = ['<option value="">理由を選択…</option>']
       .concat(STOCKTAKE_REASONS.map(r=>`<option value="${esc(r)}" ${r===reasonVal?'selected':''}>${esc(r)}</option>`));
     const reasonRow = (d!==null && d!==0)
-      ? `<div class="st-reason"><select data-stkr="${i.id}">${reasonOpts.join('')}</select></div>` : '';
+      ? `<div class="inv-st-reason"><select data-stkr="${i.id}">${reasonOpts.join('')}</select></div>` : '';
     // location group header
     let header = '';
     if(locFilter==='all' && (i.location||'倉庫') !== lastLoc){
       lastLoc = i.location||'倉庫';
       const ct = items.filter(x=>(x.location||'倉庫')===lastLoc).length;
-      header = `<div class="st-loc-header ${LOC_CLASS[lastLoc]||'warehouse'}">${LOC_ICON[lastLoc]||'🏠'} ${esc(lastLoc)} <span class="ct">${ct}件</span></div>`;
+      header = `<div class="inv-st-loc-header ${LOC_CLASS[lastLoc]||'warehouse'}">${LOC_ICON[lastLoc]||'🏠'} ${esc(lastLoc)} <span class="ct">${ct}件</span></div>`;
     }
     return header + `
       <div class="st-wrap">
-        <div class="st-row ${cls}" data-id="${i.id}">
+        <div class="inv-st-row ${cls}" data-id="${i.id}">
           <div class="info">
             <div class="nm">${esc(i.name)}</div>
             <div class="sub">${esc(i.sku)} · ${esc(i.category)}</div>
@@ -17353,7 +17353,7 @@ function renderLogs(){
   logs = logs.slice(0,200);
 
   if(!logs.length){
-    $('#inv-logs').innerHTML = `<div class="empty">ログはありません</div>`;
+    $('#inv-logs').innerHTML = `<div class="inv-empty">ログはありません</div>`;
     return;
   }
 
@@ -17373,7 +17373,7 @@ function renderLogs(){
     const undoBtn = (l.type==='out'||l.type==='in')
       ? `<button class="undo" data-logundo="${l.id}" title="取消（在庫戻す）">↩</button>`:'';
     return `
-      <div class="log ${kindCls}">
+      <div class="inv-log ${kindCls}">
         <div class="lt"><span class="kind ${kindCls}">${kindLabel}</span><span>${esc(fmtDT(l.datetime))}</span></div>
         <div class="ln">${itemName}</div>
         <div class="lm">
@@ -17436,7 +17436,7 @@ function renderDetail(){
       const cls = st==='delayed' ? 'delayed' : (st==='soon' ? 'soon' : '');
       const remaining = Math.max(0, (o.qty||0)-(o.receivedQty||0));
       return `
-        <div class="ord-row ${cls}" data-oid="${o.id}" style="margin:6px 14px">
+        <div class="inv-ord-row ${cls}" data-oid="${o.id}" style="margin:6px 14px">
           <div class="ot">
             <span class="oq">残${remaining}個</span>
             <span class="due ${cls}">予定 ${o.expectedDate?fmtD(o.expectedDate):'-'}</span>
@@ -17463,7 +17463,7 @@ function renderDetail(){
     .slice(0,50);
 
   if(!myLogs.length){
-    $('#inv-d-logs').innerHTML = `<div class="empty" style="padding:30px">履歴はまだありません</div>`;
+    $('#inv-d-logs').innerHTML = `<div class="inv-empty" style="padding:30px">履歴はまだありません</div>`;
     return;
   }
   $('#inv-d-logs').innerHTML = myLogs.map(l=>{
@@ -17477,7 +17477,7 @@ function renderDetail(){
     const undoBtn = (l.type==='out'||l.type==='in')
       ? `<button class="undo" data-logundo="${l.id}" title="取消（在庫戻す）">↩</button>`:'';
     return `
-      <div class="log ${l.type}">
+      <div class="inv-log ${l.type}">
         <div class="lt"><span class="kind ${l.type}">${kindLabel}</span><span>${esc(fmtDT(l.datetime))}</span></div>
         <div class="ln">${qtyStr} &nbsp; <span style="font-weight:400;font-size:13px;color:var(--mute)">${esc(l.member||'')}${siteStr}</span></div>
         ${l.note?`<div class="lm">${esc(l.note)}</div>`:''}
@@ -17564,7 +17564,7 @@ const itemPicker = {
     if(s.cat!=='すべて') items = items.filter(i=>i.category===s.cat);
     items.sort((a,b)=>(a.name||'').localeCompare(b.name||'','ja'));
     if(!items.length){
-      $(`#inv-${prefix}-item-list`).innerHTML = '<div class="empty">このカテゴリの品目はありません</div>';
+      $(`#inv-${prefix}-item-list`).innerHTML = '<div class="inv-empty">このカテゴリの品目はありません</div>';
       return;
     }
     $(`#inv-${prefix}-item-list`).innerHTML = items.map(i=>{
