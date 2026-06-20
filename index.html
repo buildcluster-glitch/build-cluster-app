@@ -683,6 +683,24 @@
   /* allday-cell内のバッジは縮まないように */
   .allday-cell .leave-badge{flex-shrink:0}
   .allday-cell.today{background:var(--today)}
+  /* 🔧 事前帯（休日帯の下・事前イベントを各日に格納）v1.30.134 */
+  .jizen-band{
+    border-bottom:1px solid var(--border-strong);background:#faf7ff;
+    display:grid;min-width:max-content;position:relative;z-index:7;
+  }
+  .jizen-label-header{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    color:#6b21a8;font-size:11px;font-weight:700;
+  }
+  .jizen-cell{
+    border-right:1px solid var(--border);padding:3px;min-height:30px;position:relative;
+    display:flex;flex-direction:column;gap:3px;align-items:stretch;
+  }
+  .jizen-cell.today{background:#f5edff}
+  .jizen-cell.drop-hover{background:#ede0ff;outline:2px dashed #9333ea;outline-offset:-2px}
+  /* 事前帯の中のチップは絶対配置をやめ、縦に積む(流し込み) */
+  .jizen-cell .event{position:static !important;width:auto !important;left:auto !important;right:auto !important;top:auto !important;height:auto !important;margin:0 !important}
+  .jizen-cell .event.event-jizen-band{min-height:0}
   /* 🔧 修繕アポ クイック編集ポップオーバー (担当者変更+コメント) */
   .quick-pop{
     position:fixed;z-index:9999;background:#fff;border:1px solid var(--border-strong);
@@ -2279,7 +2297,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.133</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.134</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2338,6 +2356,7 @@
   <div class="calendar-body" id="calBody">
     <div class="calendar-head sticky-row" id="calHead"></div>
     <div class="allday-band" id="alldayBand"></div>
+    <div class="jizen-band" id="jizenBand"></div>
     <div class="calendar-grid" id="calGrid"></div>
     <div class="checks-section" id="checksSection"></div>
   </div>
@@ -9696,6 +9715,27 @@ function renderCalendar(){
       openLeaveModal(null, { start: date, end: date });
     };
   }
+  // 🔧 事前帯: 休日帯の下に列揃えで配置。各日の事前イベントをここに格納する(チップ本体は後段のグリッド描画ループで append)v1.30.134
+  const jizenBand = document.getElementById("jizenBand");
+  if(jizenBand){
+    jizenBand.style.gridTemplateColumns = gridTemplate;
+    let jHtml = `<div class="time-col-header jizen-label-header" title="事前補修の予定をまとめて表示">🔧 事前</div>`;
+    cols.forEach(c=>{
+      jHtml += `<div class="jizen-cell ${c.cellCls||''}" data-col-key="${c.key}" data-jizen-date="${c.contextDate||''}" data-jizen-staff="${c.contextStaff||''}" title="ダブルクリック: この日に事前予定を追加"></div>`;
+    });
+    jizenBand.innerHTML = jHtml;
+    // 空セルのダブルクリックで事前予定を新規作成(クイックシート)
+    jizenBand.querySelectorAll(".jizen-cell").forEach(cell=>{
+      cell.ondblclick = (e)=>{
+        if(e.target.closest(".event")) return;   // チップ上は各チップのhandler優先
+        const date = cell.dataset.jizenDate || "";
+        const staff = cell.dataset.jizenStaff || "";
+        if(typeof showQuickAddSheet_==='function'){
+          showQuickAddSheet_({ date, staff, category:"事前", title:"事前 " });
+        }
+      };
+    });
+  }
   // 修繕アポチップ → クイックポップオーバー (担当者・コメント編集)
   // 詳細編集 (元GAS書戻し可能)はポップ内の「✎ 詳細編集」ボタンから
   allday.querySelectorAll("[data-repair-id]").forEach(el=>{
@@ -9916,11 +9956,18 @@ function renderCalendar(){
     const taikyoVirtuals = buildTaikyoVirtuals_();
     // 📋 事務タスク(チェックリスト)はカレンダーに出さずバッジ専用にする(行削除で消えない)
     const events = [...state.events, ...taikyoVirtuals].filter(c.filterEvent).filter(e=>!isJimuTaskEvent_(e)).filter(e=>!isCompletedJizenEvent_(e));
-    const normalEvents = events.filter(e=>!e.allday);
-    const alldayEvents = events.filter(e=>e.allday);
+    // 🔧 事前イベントは時間グリッドから外し、専用の「事前帯」(休日帯の下)に格納する(v1.30.134)
+    const __isJizenEv = e => (typeof isJizenEvent_==='function' && isJizenEvent_(e));
+    const jizenEvents = events.filter(e=>!e.allday && __isJizenEv(e));
+    const normalEvents = events.filter(e=>!e.allday && !__isJizenEv(e));
+    const alldayEvents = events.filter(e=>e.allday && !__isJizenEv(e));
     const placedNormal = layoutEvents(normalEvents).map(p=>({...p, isFree:false}));
     // 終日: 自由配置(freeTop)。layoutEvents は使わず、各イベントを colIdx=0 として placement
     const placedAllday = alldayEvents.map(ev=>({ev, colIdx:0, colCount:1, isFree:true}));
+    // 事前帯: 開始時刻順(なければタイトル順)で縦積み。isJizen=trueで描画ループに渡す
+    const placedJizen = jizenEvents
+      .slice().sort((a,b)=>(a.start||"").localeCompare(b.start||"") || (a.title||"").localeCompare(b.title||""))
+      .map(ev=>({ev, colIdx:0, colCount:1, isFree:false, isJizen:true}));
 
     // 月ビューは時間セル(hour-cell)に flex 縦積み → セル単位でスクロール
     // それ以外は従来の絶対配置
@@ -9928,7 +9975,7 @@ function renderCalendar(){
       // 開始時刻順にソート（同時刻はリーダー順）
       placedNormal.sort((a,b)=>(a.ev.start||"").localeCompare(b.ev.start||"") || (a.colIdx-b.colIdx));
     }
-    [...placedNormal, ...placedAllday].forEach(({ev,colIdx,isFree})=>{
+    [...placedNormal, ...placedAllday, ...placedJizen].forEach(({ev,colIdx,isFree,isJizen})=>{
       const isMonth = currentView === "month";
       // baseTop: 終日は freeTop、それ以外は start 時刻ベース
       const baseTop = isFree
@@ -9977,14 +10024,15 @@ function renderCalendar(){
       // chip-has-staffsカード化(担当色あり=1名でも全面着色)の枠(border1.5+padding2)分を加算 v1.30.124
       const __carded = (__staffN >= 2) || !!ev.color || !!STAFF_COLORS[ev.staff];
       const chipHeight = (lineCount === 1 ? 28 : lineCount * 18 + 14) + __linkRow + __jizenRow + __estRow + __alertRow + (__carded ? 8 : 0);
-      // 月ビュー/終日 はチップ高さ、それ以外は duration に応じた縦長ブロック
-      const height = (isMonth || isFree)
+      // 月ビュー/終日/事前帯 はチップ高さ、それ以外は duration に応じた縦長ブロック
+      const height = (isMonth || isFree || isJizen)
         ? chipHeight
         : Math.max(18, ((timeToMin(ev.end)-timeToMin(ev.start))/60)*HOUR_PX - 2);
       // 月: 同時刻スタックを実高さで計算しオーバーラップ回避
       // ⚠ 終日(isFree) は常に baseTop=0 で集まりやすいので、ALL view で安全側に倒す
+      // 事前帯(isJizen)は流し込み(static)なので絶対配置スタックは不要
       let top;
-      const useStacking = isMonth || isFree;
+      const useStacking = (isMonth || isFree) && !isJizen;
       if(useStacking){
         const stackKey = c.key + "|" + baseTop + (isFree ? "|allday" : "");
         const offset = __stackOffset.get(stackKey) || 0;
@@ -10184,7 +10232,7 @@ function renderCalendar(){
         if(__jizenSkip) el.classList.add('chip-skip-visit');
         if(impList.length){ el.classList.add("imp-flag"); if(impTopClass) el.classList.add(impTopClass); }
         el.title = fullTooltip;
-      } else if(isFree){
+      } else if(isFree || isJizen){
         const isMulti = lineCount > 1;
         const titleHtml = taskInfo ? compactTaskHtml
           : (isMulti ? escapeHtml(ev.title || "").replace(/\n/g, "<br>") : escapeHtml(titleFirstLine));
@@ -10229,6 +10277,14 @@ function renderCalendar(){
           e2.stopPropagation(); e2.preventDefault();
           if(__progBtn.dataset.restoId) openRestoDialog(__progBtn.dataset.restoId);
         });
+      }
+      // 🔧 事前イベントは時間グリッドではなく「事前帯」のその日のセルへ流し込む(v1.30.134)
+      if(isJizen){
+        el.classList.add("event-chip", "event-jizen-band");
+        el.style.top = ""; el.style.left = ""; el.style.right = ""; el.style.height = ""; el.style.marginTop = "";
+        const jcell = jizenBand && jizenBand.querySelector(`.jizen-cell[data-col-key="${c.key}"]`);
+        (jcell || targetCol).appendChild(el);
+        return;
       }
       // 月ビューの通常イベントは hour-cell に append（セル単位スクロール）
       // 月ビュー終日 & その他ビューは従来通り sub-col に絶対配置
@@ -11550,6 +11606,8 @@ function showNoDragToast_(kind){
 function attachDragOrClick(el, ev){
   // 🔒 立会(taikyo-shared)/読取専用はドラッグ移動不可。掴むとカーソルと案内で明示
   if(ev.source === "taikyo-shared" || ev._readOnly){ el.classList.add("chip-locked"); }
+  // 🔧 事前イベントは「事前帯」に格納。ドラッグは別日の事前帯セルへ移動(日付だけ変更・時間未定のまま)v1.30.134
+  const __isJizenDrag = (typeof isJizenEvent_==='function' && isJizenEvent_(ev));
   // 📋 コピペ選択用: idを保持し、再描画後も選択枠を復元(v1.30.54)
   el.dataset.eventId = ev.id;
   if(selectedEventIds.has(ev.id)) el.classList.add('chip-selected');
@@ -11636,6 +11694,27 @@ function attachDragOrClick(el, ev){
         ghost.style.display = "none";
         const target = document.elementFromPoint(mvEv.clientX, mvEv.clientY);
         ghost.style.display = "";
+        // 🔧 事前ドラッグ: 事前帯のセル(別日)へ。セルをハイライトし「→ M/D」だけ表示(時刻は変えない)
+        if(__isJizenDrag){
+          document.querySelectorAll('.jizen-cell.drop-hover').forEach(x=>x.classList.remove('drop-hover'));
+          const jcell = target?.closest('.jizen-cell');
+          if(jcell){
+            jcell.classList.add('drop-hover');
+            indicator.style.display = "none";
+            const dStr = jcell.dataset.jizenDate || "";
+            let destLabel = "";
+            if(dStr && dStr !== ev.date){ const d = parseDate(dStr); destLabel = `→ ${d.getMonth()+1}/${d.getDate()}(${DOW_JA[d.getDay()]})`; }
+            else if(dStr === ev.date){ destLabel = "同じ日"; }
+            timeTip.style.display = "";
+            timeTip.style.left = mvEv.clientX + "px";
+            timeTip.style.top  = mvEv.clientY + "px";
+            timeTip.innerHTML = `🔧 事前${destLabel?`<span class="dest">${escapeHtml(destLabel)}</span>`:""}`;
+          }else{
+            indicator.style.display = "none";
+            timeTip.style.display = "none";
+          }
+          return;
+        }
         const subCol = target?.closest(".sub-col");
         if(subCol){
           const colRect = subCol.getBoundingClientRect();
@@ -11720,6 +11799,25 @@ function attachDragOrClick(el, ev){
       ghost.style.display = "none";
       const target = document.elementFromPoint(upEv.clientX, upEv.clientY);
       ghost.remove(); indicator.remove(); timeTip?.remove();
+      document.querySelectorAll('.jizen-cell.drop-hover').forEach(x=>x.classList.remove('drop-hover'));
+      // 🔧 事前ドラッグ: 事前帯セルにドロップ→その日に移動(日付だけ変更・時間未定のまま)v1.30.134
+      if(__isJizenDrag){
+        const jcell = target?.closest('.jizen-cell');
+        if(!jcell){ render(); return; }                       // 帯の外 → キャンセル(復元)
+        const dStr = jcell.dataset.jizenDate || "";
+        const jstaff = jcell.dataset.jizenStaff || "";
+        const tev = state.events.find(e=>e.id===ev.id);
+        if(!tev || (!dStr && !jstaff)){ render(); return; }
+        pushHistory();
+        if(dStr) tev.date = dStr;
+        if(jstaff) tev.staff = jstaff;                          // 担当別ビューで別スタッフ列に落とした時
+        tev.allday = false; tev.timeMode = "anytime";          // 事前は常に時間未定のまま
+        tev.updatedAt = new Date().toISOString();
+        saveState();
+        if(typeof cloudQueueEventChange === 'function') cloudQueueEventChange(tev, 'upsert');
+        render();
+        return;
+      }
       const subCol = target?.closest(".sub-col");
       if(!subCol){ render(); return; } // 範囲外 → キャンセル(復元)
       const colKey = subCol.dataset.colKey;
