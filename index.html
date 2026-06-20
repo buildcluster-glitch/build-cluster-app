@@ -55,10 +55,11 @@
   #cloudSyncIcon.ok{color:#16a34a}
   #cloudSyncIcon.err{color:#dc2626}
   @keyframes cloudSpin{to{transform:rotate(360deg)}}
+  /* ヘッダーは overflow:auto でバッジ上端が見切れる。アイコン上に重ねず右上の枠内に収める(v1.30.148) */
   #cloudSyncBadge{
-    position:absolute;top:-3px;right:-3px;background:#f59e0b;color:#fff;
-    font-size:9px;font-weight:800;border-radius:10px;padding:1px 5px;min-width:14px;text-align:center;
-    line-height:1.2;
+    position:absolute;top:3px;right:1px;background:#f59e0b;color:#fff;
+    font-size:9px;font-weight:800;border-radius:10px;padding:0 4px;min-width:13px;height:13px;text-align:center;
+    line-height:13px;box-sizing:border-box;pointer-events:none;
   }
   #cloudSyncBadge.hidden{display:none}
   header.app-header::-webkit-scrollbar{height:4px}
@@ -2338,7 +2339,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.147</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.148</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
