@@ -2337,7 +2337,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.144</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.145</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -17172,6 +17172,10 @@ function renderItemList(){
   let items = state.items.filter(i=> i.active);
   if(cat!=='all') items = items.filter(i=>i.category===cat);
   if(loc!=='all') items = items.filter(i=>i.location===loc);
+  // 🔎 要発注/在庫切れアラートの「確認」で絞り込み(v1.30.145)
+  const sf = state.ui.stockFilter;
+  if(sf==='low')  items = items.filter(i=> i.minStock>0 && effectiveStock(i) < i.minStock);
+  if(sf==='zero') items = items.filter(i=> i.minStock>0 && i.stock<=0 && onOrderQty(i.id)===0);
   if(q) items = items.filter(i=>
     (i.sku||'').toLowerCase().includes(q) ||
     (i.name||'').toLowerCase().includes(q) ||
@@ -17193,12 +17197,17 @@ function renderItemList(){
     return (a.name||'').localeCompare(b.name||'','ja');
   });
 
+  // 🔎 絞り込み中の表示+解除ボタン(要発注/在庫切れアラートからの絞り込み)v1.30.145
+  const filterHint = sf
+    ? `<div class="inv-stockfilter-hint" style="grid-column:1/-1;display:flex;align-items:center;gap:8px;margin:0 0 4px;padding:8px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;font-size:13px;color:#9a3412;font-weight:600">🔎 ${sf==='zero'?'在庫切れ':'要発注'}の品目だけ表示中 (${items.length}件)<button data-clear-stockfilter style="margin-left:auto;background:#fff;border:1px solid #fdba74;color:#9a3412;border-radius:8px;padding:3px 10px;font-weight:700;cursor:pointer">✕ 解除</button></div>`
+    : '';
+
   if(!items.length){
-    $('#inv-item-list').innerHTML = `<div class="inv-empty">該当する品目はありません</div>`;
+    $('#inv-item-list').innerHTML = filterHint + `<div class="inv-empty">該当する品目はありません</div>`;
     return;
   }
 
-  $('#inv-item-list').innerHTML = items.map(i=>{
+  $('#inv-item-list').innerHTML = filterHint + items.map(i=>{
     const onOrd = onOrderQty(i.id);
     const eff = effectiveStock(i);
     const low = i.minStock>0 && eff < i.minStock;
@@ -18686,13 +18695,14 @@ function bindEvents(){
   $('#inv-rep-next').onclick = ()=>{ state.ui.reportMonth = shiftMonth(state.ui.reportMonth, +1); renderReport(); };
 
   // search
-  $('#inv-search').oninput = e=>{ state.ui.search = e.target.value; renderItemList(); };
+  $('#inv-search').oninput = e=>{ state.ui.search = e.target.value; state.ui.stockFilter = null; renderItemList(); };
 
   // cat chips
   $('#inv-cat-chips').onclick = e=>{
     const b = e.target.closest('.inv-chip');
     if(!b) return;
     state.ui.catFilter = b.dataset.cat;
+    state.ui.stockFilter = null;   // 通常フィルタ操作で要発注絞り込みは解除(v1.30.145)
     renderCatChips(); renderItemList();
   };
   // loc chips
@@ -18700,6 +18710,7 @@ function bindEvents(){
     const b = e.target.closest('.inv-chip');
     if(!b) return;
     state.ui.locFilter = b.dataset.loc;
+    state.ui.stockFilter = null;
     renderCatChips(); renderItemList();
   };
 
@@ -18719,16 +18730,21 @@ function bindEvents(){
     if(b.dataset.alert==='delayed'){
       state.ui.tab='orders'; renderHomeTabs(); window.scrollTo(0,0); return;
     }
+    // 🔎 要発注(low)/在庫切れ(zero) → その品目だけに絞り込み(v1.30.145)
+    state.ui.tab = 'list';
     state.ui.catFilter = 'all';
+    state.ui.locFilter = 'all';
     state.ui.search = '';
-    $('#inv-search').value = '';
-    renderCatChips();
-    renderItemList();
+    const si = $('#inv-search'); if(si) si.value = '';
+    state.ui.stockFilter = b.dataset.alert;   // 'low' | 'zero'
+    renderHomeTabs();
     window.scrollTo({top: 200, behavior:'smooth'});
   };
 
   // item card tap (and per-card edit button)
   $('#inv-item-list').onclick = e=>{
+    // 🔎 要発注/在庫切れ絞り込みの「✕ 解除」(v1.30.145)
+    if(e.target.closest('[data-clear-stockfilter]')){ state.ui.stockFilter = null; renderItemList(); return; }
     const edit = e.target.closest('[data-edit]');
     if(edit){ e.stopPropagation(); openItemEdit(edit.dataset.edit); return; }
     const c = e.target.closest('.inv-card');
