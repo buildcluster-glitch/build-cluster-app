@@ -2338,7 +2338,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.146</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.147</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9304,7 +9304,8 @@ function renderHeader(){
     const act = (state.restorations||[]).filter(p=>!(p.completeDate && String(p.completeDate).trim())).length;
     navDate.textContent = `🏠 原状回復  (進行中 ${act}件)`;
   }else if(currentView==="inventory"){
-    const items = (state.inv && state.inv.items) ? state.inv.items.length : 0;
+    // 在庫データは在庫モジュール(IIFE)内にあるため window 経由で件数を取得(state.inv は存在しない)v1.30.147
+    const items = (typeof window.__invItemCount==='function') ? window.__invItemCount() : 0;
     navDate.textContent = `📦 在庫管理  (${items}品目)`;
   }else if(currentView==="day"){
     navDate.textContent = `${d.getFullYear()}年 ${d.getMonth()+1}月${d.getDate()}日 (${DOW_JA[d.getDay()]})`;
@@ -19036,6 +19037,8 @@ function stopPolling(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null;
 })();
 
 window.__invRenderAll = renderAll;
+// ヘッダーの「在庫管理 (N品目)」用に有効品目数を公開(calendar側から参照)v1.30.147
+window.__invItemCount = ()=> (Array.isArray(state.items) ? state.items.filter(i=>i.active).length : 0);
 })();
 
 </script>
