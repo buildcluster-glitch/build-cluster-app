@@ -2354,7 +2354,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.154</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.155</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4141,6 +4141,25 @@ function snapLabel_(key){
 // 起動15秒後(クラウド同期が落ち着いてから)＋以後5分おきに枠チェック
 setTimeout(takeSnapshotIfDue_, 15000);
 setInterval(takeSnapshotIfDue_, 5*60*1000);
+
+// 📦 容量が増えてきたら山田に一度だけ自動でお知らせ(将来の「予定アーカイブ」着手タイミングを人の記憶に頼らず自動検知)v1.30.155
+function checkCapacityReminder_(){
+  try{
+    let bytes=0;
+    for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); bytes += (k.length + (localStorage.getItem(k)||"").length); }
+    const kb = Math.round(bytes/1024);
+    if(kb < 3500) return;   // 上限約5MB。3.5MB超で警戒(現状は約1.6MB)
+    console.warn('[capacity] localStorage 使用量 '+kb+'KB / 上限約5120KB。古い予定のアーカイブ検討時期。');
+    const FLAG = 'buildcluster_capacity_warned';
+    const me = (typeof getMyself==='function') ? getMyself() : '';
+    const prev = parseInt(localStorage.getItem(FLAG)||'0', 10);
+    if(me && me.indexOf('山田')>=0 && kb >= prev+500){   // 山田だけに・500KB増えるごとに再通知
+      localStorage.setItem(FLAG, String(kb));
+      try{ alert('📦 データが増えてきました（約'+(kb/1024).toFixed(1)+'MB / 上限5MB）。\n\n動作が重くなったりタスクが保存しづらくなる前に、\nClaude に「古い予定の自動アーカイブを入れて」と頼んでください。\n(他の人には出ません。山田さん向けの通知です)'); }catch(_){}
+    }
+  }catch(_){}
+}
+setTimeout(checkCapacityReminder_, 20000);
 
 // ===== タスクマネージャー 関連 =====
 const TASK_PRIORITIES = [
