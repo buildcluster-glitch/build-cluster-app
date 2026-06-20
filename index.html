@@ -1488,6 +1488,21 @@
   .resto-card .rc-bar-inner{height:100%;background:linear-gradient(90deg,#22c55e,#16a34a);border-radius:3px;transition:width .3s}
   .resto-card .rc-final,.resto-card .rc-moveout{font-size:11px;color:#475569;font-weight:600;flex-shrink:0;
     background:#f1f5f9;padding:1px 7px;border-radius:6px}
+  /* ===== 🖥 PC版: 修繕・原状回復のカード一覧を多段グリッドに(在庫と同様)v1.30.149 ===== */
+  @media (min-width: 769px){
+    .repair-list, .resto-list{
+      display:grid;
+      grid-template-columns:repeat(auto-fill, minmax(360px, 1fr));
+      gap:8px;
+      align-content:start;
+    }
+    .repair-list .rep-card, .resto-list .resto-card{max-width:none;width:auto;margin:0}
+    /* グループ見出し・空メッセージは全列ぶち抜き(列に収めない) */
+    .repair-list .rep-group-head,
+    .repair-list .repair-empty,
+    .resto-list .resto-group-header,
+    .resto-list .resto-empty{grid-column:1 / -1}
+  }
   /* 詳細モード */
   .resto-detail-head{display:flex;align-items:center;gap:8px;margin-bottom:2px}
   .rd-title{font-weight:700;font-size:15px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -2339,7 +2354,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.148</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.149</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
