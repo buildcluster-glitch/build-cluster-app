@@ -698,8 +698,12 @@
   }
   .jizen-cell.today{background:#f5edff}
   .jizen-cell.drop-hover{background:#ede0ff;outline:2px dashed #9333ea;outline-offset:-2px}
-  /* 事前帯の中のチップは絶対配置をやめ、縦に積む(流し込み) */
-  .jizen-cell .event{position:static !important;width:auto !important;left:auto !important;right:auto !important;top:auto !important;height:auto !important;margin:0 !important}
+  /* 最大3件表示・残りはスクロール(v1.30.135)。細いスクロールバー */
+  .jizen-cell-scroll{scrollbar-width:thin;scrollbar-color:#c4b5fd transparent}
+  .jizen-cell-scroll::-webkit-scrollbar{width:6px}
+  .jizen-cell-scroll::-webkit-scrollbar-thumb{background:#c4b5fd;border-radius:3px}
+  /* 事前帯の中のチップは絶対配置をやめ、縦に積む(流し込み)。flex-shrink:0=max-height制限時に潰さずスクロールさせる(v1.30.135) */
+  .jizen-cell .event{position:static !important;width:auto !important;left:auto !important;right:auto !important;top:auto !important;height:auto !important;margin:0 !important;flex:0 0 auto !important}
   .jizen-cell .event.event-jizen-band{min-height:0}
   /* 🔧 修繕アポ クイック編集ポップオーバー (担当者変更+コメント) */
   .quick-pop{
@@ -2297,7 +2301,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.134</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.135</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -10477,6 +10481,19 @@ function renderCalendar(){
       });
     }
   });
+  // 🔧 事前帯: 1セル最大3件まで表示、残りはセル内スクロール(v1.30.135)
+  if(jizenBand){
+    jizenBand.querySelectorAll(".jizen-cell").forEach(cell=>{
+      const kids = cell.children;
+      if(kids.length > 3){
+        // 先頭3件の下端までを最大高さに(可変高さチップでも常に3件ぶん見える)
+        const h = kids[2].offsetTop + kids[2].offsetHeight - kids[0].offsetTop;
+        cell.style.maxHeight = (h + 6) + "px";   // 下paddingぶん少し余裕
+        cell.style.overflowY = "auto";
+        cell.classList.add("jizen-cell-scroll");
+      }
+    });
+  }
   // 📍 アクティブセル(クリック位置)を再描画後に復元(v1.30.59)
   if(typeof drawActiveSlot_==='function') drawActiveSlot_();
   // 月ビューの列幅: 列ごと個別管理に変更したため自動フィットは無効化
