@@ -1960,6 +1960,8 @@
     --inv-safe-bottom:env(safe-area-inset-bottom,0);
   }
   /* ---------- layout ---------- */
+  /* body は height:100vh+overflow:hidden なので、在庫ビュー自身がスクロール領域になる必要がある(v1.30.141) */
+  #inventoryView{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
   #inventoryView .inv-app{max-width:560px;margin:0 auto;min-height:calc(100vh - 60px);
     background:var(--inv-bg);padding-bottom:calc(96px + var(--inv-safe-bottom));position:relative;color:var(--inv-ink);font-size:15px;line-height:1.5}
   #inventoryView .inv-bar{background:#0f172a;color:#fff;
@@ -2331,7 +2333,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.140</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.141</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -17105,7 +17107,7 @@ function renderCatChips(){
   $('#inv-cat-chips').innerHTML = chips.map(([v,label])=>{
     const on = state.ui.catFilter===v?'on':'';
     const ct = counts[v]||0;
-    return `<button class="chip ${on}" data-cat="${esc(v)}">${esc(label)}<span class="ct">${ct}</span></button>`;
+    return `<button class="inv-chip ${on}" data-cat="${esc(v)}">${esc(label)}<span class="ct">${ct}</span></button>`;
   }).join('');
 
   // location chips
@@ -17115,7 +17117,7 @@ function renderCatChips(){
   $('#inv-loc-chips').innerHTML = lchips.map(([v,label])=>{
     const on = state.ui.locFilter===v?'on':'';
     const ct = lcounts[v]||0;
-    return `<button class="chip ${on}" data-loc="${esc(v)}">${esc(label)}<span class="ct">${ct}</span></button>`;
+    return `<button class="inv-chip ${on}" data-loc="${esc(v)}">${esc(label)}<span class="ct">${ct}</span></button>`;
   }).join('');
 }
 
@@ -17311,7 +17313,7 @@ function renderStocktake(){
   const locChips = [['all','置き場すべて']].concat(LOCATIONS.map(l=>[l, LOC_ICON[l]+' '+l]));
   $('#inv-st-loc-chips').innerHTML = locChips.map(([v,label])=>{
     const on = locFilter===v?'on':'';
-    return `<button class="chip ${on}" data-stkloc="${esc(v)}">${esc(label)}<span class="ct">${locCounts[v]||0}</span></button>`;
+    return `<button class="inv-chip ${on}" data-stkloc="${esc(v)}">${esc(label)}<span class="ct">${locCounts[v]||0}</span></button>`;
   }).join('');
 
   // filter + sort by location > category > name
@@ -17585,7 +17587,7 @@ const itemPicker = {
     $(`#inv-${prefix}-cat-chips`).innerHTML = chips.map(([v,l])=>{
       const on = s.cat===v?'on':'';
       const ct = counts[v]||0;
-      return `<button type="button" class="chip ${on}" data-c="${esc(v)}">${esc(l)}<span class="ct">${ct}</span></button>`;
+      return `<button type="button" class="inv-chip ${on}" data-c="${esc(v)}">${esc(l)}<span class="ct">${ct}</span></button>`;
     }).join('');
   },
   renderList(prefix){
