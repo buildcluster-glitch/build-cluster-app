@@ -2301,7 +2301,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.135</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.136</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9960,10 +9960,11 @@ function renderCalendar(){
     const taikyoVirtuals = buildTaikyoVirtuals_();
     // 📋 事務タスク(チェックリスト)はカレンダーに出さずバッジ専用にする(行削除で消えない)
     const events = [...state.events, ...taikyoVirtuals].filter(c.filterEvent).filter(e=>!isJimuTaskEvent_(e)).filter(e=>!isCompletedJizenEvent_(e));
-    // 🔧 事前イベントは時間グリッドから外し、専用の「事前帯」(休日帯の下)に格納する(v1.30.134)
+    // 🔧 事前イベント: 時間未定(anytime)は専用の「事前帯」へ。時刻あり(timed)は通常どおり9-18時グリッドに配置(v1.30.136)
     const __isJizenEv = e => (typeof isJizenEvent_==='function' && isJizenEvent_(e));
-    const jizenEvents = events.filter(e=>!e.allday && __isJizenEv(e));
-    const normalEvents = events.filter(e=>!e.allday && !__isJizenEv(e));
+    const __isBandJizen = e => !e.allday && __isJizenEv(e) && e.timeMode!=='timed';   // 時間未定の事前=帯
+    const jizenEvents = events.filter(__isBandJizen);
+    const normalEvents = events.filter(e=>!e.allday && !__isBandJizen(e));   // 時刻ありの事前はこちら(グリッド)に含む
     const alldayEvents = events.filter(e=>e.allday && !__isJizenEv(e));
     const placedNormal = layoutEvents(normalEvents).map(p=>({...p, isFree:false}));
     // 終日: 自由配置(freeTop)。layoutEvents は使わず、各イベントを colIdx=0 として placement
@@ -11711,7 +11712,8 @@ function attachDragOrClick(el, ev){
         ghost.style.display = "none";
         const target = document.elementFromPoint(mvEv.clientX, mvEv.clientY);
         ghost.style.display = "";
-        // 🔧 事前ドラッグ: 事前帯のセル(別日)へ。セルをハイライトし「→ M/D」だけ表示(時刻は変えない)
+        // 🔧 事前ドラッグ: 事前帯のセルへドロップ→時間未定のまま別日へ。セルをハイライトし「→ M/D」だけ表示(時刻は変えない)
+        //   事前帯の外(=9-18時グリッド)へドロップした時は下の通常処理に続行し、時刻を割り当てる(v1.30.136)
         if(__isJizenDrag){
           document.querySelectorAll('.jizen-cell.drop-hover').forEach(x=>x.classList.remove('drop-hover'));
           const jcell = target?.closest('.jizen-cell');
@@ -11726,11 +11728,9 @@ function attachDragOrClick(el, ev){
             timeTip.style.left = mvEv.clientX + "px";
             timeTip.style.top  = mvEv.clientY + "px";
             timeTip.innerHTML = `🔧 事前${destLabel?`<span class="dest">${escapeHtml(destLabel)}</span>`:""}`;
-          }else{
-            indicator.style.display = "none";
-            timeTip.style.display = "none";
+            return;
           }
-          return;
+          // jizen-cell外 → 下の時間グリッド処理(時刻割当)に続行
         }
         const subCol = target?.closest(".sub-col");
         if(subCol){
@@ -11818,22 +11818,25 @@ function attachDragOrClick(el, ev){
       ghost.remove(); indicator.remove(); timeTip?.remove();
       document.querySelectorAll('.jizen-cell.drop-hover').forEach(x=>x.classList.remove('drop-hover'));
       // 🔧 事前ドラッグ: 事前帯セルにドロップ→その日に移動(日付だけ変更・時間未定のまま)v1.30.134
+      //   事前帯の外(=9-18時グリッド)へドロップした時は下の通常処理に続行し、時刻を割り当てる(timed化)v1.30.136
       if(__isJizenDrag){
         const jcell = target?.closest('.jizen-cell');
-        if(!jcell){ render(); return; }                       // 帯の外 → キャンセル(復元)
-        const dStr = jcell.dataset.jizenDate || "";
-        const jstaff = jcell.dataset.jizenStaff || "";
-        const tev = state.events.find(e=>e.id===ev.id);
-        if(!tev || (!dStr && !jstaff)){ render(); return; }
-        pushHistory();
-        if(dStr) tev.date = dStr;
-        if(jstaff) tev.staff = jstaff;                          // 担当別ビューで別スタッフ列に落とした時
-        tev.allday = false; tev.timeMode = "anytime";          // 事前は常に時間未定のまま
-        tev.updatedAt = new Date().toISOString();
-        saveState();
-        if(typeof cloudQueueEventChange === 'function') cloudQueueEventChange(tev, 'upsert');
-        render();
-        return;
+        if(jcell){
+          const dStr = jcell.dataset.jizenDate || "";
+          const jstaff = jcell.dataset.jizenStaff || "";
+          const tev = state.events.find(e=>e.id===ev.id);
+          if(!tev || (!dStr && !jstaff)){ render(); return; }
+          pushHistory();
+          if(dStr) tev.date = dStr;
+          if(jstaff) tev.staff = jstaff;                        // 担当別ビューで別スタッフ列に落とした時
+          tev.allday = false; tev.timeMode = "anytime";        // 帯に置く=時間未定に戻す
+          tev.updatedAt = new Date().toISOString();
+          saveState();
+          if(typeof cloudQueueEventChange === 'function') cloudQueueEventChange(tev, 'upsert');
+          render();
+          return;
+        }
+        // jizen-cell外 → 下の sub-col(時間グリッド)処理へ続行(時刻割当=timed化)
       }
       const subCol = target?.closest(".sub-col");
       if(!subCol){ render(); return; } // 範囲外 → キャンセル(復元)
@@ -11855,6 +11858,8 @@ function attachDragOrClick(el, ev){
       }else{
         target_ev.start = `${pad(Math.floor(startMin/60))}:${pad(startMin%60)}`;
         target_ev.end   = `${pad(Math.floor(endMin/60))}:${pad(endMin%60)}`;
+        // 🔧 事前を9-18時グリッドにドロップ→時刻あり(timed)にして帯から時間グリッドへ移す(v1.30.136)
+        if(__isJizenDrag) target_ev.timeMode = "timed";
       }
       if(colKey.startsWith("date-")){
         target_ev.date = colKey.replace("date-","");
