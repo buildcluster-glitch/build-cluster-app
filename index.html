@@ -2354,7 +2354,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.150</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.151</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -13548,6 +13548,12 @@ async function cloudSyncPull({ replace=false }={}){
   }
   // 🧹 サーバーから立会ゴースト(過去Verの実体コピー)が再流入していたら都度除去
   if(typeof purgeTaikyoGhosts_ === 'function') purgeTaikyoGhosts_();
+  // 🧹 cloudLogs は画面表示に使わない監査ログ。毎回サーバー全件を取り込むと無制限に肥大化
+  //   (7000件で約1MB→localStorage圧迫＝タスク消失の主因)。直近80件だけ保持(v1.30.151)
+  if(Array.isArray(state.cloudLogs) && state.cloudLogs.length > 80){
+    state.cloudLogs.sort((a,b)=> String((b&&b.datetime)||"").localeCompare(String((a&&a.datetime)||"")));
+    state.cloudLogs.length = 80;
+  }
   cloudSync.lastSyncAt = new Date().toISOString();
   saveCloudSyncConfig();
   saveState();
