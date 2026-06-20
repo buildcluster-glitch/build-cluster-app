@@ -2301,7 +2301,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.136</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.137</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4174,9 +4174,10 @@ function visibleDates(){
     return Array.from({length:3}, (_,i)=>addDays(currentDate, i));
   }
   if(currentView==="month"){
-    // 📱 スマホ: 基準日から30日のローリング表示 (‹›で±30日。月の切れ目で分断されない)
+    // 📱 スマホ: 前日から30日のローリング表示 (‹›で±30日。月の切れ目で分断されない)
+    //   前日も入れておくと「昨日の続き」を見ながら作業しやすい(山田 2026-06-20)v1.30.137
     if(window.innerWidth <= 700){
-      return Array.from({length:30}, (_,i)=>addDays(currentDate, i));
+      return Array.from({length:30}, (_,i)=>addDays(currentDate, i-1));
     }
     // 月の1日〜末日（時間グリッドで横スクロール）
     const first = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
@@ -12618,14 +12619,18 @@ function scrollToToday(){
   const now = new Date();
   // 垂直: デフォルトは 9時(グリッド先頭)固定 (HOUR_START=9 → scrollTop 0)
   body.scrollTop = 0;
-  // 水平: 月ビューで今日の列がビュー内に入るようスクロール
+  // 水平: 月ビューで「前日」の列が左端に来るようスクロール(前日の位置が都合よい・山田 v1.30.137)
   if(currentView==="month"){
+    const anchor = new Date(now); anchor.setDate(anchor.getDate()-1);   // 前日を左端アンカーに
+    const anchorStr = fmtDate(anchor);
     const todayStr = fmtDate(now);
-    // ヘッダ・グリッド両方探す
-    let todayEl = body.querySelector(`.day-col[data-col-key="date-${todayStr}"]`)
+    // ヘッダ・グリッド両方探す。前日列が無ければ今日列にフォールバック
+    let todayEl = body.querySelector(`.day-col[data-col-key="date-${anchorStr}"]`)
+               || body.querySelector(`.day-col-header[data-col-key="date-${anchorStr}"]`)
+               || body.querySelector(`.day-col[data-col-key="date-${todayStr}"]`)
                || body.querySelector(`.day-col-header[data-col-key="date-${todayStr}"]`);
     if(!todayEl){
-      console.log("[scrollToToday] today col not found for", todayStr);
+      console.log("[scrollToToday] anchor col not found for", anchorStr);
       return;
     }
     // calBody基準の left を算出
