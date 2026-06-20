@@ -2222,6 +2222,10 @@
   #inventoryView .inv-rep-row .nm{flex:1;min-width:0;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #inventoryView .inv-rep-row .v{font-size:14px;font-weight:800;color:var(--inv-ink);text-align:right;min-width:50px}
   #inventoryView .inv-rep-empty{padding:20px;text-align:center;color:var(--inv-mute);font-size:13px}
+  /* レポートの棒グラフ(品目別消費 等)v1.30.143 */
+  #inventoryView .inv-rep-row .nm .sub{font-size:10px;color:var(--inv-mute);font-weight:600;margin-top:1px}
+  #inventoryView .inv-rep-row .bar-wrap{flex:0 0 90px;height:8px;background:#eef2f7;border-radius:999px;overflow:hidden}
+  #inventoryView .inv-rep-row .bar{height:100%;background:var(--inv-accent);border-radius:999px}
 
   /* ---------- settings ---------- */
   #inventoryView .inv-set-sec, .inv-sheet .inv-set-sec{background:#fff;margin:10px 14px;border-radius:12px;border:1px solid var(--inv-line);overflow:hidden}
@@ -2333,7 +2337,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.142</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.143</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -17486,7 +17490,7 @@ function renderDetail(){
   const ordBox = $('#inv-d-orders');
   if(ordBox){
     ordBox.innerHTML = myOrders.length
-      ? `<div class="section-title">発注中（${myOrders.length}件）</div>${ordersHtml}`
+      ? `<div class="inv-section-title">発注中（${myOrders.length}件）</div>${ordersHtml}`
       : '';
   }
 
@@ -17759,7 +17763,7 @@ function renderReport(){
 
   const barRow = (label, sub, v, max, rank)=>{
     const w = max>0 ? Math.round(v/max*100) : 0;
-    return `<div class="rep-row">
+    return `<div class="inv-rep-row">
       ${rank!=null?`<div class="rank">${rank}</div>`:''}
       <div class="nm">${esc(label)}${sub?`<div class="sub">${esc(sub)}</div>`:''}</div>
       <div class="bar-wrap"><div class="bar" style="width:${w}%"></div></div>
@@ -17772,20 +17776,20 @@ function renderReport(){
   // TOP items
   if(byItem.length){
     const max = byItem[0].qty;
-    html += `<div class="rep-sec"><div class="st">📊 品目別消費 <b>TOP ${Math.min(10,byItem.length)}</b></div>`;
+    html += `<div class="inv-rep-sec"><div class="st">📊 品目別消費 <b>TOP ${Math.min(10,byItem.length)}</b></div>`;
     html += byItem.slice(0,10).map((r,i)=>{
       const it = state.items.find(x=>x.id===r.k);
       return barRow(it?.name||'(削除済)', it?.sku||'', r.qty, max, i+1);
     }).join('');
     html += `</div>`;
   } else {
-    html += `<div class="rep-sec"><div class="st">📊 品目別消費</div><div class="rep-empty">この月の消費記録なし</div></div>`;
+    html += `<div class="inv-rep-sec"><div class="st">📊 品目別消費</div><div class="inv-rep-empty">この月の消費記録なし</div></div>`;
   }
 
   // By member
   if(byMember.length){
     const max = byMember[0].qty;
-    html += `<div class="rep-sec"><div class="st">👥 担当者別</div>`;
+    html += `<div class="inv-rep-sec"><div class="st">👥 担当者別</div>`;
     html += byMember.map(r=>barRow(r.k, `${r.count}回`, r.qty, max)).join('');
     html += `</div>`;
   }
@@ -17793,7 +17797,7 @@ function renderReport(){
   // By category
   if(byCat.length){
     const max = byCat[0].qty;
-    html += `<div class="rep-sec"><div class="st">🏷 カテゴリ別</div>`;
+    html += `<div class="inv-rep-sec"><div class="st">🏷 カテゴリ別</div>`;
     html += byCat.map(r=>barRow(r.k, `${r.count}回`, r.qty, max)).join('');
     html += `</div>`;
   }
@@ -17801,7 +17805,7 @@ function renderReport(){
   // By site
   if(bySite.length){
     const max = bySite[0].qty;
-    html += `<div class="rep-sec"><div class="st">🏢 物件別</div>`;
+    html += `<div class="inv-rep-sec"><div class="st">🏢 物件別</div>`;
     html += bySite.slice(0,20).map(r=>barRow(r.k, `${r.count}回`, r.qty, max)).join('');
     html += `</div>`;
   }
@@ -17815,11 +17819,11 @@ function renderReport(){
   const avgLead = leadTimes.length ? Math.round(leadTimes.reduce((s,x)=>s+x,0)/leadTimes.length) : null;
   const inQty = inLogs.reduce((s,l)=>s + (l.qty||0), 0);
 
-  html += `<div class="rep-sec"><div class="st">📦 発注・入荷</div>
-    <div class="rep-row"><div class="nm">発注件数（今月）</div><div class="v">${ordThisMonth.length}件</div></div>
-    <div class="rep-row"><div class="nm">入荷件数（今月）</div><div class="v">${recvThisMonth.length}件</div></div>
-    <div class="rep-row"><div class="nm">補充合計数量</div><div class="v">${inQty}</div></div>
-    <div class="rep-row"><div class="nm">平均リードタイム</div><div class="v">${avgLead!=null?avgLead+'日':'-'}</div></div>
+  html += `<div class="inv-rep-sec"><div class="st">📦 発注・入荷</div>
+    <div class="inv-rep-row"><div class="nm">発注件数（今月）</div><div class="v">${ordThisMonth.length}件</div></div>
+    <div class="inv-rep-row"><div class="nm">入荷件数（今月）</div><div class="v">${recvThisMonth.length}件</div></div>
+    <div class="inv-rep-row"><div class="nm">補充合計数量</div><div class="v">${inQty}</div></div>
+    <div class="inv-rep-row"><div class="nm">平均リードタイム</div><div class="v">${avgLead!=null?avgLead+'日':'-'}</div></div>
   </div>`;
 
   $('#inv-rep-body').innerHTML = html;
@@ -17967,7 +17971,7 @@ function showCSVPreview(report){
       <span class="tag ${a.t}">${a.t==='add'?'追加':(a.t==='upd'?'更新':'同一')}</span>
       <span class="sku">${esc(a.r.sku)}</span>
       <span class="nm">${esc(a.r.name)}</span>
-    </div>`).join('') : '<div class="rep-empty">データなし</div>';
+    </div>`).join('') : '<div class="inv-rep-empty">データなし</div>';
   openSheet('sheet-csv');
 }
 function commitCSVImport(){
