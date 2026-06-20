@@ -2333,7 +2333,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.141</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.142</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -17150,13 +17150,13 @@ function renderAlerts(){
   const box = $('#inv-alerts');
   let html = '';
   if(zero.length){
-    html += `<div class="alert"><span class="ico">🚨</span><span class="msg">在庫切れ（発注なし） <b>${zero.length}</b>件</span><button data-alert="zero">確認</button></div>`;
+    html += `<div class="inv-alert"><span class="ico">🚨</span><span class="msg">在庫切れ（発注なし） <b>${zero.length}</b>件</span><button data-alert="zero">確認</button></div>`;
   }
   if(low.length){
-    html += `<div class="alert warn"><span class="ico">⚠️</span><span class="msg">要発注 <b>${low.length}</b>件</span><button data-alert="low">確認</button></div>`;
+    html += `<div class="inv-alert warn"><span class="ico">⚠️</span><span class="msg">要発注 <b>${low.length}</b>件</span><button data-alert="low">確認</button></div>`;
   }
   if(delayed.length){
-    html += `<div class="alert"><span class="ico">⏰</span><span class="msg">納品遅延 <b>${delayed.length}</b>件</span><button data-alert="delayed">確認</button></div>`;
+    html += `<div class="inv-alert"><span class="ico">⏰</span><span class="msg">納品遅延 <b>${delayed.length}</b>件</span><button data-alert="delayed">確認</button></div>`;
   }
   box.innerHTML = html;
 }
