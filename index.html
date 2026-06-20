@@ -2354,7 +2354,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.149</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.150</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -15027,10 +15027,19 @@ function renderRestoCard(p){
     cleanBadge = `<span class="rc-extra" title="${escapeHtml('クリーニング: '+p.cleaningContractor)}" style="background:#0ea5e9;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;flex-shrink:0">🧹${escapeHtml(p.cleaningContractor)}</span>`;
   }
   const extraBadgesHtml = keyBadge + disBadge + cleanBadge;
+  // 👤 見積担当者バッジ(色付き・フルネーム)。事前チップの見積バッジと同じ p.staff(見積作成者)を使用(v1.30.150・山田)
+  let estBadgeHtml = "";
+  if(p.staff && String(p.staff).trim()){
+    const estNm = (typeof getStaffDisplayName==='function') ? getStaffDisplayName(p.staff) : p.staff;
+    const estBg = (typeof staffColor_==='function') ? staffColor_(p.staff) : (STAFF_COLORS[p.staff] || "#64748b");
+    const estFg = textColorFor(estBg);
+    estBadgeHtml = `<span class="rc-est" title="見積担当: ${escapeHtml(p.staff)}" style="background:${estBg};color:${estFg};font-size:10px;font-weight:700;padding:1px 7px;border-radius:6px;flex-shrink:0">見積:${escapeHtml(estNm)}</span>`;
+  }
   return `
     <div class="resto-card st-${st}" data-id="${p.id}">
       <div class="rc-name">${escapeHtml(p.name||"(物件名なし)")} <span class="rc-room">${roomStr}</span></div>
       <div class="rc-row">
+        ${estBadgeHtml}
         ${volBadgeHtml}
         ${extraBadgesHtml}
         <span class="rc-progress-label">${progressLabel}</span>
