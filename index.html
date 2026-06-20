@@ -2354,7 +2354,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.153</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.154</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -13588,6 +13588,24 @@ async function cloudSyncPull({ replace=false }={}){
   return data;
 }
 
+// 🛡 事務タスク本文(複数行)を「タスク行のユニオン」でマージ。端末間でタスク行が消えるのを防ぐ(v1.30.154)
+function taskTextKey_(ln){
+  let w = String(ln||"").replace(/^\s*(🗑|📦)\s*/, "");   // ゴミ箱/アーカイブ印を除去
+  const m = w.match(TASK_BULLET_RE);
+  if(!m) return "";                                       // 箇条書きでない行(見出し等)は対象外
+  let t = (m[4]||"").replace(TASK_META_RE, "").replace(TASK_PRIO_RE, "").trim();
+  return t.normalize("NFKC").replace(/\s|　/g, "").toLowerCase();
+}
+function mergeJimuTitle_(winnerTitle, loserTitle){
+  const seen = new Set();
+  String(winnerTitle||"").split(/\r?\n/).forEach(ln=>{ const k=taskTextKey_(ln); if(k) seen.add(k); });
+  const extra = [];
+  String(loserTitle||"").split(/\r?\n/).forEach(ln=>{
+    const k = taskTextKey_(ln);
+    if(k && !seen.has(k)){ seen.add(k); extra.push(ln); }   // 相手にしか無いタスク行を救出
+  });
+  return extra.length ? (String(winnerTitle||"") + "\n" + extra.join("\n")) : (winnerTitle||"");
+}
 // id基準マージ: pending保護 + 削除伝播
 function cloudMergeById_(localArr, serverArr, pendingIds){
   pendingIds = pendingIds || new Set();
@@ -13610,7 +13628,29 @@ function cloudMergeById_(localArr, serverArr, pendingIds){
         const lU = String(oldLocal.updatedAt || "");
         const sU = String(newServer.updatedAt || "");
         const localIsNewer = lU && (!sU || lU > sU);
-        if(localIsNewer){
+        // 🛡 事務タスクは本文を行単位ユニオン。古いタスク一覧を持つ端末(別スマホ等)が後から
+        //   上書きしてもタスク行が消えない(v1.30.154)。これが「タスク消失」の2つ目の原因だった。
+        const isJimuTask = (oldLocal.category==='事務' || newServer.category==='事務')
+          && (String(oldLocal.title||'').indexOf('\n')>=0 || String(newServer.title||'').indexOf('\n')>=0);
+        if(isJimuTask){
+          const winner = localIsNewer ? oldLocal : newServer;
+          const loser  = localIsNewer ? newServer : oldLocal;
+          const mergedTitle = mergeJimuTitle_(winner.title, loser.title);
+          const result = localIsNewer ? oldLocal : newServer;
+          if(localIsNewer){
+            for(const k in newServer){ if(result[k] === undefined) result[k] = newServer[k]; }
+          }else{
+            LOCAL_ONLY_KEYS.forEach(k=>{ if(oldLocal[k] !== undefined && result[k] === undefined){ result[k] = oldLocal[k]; } });
+          }
+          if(mergedTitle !== (winner.title||"")){
+            result.title = mergedTitle;
+            result.updatedAt = new Date().toISOString();   // ユニオンで増えた=最新版としてサーバーへ伝播
+            if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(result, 'upsert'); }catch(_){} }
+          }else{
+            result.title = winner.title;
+          }
+          localArr[i] = result;
+        }else if(localIsNewer){
           // ローカル保持。サーバーにしか無いフィールドだけ補完(タイトル等の本文は触らない)
           for(const k in newServer){
             if(oldLocal[k] === undefined) oldLocal[k] = newServer[k];
