@@ -2337,7 +2337,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.143</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.144</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2729,7 +2729,7 @@
 <!-- ============= 📦在庫: シート/モーダル群 (body直下・position:fixed) ============= -->
 
 <!-- FAB quick action sheet -->
-<div class="inv-sheet-backdrop" id="inv-sheet-fab">
+<div class="inv-sheet-backdrop" id="sheet-fab">
   <div class="inv-sheet">
     <h3>新規記録</h3>
     <div class="inv-picker" style="grid-template-columns:1fr 1fr">
@@ -2742,7 +2742,7 @@
 </div>
 
 <!-- Order sheet -->
-<div class="inv-sheet-backdrop" id="inv-sheet-order">
+<div class="inv-sheet-backdrop" id="sheet-order">
   <div class="inv-sheet">
     <button class="inv-sheet-close" data-close>×</button>
     <h3 id="inv-ord-title">発注を記録</h3>
@@ -2790,7 +2790,7 @@
 </div>
 
 <!-- Receive sheet -->
-<div class="inv-sheet-backdrop" id="inv-sheet-receive">
+<div class="inv-sheet-backdrop" id="sheet-receive">
   <div class="inv-sheet">
     <button class="inv-sheet-close" data-close>×</button>
     <h3>入荷を記録</h3>
@@ -2821,7 +2821,7 @@
 </div>
 
 <!-- Consumption/Supply record sheet -->
-<div class="inv-sheet-backdrop" id="inv-sheet-record">
+<div class="inv-sheet-backdrop" id="sheet-record">
   <div class="inv-sheet">
     <button class="inv-sheet-close" data-close>×</button>
     <h3 id="inv-rec-title">消費記録</h3>
@@ -2875,7 +2875,7 @@
 </div>
 
 <!-- Item edit sheet -->
-<div class="inv-sheet-backdrop" id="inv-sheet-item">
+<div class="inv-sheet-backdrop" id="sheet-item">
   <div class="inv-sheet">
     <button class="inv-sheet-close" data-close>×</button>
     <h3 id="inv-item-title">品目を追加</h3>
@@ -2957,7 +2957,7 @@
 </div>
 
 <!-- Settings sheet -->
-<div class="inv-sheet-backdrop" id="inv-sheet-settings">
+<div class="inv-sheet-backdrop" id="sheet-settings">
   <div class="inv-sheet">
     <button class="inv-sheet-close" data-close>×</button>
     <h3>在庫管理 設定</h3>
@@ -3060,7 +3060,7 @@
 <input type="file" id="inv-csv-file" accept=".csv,text/csv" class="inv-hidden">
 
 <!-- CSV import preview sheet -->
-<div class="inv-sheet-backdrop" id="inv-sheet-csv">
+<div class="inv-sheet-backdrop" id="sheet-csv">
   <div class="inv-sheet">
     <button class="inv-sheet-close" data-close>×</button>
     <h3>品目CSVインポート</h3>
@@ -17555,10 +17555,13 @@ function showReport(){
 }
 
 function renderAll(){
-  renderHomeTabs();
-  renderLogMembers();
-  renderSuppliersAndSites();
-  renderSettingsInfo();
+  // 各描画を個別に try/catch: 1つが失敗しても他(特に一覧)が描画される。
+  // これが無いと init 時に1つでも throw すると renderAll 全体が中断→一覧が真っ白＋
+  // window.__invRenderAll(末尾で代入)が未定義になり、ビュー表示時の再描画も効かなくなる(v1.30.144)
+  try{ renderHomeTabs(); }catch(e){ console.error('[inv] renderHomeTabs failed', e); }
+  try{ renderLogMembers(); }catch(e){ console.error('[inv] renderLogMembers failed', e); }
+  try{ renderSuppliersAndSites(); }catch(e){ console.error('[inv] renderSuppliersAndSites failed', e); }
+  try{ renderSettingsInfo(); }catch(e){ console.error('[inv] renderSettingsInfo failed', e); }
 }
 
 // ---------- datalists ----------
@@ -18738,7 +18741,7 @@ function bindEvents(){
 
   // FAB
   $('#inv-fab').onclick = ()=> openSheet('sheet-fab');
-  $('#inv-sheet-fab').onclick = e=>{
+  $('#sheet-fab').onclick = e=>{
     const b = e.target.closest('[data-act]');
     if(!b) return;
     closeSheet('sheet-fab');
@@ -18988,14 +18991,15 @@ function startPolling(){
 function stopPolling(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
 
 // ---------- init ----------
+// 各ステップを try/catch で隔離: 1つが throw しても後続(特に showHome / 末尾の window.__invRenderAll 代入)
+// が必ず走るようにする。これが無いと初期化途中の例外で在庫が真っ白＋ビュー表示時の再描画も不能になる(v1.30.144)
 (function init(){
-  if(!load()) seed();
-  loadSyncConfig();
-  bindEvents();
-  itemPicker.bindEvents('rec');
-  itemPicker.bindEvents('ord');
-  updateSyncBadge();
-  showHome();
+  try{ if(!load()) seed(); }catch(e){ console.error('[inv init] load/seed failed', e); }
+  try{ loadSyncConfig(); }catch(e){ console.error('[inv init] loadSyncConfig failed', e); }
+  try{ bindEvents(); }catch(e){ console.error('[inv init] bindEvents failed', e); }
+  try{ itemPicker.bindEvents('rec'); itemPicker.bindEvents('ord'); }catch(e){ console.error('[inv init] itemPicker.bindEvents failed', e); }
+  try{ updateSyncBadge(); }catch(e){ console.error('[inv init] updateSyncBadge failed', e); }
+  try{ showHome(); }catch(e){ console.error('[inv init] showHome failed', e); }
   // 起動時自動同期: pending送信 + サーバー最新取得
   if(sync.url && sync.autoSync){
     setTimeout(runOpenSync, 200);
