@@ -2354,7 +2354,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.155</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.156</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4042,7 +4042,7 @@ const SNAP_SLOTS = [9, 13, 18];
 //   原状回復/物件マスタ/立会/修繕/最終確認はクラウド/Driveから再取得できるのでバックアップに含めない。
 //   軽くなったので保持期間・件数を元に戻す(2週間×3枠ぶん)。
 const SNAP_KEEP_DAYS = 14;
-const SNAP_MAX_COUNT = 42;
+const SNAP_MAX_COUNT = 24;   // v1.30.156: 軽量1個≒40KB。24個で約1MB(本体1.3MB+でも余裕)
 // 🪶 軽量バックアップの中身: ローカル編集で失うと困るデータだけ(events に事務タスクも含まれる)
 function buildLightSnap_(){
   return JSON.stringify({
@@ -4138,7 +4138,22 @@ function snapLabel_(key){
   if(tag.length>=4) return `${m}/${day}(${yobi}) ${tag.slice(0,2)}:${tag.slice(2,4)} のバックアップ`;  // HHMM(v1.30.153)
   return `${m}/${day}(${yobi}) ${parseInt(tag,10)}時のバックアップ`;   // 旧 HH 形式
 }
+// 🧹 旧形式(全データ丸ごと=2MB級)のバックアップを自動削除。軽量化(_light)以前の重いsnapが
+//   居座って容量を食う問題の自動修復(v1.30.156)。データはクラウド+本体にあるので消して安全。
+function cleanupLegacySnapshots_(){
+  try{
+    let freed = 0;
+    listSnapshots_().forEach(k=>{
+      const raw = localStorage.getItem(k); if(raw==null) return;
+      let light = false;
+      try{ const o = JSON.parse(raw); light = !!(o && o._light); }catch(_){ light = false; }
+      if(!light){ freed += raw.length; localStorage.removeItem(k); }   // _light印なし=旧フル形式→削除
+    });
+    if(freed) console.log('[snapshot] 旧形式バックアップを削除し '+Math.round(freed/1024)+'KB 解放(v1.30.156)');
+  }catch(_){}
+}
 // 起動15秒後(クラウド同期が落ち着いてから)＋以後5分おきに枠チェック
+setTimeout(cleanupLegacySnapshots_, 8000);   // 軽量化前の重いバックアップを掃除
 setTimeout(takeSnapshotIfDue_, 15000);
 setInterval(takeSnapshotIfDue_, 5*60*1000);
 
