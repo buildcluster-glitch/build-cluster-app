@@ -676,13 +676,15 @@
     border-bottom:1px solid var(--border-strong);background:#fafbfc;
     display:grid;
   }
+  /* v1.30.157: 折り返し表示に変更(以前は nowrap+横スクロールで、修繕アポが2つ並ぶと醜い横スクロールバー＆見切れ) */
   .allday-cell{
     border-right:1px solid var(--border);padding:3px;min-height:28px;position:relative;
-    display:flex;flex-wrap:nowrap;gap:2px;align-items:center;
-    overflow-x:auto;overflow-y:hidden;
+    display:flex;flex-wrap:wrap;gap:3px;align-items:flex-start;align-content:flex-start;
   }
   /* allday-cell内のバッジは縮まないように */
   .allday-cell .leave-badge{flex-shrink:0}
+  /* 修繕アポは1行1件(幅いっぱい)で、時刻・物件名まで読めるように(v1.30.157) */
+  .allday-cell .repair-appt-chip{flex:1 1 100%;max-width:100%}
   .allday-cell.today{background:var(--today)}
   /* 🔧 事前帯（休日帯の下・事前イベントを各日に格納）v1.30.134 */
   .jizen-band{
@@ -2354,7 +2356,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.156</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.157</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9770,8 +9772,8 @@ function renderCalendar(){
           const wKey = firstWorker_(worker);
           const wColor = repairWorkerColor_(wKey);
           const wFg = wColor === "#fff" ? "#0f172a" : textColorFor(wColor);
-          // 終日帯は名前を最優先で表示。時間文字列(「時間調整中」等)はラベルから外す→幅を物件名に回す(ツールチップ/ピッカーには残る) v1.30.50
-          const label = `🔧 ${r.name}${r.room?" "+r.room:""}`;
+          // v1.30.157: 1行1件(幅いっぱい)になったので、時刻(調整中等)も末尾に表示して詳細を出す
+          const label = `🔧 ${r.name}${r.room?" "+r.room:""}${t?`  ${t}`:""}`;
           const __vendorB = (r.responseContractor||"").trim();
           const __vendorBadgeB = __vendorB
             ? `<span style="background:#76a5af;color:#fff;font-size:9px;font-weight:700;padding:0 4px;border-radius:3px;margin-left:3px;white-space:nowrap">🛠${escapeHtml(__vendorB)}</span>`
