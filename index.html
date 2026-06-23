@@ -2361,7 +2361,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.169</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.170</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -10481,14 +10481,17 @@ function renderCalendar(){
           : (isMulti ? escapeHtml(ev.title || "").replace(/\n/g, "<br>") : escapeHtml(titleFirstLine));
         const titleClass = (taskInfo ? "chip-checklist " : "") + ((taskInfo || !isMulti) ? "chip-title single-line" : "chip-title multi-line");
         // タイトル文字は flex:1+省略で縮める→アイコン(📋等)が2行目に折返さず1行目に収まる(連携情報行が3行目以降に押し出されるのを防止)v1.30.97
+        // 複数行は担当バッジをタイトル本文の中(=末尾行の末尾)にインラインで流す。
+        //   別flexアイテムだと折返して3行目に回り見切れるため(v1.30.170)
         const __titleInner = (isMulti && !taskInfo)
-          ? titleHtml
+          ? `<span style="white-space:pre-wrap;min-width:0;flex:1 1 auto;word-break:break-word">${titleHtml}${staffBadges}</span>`
           : (taskInfo
               ? `<span class="ct-text" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${compactTaskHtml}</span>`
               : `<span style="display:inline-flex;min-width:0;flex:0 1 auto;align-items:baseline"><span class="ct-text" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(__nameMain)}</span>${__roomTail ? `<span class="ct-room" style="flex-shrink:0;font-weight:600">${escapeHtml(__roomTail)}</span>` : ""}</span>`);
         const timeBox = isAnytime ? "" : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;
         // 参加者バッジ/見積行は title 外(チップ直下)に独立行として配置。工事ボリュームは号室の隣(__volBadge)。
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${__skipBadge}${staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${__alertHtml}`;
+        // ※複数行タイトル時は staffBadges を __titleInner 内に入れ込み済みなので外側では出さない(v1.30.170)
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${__skipBadge}${isMulti ? '' : staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${__alertHtml}`;
         // 担当色がある(1名でも)ならチップ全面を着色(v1.30.124: 単独担当で半分しか色が付かない問題)。色無し+複数バッジは薄グレー地
         if(__jizenSkip || staffBadges || !__whiteBg){ el.classList.add('chip-has-staffs'); if(__jizenSkip || !__whiteBg) el.style.setProperty('--card-bg', chipBg); }
         if(__jizenSkip) el.classList.add('chip-skip-visit');
@@ -10501,12 +10504,12 @@ function renderCalendar(){
         const titleClass = (taskInfo ? "chip-checklist " : "") + ((taskInfo || !isMulti) ? "chip-title single-line" : "chip-title multi-line");
         el.classList.add("event-chip");
         const __titleInner = (isMulti && !taskInfo)
-          ? titleHtml
+          ? `<span style="white-space:pre-wrap;min-width:0;flex:1 1 auto;word-break:break-word">${titleHtml}${staffBadges}</span>`
           : (taskInfo
               ? `<span class="ct-text" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${compactTaskHtml}</span>`
               : `<span style="display:inline-flex;min-width:0;flex:0 1 auto;align-items:baseline"><span class="ct-text" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(__nameMain)}</span>${__roomTail ? `<span class="ct-room" style="flex-shrink:0;font-weight:600">${escapeHtml(__roomTail)}</span>` : ""}</span>`);
         const timeBox = isAnytime ? "" : `<span class="chip-time">終日</span>`;
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${__skipBadge}${staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${__alertHtml}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${__skipBadge}${isMulti ? '' : staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${__alertHtml}`;
         // 担当色がある(1名でも)ならチップ全面を着色(v1.30.124: 単独担当で半分しか色が付かない問題)。色無し+複数バッジは薄グレー地
         if(__jizenSkip || staffBadges || !__whiteBg){ el.classList.add('chip-has-staffs'); if(__jizenSkip || !__whiteBg) el.style.setProperty('--card-bg', chipBg); }
         if(__jizenSkip) el.classList.add('chip-skip-visit');
