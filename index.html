@@ -276,14 +276,6 @@
   .calendar-body::-webkit-scrollbar-button:hover{background:#6b7280}
   .sticky-row{position:sticky;background:#fafbfc;z-index:9}
   .calendar-head.sticky-row{top:0;z-index:11}
-  /* 📱 スマホ: カレンダーは横30日カルーセル+縦タイムグリッドの2次元スクロール。
-     iOS等は2次元スクロールで軸ロックされず、縦スクロール時に横へドリフト=横ゆれが起きる。
-     横軸を「日」境界にスナップ固定→縦スクロールで横位置がずれても日頭に戻り、横ゆれが収まる。
-     scroll-padding-left は左固定の時間列(50px)分(スナップ位置が時間列の裏に隠れないように)。v1.30.177 */
-  @media (max-width:700px){
-    .calendar-body{ scroll-snap-type:x mandatory; scroll-padding-left:50px; }
-    .calendar-grid > .day-col{ scroll-snap-align:start; }
-  }
   /* 休暇帯はスクロール追従しない(日付ヘッダ直下に1回だけ) */
   .allday-band{position:relative;background:#fafbfc;z-index:8;min-width:max-content}
   .calendar-grid{
@@ -1872,8 +1864,8 @@
     .checks-header .title{font-size:11px}
     .checks-header .title::after{content:" ⇄ 横にスクロール";font-size:9px;font-weight:400;color:#94a3b8}
     #syncCheckBtn{font-size:11px;padding:4px 8px}
-    /* 📱 3日/日ビューの時間グリッドは縦スクロールのみ許可 → 横フリックは日送りに使う
-       (月=30日ビューは .tswipe が付かないので横パンで自然スクロール) */
+    /* 📱 全カレンダービューの時間グリッドは縦スクロールのみ許可(touch-action:pan-y)→縦スクロール時の横ゆれ防止。
+       横移動は横フリックで(月=横スクロール / 3日・日=日送り)。v1.30.178 */
     #calGrid.tswipe{touch-action:pan-y}
     /* 📱 チップは完全1行省略 (狭い列で子要素が折返すと28px枠外に隠れ「空白チップ」になるため)。
        PCは連携情報行の2行目折返しを維持するのでこの指定はスマホ限定 */
@@ -2376,7 +2368,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.177</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.178</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4386,9 +4378,10 @@ function render(){
     const __mk = ['task','repair','resto','inventory'].includes(currentView) ? currentView : 'cal';
     __mn.querySelectorAll('button').forEach(b=>b.classList.toggle('active', b.dataset.mnav===__mk));
   }
-  // 📱 月(30日)ビューは横パンでスクロール / それ以外の時間グリッドは横フリック=日送り
+  // 📱 全カレンダービューで時間グリッドは縦スクロールのみ(touch-action:pan-y)→縦スクロール時の横ゆれ防止。
+  //   横移動は横フリック(月=横スクロール / 他=日送り)で行う。v1.30.178(旧: 月だけ横パン自由スクロール=横ゆれの原因)
   const __cg = document.getElementById('calGrid');
-  if(__cg) __cg.classList.toggle('tswipe', currentView !== 'month');
+  if(__cg) __cg.classList.toggle('tswipe', true);
   renderHeader();
   renderStaffLegend();
 
@@ -13116,7 +13109,13 @@ document.getElementById("nextBtn").onclick = ()=>navigate(1);
 // 📱 スワイプ日送り: ビューの表示スパン分だけ移動 (‹›の月ジャンプとは別・細かい送り)
 function swipeNavigate_(dir){
   if(["task","repair","resto","inventory"].includes(currentView)) return;
-  if(currentView === "month"){ navigate(dir); return; }
+  if(currentView === "month"){
+    // 📱 月(30日)ビュー: 横フリックでレンダ済み30日ウィンドウを横スクロール(再描画なし・滑らか)。
+    //   ウィンドウ外(30日超)へは ‹› (±30日) で移動。v1.30.178
+    const body = document.getElementById("calBody");
+    if(body) body.scrollBy({ left: dir * Math.round(body.clientWidth * 0.85), behavior: "smooth" });
+    return;
+  }
   const span = currentView==="week" ? 7 : (currentView==="3day" ? 3 : 1);
   currentDate = addDays(currentDate, dir*span);
   render();
@@ -13128,7 +13127,6 @@ function swipeNavigate_(dir){
   document.addEventListener('pointerdown', e=>{
     active = false;
     if(e.pointerType !== 'touch') return;
-    if(currentView === 'month') return;  // 月(30日)ビューは横パン=スクロールに譲る
     if(!e.target.closest('#calGrid')) return;
     if(e.target.closest('.event, .month-event, .check-card')) return;
     sx = e.clientX; sy = e.clientY; st = Date.now(); active = true;
