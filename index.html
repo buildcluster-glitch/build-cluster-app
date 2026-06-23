@@ -2361,7 +2361,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.164</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.165</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -10078,22 +10078,29 @@ function renderCalendar(){
     const last = toks[toks.length-1] || "";
     return /\d{2,}/.test(last) ? normRoom_(last) : ""; // 2桁以上の数字を含む末尾トークンのみ号室扱い
   }
-  function getEventLinkInfo_(ev){
+  // ⚡ タイトル→原状回復レコードの照合は重い(チップ毎に~285件スキャン)。1描画内でタイトル単位にキャッシュ(v1.30.165)
+  //   getEventLinkInfo_ と getEventResto_ で同じ照合をしていたのを共通化(号室ガード込み)。
+  const __restoMatchCache = new Map();
+  function findEventResto_(ev){
     const t = String(ev?.title||"").trim();
-    if(!t) return { html:"", text:"" };
+    if(!t) return null;
+    if(__restoMatchCache.has(t)) return __restoMatchCache.get(t);
     const tNorm = t.replace(/\s+/g,"");
-    const tRoom = titleRoom_(t); // タイトルの号室(あれば)
-    let r = null;
+    const tRoom = titleRoom_(t);
+    let found = null;
     for(const m of __restoMatchList){
       let hit = t.includes(m.key);
       if(!hit){ const kNorm = m.key.replace(/\s+/g,""); hit = kNorm && tNorm.includes(kNorm); }
       if(!hit) continue;
-      // 🔒 号室ガード: タイトルに号室があり、候補レコードの号室と食い違うなら別案件 → スキップ
-      // (物件名だけ一致で別号室のデータを誤って拾うのを防ぐ。号室なしタイトルは従来どおり)
       const rRoom = normRoom_(m.resto.room);
-      if(tRoom && rRoom && tRoom !== rRoom) continue;
-      r = m.resto; break;
+      if(tRoom && rRoom && tRoom !== rRoom) continue;   // 🔒 号室ガード
+      found = m.resto; break;
     }
+    __restoMatchCache.set(t, found);
+    return found;
+  }
+  function getEventLinkInfo_(ev){
+    const r = findEventResto_(ev);
     if(!r) return { html:"", text:"" };
     const htmlParts = [];
     const textParts = []; // 文字数推定用
@@ -10159,18 +10166,8 @@ function renderCalendar(){
     const SEP = `<span style="opacity:.35;margin:0 1px">·</span>`;
     return { html: htmlParts.map(p=>`<span style="white-space:nowrap">${p}</span>`).join(SEP), text: textParts.join("·") };
   }
-  // イベントタイトルにひもづく原状回復物件を返す(なければnull)。📋進捗アイコン用。
-  function getEventResto_(ev){
-    const t = String(ev?.title||"").trim();
-    if(!t) return null;
-    const tNorm = t.replace(/\s+/g,"");
-    for(const m of __restoMatchList){
-      if(t.includes(m.key)) return m.resto;
-      const kNorm = m.key.replace(/\s+/g,"");
-      if(kNorm && tNorm.includes(kNorm)) return m.resto;
-    }
-    return null;
-  }
+  // イベントタイトルにひもづく原状回復物件を返す(なければnull)。📋進捗アイコン用。共通キャッシュ照合を使用(v1.30.165)
+  function getEventResto_(ev){ return findEventResto_(ev); }
   cols.forEach(c=>{
     const dayCol = grid.querySelector(`.day-col[data-col-key="${c.key}"]`);
     const subCols = dayCol.querySelectorAll(".sub-col");
