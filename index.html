@@ -855,6 +855,9 @@
     cursor:pointer;border-left:3px solid rgba(0,0,0,.18) !important;
   }
   .repair-appt-grid:hover{filter:brightness(1.06);box-shadow:0 2px 6px rgba(0,0,0,.18)}
+  /* 🔆 アポ日/位置を変更した直後、移動先のチップを光らせて「ここに移った」を明示(v1.30.163) */
+  @keyframes repairFlash{0%,100%{box-shadow:none;outline-color:transparent}15%,70%{box-shadow:0 0 12px 2px rgba(37,99,235,.6);outline-color:#2563eb}}
+  .repair-flash{animation:repairFlash 1.6s ease-in-out 1;outline:2px solid transparent;outline-offset:1px;border-radius:8px}
   /* 🔍 スケジュール検索 */
   .modal-overlay .modal.modal-search{max-width:560px;width:100%}
   .sch-search-box{display:flex;gap:8px;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border)}
@@ -2357,7 +2360,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.162</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.163</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -11391,6 +11394,11 @@ function createDotakyanGhost_(label, date, time){
   if(typeof showAutoSyncToast==='function') showAutoSyncToast(`🚫 ${date} にドタキャン跡を残しました。新しい日付に変更してください`);
   return ev;
 }
+// 🔆 修繕チップを光らせる(変更/移動の完了を明示)。render後に呼ぶ。v1.30.163
+function flashRepairChip_(id){
+  if(!id) return;
+  try{ requestAnimationFrame(()=>{ document.querySelectorAll('[data-repair-id="'+id+'"]').forEach(el=>{ el.classList.remove('repair-flash'); void el.offsetWidth; el.classList.add('repair-flash'); }); }); }catch(_){}
+}
 // 🖱 ドロップ位置の要素から日付(ISO)を取得。終日帯セル/事前帯セル/日付列ヘッダ/サブ列(date-)を見る
 function repairDropDate_(node){
   if(!node || !node.closest) return "";
@@ -11446,7 +11454,7 @@ function attachRepairDateDrag_(el, r){
       if(dateChanged){
         const prev = { responseDate: r.responseDate };
         r.responseDate = dateStr;   // ISO。時刻(responseTime)は触らない=未設定のまま
-        saveState(); render();
+        saveState(); render(); flashRepairChip_(r.id);
         const dd = (typeof parseDate==='function') ? parseDate(dateStr) : null;
         const lbl = (dd && !isNaN(dd)) ? `${dd.getMonth()+1}/${dd.getDate()}` : dateStr;
         if(r.extDriveFileId){
@@ -11459,7 +11467,8 @@ function attachRepairDateDrag_(el, r){
           }
         }
       } else if(posChanged){
-        render();   // 位置だけ変更=台帳は触らず再描画(共有設定repair_posは別途push済)
+        render(); flashRepairChip_(r.id);   // 位置だけ変更=台帳は触らず再描画(共有設定repair_posは別途push済)
+        if(typeof showAutoSyncToast==='function') showAutoSyncToast('🔧 修繕の表示位置を変更しました(時刻は記録なし)');
       }
     };
     document.addEventListener('pointermove',onMove);
@@ -11610,13 +11619,15 @@ function showRepairQuickPop(r, anchorEl){
     r.responseTime = nt;
     saveState();
     render();   // チップが新しい日時へ即移動
+    flashRepairChip_(r.id);   // 🔆 移動先を光らせて明示(v1.30.163)
     if(r.extDriveFileId){
-      btn.textContent = '送信中…'; btn.disabled = true;
+      btn.textContent = '💾 保存中…'; btn.disabled = true;
       try{
         const fields = { responseDate: nd, responseTime: nt };
         await pushAppointmentToGAS(r.extDriveFileId, fields);
-        btn.textContent = '✓ 変更済';
-        setTimeout(()=>{ btn.textContent='変更'; btn.disabled=false; }, 1500);
+        btn.textContent = '✓ 変更しました';
+        if(typeof showAutoSyncToast==='function'){ const dd2=parseDate(nd); showAutoSyncToast(`✅ アポ日を ${(dd2&&!isNaN(dd2))?`${dd2.getMonth()+1}/${dd2.getDate()}`:nd}${nt?` ${nt}`:''} に変更しました`); }
+        setTimeout(()=>{ btn.textContent='変更'; btn.disabled=false; }, 1800);
       }catch(err){
         Object.assign(r, prev); saveState(); render();
         btn.textContent = '変更'; btn.disabled = false;
