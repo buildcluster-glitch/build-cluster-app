@@ -2361,7 +2361,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.167</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.168</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -8712,9 +8712,13 @@ async function syncChecksFromGAS(opts){
     }
     return;
   }
+  let _drvSilentTimer = null, _drvSilentShown = false;
   if(!silent){
     showSyncIndicator("Drive から読み込み中...");
     setSyncBtnLoading(true);
+  }else{
+    // 🔄 静かな自動同期でも、遅い(>600ms)時だけ「ドライブ同期中」をカレンダーに表示(v1.30.168)
+    _drvSilentTimer = setTimeout(()=>{ _drvSilentShown=true; if(typeof showSyncIndicator==='function') showSyncIndicator("🔄 ドライブ同期中…"); if(typeof setSyncBtnLoading==='function') setSyncBtnLoading(true); }, 600);
   }
   // 差分検出用に旧データを保持
   const oldByExt = new Map();
@@ -8857,6 +8861,7 @@ async function syncChecksFromGAS(opts){
     lastAutoSyncAt = Date.now();
     render();
     if(silent){
+      if(_drvSilentShown) hideSyncIndicator("success", "✅ ドライブ同期完了");   // 遅延表示してたら閉じる
       // 差分があった時だけ右下トースト
       if(finalDateChanges > 0){
         showAutoSyncToast(`✅ 最終確認日が更新されました (${finalDateChanges}件)`);
@@ -8868,8 +8873,10 @@ async function syncChecksFromGAS(opts){
   }catch(e){
     console.error(e);
     if(!silent) hideSyncIndicator("error", "同期失敗: " + e.message);
+    else if(_drvSilentShown) hideSyncIndicator("error", "ドライブ同期失敗");
   }finally{
-    if(!silent) setSyncBtnLoading(false);
+    if(_drvSilentTimer) clearTimeout(_drvSilentTimer);
+    if(!silent || _drvSilentShown) setSyncBtnLoading(false);
   }
 }
 
