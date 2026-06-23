@@ -2357,7 +2357,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.159</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.160</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9877,6 +9877,8 @@ function renderCalendar(){
       const r2 = (state.repairs||[]).find(x=>x.id===el.dataset.repairId);
       if(r2) showRepairQuickPop(r2, el);
     };
+    // 🖱 アポ時刻未設定(終日帯)の修繕は別の日へドラッグしてアポ日を変更できる(台帳に書き戻し)v1.30.160
+    if(r && typeof attachRepairDateDrag_==='function') attachRepairDateDrag_(el, r);
   });
 
   // 時間グリッド
@@ -11294,6 +11296,70 @@ function createDotakyanGhost_(label, date, time){
   if(typeof render==='function') render();
   if(typeof showAutoSyncToast==='function') showAutoSyncToast(`🚫 ${date} にドタキャン跡を残しました。新しい日付に変更してください`);
   return ev;
+}
+// 🖱 ドロップ位置の要素から日付(ISO)を取得。終日帯セル/事前帯セル/日付列ヘッダ/サブ列(date-)を見る
+function repairDropDate_(node){
+  if(!node || !node.closest) return "";
+  const a = node.closest('[data-allday-date]'); if(a && a.dataset.alldayDate) return a.dataset.alldayDate;
+  const j = node.closest('[data-jizen-date]'); if(j && j.dataset.jizenDate) return j.dataset.jizenDate;
+  const h = node.closest('.day-col-header[data-date]'); if(h && h.dataset.date) return h.dataset.date;
+  const col = node.closest('[data-col-key]'); if(col){ const k = col.dataset.colKey||""; if(k.indexOf("date-")===0) return k.slice(5); }
+  return "";
+}
+// 🖱 アポ時刻未設定(終日帯)の修繕アポを別の日へドラッグ→アポ日(responseDate)変更。台帳(Drive/GAS)に書き戻す。v1.30.160
+//   時刻設定は編集シートから(山田の指定=日付移動だけ)。PCのみ(touchは誤操作防止で無効)。
+function attachRepairDateDrag_(el, r){
+  el.style.cursor = "grab";
+  el.onpointerdown = (pd)=>{
+    if(pd.button!==undefined && pd.button!==0) return;
+    if(pd.pointerType==='touch') return;   // スマホはドラッグ無効
+    const sx=pd.clientX, sy=pd.clientY; let started=false, ghost=null, ind=null;
+    const onMove=(mv)=>{
+      const dx=mv.clientX-sx, dy=mv.clientY-sy;
+      if(!started && Math.hypot(dx,dy)>6){
+        started=true; el.classList.add('dragging-source');
+        const rect=el.getBoundingClientRect();
+        ghost=document.createElement('div'); ghost.className='event-ghost';
+        ghost.style.width=rect.width+'px'; ghost.style.minHeight=rect.height+'px';
+        ghost.style.background=el.style.background||'#ec4899'; ghost.style.color=el.style.color||'#fff';
+        ghost.innerHTML=el.innerHTML; document.body.appendChild(ghost);
+        ind=document.createElement('div'); ind.className='drop-indicator'; ind.style.display='none'; document.body.appendChild(ind);
+      }
+      if(started){
+        ghost.style.left=(mv.clientX+10)+'px'; ghost.style.top=(mv.clientY+10)+'px';
+        ghost.style.display='none'; const t=document.elementFromPoint(mv.clientX, mv.clientY); ghost.style.display='';
+        const colEl = t && t.closest && (t.closest('.day-col')||t.closest('.allday-cell')||t.closest('.jizen-cell')||t.closest('.day-col-header'));
+        if(colEl && repairDropDate_(t)){ const cr=colEl.getBoundingClientRect(); ind.style.display=''; ind.style.left=(cr.left)+'px'; ind.style.top=(cr.top)+'px'; ind.style.width=(cr.width)+'px'; ind.style.height='3px'; }
+        else ind.style.display='none';
+      }
+    };
+    const onUp=async (up)=>{
+      document.removeEventListener('pointermove',onMove);
+      document.removeEventListener('pointerup',onUp);
+      el.classList.remove('dragging-source');
+      if(ghost) ghost.remove(); if(ind) ind.remove();
+      if(!started) return;   // 動かしてない=クリック扱い(ダブルクリックでピッカーは別途)
+      const dateStr = repairDropDate_(document.elementFromPoint(up.clientX, up.clientY));
+      if(!dateStr || dateStr === r.responseDate) return;
+      const prev = { responseDate: r.responseDate };
+      r.responseDate = dateStr;   // ISO。時刻(responseTime)は触らない=未設定のまま
+      saveState(); render();
+      const dd = (typeof parseDate==='function') ? parseDate(dateStr) : null;
+      const lbl = (dd && !isNaN(dd)) ? `${dd.getMonth()+1}/${dd.getDate()}` : dateStr;
+      if(typeof showAutoSyncToast==='function') showAutoSyncToast(`🔧 修繕アポ日を ${lbl} に変更（台帳に書き戻し中…）`);
+      if(r.extDriveFileId){
+        try{
+          await pushAppointmentToGAS(r.extDriveFileId, { responseDate: dateStr, responseTime: (r.responseTime||"") });
+          if(typeof showAutoSyncToast==='function') showAutoSyncToast(`✅ 修繕アポ日を ${lbl} に変更しました`);
+        }catch(err){
+          Object.assign(r, prev); saveState(); render();
+          alert('Drive書き戻しに失敗（元に戻しました）:\n' + err.message);
+        }
+      }
+    };
+    document.addEventListener('pointermove',onMove);
+    document.addEventListener('pointerup',onUp);
+  };
 }
 function showRepairQuickPop(r, anchorEl){
   closeQuickPop();
