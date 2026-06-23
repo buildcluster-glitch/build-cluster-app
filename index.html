@@ -2357,7 +2357,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.161</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.162</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7293,6 +7293,39 @@ function getOrConsolidateJimuEvent_(staff){
   });
   saveState();
   return canon;
+}
+// 🔁 全スタッフの事務イベントをID違いでも1人1個に自動統合(クラウド同期のたびに実行)v1.30.162
+//   PCとスマホで別IDの事務表ができて分裂する問題の根本対策。タスク行はユニオン(消えない)・空の重複は削除。
+function consolidateAllJimu_(){
+  try{
+    const byStaff={};
+    (state.events||[]).forEach(e=>{ if(e&&e.category==='事務'&&e.staff&&e.title){ (byStaff[e.staff]=byStaff[e.staff]||[]).push(e); } });
+    let changed=false;
+    const lineCount=e=>String(e.title||'').split(/\r?\n/).filter(l=>/[・･\-●▪◦*]/.test(l)).length;
+    Object.keys(byStaff).forEach(staff=>{
+      const evs=byStaff[staff];
+      if(evs.length<2) return;
+      // canonical=タスク行最多→同数はid小(全端末で同じ勝者になるよう安定ソート)
+      evs.sort((a,b)=> (lineCount(b)-lineCount(a)) || String(a.id||'').localeCompare(String(b.id||'')));
+      const canon=evs[0];
+      const canonLines=String(canon.title||'').split(/\r?\n/);
+      const seen=new Set(canonLines.map(taskTextKey_).filter(Boolean));
+      evs.slice(1).forEach(ev=>{
+        // 本文のタスク行を canonical にユニオン(相手にしか無い行を救出)
+        String(ev.title||'').split(/\r?\n/).forEach(ln=>{ const k=taskTextKey_(ln); if(k && !seen.has(k)){ seen.add(k); canonLines.push(ln); } });
+        // 💬 業務連絡(messages)も統合
+        if(Array.isArray(ev.messages)&&ev.messages.length){ if(!Array.isArray(canon.messages)) canon.messages=[]; const ids=new Set(canon.messages.map(m=>m&&m.id)); ev.messages.forEach(m=>{ if(m&&m.id&&!ids.has(m.id)){ canon.messages.push(m); ids.add(m.id);} }); }
+        // 重複イベント削除(tombstoneで全端末に伝播)
+        const idx=state.events.indexOf(ev); if(idx>=0) state.events.splice(idx,1);
+        if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(ev,'delete'); }catch(_){} }
+        changed=true;
+      });
+      const newTitle=canonLines.join('\n');
+      if(newTitle!==canon.title){ canon.title=newTitle; canon.updatedAt=new Date().toISOString(); if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(canon,'upsert'); }catch(_){} } changed=true; }
+    });
+    if(changed) saveState();
+    return changed;
+  }catch(_){ return false; }
 }
 // 📌 指定スタッフの事務タスクリストへ1行追加(無ければ新規作成)。by=追加した人。追加先イベントを返す
 function addTaskToStaff_(staff, text, by){
@@ -13745,6 +13778,7 @@ async function cloudSyncPull({ replace=false }={}){
       .filter(e=> typeof isEventTombstoned_!=='function' || !isEventTombstoned_(e));
     cloudMergeById_(state.events, __remoteEvents, pendingEventIds);
     if(typeof applyEventDeletionsToState_==='function') applyEventDeletionsToState_();  // ローカルの削除済も除去
+    if(typeof consolidateAllJimu_==='function') consolidateAllJimu_();  // 🔁 ID違いで分裂した事務イベントを1人1個に自動統合(v1.30.162)
     if(!state.cloudProperties) state.cloudProperties = [];
     cloudMergeById_(state.cloudProperties,   (data.properties||[]).map(normalizeCloudProperty_), pendingPropertyIds);
     if(!state.cloudLogs) state.cloudLogs = [];
