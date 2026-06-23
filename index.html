@@ -2357,7 +2357,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.158</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.159</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9763,7 +9763,8 @@ function renderCalendar(){
           // バッジ: テキスト="修繕"固定 / 色=元請けカラー (山一なら紫、みどりなら緑など)
           const tagSpan = `<span style="background:${tagBg};color:${textColorFor(tagBg)};padding:0 5px;border-radius:3px;font-size:10px;font-weight:700;margin-right:4px" title="${escapeHtml(r.contractor||'')}">修繕</span>`;
           // 進行ステータスのミニバッジ (v1.30.14): 左バー色だけでは「アポ・手配 未」が読み取れないため明示
-          const __wfMini = {"アポ・手配 未":"📞未", "アポ・手配 済":"📞済", "待機":"待機", "長期連絡なし":"長期"}[wf] || "";
+          // アポ済バッジは不要(カレンダーに載ってる=済が普通)なので非表示。未/待機/長期=要注意は残す(v1.30.159・山田)
+          const __wfMini = {"アポ・手配 未":"📞未", "待機":"待機", "長期連絡なし":"長期"}[wf] || "";
           const wfMiniSpan = __wfMini
             ? `<span style="background:${wfBar};color:#fff;padding:0 4px;border-radius:3px;font-size:9px;font-weight:700;margin-right:3px;white-space:nowrap" title="${escapeHtml(wf)}">${__wfMini}</span>`
             : "";
