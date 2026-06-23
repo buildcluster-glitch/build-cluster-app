@@ -2361,7 +2361,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.166</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.167</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -12161,8 +12161,21 @@ function attachDragOrClick(el, ev){
       const endMin = Math.min((HOUR_END)*60, startMin + duration);
       const target_ev = state.events.find(e=>e.id===ev.id);
       if(!target_ev){ render(); return; }
-      // 🔄 「予定を移動中…」を出してから適用(描画ブロック前に表示を1回描かせる)→完了でフラッシュ(v1.30.166)
-      if(typeof showSyncIndicator==='function') showSyncIndicator("🔄 予定を移動中…");
+      // 🚀 体感ラグ削減(v1.30.167): まずチップを移動先へ"即"動かして光らせる(楽観表示)→重い再描画は次tickで。
+      //   これで「ドロップ→消える→100ms後に出る」のラグが無くなり、即移動＋光って分かるようになる。
+      try{
+        const destCol = document.querySelector('.day-col[data-col-key="'+colKey+'"]');
+        if(destCol){
+          if(currentView==='month'){
+            const cell = destCol.querySelector('.hour-cell[data-hour="'+Math.floor(startMin/60)+'"]');
+            if(cell){ el.style.top=''; el.style.left=''; el.style.right=''; el.style.marginTop=''; cell.appendChild(el); }
+          }else{
+            const sc = destCol.querySelector('.sub-col');
+            if(sc){ el.style.top=((startMin-HOUR_START*60)/60*HOUR_PX)+'px'; el.style.left='2px'; el.style.right='2px'; sc.appendChild(el); }
+          }
+          el.classList.remove('repair-flash'); void el.offsetWidth; el.classList.add('repair-flash');
+        }
+      }catch(_){}
       setTimeout(()=>{
         pushHistory();
         if(target_ev.allday){
@@ -12185,8 +12198,8 @@ function attachDragOrClick(el, ev){
         if(typeof cloudQueueEventChange === 'function') cloudQueueEventChange(target_ev, 'upsert');
         render();
         if(typeof flashEventChip_==='function') flashEventChip_(target_ev.id);
-        if(typeof hideSyncIndicator==='function') hideSyncIndicator("success", "✅ 予定を移動しました");
-      }, 20);
+        if(typeof showAutoSyncToast==='function') showAutoSyncToast("✅ 予定を移動しました");
+      }, 0);
     };
 
     document.addEventListener("pointermove", onMove);
