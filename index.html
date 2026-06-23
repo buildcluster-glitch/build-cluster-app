@@ -2361,7 +2361,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.165</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.166</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -11397,6 +11397,11 @@ function flashRepairChip_(id){
   if(!id) return;
   try{ requestAnimationFrame(()=>{ document.querySelectorAll('[data-repair-id="'+id+'"]').forEach(el=>{ el.classList.remove('repair-flash'); void el.offsetWidth; el.classList.add('repair-flash'); }); }); }catch(_){}
 }
+// 🔆 予定チップを光らせる(移動完了を明示)。render後に呼ぶ。v1.30.166
+function flashEventChip_(id){
+  if(!id) return;
+  try{ requestAnimationFrame(()=>{ document.querySelectorAll('[data-event-id="'+id+'"]').forEach(el=>{ el.classList.remove('repair-flash'); void el.offsetWidth; el.classList.add('repair-flash'); }); }); }catch(_){}
+}
 // 🖱 ドロップ位置の要素から日付(ISO)を取得。終日帯セル/事前帯セル/日付列ヘッダ/サブ列(date-)を見る
 function repairDropDate_(node){
   if(!node || !node.closest) return "";
@@ -12139,6 +12144,7 @@ function attachDragOrClick(el, ev){
           saveState();
           if(typeof cloudQueueEventChange === 'function') cloudQueueEventChange(tev, 'upsert');
           render();
+          if(typeof flashEventChip_==='function') flashEventChip_(tev.id);
           return;
         }
         // jizen-cell外 → 下の sub-col(時間グリッド)処理へ続行(時刻割当=timed化)
@@ -12155,26 +12161,32 @@ function attachDragOrClick(el, ev){
       const endMin = Math.min((HOUR_END)*60, startMin + duration);
       const target_ev = state.events.find(e=>e.id===ev.id);
       if(!target_ev){ render(); return; }
-      pushHistory();
-      if(target_ev.allday){
-        // 終日: freeTop を更新（時刻は触らない）
-        const rawTop = upEv.clientY - colRect.top - offsetY;
-        target_ev.freeTop = Math.max(0, Math.round(rawTop / 4) * 4); // 4px単位スナップ
-      }else{
-        target_ev.start = `${pad(Math.floor(startMin/60))}:${pad(startMin%60)}`;
-        target_ev.end   = `${pad(Math.floor(endMin/60))}:${pad(endMin%60)}`;
-        // 🔧 事前を9-18時グリッドにドロップ→時刻あり(timed)にして帯から時間グリッドへ移す(v1.30.136)
-        if(__isJizenDrag) target_ev.timeMode = "timed";
-      }
-      if(colKey.startsWith("date-")){
-        target_ev.date = colKey.replace("date-","");
-      }else if(colKey.startsWith("staff-")){
-        target_ev.staff = colKey.replace("staff-","");
-      }
-      target_ev.updatedAt = new Date().toISOString();
-      saveState();
-      if(typeof cloudQueueEventChange === 'function') cloudQueueEventChange(target_ev, 'upsert');
-      render();
+      // 🔄 「予定を移動中…」を出してから適用(描画ブロック前に表示を1回描かせる)→完了でフラッシュ(v1.30.166)
+      if(typeof showSyncIndicator==='function') showSyncIndicator("🔄 予定を移動中…");
+      setTimeout(()=>{
+        pushHistory();
+        if(target_ev.allday){
+          // 終日: freeTop を更新（時刻は触らない）
+          const rawTop = upEv.clientY - colRect.top - offsetY;
+          target_ev.freeTop = Math.max(0, Math.round(rawTop / 4) * 4); // 4px単位スナップ
+        }else{
+          target_ev.start = `${pad(Math.floor(startMin/60))}:${pad(startMin%60)}`;
+          target_ev.end   = `${pad(Math.floor(endMin/60))}:${pad(endMin%60)}`;
+          // 🔧 事前を9-18時グリッドにドロップ→時刻あり(timed)にして帯から時間グリッドへ移す(v1.30.136)
+          if(__isJizenDrag) target_ev.timeMode = "timed";
+        }
+        if(colKey.startsWith("date-")){
+          target_ev.date = colKey.replace("date-","");
+        }else if(colKey.startsWith("staff-")){
+          target_ev.staff = colKey.replace("staff-","");
+        }
+        target_ev.updatedAt = new Date().toISOString();
+        saveState();
+        if(typeof cloudQueueEventChange === 'function') cloudQueueEventChange(target_ev, 'upsert');
+        render();
+        if(typeof flashEventChip_==='function') flashEventChip_(target_ev.id);
+        if(typeof hideSyncIndicator==='function') hideSyncIndicator("success", "✅ 予定を移動しました");
+      }, 20);
     };
 
     document.addEventListener("pointermove", onMove);
