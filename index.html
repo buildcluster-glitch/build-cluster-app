@@ -2369,7 +2369,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.180</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.181</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -10036,13 +10036,8 @@ function renderCalendar(){
   allday.querySelectorAll("[data-repair-id]").forEach(el=>{
     const r = (state.repairs||[]).find(x=>x.id===el.dataset.repairId);
     if(r) attachRepairChipHover(el, r);
-    // 単クリック無効・ダブルクリックで作業担当者ピッカー(内側に✎詳細編集)— 他チップと統一(v1.24.6)
-    el.onclick = (e)=>{ e.stopPropagation(); };
-    el.ondblclick = (e)=>{
-      e.stopPropagation();
-      const r2 = (state.repairs||[]).find(x=>x.id===el.dataset.repairId);
-      if(r2) showRepairQuickPop(r2, el);
-    };
+    // 1クリック=詳細シート / ダブルクリック=作業担当ピッカー(v1.30.181)
+    if(r) bindRepairChipClicks_(el, r);
     // 🖱 アポ時刻未設定(終日帯)の修繕は別の日へドラッグしてアポ日を変更できる(台帳に書き戻し)v1.30.160
     if(r && typeof attachRepairDateDrag_==='function') attachRepairDateDrag_(el, r);
   });
@@ -10690,12 +10685,8 @@ function renderCalendar(){
         el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden">${tagHtml}${__doneBadge}<span class="rg-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto">${escapeHtml(label)}</span>${__vendorBadge}${__repCmt}${__repCommute}</span>${__descLine}</span>${__timeBox}${__repBottom}${__repAlert}`;
         if(__repBottom || __repAlert){ el.classList.add('chip-has-staffs'); el.style.setProperty('--card-bg', wColor); } // 担当色で全面着色(v1.30.51)
         attachRepairChipHover(el, r); // リッチtooltip
-        // 単クリックは無効・ダブルクリックで作業担当者ピッカー(内側に✎詳細編集)— 他チップと統一(v1.24.6)
-        el.onclick = (ev)=>{ ev.stopPropagation(); };
-        el.ondblclick = (ev)=>{
-          ev.stopPropagation();
-          showRepairQuickPop(r, el);
-        };
+        // 1クリック=詳細シート / ダブルクリック=作業担当ピッカー(v1.30.181)
+        bindRepairChipClicks_(el, r);
         if(tentative){
           // 🖱 仮置き(時刻未記録)はドラッグで行/日付移動できる。破線で「仮」を明示(v1.30.161)
           el.style.borderLeft = `5px dashed ${wfBar}`;
@@ -11499,6 +11490,21 @@ function repairDropDate_(node){
 }
 // 🖱 アポ時刻未設定(終日帯)の修繕アポを別の日へドラッグ→アポ日(responseDate)変更。台帳(Drive/GAS)に書き戻す。v1.30.160
 //   時刻設定は編集シートから(山田の指定=日付移動だけ)。PCのみ(touchは誤操作防止で無効)。
+// 🖱 修繕チップのクリック挙動(全チップ共通): 1クリック=詳細シート(openRepairSheet) / ダブルクリック=作業担当クイックポップ。
+//   1クリックとダブルクリックを遅延(240ms)で区別。ドラッグ直後のクリック(el.__dragEndAt)は無視。v1.30.181
+function bindRepairChipClicks_(el, r){
+  el.onclick = (e)=>{
+    e.stopPropagation();
+    if(el.__dragEndAt && Date.now() - el.__dragEndAt < 350) return;  // ドラッグ直後のクリックは無視
+    clearTimeout(el.__clickT);
+    el.__clickT = setTimeout(()=>{ if(typeof openRepairSheet==='function') openRepairSheet(r.id); }, 240);
+  };
+  el.ondblclick = (e)=>{
+    e.stopPropagation();
+    clearTimeout(el.__clickT);   // 詳細シートの遅延発火をキャンセル
+    if(typeof showRepairQuickPop==='function') showRepairQuickPop(r, el);
+  };
+}
 function attachRepairDateDrag_(el, r){
   el.style.cursor = "grab";
   el.onpointerdown = (pd)=>{
@@ -11529,7 +11535,8 @@ function attachRepairDateDrag_(el, r){
       document.removeEventListener('pointerup',onUp);
       el.classList.remove('dragging-source');
       if(ghost) ghost.remove(); if(ind) ind.remove();
-      if(!started) return;   // 動かしてない=クリック扱い(ダブルクリックでピッカーは別途)
+      if(started) el.__dragEndAt = Date.now();   // ドラッグ直後の click を抑止(詳細シート誤起動防止)v1.30.181
+      if(!started) return;   // 動かしてない=クリック扱い(1クリック=詳細 / ダブル=ピッカー は別途)
       const tgt = document.elementFromPoint(up.clientX, up.clientY);
       const dateStr = repairDropDate_(tgt);
       // 🖱 行(時間帯)= hour-cellに落ちたら表示位置を設定(台帳の時刻は書かない)。終日帯/事前帯に落ちたら位置クリア(終日帯へ戻す)
