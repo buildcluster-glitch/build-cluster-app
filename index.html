@@ -2361,7 +2361,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.168</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.169</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -6657,6 +6657,11 @@ function showEventStaffPicker(el, ev){
   // 📅 事前が複数日にまたがる時の「別日にも追加」デフォ日=翌日(v1.30.123)
   const __jizenNext = (typeof addDays==='function' && typeof parseDate==='function' && ev.date) ? fmtDate(addDays(parseDate(ev.date),1)) : (ev.date||"");
   const titleLine = (ev.title||"").split(/\r?\n/)[0];
+  // 🕐 日時変更用(全員共有)。時刻あり=timed/無し=時間未定。v1.30.169
+  const __evSelTime = (ev.timeMode==='timed') ? (ev.start||'') : '';
+  let __evTimeOptsHtml = `<option value=""${__evSelTime?'':' selected'}>時間未定</option>`;
+  for(let h=7;h<=19;h++){ for(let m=0;m<60;m+=15){ const v=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`; __evTimeOptsHtml += `<option value="${v}"${v===__evSelTime?' selected':''}>${v}</option>`; } }
+  const __evEndOf = st => st ? `${String(Math.min(+st.slice(0,2)+1,23)).padStart(2,'0')}:${st.slice(3)}` : '10:00';
   pop.innerHTML = `
     <div class="qp-title">🚗 担当を選択 <span style="font-size:11px;color:#64748b;font-weight:400">${escapeHtml(titleLine)}</span></div>
     <div class="qp-sec">
@@ -6671,6 +6676,14 @@ function showEventStaffPicker(el, ev){
         }).join("")}
       </div>
       ${ev.color ? `<div style="font-size:10px;color:var(--muted);margin-top:4px">※ 手動色が設定済みのため、担当を変えてもチップ色は変わりません(色は詳細編集で変更)</div>` : ""}
+    </div>
+    <div class="qp-sec">
+      <div class="qp-label">🕐 日時 <span style="font-weight:400;color:#94a3b8;font-size:10px">(全員で共有)</span></div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="date" id="evDtDate" value="${escapeHtml(ev.date||'')}" style="flex:1;min-width:0;padding:5px 6px;font-size:12px;border:1px solid var(--border-strong);border-radius:6px">
+        <select id="evDtTime" style="width:96px;padding:5px 6px;font-size:12px;border:1px solid var(--border-strong);border-radius:6px">${__evTimeOptsHtml}</select>
+        <button id="evDtApply" class="qp-detail" style="padding:6px 10px;flex-shrink:0;background:#e0e7ff;color:#3730a3">変更</button>
+      </div>
     </div>
     <div class="qp-sec">
       <div class="qp-label">🚗 勤怠 <span style="font-weight:400;color:#94a3b8;font-size:10px">(直行/直帰)</span></div>
@@ -6791,6 +6804,28 @@ function showEventStaffPicker(el, ev){
       __skipBtn.classList.toggle('on', next);
       if(typeof setSkipVisit_==='function') setSkipVisit_(ev, next).catch(()=>{});
       render();
+    };
+  }
+  // 🕐 日時変更(全員共有)。時刻ありtimed/無し=時間未定。台帳ではなく予定本体を更新→cloud同期 v1.30.169
+  const __evDtApply = pop.querySelector('#evDtApply');
+  if(__evDtApply){
+    __evDtApply.onclick = ()=>{
+      const nd = pop.querySelector('#evDtDate').value;
+      const nt = pop.querySelector('#evDtTime').value;
+      if(!nd){ alert('日付を選択してください'); return; }
+      const real = (state.events||[]).find(x=>x.id===ev.id);
+      if(!real){ return; }
+      if(typeof pushHistory==='function') pushHistory();
+      real.date = nd;
+      if(nt){ real.start = nt; real.end = __evEndOf(nt); real.timeMode = 'timed'; real.allday = false; }
+      else { real.timeMode = 'anytime'; real.allday = false; }
+      real.updatedAt = new Date().toISOString();
+      saveState();
+      if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(real,'upsert'); }catch(_){} }
+      render();
+      if(typeof flashEventChip_==='function') flashEventChip_(real.id);
+      __evDtApply.textContent = '✓ 変更'; setTimeout(()=>{ try{ __evDtApply.textContent='変更'; }catch(_){} }, 1200);
+      if(typeof showAutoSyncToast==='function'){ const dd=parseDate(nd); showAutoSyncToast(`✅ 予定を ${(dd&&!isNaN(dd))?`${dd.getMonth()+1}/${dd.getDate()}`:nd}${nt?` ${nt}`:'(時間未定)'} に変更`); }
     };
   }
   // ✏️編集: 簡易シートで編集(さらに細かい設定はシート内の✏️詳細から従来フォーム) v1.30.67
