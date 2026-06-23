@@ -459,6 +459,10 @@
     display:inline-flex;align-items:center;justify-content:center;
     cursor:pointer;
   }
+  /* 着色カード(chip-has-staffs)上では時刻ピルの周囲3pxを白で抜く→非カードの修繕チップと同じ「白地に乗った時刻ピル」の見た目に統一(v1.30.173) */
+  .event-chip.chip-has-staffs .chip-time{
+    box-shadow:0 0 0 3px #fff;
+  }
   .event-chip .chip-memo{
     display:inline-flex;align-items:center;font-size:11px;flex-shrink:0;
     color:#92400e;background:#fef3c7;border-radius:50%;
@@ -2361,7 +2365,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.172</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.173</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
