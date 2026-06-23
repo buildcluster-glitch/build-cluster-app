@@ -862,10 +862,7 @@
     cursor:pointer;border-left:3px solid rgba(0,0,0,.18) !important;
   }
   .repair-appt-grid:hover{filter:brightness(1.06);box-shadow:0 2px 6px rgba(0,0,0,.18)}
-  /* ✅ 完了済の修繕チップ: 最終確認(check-card.done-gray)と同じく グレー+取消線(ホバーで色復帰) v1.30.179 */
-  .repair-appt-chip.repair-done,.repair-appt-grid.repair-done{filter:grayscale(.65);opacity:.7}
-  .repair-appt-chip.repair-done:hover,.repair-appt-grid.repair-done:hover{filter:none;opacity:1}
-  .repair-appt-chip.repair-done .rac-label,.repair-appt-grid.repair-done .rg-label{text-decoration:line-through;text-decoration-thickness:1.5px}
+  /* ✅ 完了済の修繕チップ: 取消線/グレーは廃止し「✓完了」カラーバッジのみで表現(チップは通常色のまま) v1.30.180 */
   /* 🔆 アポ日/位置を変更した直後、移動先のチップを光らせて「ここに移った」を明示(v1.30.163) */
   @keyframes repairFlash{0%,100%{box-shadow:none;outline-color:transparent}15%,70%{box-shadow:0 0 12px 2px rgba(37,99,235,.6);outline-color:#2563eb}}
   .repair-flash{animation:repairFlash 1.6s ease-in-out 1;outline:2px solid transparent;outline-offset:1px;border-radius:8px}
@@ -2372,7 +2369,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.179</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.180</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9925,6 +9922,8 @@ function renderCalendar(){
           const tStr = t ? " "+t : "";
           // バッジ: テキスト="修繕"固定 / 色=元請けカラー (山一なら紫、みどりなら緑など)
           const tagSpan = `<span style="background:${tagBg};color:${textColorFor(tagBg)};padding:0 5px;border-radius:3px;font-size:10px;font-weight:700;margin-right:4px" title="${escapeHtml(r.contractor||'')}">修繕</span>`;
+          // ✅ 完了済=「✓完了」カラーバッジ(緑)。取消線/グレーは出さない(v1.30.180)
+          const __doneBadgeB = isRepairDone_(r) ? `<span style="background:#16a34a;color:#fff;padding:0 5px;border-radius:3px;font-size:9px;font-weight:700;margin-right:3px;white-space:nowrap;flex-shrink:0" title="${escapeHtml(r.status||'完了')}">✓完了</span>` : "";
           // 進行ステータスのミニバッジ (v1.30.14): 左バー色だけでは「アポ・手配 未」が読み取れないため明示
           // アポ済バッジは不要(カレンダーに載ってる=済が普通)なので非表示。未/待機/長期=要注意は残す(v1.30.159・山田)
           const __wfMini = {"アポ・手配 未":"📞未", "待機":"待機", "長期連絡なし":"長期"}[wf] || "";
@@ -9977,7 +9976,7 @@ function renderCalendar(){
           const __descShortB = __descB ? (__descB.length>40 ? __descB.slice(0,40)+"…" : __descB) : "";
           const __descLineB = __descShortB ? `<span class="rac-desc" title="${escapeHtml(__descB)}">${escapeHtml(__descShortB)}</span>` : "";
           // 左カラーバーは廃止(v1.30.15): ピルの角丸に沿って曲がり「謎のピンクの三日月」に見えていた。状態は📞未等のミニバッジで表現
-          inner += `<span class="repair-appt-chip${(__repStaffBadgesB||__repAlertB||__descShortB)?' has-staffs':''}${isRepairDone_(r)?' repair-done':''}" data-repair-id="${r.id}" style="background:${wColor};color:${wFg}" title="${escapeHtml(tipLines)}"><span class="rac-row">${tagSpan}${noApptSpan}${wfMiniSpan}<span class="rac-label">${escapeHtml(label)}</span>${__vendorBadgeB}${__repCommuteB}${__repCmtB}</span>${__descLineB}${__repStaffBadgesB}${__repAlertB}</span>`;
+          inner += `<span class="repair-appt-chip${(__repStaffBadgesB||__repAlertB||__descShortB)?' has-staffs':''}" data-repair-id="${r.id}" style="background:${wColor};color:${wFg}" title="${escapeHtml(tipLines)}"><span class="rac-row">${tagSpan}${__doneBadgeB}${noApptSpan}${wfMiniSpan}<span class="rac-label">${escapeHtml(label)}</span>${__vendorBadgeB}${__repCommuteB}${__repCmtB}</span>${__descLineB}${__repStaffBadgesB}${__repAlertB}</span>`;
         }
       });
     }
@@ -10633,6 +10632,8 @@ function renderCalendar(){
         const cont = contractorInfo(contShort) || contractorInfo(r.contractor);
         const tagBg = cont ? cont.color : "#94a3b8";
         const tagHtml = `<span class="title-cat" style="background:${tagBg};color:${textColorFor(tagBg)};padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;line-height:14px;height:16px;display:inline-flex;align-items:center;justify-content:center" title="${escapeHtml(r.contractor||'')}">修繕</span>`;
+        // ✅ 完了済=「✓完了」カラーバッジ(緑)。取消線/グレーは出さない(v1.30.180)
+        const __doneBadge = isRepairDone_(r) ? `<span style="background:#16a34a;color:#fff;padding:0 5px;border-radius:3px;font-size:9px;font-weight:700;white-space:nowrap;flex-shrink:0" title="${escapeHtml(r.status||'完了')}">✓完了</span>` : "";
         // 作業担当者(worker)のみで背景色を決定。未設定=白(空白)。連絡者(contactPerson)へはフォールバックしない v1.30.45
         const worker = (r.worker||"").trim();
         const contactPerson = (r.contactPerson||"").trim();
@@ -10674,7 +10675,7 @@ function renderCalendar(){
           "\n(クリックで編集シート)",
         ].filter(Boolean).join("\n");
         const el = document.createElement("div");
-        el.className = "event event-chip repair-appt-grid" + (isRepairDone_(r) ? " repair-done" : "");
+        el.className = "event event-chip repair-appt-grid";
         el.style.background = wColor;
         el.style.color = wFg;
         el.style.borderLeft = `5px solid ${wfBar}`;
@@ -10686,7 +10687,7 @@ function renderCalendar(){
           : "";
         // 仮置き(時刻未記録)は時刻ピル自体を出さない(破線ボーダーで仮置きは明示済)。「仮」ラベルは不要(v1.30.171)
         const __timeBox = tentative ? '' : `<span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>`;
-        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden">${tagHtml}<span class="rg-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto">${escapeHtml(label)}</span>${__vendorBadge}${__repCmt}${__repCommute}</span>${__descLine}</span>${__timeBox}${__repBottom}${__repAlert}`;
+        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden">${tagHtml}${__doneBadge}<span class="rg-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto">${escapeHtml(label)}</span>${__vendorBadge}${__repCmt}${__repCommute}</span>${__descLine}</span>${__timeBox}${__repBottom}${__repAlert}`;
         if(__repBottom || __repAlert){ el.classList.add('chip-has-staffs'); el.style.setProperty('--card-bg', wColor); } // 担当色で全面着色(v1.30.51)
         attachRepairChipHover(el, r); // リッチtooltip
         // 単クリックは無効・ダブルクリックで作業担当者ピッカー(内側に✎詳細編集)— 他チップと統一(v1.24.6)
