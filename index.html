@@ -2357,7 +2357,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.160</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.161</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5860,6 +5860,52 @@ async function setSkipVisit_(ev, skip){
   return map;
 }
 // ===========================================================
+// 🖱 修繕アポの「表示位置」を全端末共有 — shared-config 'repair_pos' v1.30.161
+//   時刻未設定(終日帯)の修繕を、台帳に時刻を書かずカレンダーの好きな行に仮置きするための位置(分・0:00からの分)。
+//   value(JSON) = { pos:{ [repairId]:{min:<int>, at, by} }, updatedAt }
+// ===========================================================
+const REPAIR_POS_KEY = "buildcluster_repair_pos";
+function loadRepairPos_(){ try{ const o=JSON.parse(localStorage.getItem(REPAIR_POS_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
+function saveRepairPos_(map){ try{ localStorage.setItem(REPAIR_POS_KEY, JSON.stringify(map||{})); }catch(e){} }
+function mergeRepairPosMaps_(a,b){ const out={}; const keys=new Set([...Object.keys(a||{}),...Object.keys(b||{})]); keys.forEach(k=>{ const ea=a&&a[k], eb=b&&b[k]; if(!ea){out[k]=eb;return;} if(!eb){out[k]=ea;return;} out[k]=(String(eb.at||'')>=String(ea.at||''))?eb:ea; }); return out; }
+function getRepairPosMin_(id){ const e=loadRepairPos_()[id]; return (e && typeof e.min==='number' && !e.cleared) ? e.min : null; }
+async function pushRepairPosMap_(map){
+  const s=loadGasSettings(); if(!s.url||!s.token) return;
+  try{ await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'repair_pos',value:JSON.stringify({pos:map||{},updatedAt:new Date().toISOString()}),token:s.token,savedBy:'calendar-app'})}); }catch(e){ console.warn('[repair_pos] push失敗:',e.message); }
+}
+async function fetchRepairPos_(opts={}){
+  const s=loadGasSettings(); const local=loadRepairPos_();
+  if(!s.url||!s.token){ return local; }
+  try{
+    const url=`${s.url}?action=get-shared-config&key=repair_pos&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res=await fetch(url,{method:'GET',redirect:'follow'}); if(!res.ok) throw new Error('HTTP '+res.status);
+    const data=await res.json(); let raw=data.value;
+    if(raw===''||raw==null) raw={pos:{}}; else if(typeof raw==='string'){ try{raw=JSON.parse(raw);}catch(e){raw={pos:{}};} }
+    const remote=(raw&&raw.pos&&typeof raw.pos==='object')?raw.pos:{};
+    const merged=mergeRepairPosMaps_(remote, local);
+    saveRepairPos_(merged);
+    if(opts.push && JSON.stringify(merged)!==JSON.stringify(remote)){ pushRepairPosMap_(merged).catch(()=>{}); }
+    if(!opts.silent && typeof render==='function') render();
+    return merged;
+  }catch(err){ if(!opts.silent) console.warn('[repair_pos] fetch失敗:', err.message); return local; }
+}
+// min=null で位置クリア(終日帯へ戻す)
+async function setRepairPosMin_(id, min){
+  if(!id) return;
+  const stamp=()=>({ min:(min==null?0:min), cleared:(min==null), at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
+  let map=loadRepairPos_(); map[id]=stamp(); saveRepairPos_(map);
+  const s=loadGasSettings();
+  if(s.url&&s.token){
+    try{ const url=`${s.url}?action=get-shared-config&key=repair_pos&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+      const res=await fetch(url,{method:'GET',redirect:'follow'});
+      if(res.ok){ const d=await res.json(); let raw=d.value; if(typeof raw==='string'){ try{raw=JSON.parse(raw);}catch(_){raw=null;} }
+        if(raw&&raw.pos&&typeof raw.pos==='object'){ map=mergeRepairPosMaps_(raw.pos, loadRepairPos_()); map[id]=stamp(); saveRepairPos_(map); } }
+    }catch(_){}
+  }
+  await pushRepairPosMap_(map);
+  return map;
+}
+// ===========================================================
 // 🌴 休暇(state.leaves)を全端末共有 — shared-config 'staff_leaves'(Drive json) v1.30.94
 //   従来 休暇はPC間で同期されずローカルのみだった。id単位のオーバーレイ(LWW+削除tombstone)で共有する。
 //   value(JSON) = { leaves:{ [id]:{id,staff,start,end,type,memo,at,deleted?} }, updatedAt }
@@ -8764,6 +8810,8 @@ async function syncChecksFromGAS(opts){
     if(typeof fetchAlerts_==='function') fetchAlerts_({silent:true}).catch(()=>{});
     // 🚫 再同期時は事前「行かない」も最新を取りに行く(v1.30.131)
     if(typeof fetchSkipVisit_==='function') fetchSkipVisit_({silent:true}).catch(()=>{});
+    // 🖱 再同期時は修繕の表示位置(仮置き)も最新を取りに行く(v1.30.161)
+    if(typeof fetchRepairPos_==='function') fetchRepairPos_({silent:true}).catch(()=>{});
     // 🌴 再同期時は休暇も最新を取りに行く→他PCの休日設定が即反映(v1.30.94)
     if(typeof fetchLeaves_==='function') fetchLeaves_({silent:true}).catch(()=>{});
     state.restorations = restorations;
@@ -9750,9 +9798,15 @@ function renderCalendar(){
         //   表示時刻は responseTime("18:00")が優先されるので位置だけ寄せる
         if(__gh === HOUR_END && __gm === 0){ __gh = HOUR_END - 1; __gm = 59; }
         const hasTimeInGrid = tm && (__gh >= HOUR_START) && (__gh < HOUR_END);
+        // 🖱 時刻未設定でも「表示位置」(repair_pos)があればグリッドのその行に仮置き表示(台帳の時刻は空のまま)v1.30.161
+        const __posMin = (!hasTimeInGrid && typeof getRepairPosMin_==='function') ? getRepairPosMin_(r.id) : null;
+        const __posInGrid = (__posMin!=null) && (Math.floor(__posMin/60) >= HOUR_START) && (Math.floor(__posMin/60) < HOUR_END);
         if(hasTimeInGrid){
           // 時間グリッドに置く: 後段の chip 描画ループの placedRepairs に追加
           dayRepairsForGrid.push({r, hh:__gh, mm:__gm, colKey:c.key});
+        } else if(__posInGrid){
+          // 時刻未設定だが表示位置指定あり→グリッドのその行に「仮置き」(tentative)。時刻ラベルは出さない
+          dayRepairsForGrid.push({r, hh:Math.floor(__posMin/60), mm:__posMin%60, colKey:c.key, tentative:true});
         } else {
           // 終日帯: 背景=作業担当者色(なければ白)、左バー=workflowStatus色、修繕バッジ(色=元請け)
           // r.contractor は "山一地所" など正式名 → shortenCompany で略称化してから lookup
@@ -10450,7 +10504,7 @@ function renderCalendar(){
     //        日付/時刻の変更は編集シート(openRepairSheet)から明示的に行う運用とする。
     if(__isMonth){
       const repairsInCol = dayRepairsForGrid.filter(x=>x.colKey===c.key);
-      repairsInCol.forEach(({r,hh,mm})=>{
+      repairsInCol.forEach(({r,hh,mm,tentative})=>{
         const cell = dayCol.querySelector(`.hour-cell[data-hour="${hh}"]`);
         if(!cell) return;
         const wf = r.workflowStatus || "アポ・手配 未";
@@ -10512,25 +10566,32 @@ function renderCalendar(){
         const __descLine = __descShort
           ? `<span style="display:block;width:100%;font-size:10px;font-weight:500;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2">${escapeHtml(__descShort)}</span>`
           : "";
-        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis">${tagHtml}${escapeHtml(label)}${__vendorBadge}${__repCmt}</span>${__descLine}</span><span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>${__repBottom}${__repAlert}`;
+        const __timeLabel = tentative ? '仮' : (r.responseTime||timeStr);   // 仮置き(時刻未記録)は「仮」表示 v1.30.161
+        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis">${tagHtml}${escapeHtml(label)}${__vendorBadge}${__repCmt}</span>${__descLine}</span><span class="chip-time" style="${tentative?'opacity:.6;font-weight:600':''}">${escapeHtml(__timeLabel)}</span>${__repBottom}${__repAlert}`;
         if(__repBottom || __repAlert){ el.classList.add('chip-has-staffs'); el.style.setProperty('--card-bg', wColor); } // 担当色で全面着色(v1.30.51)
         attachRepairChipHover(el, r); // リッチtooltip
-        el.classList.add("chip-locked"); // 🔒 ドラッグ移動不可(台帳=Driveが真データのため)
         // 単クリックは無効・ダブルクリックで作業担当者ピッカー(内側に✎詳細編集)— 他チップと統一(v1.24.6)
         el.onclick = (ev)=>{ ev.stopPropagation(); };
         el.ondblclick = (ev)=>{
           ev.stopPropagation();
           showRepairQuickPop(r, el);
         };
-        // 🔒 ドラッグで動かそうとしたら案内トースト(移動は編集シートから)
-        el.addEventListener("pointerdown", (pd)=>{
-          if(pd.pointerType === 'touch' || (pd.button !== undefined && pd.button !== 0)) return;
-          const sx = pd.clientX, sy = pd.clientY; let toasted = false;
-          const mv = (m)=>{ if(!toasted && Math.hypot(m.clientX-sx, m.clientY-sy) > DRAG_THRESHOLD){ toasted = true; showNoDragToast_('repair'); el.classList.add('nodrag-shake'); setTimeout(()=>el.classList.remove('nodrag-shake'), 400); cleanup(); } };
-          const cleanup = ()=>{ document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", cleanup); };
-          document.addEventListener("pointermove", mv);
-          document.addEventListener("pointerup", cleanup);
-        });
+        if(tentative){
+          // 🖱 仮置き(時刻未記録)はドラッグで行/日付移動できる。破線で「仮」を明示(v1.30.161)
+          el.style.borderLeft = `5px dashed ${wfBar}`;
+          if(typeof attachRepairDateDrag_==='function') attachRepairDateDrag_(el, r);
+        } else {
+          el.classList.add("chip-locked"); // 🔒 時刻確定済はドラッグ移動不可(台帳=Driveが真データのため)
+          // 🔒 ドラッグで動かそうとしたら案内トースト(移動は編集シートから)
+          el.addEventListener("pointerdown", (pd)=>{
+            if(pd.pointerType === 'touch' || (pd.button !== undefined && pd.button !== 0)) return;
+            const sx = pd.clientX, sy = pd.clientY; let toasted = false;
+            const mv = (m)=>{ if(!toasted && Math.hypot(m.clientX-sx, m.clientY-sy) > DRAG_THRESHOLD){ toasted = true; showNoDragToast_('repair'); el.classList.add('nodrag-shake'); setTimeout(()=>el.classList.remove('nodrag-shake'), 400); cleanup(); } };
+            const cleanup = ()=>{ document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", cleanup); };
+            document.addEventListener("pointermove", mv);
+            document.addEventListener("pointerup", cleanup);
+          });
+        }
         cell.appendChild(el);
       });
     }
@@ -11339,22 +11400,33 @@ function attachRepairDateDrag_(el, r){
       el.classList.remove('dragging-source');
       if(ghost) ghost.remove(); if(ind) ind.remove();
       if(!started) return;   // 動かしてない=クリック扱い(ダブルクリックでピッカーは別途)
-      const dateStr = repairDropDate_(document.elementFromPoint(up.clientX, up.clientY));
-      if(!dateStr || dateStr === r.responseDate) return;
-      const prev = { responseDate: r.responseDate };
-      r.responseDate = dateStr;   // ISO。時刻(responseTime)は触らない=未設定のまま
-      saveState(); render();
-      const dd = (typeof parseDate==='function') ? parseDate(dateStr) : null;
-      const lbl = (dd && !isNaN(dd)) ? `${dd.getMonth()+1}/${dd.getDate()}` : dateStr;
-      if(typeof showAutoSyncToast==='function') showAutoSyncToast(`🔧 修繕アポ日を ${lbl} に変更（台帳に書き戻し中…）`);
-      if(r.extDriveFileId){
-        try{
-          await pushAppointmentToGAS(r.extDriveFileId, { responseDate: dateStr, responseTime: (r.responseTime||"") });
-          if(typeof showAutoSyncToast==='function') showAutoSyncToast(`✅ 修繕アポ日を ${lbl} に変更しました`);
-        }catch(err){
-          Object.assign(r, prev); saveState(); render();
-          alert('Drive書き戻しに失敗（元に戻しました）:\n' + err.message);
+      const tgt = document.elementFromPoint(up.clientX, up.clientY);
+      const dateStr = repairDropDate_(tgt);
+      // 🖱 行(時間帯)= hour-cellに落ちたら表示位置を設定(台帳の時刻は書かない)。終日帯/事前帯に落ちたら位置クリア(終日帯へ戻す)
+      const hourCell  = tgt && tgt.closest && tgt.closest('.hour-cell[data-hour]');
+      const alldayDrop= tgt && tgt.closest && (tgt.closest('.allday-cell') || tgt.closest('.jizen-cell'));
+      let posChanged = false;
+      if(hourCell){ const hh=parseInt(hourCell.dataset.hour,10); if(!isNaN(hh)){ setRepairPosMin_(r.id, hh*60).catch(()=>{}); posChanged=true; } }
+      else if(alldayDrop){ setRepairPosMin_(r.id, null).catch(()=>{}); posChanged=true; }   // 終日帯に戻す
+      // 📅 日付変更(台帳に書き戻し)
+      const dateChanged = dateStr && dateStr !== r.responseDate;
+      if(dateChanged){
+        const prev = { responseDate: r.responseDate };
+        r.responseDate = dateStr;   // ISO。時刻(responseTime)は触らない=未設定のまま
+        saveState(); render();
+        const dd = (typeof parseDate==='function') ? parseDate(dateStr) : null;
+        const lbl = (dd && !isNaN(dd)) ? `${dd.getMonth()+1}/${dd.getDate()}` : dateStr;
+        if(r.extDriveFileId){
+          try{
+            await pushAppointmentToGAS(r.extDriveFileId, { responseDate: dateStr, responseTime: (r.responseTime||"") });
+            if(typeof showAutoSyncToast==='function') showAutoSyncToast(`✅ 修繕アポ日を ${lbl} に変更`);
+          }catch(err){
+            Object.assign(r, prev); saveState(); render();
+            alert('Drive書き戻しに失敗（元に戻しました）:\n' + err.message);
+          }
         }
+      } else if(posChanged){
+        render();   // 位置だけ変更=台帳は触らず再描画(共有設定repair_posは別途push済)
       }
     };
     document.addEventListener('pointermove',onMove);
@@ -16970,6 +17042,11 @@ setTimeout(()=>{
     if(typeof fetchSkipVisit_==='function'){
       fetchSkipVisit_({silent:true, push:true}).catch(()=>{});
       setInterval(()=>fetchSkipVisit_({silent:true}).catch(()=>{}), 5*60*1000);
+    }
+    // 🖱 修繕の表示位置(仮置き・全員共有) 取得・以後5分ごと(v1.30.161)
+    if(typeof fetchRepairPos_==='function'){
+      fetchRepairPos_({silent:true}).catch(()=>{});
+      setInterval(()=>fetchRepairPos_({silent:true}).catch(()=>{}), 5*60*1000);
     }
     // 🗑 予定削除トゥームストーン(全員共有) 取得→ローカル除去・初回push(移行)・以後5分ごと(v1.30.66)
     if(typeof fetchEventDeletions_==='function'){
