@@ -4885,8 +4885,10 @@ function isRepairCheck_(ck){
   if(/アポ|手配|待機|長期連絡/.test(ck.workflowStatus || "")) return true;
   return /修繕|修理|漏水|補修/.test(ck.memo || "") && !/原状回復/.test(ck.memo || "");
 }
-// 注: 修繕は「アポ日(responseDate)が付くまでカレンダーに出さない」運用(2026-06-10 山田)。
-//   アポ済の修繕は state.repairs として responseDate の日にグリッド表示済み。アポ未は日付未定なので出さない。
+// 注: 修繕の表示日(2026-06-23 山田で変更)。
+//   アポ済(responseDate有)= その日にグリッド表示。
+//   アポ未(responseDate空・workflowStatus「アポ・手配 未」)= 今日の列に追従表示し「🗓要日程」バッジ。対応予定日は空のまま(今日にしない)。
+//   待機/長期連絡なし= 意図的保留なので追従させない。アポ確定で responseDate の日へ移動。
 //   (最終確認カードからは isRepairCheck_ で除外済み)
 function renderCheckCard(ck, today){
   // 元請: 短縮名(山一)でも フルネーム(株式会社山一地所)でも解決
@@ -9864,8 +9866,19 @@ function renderCalendar(){
     // responseTime が "10:00" 等の正確な時刻パース可能なら時間グリッドに配置、不可なら終日帯に
     // ★ドラッグ不可仕様: 上記グリッド配置側コメント参照
     if(currentView!=="staff" && c.contextDate){
+      const __todayIso = fmtDate(new Date());
       const dayRepairs = (state.repairs||[]).filter(r=>{
-        if(!r.responseDate || r.responseDate!==c.contextDate) return false;
+        // アポ済(responseDateあり)=その日に表示。未アポ(responseDate空)=今日列に追従表示(対応予定日は空のまま)。
+        //   未アポを今日に出すのは「入ったら見える/要日程調整が消えない」ため(2026-06-23 山田)。完了/中止は除外。
+        if(r.responseDate){
+          if(r.responseDate!==c.contextDate) return false;
+        } else {
+          // 未アポ追従は「アポ・手配 未」(または未設定)=要日程のものだけ。待機/長期連絡なしは意図的保留なので積まない。
+          if(c.contextDate!==__todayIso) return false;
+          const __wf = r.workflowStatus || "アポ・手配 未";
+          if(__wf!=="アポ・手配 未") return false;
+          if(/完了|キャンセル|中止/.test(r.status||"")) return false;
+        }
         // v1.12.3: 修繕アポも カテゴリ(元請け)フィルタを尊重
         const filterKey = motoukeKey_(r.contractor);   // 元請け正規化キーでフィルタ突合(v1.30.42)
         if(hiddenCategories.has(filterKey)) return false;
@@ -9907,6 +9920,10 @@ function renderCalendar(){
           const __wfMini = {"アポ・手配 未":"📞未", "待機":"待機", "長期連絡なし":"長期"}[wf] || "";
           const wfMiniSpan = __wfMini
             ? `<span style="background:${wfBar};color:#fff;padding:0 4px;border-radius:3px;font-size:9px;font-weight:700;margin-right:3px;white-space:nowrap" title="${escapeHtml(wf)}">${__wfMini}</span>`
+            : "";
+          // 未アポ(responseDate空)で今日列に追従表示中=「要日程調整」と明示(対応予定日が今日ではない・日程未定の意味)v1.30.x
+          const noApptSpan = !r.responseDate
+            ? `<span style="background:#f59e0b;color:#fff;padding:0 4px;border-radius:3px;font-size:9px;font-weight:700;margin-right:3px;white-space:nowrap" title="日程未定。アポ日を入れるとその日へ移動するにゃ">🗓要日程</span>`
             : "";
           const worker = (r.worker||"").trim();
           const contactPerson = (r.contactPerson||"").trim();
@@ -9950,7 +9967,7 @@ function renderCalendar(){
           const __descShortB = __descB ? (__descB.length>40 ? __descB.slice(0,40)+"…" : __descB) : "";
           const __descLineB = __descShortB ? `<span class="rac-desc" title="${escapeHtml(__descB)}">${escapeHtml(__descShortB)}</span>` : "";
           // 左カラーバーは廃止(v1.30.15): ピルの角丸に沿って曲がり「謎のピンクの三日月」に見えていた。状態は📞未等のミニバッジで表現
-          inner += `<span class="repair-appt-chip${(__repStaffBadgesB||__repAlertB||__descShortB)?' has-staffs':''}" data-repair-id="${r.id}" style="background:${wColor};color:${wFg}" title="${escapeHtml(tipLines)}"><span class="rac-row">${tagSpan}${wfMiniSpan}<span class="rac-label">${escapeHtml(label)}</span>${__vendorBadgeB}${__repCommuteB}${__repCmtB}</span>${__descLineB}${__repStaffBadgesB}${__repAlertB}</span>`;
+          inner += `<span class="repair-appt-chip${(__repStaffBadgesB||__repAlertB||__descShortB)?' has-staffs':''}" data-repair-id="${r.id}" style="background:${wColor};color:${wFg}" title="${escapeHtml(tipLines)}"><span class="rac-row">${tagSpan}${noApptSpan}${wfMiniSpan}<span class="rac-label">${escapeHtml(label)}</span>${__vendorBadgeB}${__repCommuteB}${__repCmtB}</span>${__descLineB}${__repStaffBadgesB}${__repAlertB}</span>`;
         }
       });
     }
