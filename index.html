@@ -2409,7 +2409,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.187</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.188</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2521,6 +2521,7 @@
       <span class="sep"></span>
       <select id="repairSortMode" title="並び順" style="padding:5px 8px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer">
         <option value="progress">並び: 進行状況</option>
+        <option value="waitdays">並び: ⏳経過日数(古い順)</option>
         <option value="contact">並び: 📞担当者別</option>
         <option value="worker">並び: 🔨作業担当別</option>
       </select>
@@ -14841,6 +14842,10 @@ function renderRepairView(){
   };
   if(repairSortMode === "progress"){
     items.sort(__byProgress);
+  }else if(repairSortMode === "waitdays"){
+    // ⏳ 見積作成が古い順(=経過日数が多い順)。基準日が無いものは末尾。v1.30.188
+    const __wd = r => { const d = (typeof repairWaitDays_==='function') ? repairWaitDays_(r) : null; return (d==null) ? -1 : d; };
+    items.sort((a,b)=> (__wd(b) - __wd(a)) || __byProgress(a,b));
   }else{
     items.sort((a,b)=>{
       const pa = __personOf(a), pb = __personOf(b);
@@ -14856,7 +14861,7 @@ function renderRepairView(){
     listEl.innerHTML = `<div class="repair-empty">🔧 修繕案件がありません<br><small>${list.length===0?"🔄 Drive同期で取り込まれます":"フィルタ条件に一致なし"}</small></div>`;
     return;
   }
-  if(repairSortMode === "progress"){
+  if(repairSortMode === "progress" || repairSortMode === "waitdays"){
     listEl.innerHTML = items.map((r,i)=>renderRepairCard(r,i)).join("");
   }else{
     // 担当者別: グループ見出し(色ドット+名前+件数)を挟んで表示
