@@ -2409,7 +2409,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.189</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.190</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3768,7 +3768,7 @@
           <option value="有給">有給</option>
           <option value="有給（病休）">有給（病休）</option>
           <option value="有給（忌引）">有給（忌引）</option>
-          <option value="振休">🔁 振替休日(振休) (メモに振休元の日付・休日カウント外)</option>
+          <option value="振休">🔁 振替休日(振休) (メモに振休元の日付・休日にカウント/出勤日祝は出社に)</option>
           <option value="当番">🔄 当番 (週次ローテ・休みではない)</option>
           <option value="出社">🏢 出社 (日祝などに出勤・休みにカウントしない)</option>
         </select>
@@ -13647,6 +13647,7 @@ function renderYearStats(year){
     const matchType = (t)=>{
       if(category === "半休") return HALF_DAY_TYPES.has(t);
       if(category === "有給") return t==="有給" || t==="有給（病休）" || t==="有給（忌引）"; // 病休/忌引も有給に集計
+      if(category === "会社休日") return t==="会社休日" || t==="振休"; // 振休も「休んだ日」なので所定休日として休日カウントに含める(出勤した日祝は出社=カウント外)v1.30.190
       return t === category;
     };
     let sum = state.leaves.filter(l=>l.staff===staff && matchType(l.type))
