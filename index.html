@@ -882,6 +882,21 @@
   .al-item .al-desc{flex-basis:100%;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .al-empty{text-align:center;padding:44px 20px;color:var(--muted);font-size:14px}
   .al-group-head{font-size:11px;font-weight:700;color:#64748b;margin:6px 2px 0}
+  /* 💬 修繕 進捗チャット(詳細シート内・全員共有) v1.30.184 */
+  .rchat{border:1px solid var(--border-strong);border-radius:8px;background:#fafbfc;display:flex;flex-direction:column;overflow:hidden}
+  .rchat .rchat-list{max-height:240px;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px}
+  .rchat .rchat-empty{font-size:12px;color:var(--muted);text-align:center;padding:16px 8px}
+  .rchat .rchat-msg{background:#fff;border:1px solid var(--border);border-radius:8px;padding:5px 8px;max-width:88%;align-self:flex-start}
+  .rchat .rchat-msg.mine{background:#eef6ff;border-color:#bfdbfe;align-self:flex-end}
+  .rchat .rchat-meta{font-size:10px;color:#64748b;display:flex;align-items:center;gap:6px;margin-bottom:1px}
+  .rchat .rchat-meta b{color:#334155;font-size:11px}
+  .rchat .rchat-del{margin-left:auto;border:0;background:transparent;color:#cbd5e1;cursor:pointer;font-size:11px;padding:0 2px;line-height:1}
+  .rchat .rchat-del:hover{color:#ef4444}
+  .rchat .rchat-text{font-size:13px;color:#0f172a;line-height:1.4;white-space:pre-wrap;word-break:break-word}
+  .rchat .rchat-input{display:flex;gap:6px;padding:6px;border-top:1px solid var(--border);background:#fff}
+  .rchat .rchat-input textarea{flex:1;min-width:0;font-size:13px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px;font-family:inherit;resize:none;min-height:34px;max-height:90px}
+  .rchat .rchat-input button{flex:0 0 auto;background:var(--accent);color:#fff;border:0;border-radius:6px;font-size:12px;font-weight:700;padding:0 14px;cursor:pointer}
+  .rchat .rchat-input button:hover{background:var(--accent-hover)}
   /* 🔍 スケジュール検索 */
   .modal-overlay .modal.modal-search{max-width:560px;width:100%}
   .sch-search-box{display:flex;gap:8px;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border)}
@@ -2385,7 +2400,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.183</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.184</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2562,8 +2577,8 @@
         <div class="rs-pick" id="rs-wf-pick"></div>
       </div>
       <div class="field">
-        <label>📝 進捗詳細メモ <span style="font-weight:400;color:var(--muted);font-size:11px">(カードホバーで全文表示・🔧アポチップにも反映)</span></label>
-        <textarea id="rs-creatormemo" rows="3" placeholder="例: 13時頃在宅予定 / 駐車場なし要伝達"></textarea>
+        <label>💬 進捗チャット <span style="font-weight:400;color:var(--muted);font-size:11px">(全員共有・時系列。Enterで送信)</span></label>
+        <div id="rs-chat" class="rchat"></div>
       </div>
       <div class="field" style="font-size:11px;color:var(--muted)">
         ⚠ Drive同期由来の物件は <strong>営業ステータス・進行ステータス・対応予定日時・メモ</strong> のみ書戻し可能。他項目は表示のみ。
@@ -6184,6 +6199,70 @@ function deleteTaikyoComment_(taikyoId, commentId){
 }
 // 開いている立会ポップのコメント欄を再描画するフック(showTaikyoStaffPickerが差し替える)
 let __refreshOpenTaikyoCommentUI_ = null;
+
+// 💬 修繕 コメント(全員共有・shared-config 'repair_comments') — 立会コメントと同型 v1.30.184
+//   value = JSON { comments:{ [repairId]:[{id,author,text,at,reactions}] }, updatedAt }
+//   修繕進捗メモをチャット化(8人共有)。r.comments は applyRepairCommentsToState_ で常にこのmapと同期。
+const REPAIR_COMMENTS_CACHE_KEY = "buildcluster_repair_comments_cache";
+function loadRepairCommentsMap_(){ try{ const o=JSON.parse(localStorage.getItem(REPAIR_COMMENTS_CACHE_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
+function saveRepairCommentsMap_(map){ try{ localStorage.setItem(REPAIR_COMMENTS_CACHE_KEY, JSON.stringify(map||{})); }catch(e){} }
+function getRepairComments_(id){ if(!id) return []; const a=loadRepairCommentsMap_()[id]; return Array.isArray(a)?a.slice().sort((x,y)=>String(x.at||'').localeCompare(String(y.at||''))):[]; }
+function repairCommentCount_(id){ const a=loadRepairCommentsMap_()[id]; return Array.isArray(a)?a.length:0; }
+// 共有mapを state.repairs[].comments に反映(既存のクイックポップ/ホバーチップが r.comments を読むため)
+function applyRepairCommentsToState_(){ const m=loadRepairCommentsMap_(); (state.repairs||[]).forEach(r=>{ const a=m[r.id]; r.comments = Array.isArray(a)?a.slice().sort((x,y)=>String(x.at||'').localeCompare(String(y.at||''))):[]; }); }
+let __refreshOpenRepairCommentUI_ = null;   // 詳細シート等の開いてるチャット欄を再描画するフック
+async function fetchRepairComments_(opts={}){
+  const s=loadGasSettings();
+  if(!s.url||!s.token){ applyRepairCommentsToState_(); return loadRepairCommentsMap_(); }
+  const url=`${s.url}?action=get-shared-config&key=repair_comments&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+  try{
+    const res=await fetch(url,{method:'GET',redirect:'follow'}); if(!res.ok) throw new Error('HTTP '+res.status);
+    const data=await res.json(); let raw=data.value;
+    if(raw===''||raw==null) raw={comments:{}}; else if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(e){ raw={comments:{}}; } }
+    const remote=(raw&&raw.comments&&typeof raw.comments==='object')?raw.comments:{};
+    saveRepairCommentsMap_(remote); applyRepairCommentsToState_();
+    if(typeof __refreshOpenRepairCommentUI_==='function') __refreshOpenRepairCommentUI_();
+    if(!opts.silent && typeof render==='function') render();
+    return remote;
+  }catch(err){ if(!opts.silent) console.warn('[repair_comments] fetch失敗:',err.message); applyRepairCommentsToState_(); return loadRepairCommentsMap_(); }
+}
+// 最新remoteを取得→対象repairのリストにmutatorを1回適用→キャッシュ更新→push(多著者で消えない)
+async function mutateRepairCommentsRemote_(id, mutator){
+  const s=loadGasSettings(); let map=loadRepairCommentsMap_();
+  if(s.url&&s.token){
+    try{
+      const url=`${s.url}?action=get-shared-config&key=repair_comments&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+      const res=await fetch(url,{method:'GET',redirect:'follow'});
+      if(res.ok){ const d=await res.json(); let raw=d.value; if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(_){ raw=null; } } if(raw&&raw.comments&&typeof raw.comments==='object') map=raw.comments; }
+    }catch(_){}
+  }
+  const list=Array.isArray(map[id])?map[id].slice():[];
+  const next=mutator(list)||[];
+  if(next.length) map[id]=next; else delete map[id];
+  saveRepairCommentsMap_(map); applyRepairCommentsToState_();
+  if(typeof __refreshOpenRepairCommentUI_==='function') __refreshOpenRepairCommentUI_();
+  if(typeof render==='function') render();
+  if(s.url&&s.token){
+    const payload={comments:map,updatedAt:new Date().toISOString()};
+    try{ await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'repair_comments',value:JSON.stringify(payload),token:s.token,savedBy:'calendar-app'})}); }
+    catch(e){ console.warn('[repair_comments] push失敗:',e.message); }
+  }
+  return map;
+}
+function addRepairComment_(id, text, author){
+  text=String(text||'').trim(); if(!id||!text) return null;
+  const c={ id:uid(), author:author||'', text, at:new Date().toISOString(), reactions:{} };
+  const map=loadRepairCommentsMap_(); (map[id]=Array.isArray(map[id])?map[id]:[]).push(c); saveRepairCommentsMap_(map); applyRepairCommentsToState_();
+  mutateRepairCommentsRemote_(id, list=> list.some(x=>x.id===c.id)?list:[...list,c]);
+  return c;
+}
+function deleteRepairComment_(id, commentId){
+  if(!id||!commentId) return;
+  const map=loadRepairCommentsMap_(); if(Array.isArray(map[id])){ map[id]=map[id].filter(x=>x.id!==commentId); if(!map[id].length) delete map[id]; saveRepairCommentsMap_(map); applyRepairCommentsToState_(); }
+  mutateRepairCommentsRemote_(id, list=> list.filter(x=>x.id!==commentId));
+}
+function toggleRepairReaction_(id, commentId, emoji, who){ if(!id||!commentId||!emoji||!who) return; mutateRepairCommentsRemote_(id, list=>{ const c=list.find(x=>x.id===commentId); if(c) __reactToggleObj_(c, emoji, who); return list; }); }
+function addRepairReaction_(id, commentId, emoji, who){ if(!id||!commentId||!emoji||!who) return; mutateRepairCommentsRemote_(id, list=>{ const c=list.find(x=>x.id===commentId); if(c) __reactAddObj_(c, emoji, who); return list; }); }
 // 立会レコードを仮想イベントに変換 (カレンダー描画用)
 // ====================================================================
 // 📄 立会「資料作成済」フラグ (taikyo_shiryo_ready) — 見積アプリ(v1.4.539)がpush
@@ -8918,6 +8997,7 @@ async function syncChecksFromGAS(opts){
     state.checks = state.checks.filter(c => c.source !== "gas-sync").concat(imported);
     state.repairs = repairs;
     if(typeof applyRepairOverridesToState_==='function') applyRepairOverridesToState_();  // 全員共有の作業担当を反映(v1.30.55・キャッシュ即適用)
+    if(typeof applyRepairCommentsToState_==='function') applyRepairCommentsToState_();  // 💬 全員共有の進捗チャットを反映(v1.30.184)
     if(typeof applyCheckWorkersToState_==='function') applyCheckWorkersToState_();  // 🏷 最終確認の作業担当(全員共有)を反映(v1.30.95・キャッシュ即適用)
     // 🔄 再同期時は修繕担当の最新オーバーレイも取りに行く→他PCの担当変更が即反映(v1.30.93)
     if(typeof fetchRepairOverrides_==='function') fetchRepairOverrides_({silent:true}).catch(()=>{});
@@ -11421,15 +11501,14 @@ function showRepairTip(r, mouseX, mouseY){
   // 依頼内容
   const requestHtml = r.requestDesc ? `<div class="tt-memo">📝 依頼: ${escapeHtml(r.requestDesc)}</div>` : "";
   const memoHtml = r.creatorMemo ? `<div class="tt-memo" style="border-top:1px dashed var(--border);margin-top:6px;padding-top:6px">🗒 メモ: ${escapeHtml(r.creatorMemo)}</div>` : "";
-  // 💬 操作可能チャット(修繕コメント=ローカル保持) v1.30.77
+  // 💬 操作可能チャット(修繕コメント=全員共有 repair_comments) v1.30.184
   tip.classList.add('interactive');
   const liveR=()=>(state.repairs||[]).find(x=>x.id===r.id)||r;
-  const persistR=()=>{ saveState(); if(typeof render==='function') render(); };
   const apiR={ me:(typeof getMyself==='function')?getMyself():"", openIdx:{v:null},
     list:()=> (liveR().comments)||[],
-    onSend:(text,rr)=>{ if(!apiR.me){alert('先に「👤 自分」を設定してください(👤マイ)');return;} const t=liveR(); if(!Array.isArray(t.comments))t.comments=[]; t.comments.push({id:'c_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),author:apiR.me,text,at:new Date().toISOString()}); persistR(); rr(); },
-    onToggle:(cid,em,rr)=>{ if(!apiR.me){alert('先に「👤 自分」を設定してください');return;} const t=liveR(); const c=(t.comments||[]).find(x=>x.id===cid); if(!c)return; __reactToggleObj_(c,em,apiR.me); persistR(); rr(); },
-    onAddReact:(cid,em,rr)=>{ if(!apiR.me){alert('先に「👤 自分」を設定してください');return;} const t=liveR(); const c=(t.comments||[]).find(x=>x.id===cid); if(!c)return; __reactAddObj_(c,em,apiR.me); persistR(); rr(); }
+    onSend:(text,rr)=>{ if(!apiR.me){alert('先に「👤 自分」を設定してください(👤マイ)');return;} if(typeof addRepairComment_==='function') addRepairComment_(r.id, text, apiR.me); rr(); },
+    onToggle:(cid,em,rr)=>{ if(!apiR.me){alert('先に「👤 自分」を設定してください');return;} if(typeof toggleRepairReaction_==='function') toggleRepairReaction_(r.id, cid, em, apiR.me); rr(); },
+    onAddReact:(cid,em,rr)=>{ if(!apiR.me){alert('先に「👤 自分」を設定してください');return;} if(typeof addRepairReaction_==='function') addRepairReaction_(r.id, cid, em, apiR.me); rr(); }
   };
   buildTipChat_(tip, titleHtml, apiR);   // 修繕も詳細行は省きコメント中心(v1.30.79)
   // 位置決め
@@ -11815,24 +11894,16 @@ function showRepairQuickPop(r, anchorEl){
     pop.querySelectorAll('[data-delc]').forEach(b=>{
       b.onclick = ()=>{
         if(!confirm('コメント削除？')) return;
-        r.comments.splice(parseInt(b.dataset.delc,10),1);
-        saveState();
+        const __cid = (r.comments[parseInt(b.dataset.delc,10)]||{}).id;   // 💬全員共有(repair_comments)経由で削除 v1.30.184
+        if(__cid && typeof deleteRepairComment_==='function') deleteRepairComment_(r.id, __cid);
         refreshComments();
-        render();
       };
     });
     pop.querySelectorAll('[data-react]').forEach(b=>{
       b.onclick = ()=>{
         const me2 = getMyself(); if(!me2){ alert('自分を設定してください'); return; }
-        const idx = parseInt(b.dataset.cidx,10);
-        const em = b.dataset.react;
-        const c = r.comments[idx]; if(!c) return;
-        if(!c.reactions) c.reactions = {};
-        if(!c.reactions[em]) c.reactions[em] = [];
-        const i = c.reactions[em].indexOf(me2);
-        if(i>=0) c.reactions[em].splice(i,1); else c.reactions[em].push(me2);
-        if(c.reactions[em].length===0) delete c.reactions[em];
-        saveState();
+        const c = r.comments[parseInt(b.dataset.cidx,10)]; if(!c) return;
+        if(typeof toggleRepairReaction_==='function') toggleRepairReaction_(r.id, c.id, b.dataset.react, me2);   // 💬共有 v1.30.184
         refreshComments();
       };
     });
@@ -11851,10 +11922,7 @@ function showRepairQuickPop(r, anchorEl){
         picker.style.top = (rect2.bottom + 4) + 'px';
         picker.querySelectorAll('button').forEach(pb=>{
           pb.onclick = ()=>{
-            if(!c.reactions) c.reactions = {};
-            if(!c.reactions[pb.dataset.em]) c.reactions[pb.dataset.em] = [];
-            if(!c.reactions[pb.dataset.em].includes(me2)) c.reactions[pb.dataset.em].push(me2);
-            saveState();
+            if(typeof addRepairReaction_==='function') addRepairReaction_(r.id, c.id, pb.dataset.em, me2);   // 💬共有 v1.30.184
             picker.remove();
             refreshComments();
           };
@@ -11871,15 +11939,9 @@ function showRepairQuickPop(r, anchorEl){
     const text = inputEl.value.trim();
     if(!text) return;
     if(!me){ alert('送信者を設定してください'); return; }
-    if(!r.comments) r.comments = [];
-    r.comments.push({
-      id: 'c_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,5),
-      author: me, text, at: new Date().toISOString(), reactions:{}
-    });
+    if(typeof addRepairComment_==='function') addRepairComment_(r.id, text, me);   // 💬全員共有(repair_comments) v1.30.184
     inputEl.value = '';
-    saveState();
     refreshComments();
-    render();
   };
   sendBtn.onclick = send;
   inputEl.addEventListener('keydown', (e)=>{
@@ -15078,7 +15140,13 @@ function openRepairSheet(id){
   }else{ fullWrap.style.display = "none"; }
   document.getElementById("rs-salesrep").value = r.salesRep || "";
   document.getElementById("rs-contact").value  = r.contactPerson || "";
-  document.getElementById("rs-creatormemo").value = r.creatorMemo || "";
+  // 💬 進捗チャット(全員共有・creatorMemoの置き換え v1.30.184)
+  const __chatEl = document.getElementById("rs-chat");
+  if(__chatEl){
+    renderRepairChat_(__chatEl, r.id);
+    __refreshOpenRepairCommentUI_ = ()=>{ const el=document.getElementById("rs-chat"); if(el && repairSheet.classList.contains("show") && editingRepairId===r.id) renderRepairChat_(el, r.id); };
+    if(typeof fetchRepairComments_==='function') fetchRepairComments_({silent:true}).catch(()=>{});  // 開いた時に最新を取得→フックで再描画
+  }
   // 👤 作業担当者ピッカーは廃止(v1.30.128): 担当はチップのダブルクリック(クイックポップ)で設定。
   // 営業ステータス 7値ピッカー
   const stPick = document.getElementById("rs-status-pick");
@@ -15111,7 +15179,29 @@ function openRepairSheet(id){
   });
   repairSheet.classList.add("show");
 }
-function closeRepairSheet(){ repairSheet.classList.remove("show"); editingRepairId = null; }
+function closeRepairSheet(){ repairSheet.classList.remove("show"); editingRepairId = null; __refreshOpenRepairCommentUI_ = null; }
+// 💬 修繕 進捗チャット描画(全員共有 repair_comments)v1.30.184
+function renderRepairChat_(container, repairId){
+  if(!container) return;
+  const me = (typeof getMyself==='function') ? getMyself() : "";
+  const cs = getRepairComments_(repairId);
+  const fmtT = iso=>{ const d=new Date(iso); if(isNaN(d)) return ""; const p=n=>String(n).padStart(2,'0'); const td=new Date(); td.setHours(0,0,0,0); return d>=td ? `${p(d.getHours())}:${p(d.getMinutes())}` : `${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+  const listHtml = cs.length ? cs.map(c=>{
+    const mine = c.author===me;
+    return `<div class="rchat-msg ${mine?'mine':''}">`
+      + `<div class="rchat-meta"><b>${escapeHtml(c.author||'?')}</b><span>${escapeHtml(fmtT(c.at))}</span>${mine?`<button class="rchat-del" data-cid="${escapeHtml(c.id)}" title="削除">✕</button>`:''}</div>`
+      + `<div class="rchat-text">${escapeHtml(c.text||'')}</div>`
+      + `</div>`;
+  }).join('') : `<div class="rchat-empty">まだ投稿はありません。進捗・連絡を書き込めます（全員共有）</div>`;
+  container.innerHTML = `<div class="rchat-list" id="rchat-list">${listHtml}</div>`
+    + `<div class="rchat-input"><textarea id="rchat-in" rows="1" placeholder="進捗・連絡を入力（Enterで送信 / Shift+Enterで改行）"></textarea><button id="rchat-send" type="button">送信</button></div>`;
+  const listEl = container.querySelector('#rchat-list'); if(listEl) listEl.scrollTop = listEl.scrollHeight;
+  const inp = container.querySelector('#rchat-in'), snd = container.querySelector('#rchat-send');
+  const send = ()=>{ const v=(inp.value||'').trim(); if(!v) return; if(!me){ alert('先に「👤 マイ」で自分を設定してください'); return; } addRepairComment_(repairId, v, me); inp.value=''; renderRepairChat_(container, repairId); };
+  if(snd) snd.onclick = send;
+  if(inp) inp.onkeydown = e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); } };
+  container.querySelectorAll('.rchat-del').forEach(b=>{ b.onclick = ()=>{ if(confirm('この投稿を削除しますか？')){ deleteRepairComment_(repairId, b.dataset.cid); renderRepairChat_(container, repairId); } }; });
+}
 
 // 🗓 要対応リスト(アポ日未設定=要日程の修繕)v1.30.183
 //   カレンダーには出さず、ここに集約。クリックで詳細シート(openRepairSheet)→アポ日を入れるとカレンダーに出る。
@@ -15169,14 +15259,13 @@ async function saveRepairSheet(){
   const newWf = document.querySelector("#rs-wf-pick .rs-pick-btn.on")?.dataset.w || r.workflowStatus;
   const newRespDate = document.getElementById("rs-respdate").value;
   const newRespTime = document.getElementById("rs-resptime").value.trim();
-  const newMemo = document.getElementById("rs-creatormemo").value;
+  // 📝 進捗メモはチャット(💬全員共有 repair_comments)に置き換えたので保存対象から除外(v1.30.184)
   // 楽観的更新
-  const prev = {status:r.status, workflowStatus:r.workflowStatus, responseDate:r.responseDate, responseTime:r.responseTime, creatorMemo:r.creatorMemo, worker:r.worker};
+  const prev = {status:r.status, workflowStatus:r.workflowStatus, responseDate:r.responseDate, responseTime:r.responseTime, worker:r.worker};
   r.status = newSt;
   r.workflowStatus = newWf;
   r.responseDate = newRespDate;
   r.responseTime = newRespTime;
-  r.creatorMemo = newMemo;
   // 作業担当者(r.worker)は詳細シートでは触らない(v1.30.128・ピッカー廃止)。クイックポップ/overlayが管理。
   saveState();
   // Drive書戻し (差分があるフィールドだけ送る)
@@ -17268,6 +17357,11 @@ setTimeout(()=>{
     if(typeof fetchTaikyoComments_==='function'){
       fetchTaikyoComments_({silent:true}).catch(()=>{});
       setInterval(()=>fetchTaikyoComments_({silent:true}).catch(()=>{}), 5*60*1000);
+    }
+    // 💬 修繕 進捗チャット (全員共有) 取得・以後5分ごと(v1.30.184)
+    if(typeof fetchRepairComments_==='function'){
+      fetchRepairComments_({silent:true}).catch(()=>{});
+      setInterval(()=>fetchRepairComments_({silent:true}).catch(()=>{}), 5*60*1000);
     }
     // 🕐 立会 上書き(担当・日時/全員共有) 取得・初回はローカル分をpush(移行)・以後5分ごと
     if(typeof fetchTaikyoOverrides_==='function'){
