@@ -2409,7 +2409,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.188</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.189</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3768,6 +3768,7 @@
           <option value="有給">有給</option>
           <option value="有給（病休）">有給（病休）</option>
           <option value="有給（忌引）">有給（忌引）</option>
+          <option value="振休">🔁 振替休日(振休) (メモに振休元の日付・休日カウント外)</option>
           <option value="当番">🔄 当番 (週次ローテ・休みではない)</option>
           <option value="出社">🏢 出社 (日祝などに出勤・休みにカウントしない)</option>
         </select>
@@ -3856,6 +3857,11 @@ const STAFF_QUOTA = {
 const COMPANY_HOLIDAYS = {1:11, 2:9, 3:8, 4:8, 5:12, 6:8, 7:9, 8:11, 9:10, 10:9, 11:10, 12:10};
 // 休暇種別の表示名(値は会社休日のまま=集計互換、表示だけ所定休日)
 function leaveTypeLabel_(t){ return t==="会社休日" ? "所定休日" : (t||""); }
+// 振休はメモ(振休元の日付)をインライン表示「振休(6/28)」。それ以外は通常ラベル。v1.30.189
+function leaveDispLabel_(l){
+  if(l && l.type==="振休"){ const ref=(l.memo||"").trim(); return ref ? `振休(${ref})` : "振休"; }
+  return leaveTypeLabel_(l && l.type);
+}
 // 担当バッジを出さない値(実在しない既定値など・スペース無視で判定)
 const HIDDEN_STAFF_BADGE = new Set(["大村まどか"]);
 function isHiddenStaffBadge_(s){ return HIDDEN_STAFF_BADGE.has(String(s||"").replace(/\s/g,"")); }
@@ -9828,8 +9834,8 @@ function renderLeaveBand(){
     const fg = textColorFor(bg);
     const display = (typeof getStaffDisplayName === 'function') ? getStaffDisplayName(l.staff) : l.staff;
     const range = l.start===l.end ? l.start.slice(5) : `${l.start.slice(5)}〜${l.end.slice(5)}`;
-    const typeLabel = leaveTypeLabel_(l.type);
-    const tooltip = `${display} ${typeLabel} ${range}${l.memo?'\n'+l.memo:''}`;
+    const typeLabel = leaveDispLabel_(l);
+    const tooltip = `${display} ${typeLabel} ${range}${l.memo&&l.type!=="振休"?'\n'+l.memo:''}`;
     const rangeHtml = withRange ? ` <span class="lb-range">${range}</span>` : "";
     const _tp = staffTaskProgress_(l.staff);
     const taskBadge = `<span class="lb-task" data-task-staff="${escapeHtml(l.staff)}" title="📋 事務タスク${_tp.has?' ('+_tp.dn+'/'+_tp.tt+')':''}">📋</span>`;
@@ -9842,8 +9848,8 @@ function renderLeaveBand(){
     const fg = textColorFor(bg);
     const display = (typeof getStaffDisplayName === 'function') ? getStaffDisplayName(l.staff) : l.staff;
     const range = l.start===l.end ? l.start.slice(5) : `${l.start.slice(5)}〜${l.end.slice(5)}`;
-    const typeLabel = leaveTypeLabel_(l.type);
-    const tooltip = `${display} ${typeLabel} ${range}${l.memo?'\n'+l.memo:''}`;
+    const typeLabel = leaveDispLabel_(l);
+    const tooltip = `${display} ${typeLabel} ${range}${l.memo&&l.type!=="振休"?'\n'+l.memo:''}`;
     const _tp = staffTaskProgress_(l.staff);
     const taskBadge = `<span class="lb-task" data-task-staff="${escapeHtml(l.staff)}" title="📋 事務タスク${_tp.has?' ('+_tp.dn+'/'+_tp.tt+')':''}">📋</span>`;
     return `<span class="leave-badge" data-leave-id="${l.id}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}"><span class="lb-staff">${escapeHtml(display)}</span><span class="lb-type">${escapeHtml(typeLabel)}</span>${taskBadge}</span>`;
@@ -9982,8 +9988,8 @@ function renderCalendar(){
       const bg = STAFF_COLORS[l.staff] || "#fde68a";
       const fg = textColorFor(bg);
       const range = l.start===l.end ? l.start.slice(5) : `${l.start.slice(5)}〜${l.end.slice(5)}`;
-      const typeLabel = leaveTypeLabel_(l.type);
-      const tt = `${l.staff} ${typeLabel} ${range}${l.memo?'\n'+l.memo:''}`;
+      const typeLabel = leaveDispLabel_(l);
+      const tt = `${l.staff} ${typeLabel} ${range}${l.memo&&l.type!=="振休"?'\n'+l.memo:''}`;
       return `<span class="leave-badge" data-leave-id="${l.id}" style="background:${bg};color:${fg}" title="${escapeHtml(tt)}"><span class="lb-staff">${escapeHtml(l.staff)}</span><span class="lb-type">${escapeHtml(typeLabel)}</span></span>`;
     }).join("");
     // 修繕アポ (responseDate がこの列の日付に一致) — Phase3 カレンダー連携
@@ -11175,7 +11181,7 @@ function renderMonth(){
     const showEvents = dayEvents.slice(0,MAX_SHOW);
     const moreCount = dayEvents.length - showEvents.length;
     const leavesHtml = dayLeaves.map(l=>
-      `<div class="month-leave" data-leave-id="${l.id}" title="${escapeHtml(l.memo||"")}">${escapeHtml(l.staff)} ${escapeHtml(leaveTypeLabel_(l.type))}</div>`
+      `<div class="month-leave" data-leave-id="${l.id}" title="${escapeHtml(l.memo||"")}">${escapeHtml(l.staff)} ${escapeHtml(leaveDispLabel_(l))}</div>`
     ).join("");
     const eventsHtml = showEvents.map(ev=>{
       // リーダー未指定 → 透明背景+点線 / 事前はデフォ白(担当色で着色しない・点線なし)
@@ -13073,6 +13079,11 @@ function openLeaveModal(lv, defaults){
   document.getElementById("lv-end").value   = lv?.end   || defEnd;
   document.getElementById("lv-type").value  = lv?.type  || defaults?.type || "会社休日"; // 既定=所定休日(X/8カウント)
   document.getElementById("lv-memo").value  = lv?.memo  || (defaults?.type==="当番" ? "在庫/倉庫/ゴミ/除草" : "");
+  // 🔁 振休のときはメモに「振休元の日付」を入れる案内(例: 6/28)v1.30.189
+  const __lvType = document.getElementById("lv-type");
+  const __lvMemo = document.getElementById("lv-memo");
+  const __lvMemoHint = ()=>{ if(__lvMemo) __lvMemo.placeholder = (__lvType.value==="振休") ? "振休元の日付 (例: 6/28)" : ""; };
+  if(__lvType){ __lvType.onchange = __lvMemoHint; __lvMemoHint(); }
   leaveModal.classList.add("show");
 }
 function closeLeaveModal(){ leaveModal.classList.remove("show"); editingLeaveId=null; }
