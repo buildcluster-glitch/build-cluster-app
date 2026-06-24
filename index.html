@@ -866,6 +866,22 @@
   /* 🔆 アポ日/位置を変更した直後、移動先のチップを光らせて「ここに移った」を明示(v1.30.163) */
   @keyframes repairFlash{0%,100%{box-shadow:none;outline-color:transparent}15%,70%{box-shadow:0 0 12px 2px rgba(37,99,235,.6);outline-color:#2563eb}}
   .repair-flash{animation:repairFlash 1.6s ease-in-out 1;outline:2px solid transparent;outline-offset:1px;border-radius:8px}
+  /* 🗓 要対応リスト ボタン+モーダル(v1.30.183) */
+  .al-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#ef4444;color:#fff;font-size:11px;font-weight:700;margin-left:2px;line-height:1}
+  #actionListBtn:not(.has-items) .al-count{background:#9ca3af}
+  #actionListBtn.has-items{border-color:#fca5a5;background:#fff1f2}
+  .modal.modal-actionlist{max-width:580px;width:100%}
+  .al-body{max-height:62vh;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:6px}
+  .al-item{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:#fff;transition:background .12s,border-color .12s}
+  .al-item:hover{background:var(--hover);border-color:var(--accent)}
+  .al-item .al-tag{padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700;flex-shrink:0}
+  .al-item .al-name{font-weight:700;font-size:14px;color:#0f172a}
+  .al-item .al-room{color:#475569;font-weight:600;font-size:12px}
+  .al-item .al-wf{color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;flex-shrink:0;white-space:nowrap}
+  .al-item .al-cont{font-size:10px;color:#64748b;flex-shrink:0}
+  .al-item .al-desc{flex-basis:100%;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .al-empty{text-align:center;padding:44px 20px;color:var(--muted);font-size:14px}
+  .al-group-head{font-size:11px;font-weight:700;color:#64748b;margin:6px 2px 0}
   /* 🔍 スケジュール検索 */
   .modal-overlay .modal.modal-search{max-width:560px;width:100%}
   .sch-search-box{display:flex;gap:8px;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border)}
@@ -2369,10 +2385,11 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.182</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.183</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
+  <button class="nav-btn" id="actionListBtn" title="🗓 要対応 — アポ日未設定(要日程)の修繕を一覧表示">🗓 要対応 <span id="actionListCount" class="al-count">0</span></button>
   <div class="nav-date" id="navDate"></div>
   <div class="view-switch">
     <button data-view="task">📋 タスク</button>
@@ -2487,6 +2504,15 @@
     </div>
   </div>
   <div class="repair-list" id="repairList"></div>
+</div>
+
+<!-- 🗓 要対応リスト(アポ日未設定の修繕)モーダル v1.30.183 -->
+<div class="modal-overlay" id="actionListModal">
+  <div class="modal modal-actionlist">
+    <div class="modal-header">🗓 要対応リスト <span style="font-weight:400;font-size:11px;color:var(--muted)">アポ日未設定の修繕（要日程調整）— クリックで詳細</span></div>
+    <div class="al-body" id="al-body"></div>
+    <div style="display:flex;justify-content:flex-end;padding:10px 14px;border-top:1px solid var(--border)"><button class="btn" id="al-close">閉じる</button></div>
+  </div>
 </div>
 
 <!-- 修繕案件 編集シート(モーダル) -->
@@ -4385,6 +4411,7 @@ function render(){
   if(__cg) __cg.classList.toggle('tswipe', true);
   renderHeader();
   renderStaffLegend();
+  if(typeof updateActionListCount_==='function') updateActionListCount_();  // 🗓 要対応バッジ件数更新(v1.30.183)
 
   const calendarWrap = document.getElementById("calendarWrap");
   const taskView = document.getElementById("taskView");
@@ -9873,19 +9900,11 @@ function renderCalendar(){
     // responseTime が "10:00" 等の正確な時刻パース可能なら時間グリッドに配置、不可なら終日帯に
     // ★ドラッグ不可仕様: 上記グリッド配置側コメント参照
     if(currentView!=="staff" && c.contextDate){
-      const __todayIso = fmtDate(new Date());
       const dayRepairs = (state.repairs||[]).filter(r=>{
-        // アポ済(responseDateあり)=その日に表示。未アポ(responseDate空)=今日列に追従表示(対応予定日は空のまま)。
-        //   未アポを今日に出すのは「入ったら見える/要日程調整が消えない」ため(2026-06-23 山田)。完了/中止は除外。
-        if(r.responseDate){
-          if(r.responseDate!==c.contextDate) return false;
-        } else {
-          // 未アポ追従は「アポ・手配 未」(または未設定)=要日程のものだけ。待機/長期連絡なしは意図的保留なので積まない。
-          if(c.contextDate!==__todayIso) return false;
-          const __wf = r.workflowStatus || "アポ・手配 未";
-          if(__wf!=="アポ・手配 未") return false;
-          if(/完了|キャンセル|中止/.test(r.status||"")) return false;
-        }
+        // アポ済(responseDateあり)=その日に表示。未アポ(responseDate空)はカレンダーに出さず
+        //   「🗓要対応」ボタンの一覧へ集約(カレンダーが要日程で埋まって見づらいため)v1.30.183
+        if(!r.responseDate) return false;             // 未アポ(要日程)はカレンダー非表示→要対応リストで対応
+        if(r.responseDate!==c.contextDate) return false;
         // v1.12.3: 修繕アポも カテゴリ(元請け)フィルタを尊重
         const filterKey = motoukeKey_(r.contractor);   // 元請け正規化キーでフィルタ突合(v1.30.42)
         if(hiddenCategories.has(filterKey)) return false;
@@ -13122,6 +13141,15 @@ function navigate(dir){
 }
 document.getElementById("prevBtn").onclick = ()=>navigate(-1);
 document.getElementById("nextBtn").onclick = ()=>navigate(1);
+// 🗓 要対応リスト ボタン(v1.30.183)
+(function(){
+  const b = document.getElementById("actionListBtn");
+  if(b) b.onclick = ()=>{ if(typeof openActionList==='function') openActionList(); };
+  const c = document.getElementById("al-close");
+  if(c) c.onclick = ()=>{ if(typeof closeActionList==='function') closeActionList(); };
+  const m = document.getElementById("actionListModal");
+  if(m) m.onclick = (e)=>{ if(e.target===m && typeof closeActionList==='function') closeActionList(); };
+})();
 
 // 📱 スワイプ日送り: ビューの表示スパン分だけ移動 (‹›の月ジャンプとは別・細かい送り)
 function swipeNavigate_(dir){
@@ -15084,6 +15112,56 @@ function openRepairSheet(id){
   repairSheet.classList.add("show");
 }
 function closeRepairSheet(){ repairSheet.classList.remove("show"); editingRepairId = null; }
+
+// 🗓 要対応リスト(アポ日未設定=要日程の修繕)v1.30.183
+//   カレンダーには出さず、ここに集約。クリックで詳細シート(openRepairSheet)→アポ日を入れるとカレンダーに出る。
+function getActionRepairs_(){
+  return (state.repairs||[]).filter(r=>{
+    if(r.responseDate) return false;                      // アポ日が入ったら対象外(カレンダーに出る)
+    const wf = r.workflowStatus || "アポ・手配 未";
+    if(wf !== "アポ・手配 未") return false;               // 待機/長期連絡なし/アポ済 は対象外
+    if(/完了|キャンセル|中止/.test(r.status||"")) return false;
+    return true;
+  });
+}
+function updateActionListCount_(){
+  const n = (typeof getActionRepairs_==='function') ? getActionRepairs_().length : 0;
+  const el = document.getElementById('actionListCount');
+  if(el) el.textContent = n;
+  const btn = document.getElementById('actionListBtn');
+  if(btn) btn.classList.toggle('has-items', n > 0);
+}
+function openActionList(){
+  const list = getActionRepairs_().slice().sort((a,b)=>{
+    const ca = a.contractor||"", cb = b.contractor||"";
+    if(ca !== cb) return ca < cb ? -1 : 1;
+    return (a.name||"") < (b.name||"") ? -1 : 1;
+  });
+  const body = document.getElementById('al-body');
+  if(!list.length){
+    body.innerHTML = `<div class="al-empty">🎉 要対応（アポ日未設定）の修繕はありません</div>`;
+  } else {
+    body.innerHTML = list.map(r=>{
+      const cont = contractorInfo(shortenCompany(r.contractor||"")) || contractorInfo(r.contractor);
+      const tagBg = cont ? cont.color : "#94a3b8";
+      const wfBar = (window.wfBgMap && window.wfBgMap[r.workflowStatus||"アポ・手配 未"]) || "#ec4899";
+      const desc = (r.requestDesc || r.requestDescFull || "").trim();
+      const descShort = desc ? (desc.length>46 ? desc.slice(0,46)+"…" : desc) : "";
+      return `<div class="al-item" data-repair-id="${escapeHtml(r.id)}">`
+        + `<span class="al-tag" style="background:${tagBg};color:${textColorFor(tagBg)}" title="${escapeHtml(r.contractor||'')}">修繕</span>`
+        + `<span class="al-name">${escapeHtml(r.name||'(物件名なし)')}${r.room?` <span class="al-room">${escapeHtml(r.room)}</span>`:''}</span>`
+        + `<span class="al-wf" style="background:${wfBar}">📞要日程</span>`
+        + (r.contractor?`<span class="al-cont">${escapeHtml(shortenCompany(r.contractor))}</span>`:'')
+        + (descShort?`<span class="al-desc">${escapeHtml(descShort)}</span>`:'')
+        + `</div>`;
+    }).join("");
+    body.querySelectorAll('.al-item').forEach(it=>{
+      it.onclick = ()=>{ const id = it.dataset.repairId; closeActionList(); if(typeof openRepairSheet==='function') openRepairSheet(id); };
+    });
+  }
+  document.getElementById('actionListModal').classList.add('show');
+}
+function closeActionList(){ const m=document.getElementById('actionListModal'); if(m) m.classList.remove('show'); }
 async function saveRepairSheet(){
   const r = state.repairs.find(x=>x.id===editingRepairId);
   if(!r) return;
@@ -16833,6 +16911,7 @@ document.addEventListener("keydown", e=>{
     else if(myselfModal.classList.contains("show")) closeMyself();
     else if(bukkenModal.classList.contains("show")) closeBukken();
     else if(repairSheet.classList.contains("show")) closeRepairSheet();
+    else if(document.getElementById("actionListModal") && document.getElementById("actionListModal").classList.contains("show")) closeActionList();
     else if(eventModal.classList.contains("show")) closeEventModal();
     else if(leaveModal.classList.contains("show")) closeLeaveModal();
     else if(checkModal.classList.contains("show")) closeCheckModal();
