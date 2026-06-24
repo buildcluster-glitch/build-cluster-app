@@ -1451,6 +1451,11 @@
   /* 💬 進捗チャット件数バッジ(修繕カード)v1.30.186 */
   .rep-chat-badge{display:inline-flex;align-items:center;gap:2px;background:#dbeafe;color:#1d4ed8;border:1px solid #93c5fd;border-radius:12px;font-size:11px;font-weight:700;padding:2px 9px;cursor:pointer;white-space:nowrap}
   .rep-chat-badge:hover{background:#bfdbfe}
+  /* ⏳ 待機/見積提出済 の経過日数バッジ(長期待機強調)v1.30.187 */
+  .rep-wait{display:inline-flex;align-items:center;gap:2px;border-radius:12px;font-size:11px;font-weight:700;padding:2px 9px;white-space:nowrap}
+  .rep-wait.lv1{background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0}
+  .rep-wait.lv2{background:#fef3c7;color:#b45309;border:1px solid #fcd34d}
+  .rep-wait.lv3{background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5}
   .rep-st.s-st-draft {background:#f1f5f9;color:#64748b}
   .rep-st.s-st-active{background:#fef3c7;color:#b45309}
   .rep-st.s-st-apo   {background:#dbeafe;color:#1e40af}
@@ -2404,7 +2409,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.186</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.187</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -14875,6 +14880,21 @@ function renderRepairView(){
   bindRepairCardEvents(listEl);
 }
 
+// ⏳ 見積から何日経過したか(長期待機の発見用)v1.30.187
+//   基準日 = 見積作成日(extEstimateId内蔵 "EYYYYMMDD…") > 依頼日(requestDate) > 最終更新。
+//   ※真の「提出日」は台帳に無いので見積作成日を近似に使う(提出≒作成タイミング)。
+function repairWaitDays_(r){
+  let anchor = "";
+  const m = String(r.extEstimateId||"").match(/^E(\d{4})(\d{2})(\d{2})/);
+  if(m) anchor = `${m[1]}-${m[2]}-${m[3]}`;
+  if(!anchor && r.requestDate) anchor = r.requestDate;
+  if(!anchor && r.updatedAt) anchor = String(r.updatedAt).slice(0,10);
+  if(!anchor) return null;
+  const ad = (typeof parseDate==='function') ? parseDate(anchor) : new Date(anchor);
+  if(!ad || isNaN(ad)) return null;
+  const today = new Date(); today.setHours(0,0,0,0); ad.setHours(0,0,0,0);
+  return Math.max(0, Math.round((today - ad)/(1000*60*60*24)));
+}
 function renderRepairCard(r, i){
   const wf = r.workflowStatus || "アポ・手配 未";
   const wfBg = WF_BG[wf] || "";  // 表に無い進行ステータスは行色なし(白) — progress.html と同ルール
@@ -14914,6 +14934,12 @@ function renderRepairCard(r, i){
   const chatBadge = __cmtN>0
     ? `<span class="rep-chat-badge" data-chat="1" title="💬 進捗チャットを見る (${__cmtN}件)">💬 ${__cmtN}</span>`
     : "";
+  // ⏳ 待機/見積提出済 の経過日数バッジ(長期待機を色で強調)v1.30.187
+  const __isWaiting = (wf==="待機") || (status==="提出済");
+  const __wd = __isWaiting ? repairWaitDays_(r) : null;
+  const waitBadge = (__wd!=null)
+    ? `<span class="rep-wait ${__wd>=30?'lv3':(__wd>=14?'lv2':'lv1')}" title="見積から${__wd}日経過(長期待機チェック・基準=見積作成日/依頼日)">⏳ ${__wd}日</span>`
+    : "";
   const addr = r.address || "";
   const cust = r.customerName || "";
   const tel = r.customerTel || "";
@@ -14949,6 +14975,7 @@ function renderRepairCard(r, i){
         ${workerHtml}
         ${volBadge}
         <span class="rep-st rep-st-readonly ${REPAIR_STATUS_PILL[status]||"s-st-active"}" data-st-pop="1" title="タップで営業ステータス変更">${escapeHtml(statusLabel)}</span>
+        ${waitBadge}
         ${chatBadge}
       </div>
       ${hasRow2?`
