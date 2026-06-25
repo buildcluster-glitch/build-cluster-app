@@ -2437,7 +2437,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.212</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.213</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9238,6 +9238,11 @@ async function syncChecksFromGAS(opts){
   state.checks.filter(c=>c.source==="gas-sync" && c.extDriveFileId).forEach(c=>{
     oldByExt.set(c.extDriveFileId, c.checkDate);
   });
+  // 🔁 差分同期(v1.30.213): 自動/サイレントは前回以降に更新された台帳だけ取得(since)。手動🔄・初回・1時間ごとはフル(since無し)で再照合し集約/取りこぼし/削除を正す。
+  const __lastSyncAt = localStorage.getItem("buildcluster_drive_synced_at") || "";
+  const __lastFullAt = +(localStorage.getItem("buildcluster_drive_full_at")||0);
+  const __forceFull  = !__lastSyncAt || (Date.now() - __lastFullAt) > 60*60*1000;
+  const __since = (!!silent && !__forceFull) ? __lastSyncAt : "";   // 手動(!silent)/初回/1時間ごと=フル
   try{
     const res = await fetch(s.url, {
       method:"POST",
@@ -9247,11 +9252,17 @@ async function syncChecksFromGAS(opts){
         token:s.token,
         kojiFilter:"all",
         maxMonths: s.maxMonths || 3,
+        since: __since,   // 空=フル / ISO時刻=その時刻以降の更新分だけ(GAS差分)
       })
     });
     const data = await res.json();
     if(data.error){ throw new Error(data.error); }
     const properties = data.properties || [];
+    // 🔁 差分レスポンス(v1.30.213): since指定 かつ GASが partial:true を返した時だけ差分マージ。partial欄が無い旧GAS→フル扱い(forward-compatible)
+    const __partial  = (data.partial === true) && !!__since;
+    const __allIds   = Array.isArray(data.allIds) ? data.allIds : null;
+    const __syncedAt = data.syncedAt || new Date().toISOString();
+    console.log(`[task-sync] ${__partial?'差分':'フル'} properties=${properties.length}${__allIds?` allIds=${__allIds.length}`:''} since=${__since||'(なし)'}`);
     console.log("[task-sync] properties sample:", properties.slice(0,3));
     const wlSample = properties.slice(0,5).map(p=>({
       name: p.name,
@@ -9348,10 +9359,22 @@ async function syncChecksFromGAS(opts){
     const restorations = extractRestorations(properties, state.restorations);
     console.log("[task-sync] restorations extracted:", restorations.length);
 
+    // 🔁 差分マージ準備(v1.30.213): 今回更新があった台帳(driveFileId/estimateId)=差替対象、allIdsに無い台帳=削除されたのでprune
+    const __changedFids = new Set();
+    if(__partial){ properties.forEach(p=>{ if(p&&p.driveFileId) __changedFids.add(p.driveFileId); if(p&&p.estimateId) __changedFids.add(p.estimateId); }); }
+    const __allIdSet = (__partial && __allIds) ? new Set(__allIds) : null;
+    const __isChanged = it => !!it && ((it.extDriveFileId && __changedFids.has(it.extDriveFileId)) || (it.extEstimateId && __changedFids.has(it.extEstimateId)));
+    const __fileGone  = it => !!__allIdSet && !!it && !!it.extDriveFileId && !__allIdSet.has(it.extDriveFileId);
+    const __keepOld   = it => !__isChanged(it) && !__fileGone(it);   // 変更分は差替・消えた台帳はprune・それ以外は温存
+
     if(!silent) pushHistory();
-    // 既存の gas-sync 由来を破棄して入れ替え。手動追加(source未設定)は保持
-    state.checks = state.checks.filter(c => c.source !== "gas-sync").concat(imported);
-    state.repairs = repairs;
+    // 既存の gas-sync 由来を入れ替え。手動追加(source未設定)は保持。差分時は「変更/消えた分」だけ入れ替え
+    state.checks = __partial
+      ? state.checks.filter(c => c.source !== "gas-sync" || __keepOld(c)).concat(imported)
+      : state.checks.filter(c => c.source !== "gas-sync").concat(imported);
+    state.repairs = __partial
+      ? (state.repairs||[]).filter(__keepOld).concat(repairs)
+      : repairs;
     if(typeof applyRepairOverridesToState_==='function') applyRepairOverridesToState_();  // 全員共有の作業担当を反映(v1.30.55・キャッシュ即適用)
     if(typeof applyRepairCommentsToState_==='function') applyRepairCommentsToState_();  // 💬 全員共有の進捗チャットを反映(v1.30.184)
     if(typeof applyJimuMessagesToState_==='function') applyJimuMessagesToState_();  // 💬 全員共有の業務連絡を反映(v1.30.203)
@@ -9372,9 +9395,14 @@ async function syncChecksFromGAS(opts){
     if(typeof fetchRepairPos_==='function') fetchRepairPos_({silent:true}).catch(()=>{});
     // 🌴 再同期時は休暇も最新を取りに行く→他PCの休日設定が即反映(v1.30.94)
     if(typeof fetchLeaves_==='function') fetchLeaves_({silent:true}).catch(()=>{});
-    state.restorations = restorations;
+    state.restorations = __partial
+      ? (state.restorations||[]).filter(__keepOld).concat(restorations)
+      : restorations;
     saveState();
     localStorage.setItem("buildcluster_gas_synced_at", new Date().toISOString());
+    // 🔁 差分同期: 次回の since 用にサーバー基準時刻を保存。フル同期した時刻も別途記録(1時間ごとの再照合判定用)
+    localStorage.setItem("buildcluster_drive_synced_at", __syncedAt);
+    if(!__partial) localStorage.setItem("buildcluster_drive_full_at", String(Date.now()));
     lastAutoSyncAt = Date.now();
     render();
     if(silent){
