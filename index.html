@@ -882,6 +882,11 @@
   /* 🔆 アポ日/位置を変更した直後、移動先のチップを光らせて「ここに移った」を明示(v1.30.163) */
   @keyframes repairFlash{0%,100%{box-shadow:none;outline-color:transparent}15%,70%{box-shadow:0 0 12px 2px rgba(37,99,235,.6);outline-color:#2563eb}}
   .repair-flash{animation:repairFlash 1.6s ease-in-out 1;outline:2px solid transparent;outline-offset:1px;border-radius:8px}
+  /* 🗑 立会の取消(もう無さそう): 取消線+薄く v1.30.206 */
+  .taikyo-dismissed{opacity:.55;filter:grayscale(.4)}
+  .taikyo-dismissed .chip-title,.taikyo-dismissed .title,.taikyo-dismissed .ct-text{text-decoration:line-through;text-decoration-thickness:1.5px;text-decoration-color:#64748b}
+  .taikyo-dismiss-btn{position:absolute;top:0;right:0;z-index:4;border:none;background:rgba(255,255,255,.72);color:#475569;font-size:11px;font-weight:700;line-height:1;padding:1px 4px;border-radius:0 7px 0 7px;cursor:pointer}
+  .taikyo-dismiss-btn:hover{background:#fff;color:#dc2626}
   /* 🗓 要対応リスト ボタン+モーダル(v1.30.183) */
   .al-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#ef4444;color:#fff;font-size:11px;font-weight:700;margin-left:2px;line-height:1}
   #actionListBtn:not(.has-items) .al-count{background:#9ca3af}
@@ -2425,7 +2430,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.205</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.206</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5546,7 +5551,7 @@ async function mutateTaikyoOverrideRemote_(taikyoId, patch){
     }catch(_){}
   }
   const cur = map[taikyoId] || {};
-  const next = { staff: cur.staff||'', date: cur.date||'', time: cur.time||'', commute: cur.commute||'', ...patch,
+  const next = { staff: cur.staff||'', date: cur.date||'', time: cur.time||'', commute: cur.commute||'', dismissed: cur.dismissed||false, ...patch,
                  at: new Date().toISOString(), by: (typeof getMyself==='function'?getMyself():'')||'' };
   map[taikyoId] = next;
   saveTaikyoOverrides_(map);
@@ -5575,7 +5580,7 @@ function setTaikyoCommuteOverride_(taikyoId, commute){
 function setTaikyoDateTimeOverride_(taikyoId, patch){
   const map = loadTaikyoOverrides_();
   const cur = map[taikyoId] || {};
-  map[taikyoId] = { staff: cur.staff||'', date: (patch.date!==undefined?patch.date:cur.date)||'', time: (patch.time!==undefined?patch.time:cur.time)||'', commute: cur.commute||'', at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' };
+  map[taikyoId] = { staff: cur.staff||'', date: (patch.date!==undefined?patch.date:cur.date)||'', time: (patch.time!==undefined?patch.time:cur.time)||'', commute: cur.commute||'', dismissed: cur.dismissed||false, at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' };
   saveTaikyoOverrides_(map);
   mutateTaikyoOverrideRemote_(taikyoId, patch);
 }
@@ -6729,6 +6734,7 @@ function buildTaikyoVirtualEvent_(r){
     source: "taikyo-shared",  // 識別フラグ(編集不可・cloud syncに送らない)
     _readOnly: true,
     _shiryoReady: (typeof isShiryoReady_==='function') ? isShiryoReady_(r.bukken, r.room) : false, // 📄資料作成済(見積アプリ)
+    _dismissed: !!(__ovEntry && __ovEntry.dismissed),   // 🗑 「もう無さそう」で取消(全員共有・取消線+下に沈む)v1.30.206
     updatedAt: r.updatedAt || "",
   };
 }
@@ -10695,8 +10701,8 @@ function renderCalendar(){
     // 月ビューは時間セル(hour-cell)に flex 縦積み → セル単位でスクロール
     // それ以外は従来の絶対配置
     if(__isMonth){
-      // 開始時刻順にソート（同時刻はリーダー順）
-      placedNormal.sort((a,b)=>(a.ev.start||"").localeCompare(b.ev.start||"") || (a.colIdx-b.colIdx));
+      // 開始時刻順にソート（同時刻はリーダー順）。🗑 取消した立会は最後に沈める(v1.30.206)
+      placedNormal.sort((a,b)=>((a.ev._dismissed?1:0)-(b.ev._dismissed?1:0)) || (a.ev.start||"").localeCompare(b.ev.start||"") || (a.colIdx-b.colIdx));
     }
     [...placedNormal, ...placedAllday, ...placedJizen].forEach(({ev,colIdx,isFree,isJizen})=>{
       const isMonth = currentView === "month";
@@ -10993,6 +10999,25 @@ function renderCalendar(){
              <div class="title">${inlineCatPrefix}${titleHtmlMulti}${progIcon}${__progStaffBadge}${shiryoBadge}${taikyoCmtBadge}${__linkInfoHtml}${__jizenKojiHtml}</div>
              ${showStaff ? (multi ? participantsHtml : (ev.staff ? `<div class="staff">${staffShortLabel}</div>`:"")) : ""}`;
         el.title = fullTooltip;
+      }
+      // 🗑 立会(未定/確定)の取消(×)/復活(↩)。全員共有(taikyo_overrides.dismissed)・取消線+下に沈む v1.30.206
+      if(ev.source === "taikyo-shared" && ev._taikyoRawId){
+        if(ev._dismissed) el.classList.add("taikyo-dismissed");
+        if(getComputedStyle(el).position === "static") el.style.position = "relative";
+        const __dbtn = document.createElement("button");
+        __dbtn.className = "taikyo-dismiss-btn";
+        __dbtn.textContent = ev._dismissed ? "↩" : "×";
+        __dbtn.title = ev._dismissed ? "立会を復活する" : "もう無さそう→取消(取消線+下に沈める)";
+        const __dstop = e2=>{ e2.stopPropagation(); };
+        __dbtn.addEventListener("pointerdown", __dstop, true);
+        __dbtn.addEventListener("mousedown", __dstop, true);
+        __dbtn.addEventListener("click", e2=>{
+          e2.stopPropagation(); e2.preventDefault();
+          const __raw = ev._taikyoRawId;
+          if(!ev._dismissed && !confirm(`「${ev.title}」の立会を取消にしますか？(取消線を付けて下に沈めます・↩で復活できます)`)) return;
+          if(typeof mutateTaikyoOverrideRemote_==='function') mutateTaikyoOverrideRemote_(__raw, {dismissed: !ev._dismissed}).catch(()=>{});
+        });
+        el.appendChild(__dbtn);
       }
       attachDragOrClick(el, ev);
       attachChipHover(el, ev);
