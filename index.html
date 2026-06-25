@@ -2437,7 +2437,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.211</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.212</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3833,7 +3833,8 @@
 (function(){
   if (window._gcBatchInstalled) return; window._gcBatchInstalled = true;
   var _origFetch = window.fetch.bind(window);
-  var GC_KEYS = ['staffMaster','staffAvailability','taikyo_tachiai_schedule','taikyo_overrides','taikyo_comments','taikyo_shiryo_ready','repair_overrides','repair_comments','repair_pos','check_workers','phone_duty','toban_done','alerts','skip_visit','staff_leaves','event_deletions','jimu_messages','jizen_schedule','hatchusho_data'];
+  // ⚠ hatchusho_data(発注書・149KB)はバッチから除外(v1.30.212): バッチ1回が149KB込みで重くなり、軽いキーまで待たされるため。発注書は別途(単発/必要時)取得。
+  var GC_KEYS = ['staffMaster','staffAvailability','taikyo_tachiai_schedule','taikyo_overrides','taikyo_comments','taikyo_shiryo_ready','repair_overrides','repair_comments','repair_pos','check_workers','phone_duty','toban_done','alerts','skip_visit','staff_leaves','event_deletions','jimu_messages','jizen_schedule'];
   var TTL = 45000; // 起動バーストを束ねる窓(45秒)
   var _cache = null, _cacheAt = 0, _inflight = null, _unsupported = false;
   function _ensureBatch(base, token){
@@ -9229,10 +9230,9 @@ async function syncChecksFromGAS(opts){
   if(!silent){
     showSyncIndicator("Drive から読み込み中...");
     setSyncBtnLoading(true);
-  }else{
-    // 🔄 静かな自動同期でも、遅い(>600ms)時だけ「ドライブ同期中」をカレンダーに表示(v1.30.168)
-    _drvSilentTimer = setTimeout(()=>{ _drvSilentShown=true; if(typeof showSyncIndicator==='function') showSyncIndicator("🔄 ドライブ同期中…"); if(typeof setSyncBtnLoading==='function') setSyncBtnLoading(true); }, 600);
   }
+  // 🔇 待たせない(v1.30.212): silent(起動/自動)同期はスピナー等を一切出さず、前回データを表示したまま裏で静かに更新。
+  //    task-syncが重くても「同期中…」で待たされる感を消す。変更があった時だけ完了後に差分トーストで知らせる。
   // 差分検出用に旧データを保持
   const oldByExt = new Map();
   state.checks.filter(c=>c.source==="gas-sync" && c.extDriveFileId).forEach(c=>{
