@@ -2425,7 +2425,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.203</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.204</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9670,6 +9670,43 @@ function eventFilterColor(ev){
   return c ? c.color : "#e5e7eb";
 }
 
+// 🎯 カテゴリチップで「そのカテゴリの予定へ順にジャンプ」 v1.30.204
+//   そのカテゴリ(元請けキー)の予定(state.events+立会仮想)を日付順に並べ、currentDateをその日へ移動して
+//   再描画→予定チップ(月:data-ev-id / 30日タイムライン:data-event-id)へスクロール+点滅。再クリックで次へ巡回。
+let __catJumpKey = null, __catJumpCursor = 0;
+function catJumpList_(key){
+  if(!key) return [];
+  const taikyoVE = (typeof buildTaikyoVirtuals_==='function') ? buildTaikyoVirtuals_() : [];
+  const seen = new Set(); const out = [];
+  [...(state.events||[]), ...taikyoVE].forEach(ev=>{
+    if(!ev || !ev.date || !ev.id) return;
+    if(motoukeKey_(eventMotouke_(ev)) !== key) return;
+    if(seen.has(ev.id)) return;
+    seen.add(ev.id); out.push(ev);
+  });
+  out.sort((a,b)=> (a.date + (a.start||'')).localeCompare(b.date + (b.start||'')));
+  return out;
+}
+function catJumpTo_(idx){
+  const list = catJumpList_(__catJumpKey);
+  let target = null;
+  if(list.length){
+    const i = ((idx % list.length) + list.length) % list.length;   // ラップ(巡回)
+    __catJumpCursor = i;
+    target = list[i];
+    currentDate = parseDate(target.date);   // その予定の日付へ移動(30日ウィンドウに入るように)
+  }
+  render();   // solo絞込み適用 + 移動した日付を反映
+  if(!target) return;
+  requestAnimationFrame(()=>{
+    let el = null;
+    try{ el = document.querySelector('[data-event-id="'+CSS.escape(target.id)+'"]') || document.querySelector('[data-ev-id="'+CSS.escape(target.id)+'"]'); }catch(_){}
+    if(!el){ try{ el = document.querySelector('[data-date="'+CSS.escape(target.date)+'"]'); }catch(_){} }  // 見つからなければ日付セル/列へ
+    if(!el) return;
+    try{ el.scrollIntoView({behavior:'smooth', block:'center', inline:'center'}); }catch(_){ try{ el.scrollIntoView(); }catch(__){} }
+    try{ el.classList.remove('repair-flash'); void el.offsetWidth; el.classList.add('repair-flash'); }catch(_){}
+  });
+}
 function renderCategoryFilter(){
   const wrap = document.getElementById("categoryFilter");
   wrap.innerHTML = `<span class="title">🏷️ カテゴリ</span>`;
@@ -9731,6 +9768,7 @@ function renderCategoryFilter(){
   allBtn.innerHTML = `🌐 全て`;
   allBtn.onclick = ()=>{
     hiddenCategories.clear();
+    __catJumpKey = null;   // 🎯 全表示に戻したらジャンプ巡回もリセット
     render();
   };
   wrap.appendChild(allBtn);
@@ -9745,25 +9783,28 @@ function renderCategoryFilter(){
       ? ` <span class="cat-taikyo" title="うち退去立会 確定${__tk.confirmed}件${__tk.provisional?` / 担当未定(仮)${__tk.provisional}件`:''}">🏠立会${__tk.confirmed}${__tk.provisional?`+仮${__tk.provisional}`:''}</span>`
       : "";
     chip.innerHTML = `<span class="swatch" style="background:${color}"></span>${escapeHtml(key)} <span class="cat-count">${count}</span>${taikyoBadge}`;
-    chip.title = "クリック: このカテゴリのみ表示  /  Shift+クリック: ON/OFF切替";
+    chip.title = "クリック: このカテゴリのみ表示＋予定へジャンプ(再クリックで次へ) / Shift+クリック: ON/OFF切替";
     chip.onclick = (e)=>{
       if(e.shiftKey){
         // Shift+クリック: 個別ON/OFF (旧挙動)
         if(hiddenCategories.has(key)) hiddenCategories.delete(key);
         else hiddenCategories.add(key);
-      }else{
-        // 通常クリック: solo表示 (このキーだけ残す)
-        const visible = allKeys.filter(k => !hiddenCategories.has(k));
-        if(visible.length === 1 && visible[0] === key){
-          // 既にsolo状態 → 全表示に戻す
-          hiddenCategories.clear();
-        }else{
-          // solo: このキー以外すべて隠す
-          hiddenCategories.clear();
-          allKeys.forEach(k => { if(k !== key) hiddenCategories.add(k); });
-        }
+        __catJumpKey = null;   // フィルタ状態が変わったのでジャンプ巡回をリセット
+        render();
+        return;
       }
-      render();
+      // 通常クリック: solo表示 + そのカテゴリの予定へジャンプ。再クリックで「次の予定へ」巡回(v1.30.204)
+      const visible = allKeys.filter(k => !hiddenCategories.has(k));
+      const isSoloThis = visible.length === 1 && visible[0] === key;
+      if(isSoloThis && __catJumpKey === key){
+        catJumpTo_(__catJumpCursor + 1);   // 既にこのカテゴリにsolo中 → 次の予定へ(render不要)
+        return;
+      }
+      // solo: このキー以外すべて隠す → 最初の予定へジャンプ(catJumpTo_内でrender)
+      hiddenCategories.clear();
+      allKeys.forEach(k => { if(k !== key) hiddenCategories.add(k); });
+      __catJumpKey = key; __catJumpCursor = -1;
+      catJumpTo_(0);
     };
     wrap.appendChild(chip);
   });
