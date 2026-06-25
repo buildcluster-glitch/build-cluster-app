@@ -2425,7 +2425,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.204</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.205</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9670,42 +9670,25 @@ function eventFilterColor(ev){
   return c ? c.color : "#e5e7eb";
 }
 
-// 🎯 カテゴリチップで「そのカテゴリの予定へ順にジャンプ」 v1.30.204
-//   そのカテゴリ(元請けキー)の予定(state.events+立会仮想)を日付順に並べ、currentDateをその日へ移動して
-//   再描画→予定チップ(月:data-ev-id / 30日タイムライン:data-event-id)へスクロール+点滅。再クリックで次へ巡回。
+// 🎯 カテゴリチップで「そのカテゴリの予定へ順にジャンプ」 v1.30.204 (v1.30.205で全チップ種対応・非テレポート化)
+//   solo絞込み後にカレンダーに見えている対象カテゴリのチップを巡回。チップは3種:
+//   予定/立会=data-event-id(月グリッドはdata-ev-id) / 最終確認=data-check-id / 修繕アポ=data-repair-id。
+//   currentDateは動かさない(=月/件数が勝手に変わらない・テレポートしない)。今表示中の範囲内で順送り。
 let __catJumpKey = null, __catJumpCursor = 0;
-function catJumpList_(key){
-  if(!key) return [];
-  const taikyoVE = (typeof buildTaikyoVirtuals_==='function') ? buildTaikyoVirtuals_() : [];
-  const seen = new Set(); const out = [];
-  [...(state.events||[]), ...taikyoVE].forEach(ev=>{
-    if(!ev || !ev.date || !ev.id) return;
-    if(motoukeKey_(eventMotouke_(ev)) !== key) return;
-    if(seen.has(ev.id)) return;
-    seen.add(ev.id); out.push(ev);
-  });
-  out.sort((a,b)=> (a.date + (a.start||'')).localeCompare(b.date + (b.start||'')));
-  return out;
+function catJumpChips_(){
+  const nodes = document.querySelectorAll('[data-event-id],[data-ev-id],[data-check-id],[data-repair-id]');
+  // 表示中(カレンダー上)のものだけ・DOM順(=日付/位置順)
+  return [...nodes].filter(el=> el.offsetParent !== null);
 }
 function catJumpTo_(idx){
-  const list = catJumpList_(__catJumpKey);
-  let target = null;
-  if(list.length){
-    const i = ((idx % list.length) + list.length) % list.length;   // ラップ(巡回)
-    __catJumpCursor = i;
-    target = list[i];
-    currentDate = parseDate(target.date);   // その予定の日付へ移動(30日ウィンドウに入るように)
-  }
-  render();   // solo絞込み適用 + 移動した日付を反映
-  if(!target) return;
-  requestAnimationFrame(()=>{
-    let el = null;
-    try{ el = document.querySelector('[data-event-id="'+CSS.escape(target.id)+'"]') || document.querySelector('[data-ev-id="'+CSS.escape(target.id)+'"]'); }catch(_){}
-    if(!el){ try{ el = document.querySelector('[data-date="'+CSS.escape(target.date)+'"]'); }catch(_){} }  // 見つからなければ日付セル/列へ
-    if(!el) return;
-    try{ el.scrollIntoView({behavior:'smooth', block:'center', inline:'center'}); }catch(_){ try{ el.scrollIntoView(); }catch(__){} }
-    try{ el.classList.remove('repair-flash'); void el.offsetWidth; el.classList.add('repair-flash'); }catch(_){}
-  });
+  const chips = catJumpChips_();
+  if(!chips.length){ if(typeof showAutoSyncToast==='function') showAutoSyncToast("🎯 表示範囲にこのカテゴリの予定がありません(‹›で月移動)"); return; }
+  const i = ((idx % chips.length) + chips.length) % chips.length;   // ラップ(巡回)
+  __catJumpCursor = i;
+  const el = chips[i];
+  try{ el.scrollIntoView({behavior:'smooth', block:'center', inline:'center'}); }catch(_){ try{ el.scrollIntoView(); }catch(__){} }
+  // 直前のフラッシュを全部消してから今の1件だけ点滅
+  try{ document.querySelectorAll('.repair-flash').forEach(c=>c.classList.remove('repair-flash')); void el.offsetWidth; el.classList.add('repair-flash'); }catch(_){}
 }
 function renderCategoryFilter(){
   const wrap = document.getElementById("categoryFilter");
@@ -9800,11 +9783,12 @@ function renderCategoryFilter(){
         catJumpTo_(__catJumpCursor + 1);   // 既にこのカテゴリにsolo中 → 次の予定へ(render不要)
         return;
       }
-      // solo: このキー以外すべて隠す → 最初の予定へジャンプ(catJumpTo_内でrender)
+      // solo: このキー以外すべて隠す → 描画後に最初の予定へジャンプ
       hiddenCategories.clear();
       allKeys.forEach(k => { if(k !== key) hiddenCategories.add(k); });
       __catJumpKey = key; __catJumpCursor = -1;
-      catJumpTo_(0);
+      render();
+      requestAnimationFrame(()=> catJumpTo_(0));
     };
     wrap.appendChild(chip);
   });
