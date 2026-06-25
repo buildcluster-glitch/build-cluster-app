@@ -2425,7 +2425,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.200</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.201</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3476,8 +3476,8 @@
         <input id="gas-token" placeholder="工事タスクマネージャーと同じtoken">
       </div>
       <div class="field">
-        <label>取得期間 (maxMonths)</label>
-        <input id="gas-months" type="number" value="6" min="1" max="24">
+        <label>取得期間 (maxMonths・短いほど同期が速い)</label>
+        <input id="gas-months" type="number" value="3" min="1" max="24">
       </div>
       <div class="field">
         <label>
@@ -8635,7 +8635,12 @@ function refreshBukkenDatalist(){
 // ===== Drive 同期 (master_sync GAS の task-sync 再利用) =====
 const GAS_SETTINGS_KEY = "buildcluster_gas_settings";
 function loadGasSettings(){
-  try{ return JSON.parse(localStorage.getItem(GAS_SETTINGS_KEY)) || {}; }catch(e){ return {}; }
+  try{
+    const s = JSON.parse(localStorage.getItem(GAS_SETTINGS_KEY)) || {};
+    // ⚡ task-sync 高速化(v1.30.201): 旧デフォルト6ヶ月→3ヶ月へ一度だけ自動移行(1MB/約14秒対策・原状回復は3ヶ月rotation済で実害小)
+    if(s.maxMonths===6){ s.maxMonths=3; try{ localStorage.setItem(GAS_SETTINGS_KEY, JSON.stringify(s)); }catch(_){ } }
+    return s;
+  }catch(e){ return {}; }
 }
 function saveGasSettings(s){
   localStorage.setItem(GAS_SETTINGS_KEY, JSON.stringify(s));
@@ -8645,7 +8650,7 @@ function openGasSettings(){
   const s = loadGasSettings();
   document.getElementById("gas-url").value   = s.url   || "";
   document.getElementById("gas-token").value = s.token || "";
-  document.getElementById("gas-months").value= s.maxMonths || 6;
+  document.getElementById("gas-months").value= s.maxMonths || 3;
   document.getElementById("gas-auto-sync").checked = s.autoRefreshEnabled !== false;
   document.getElementById("gas-task-url").value = s.taskManagerUrl || "";
   gasSettingsModal.classList.add("show");
@@ -8656,7 +8661,7 @@ gasSettingsModal.onclick = e=>{ if(e.target===gasSettingsModal) closeGasSettings
 document.getElementById("gas-save").onclick = async ()=>{
   const url   = document.getElementById("gas-url").value.trim();
   const token = document.getElementById("gas-token").value.trim();
-  const maxMonths = parseInt(document.getElementById("gas-months").value,10) || 6;
+  const maxMonths = parseInt(document.getElementById("gas-months").value,10) || 3;
   const autoRefreshEnabled = document.getElementById("gas-auto-sync").checked;
   const taskManagerUrl = document.getElementById("gas-task-url").value.trim();
   if(!url || !token){ alert("URL と Token は必須です"); return; }
@@ -9043,7 +9048,7 @@ async function syncChecksFromGAS(opts){
         action:"task-sync",
         token:s.token,
         kojiFilter:"all",
-        maxMonths: s.maxMonths || 6,
+        maxMonths: s.maxMonths || 3,
       })
     });
     const data = await res.json();
