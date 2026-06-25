@@ -2409,7 +2409,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.190</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.191</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3857,10 +3857,29 @@ const STAFF_QUOTA = {
 const COMPANY_HOLIDAYS = {1:11, 2:9, 3:8, 4:8, 5:12, 6:8, 7:9, 8:11, 9:10, 10:9, 11:10, 12:10};
 // 休暇種別の表示名(値は会社休日のまま=集計互換、表示だけ所定休日)
 function leaveTypeLabel_(t){ return t==="会社休日" ? "所定休日" : (t||""); }
-// 振休はメモ(振休元の日付)をインライン表示「振休(6/28)」。それ以外は通常ラベル。v1.30.189
+// 振休はメモ(振休元の日付)をインライン表示「振休(6/28)」。年休は「年休 N/5」(その年の累積/義務5日)。それ以外は通常ラベル。v1.30.189/191
 function leaveDispLabel_(l){
   if(l && l.type==="振休"){ const ref=(l.memo||"").trim(); return ref ? `振休(${ref})` : "振休"; }
+  if(l && l.type==="年休"){ const seq=nenkyuSeq_(l); return (seq!=null) ? `年休 ${seq}/5` : "年休"; }
   return leaveTypeLabel_(l && l.type);
+}
+// 年休: その年(l.start基準)に取得した年休が「何日目か(このlを含む累積日数)」。義務5日の進捗表示用。v1.30.191
+function nenkyuSeq_(l){
+  if(!l || !l.start) return null;
+  const y = String(l.start).slice(0,4); if(!/^\d{4}$/.test(y)) return null;
+  const ys = `${y}-01-01`, ye = `${y}-12-31`;
+  const list = (state.leaves||[]).filter(x=> x && x.staff===l.staff && x.type==="年休"
+    && String(x.start||'') <= ye && String(x.end||x.start||'') >= ys);
+  list.sort((a,b)=> String(a.start).localeCompare(String(b.start)) || String(a.id||'').localeCompare(String(b.id||'')));
+  let n = 0;
+  for(const x of list){
+    const sd = (x.start < ys ? ys : x.start);
+    const ed = ((x.end||x.start) > ye ? ye : (x.end||x.start));
+    const days = Math.max(1, Math.round((parseDate(ed)-parseDate(sd))/86400000)+1);
+    n += days;
+    if(x.id === l.id) break;
+  }
+  return n;
 }
 // 担当バッジを出さない値(実在しない既定値など・スペース無視で判定)
 const HIDDEN_STAFF_BADGE = new Set(["大村まどか"]);
