@@ -2437,7 +2437,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.213</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.214</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4019,14 +4019,14 @@ function shortenCompany(name){
 const HOUR_START = 9;   // 表示開始
 const HOUR_END   = 18;  // 表示終了（18以降は「工事最終確認」セクション）
 // HOUR_PX は localStorage で永続化、月列幅は列ごと個別管理(セッション限定)
-const HOUR_PX_DEFAULT = 130;  // 旧220 → 130 (1時間あたり ≒ 4チップ分。詰まる時は自動拡大)
+const HOUR_PX_DEFAULT = 260;  // 旧220→130→260 (1時間の行高を倍に・山田 v1.30.214。詰まり解消)
 const MONTH_COL_DEFAULT = window.innerWidth <= 700 ? 300 : 344; // 📱スマホ 旧220→256→300(物件名を省略せず全部表示・最終確認列と同幅で縦整列) / PC: 旧220→286→344
 let HOUR_PX = parseInt(localStorage.getItem("buildcluster_schedule_hour_px"),10) || HOUR_PX_DEFAULT;
 // ⚠ 旧v1.30.2の「スマホは80px」初期値は撤去(v1.30.11)。月(30日)ビューは1時間=130px前提の計算が
 //   混在しており、80pxにするとセルとチップの位置がズレて重なり/タイトル欠け(空白立会)が発生していた。
 //   スマホは30日ビュー専用になったため圧縮自体が不要
-// v88 マイグレーション: 旧デフォルト 220 のまま保存されてた場合 → 新デフォルトに置き換え
-if(HOUR_PX === 220){
+// マイグレーション: 旧デフォルト(220/130)のまま保存されてた場合 → 新デフォルト(260)に置き換え(v1.30.214で行高を倍に)
+if(HOUR_PX === 220 || HOUR_PX === 130){
   HOUR_PX = HOUR_PX_DEFAULT;
   localStorage.setItem("buildcluster_schedule_hour_px", String(HOUR_PX));
 }
