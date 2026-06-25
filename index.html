@@ -188,6 +188,10 @@
   .leave-badge .lb-range{font-size:9px;opacity:.7}
   .leave-badge .lb-task{font-size:11px;background:rgba(255,255,255,.7);border-radius:8px;padding:0 4px;cursor:pointer}
   .leave-badge .lb-task:hover{background:#fff;box-shadow:0 0 0 1.5px rgba(37,99,235,.55) inset}
+  /* 🔔 業務連絡(未確認)アラート: リアクションが付くまで消えない(v1.30.194) */
+  .msg-alert{font-size:10px;margin-left:1px;line-height:1;animation:msgAlertPulse 1.4s ease-in-out infinite}
+  .has-msg-alert{box-shadow:0 0 0 2px #ef4444 !important;border-radius:8px}
+  @keyframes msgAlertPulse{0%,100%{opacity:1}50%{opacity:.35}}
   .leave-badge:hover{filter:brightness(1.08);box-shadow:0 2px 6px rgba(0,0,0,.15)}
   .add-leave-inline,.add-duty-inline{
     border:1px solid var(--border-strong);background:#fff;color:var(--text);
@@ -2409,7 +2413,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.193</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.194</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7175,6 +7179,19 @@ function isJizenEvent_(e){
 function isJimuTaskEvent_(e){
   return !!(e && e.category === '事務' && typeof getTaskInfo_==='function' && getTaskInfo_(e));
 }
+// 🔔 業務連絡(ev.messages)で「未確認」のものがあるか。確認=作者以外の誰かがリアクション。
+//   リアクションが付くまでアラートを消さない(v1.30.194)
+function msgIsUnacked_(m){
+  if(!m) return false;
+  const reacts = m.reactions || {};
+  const ackedByOther = Object.values(reacts).some(u=> Array.isArray(u) && u.some(x=> x && x!==m.author));
+  return !ackedByOther;
+}
+function staffHasUnackMsg_(staff){
+  return (state.events||[]).some(e=>
+    e && e.category==='事務' && e.staff===staff && Array.isArray(e.messages) && e.messages.some(msgIsUnacked_)
+  );
+}
 
 // ===== 📋 簡易タスクマネージャー: 箇条書きイベントをチェックリスト化 =====
 // ev.title の各行を解析。先頭が ・- ● ▪ ◦ * などの行=タスク。先頭に ✅☑✓ があれば完了。
@@ -9843,12 +9860,13 @@ function renderLeaveBand(){
       : [];
     // バッジは📋+進捗(done/total)。カテゴリ内訳「事務1」等は出さない(内訳はホバーで確認可)
     let subHtml;
+    const __msgAlert = (typeof staffHasUnackMsg_==='function' && staffHasUnackMsg_(s)) ? `<span class="msg-alert" title="💬 業務連絡(未確認) — リアクションで確認済みに">🔔</span>` : "";
     if(taskEvs.length){
       let dn=0, tt=0; taskEvs.forEach(ev=>{ const ti=getTaskInfo_(ev); if(ti){ dn+=ti.done; tt+=ti.total; } });
       const allDone = tt>0 && dn>=tt;
-      subHtml = `<span class="sc-count sc-task${allDone?' sc-done':''}" data-task-staff="${escapeHtml(s)}" title="📋 事務タスク (${dn}/${tt})\n${fmtBreakdownFull(counts)}">📋</span>`;
+      subHtml = `<span class="sc-count sc-task${allDone?' sc-done':''}${__msgAlert?' has-msg-alert':''}" data-task-staff="${escapeHtml(s)}" title="📋 事務タスク (${dn}/${tt})\n${fmtBreakdownFull(counts)}">📋${__msgAlert}</span>`;
     } else {
-      subHtml = `<span class="sc-count sc-empty sc-task" data-task-staff="${escapeHtml(s)}" title="📋 事務タスクを作成${total>0?'\n'+fmtBreakdownFull(counts):''}">＋📋</span>`;
+      subHtml = `<span class="sc-count sc-empty sc-task${__msgAlert?' has-msg-alert':''}" data-task-staff="${escapeHtml(s)}" title="📋 事務タスクを作成${total>0?'\n'+fmtBreakdownFull(counts):''}">＋📋${__msgAlert}</span>`;
     }
     const isSelected = selectedStaffFilter.has(s);
     const cls = ["staff-chip"];
@@ -9869,7 +9887,8 @@ function renderLeaveBand(){
     const tooltip = `${display} ${typeLabel} ${range}${l.memo&&l.type!=="振休"?'\n'+l.memo:''}`;
     const rangeHtml = withRange ? ` <span class="lb-range">${range}</span>` : "";
     const _tp = staffTaskProgress_(l.staff);
-    const taskBadge = `<span class="lb-task" data-task-staff="${escapeHtml(l.staff)}" title="📋 事務タスク${_tp.has?' ('+_tp.dn+'/'+_tp.tt+')':''}">📋</span>`;
+    const __lbMsgAlert = (typeof staffHasUnackMsg_==='function' && staffHasUnackMsg_(l.staff)) ? `<span class="msg-alert" title="💬 業務連絡(未確認) — リアクションで確認済みに">🔔</span>` : "";
+    const taskBadge = `<span class="lb-task${__lbMsgAlert?' has-msg-alert':''}" data-task-staff="${escapeHtml(l.staff)}" title="📋 事務タスク${_tp.has?' ('+_tp.dn+'/'+_tp.tt+')':''}">📋${__lbMsgAlert}</span>`;
     return `<span class="leave-badge" data-leave-id="${l.id}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}"><span class="lb-staff">${escapeHtml(display)}</span><span class="lb-type">${escapeHtml(typeLabel)}</span>${rangeHtml}${taskBadge}</span>`;
   };
 
@@ -9882,7 +9901,8 @@ function renderLeaveBand(){
     const typeLabel = leaveDispLabel_(l);
     const tooltip = `${display} ${typeLabel} ${range}${l.memo&&l.type!=="振休"?'\n'+l.memo:''}`;
     const _tp = staffTaskProgress_(l.staff);
-    const taskBadge = `<span class="lb-task" data-task-staff="${escapeHtml(l.staff)}" title="📋 事務タスク${_tp.has?' ('+_tp.dn+'/'+_tp.tt+')':''}">📋</span>`;
+    const __lbMsgAlert = (typeof staffHasUnackMsg_==='function' && staffHasUnackMsg_(l.staff)) ? `<span class="msg-alert" title="💬 業務連絡(未確認) — リアクションで確認済みに">🔔</span>` : "";
+    const taskBadge = `<span class="lb-task${__lbMsgAlert?' has-msg-alert':''}" data-task-staff="${escapeHtml(l.staff)}" title="📋 事務タスク${_tp.has?' ('+_tp.dn+'/'+_tp.tt+')':''}">📋${__lbMsgAlert}</span>`;
     return `<span class="leave-badge" data-leave-id="${l.id}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}"><span class="lb-staff">${escapeHtml(display)}</span><span class="lb-type">${escapeHtml(typeLabel)}</span>${taskBadge}</span>`;
   };
 
