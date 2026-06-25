@@ -2409,7 +2409,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.192</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.193</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9735,8 +9735,8 @@ function renderLeaveSummary(){
   const lastDay = new Date(year,month,0).getDate();
   const isNichiShuku_ = (ds)=>{ const dt=parseDate(ds); return !!(dt && !isNaN(dt) && (dt.getDay()===0 || (typeof isHoliday==='function' && isHoliday(dt)))); };
   const staffHtml = STAFF.filter(s=> s!=="山田裕貴").map(s=>{   // 社長(山田)は休みカウント対象外
-    // 所定休日(base=会社休日/振休/日祝/別件等)は X/holN、年休・有給(半休0.5)は別建てで表示(v1.30.192)
-    let base = 0, nenkyu = 0, yukyu = 0;
+    // 所定休日(base=会社休日/振休/日祝/別件等)は X/holN。年休・有給・半休(午前休/午後休)はそれぞれ別建て表示(v1.30.193)
+    let base = 0, nenkyu = 0, yukyu = 0, hankyu = 0;
     const myLeaves = (state.leaves||[]).filter(l=> l.staff===s);
     for(let dd=1; dd<=lastDay; dd++){
       const ds = `${year}-${pad(month)}-${pad(dd)}`;
@@ -9746,7 +9746,7 @@ function renderLeaveSummary(){
       if(rest){
         const t = rest.type;
         if(t==="年休") nenkyu += 1;
-        else if(HALF.has(t)) yukyu += 0.5;                    // 有給(AM/PM)/半休
+        else if(HALF.has(t)) hankyu += 0.5;                   // 午前休/午後休/半休 → 半休(所定休日・有給とは別建て)
         else if(t==="有給"||t==="有給（病休）"||t==="有給（忌引）") yukyu += 1;
         else base += 1;                                       // 会社休日/振休/別件/体調不良/休暇 等=所定休日扱い
         continue;
@@ -9756,10 +9756,11 @@ function renderLeaveSummary(){
     const fracParts = [`${num(base)}/${num(holN)}`];
     if(nenkyu>0) fracParts.push(`<span style="color:#b45309;font-weight:700">+年休${num(nenkyu)}</span>`);
     if(yukyu>0)  fracParts.push(`<span style="color:#475569;font-weight:700">+有給${num(yukyu)}</span>`);
+    if(hankyu>0) fracParts.push(`<span style="color:#0369a1;font-weight:700">+半休${num(hankyu)}</span>`);
     const frac = fracParts.join(' ');
-    const taken = (base+nenkyu+yukyu) > 0;
+    const taken = (base+nenkyu+yukyu+hankyu) > 0;
     const bg = (typeof STAFF_COLORS!=='undefined' && STAFF_COLORS[s]) ? STAFF_COLORS[s] : "#9ca3af";
-    return `<span class="ls-staff ${taken?'taken':''}" title="${escapeHtml(s)} ${month}月: 所定休日 ${num(base)}/${num(holN)}${nenkyu?` ・年休${num(nenkyu)}`:''}${yukyu?` ・有給${num(yukyu)}`:''} (日祝/会社休日/振休=所定休日。年休・有給は別建て。当番/出張/研修/出社は休みに数えない)"><span class="ls-dot" style="background:${bg}"></span>${escapeHtml(s)} <span class="frac">${frac}</span></span>`;
+    return `<span class="ls-staff ${taken?'taken':''}" title="${escapeHtml(s)} ${month}月: 所定休日 ${num(base)}/${num(holN)}${nenkyu?` ・年休${num(nenkyu)}`:''}${yukyu?` ・有給${num(yukyu)}`:''}${hankyu?` ・半休${num(hankyu)}`:''} (日祝/会社休日/振休=所定休日。年休/有給/半休は別建て。当番/出張/研修/出社は休みに数えない)"><span class="ls-dot" style="background:${bg}"></span>${escapeHtml(s)} <span class="frac">${frac}</span></span>`;
   }).join("");
   // 🔑 確定立会件数は カテゴリ「山一」バッジ内に統合表示(renderCategoryFilter)に移動
 
