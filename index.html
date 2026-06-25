@@ -887,6 +887,13 @@
   .taikyo-dismissed .chip-title,.taikyo-dismissed .title,.taikyo-dismissed .ct-text{text-decoration:line-through;text-decoration-thickness:1.5px;text-decoration-color:#64748b}
   .taikyo-dismiss-btn{position:absolute;top:0;right:0;z-index:4;border:none;background:rgba(255,255,255,.72);color:#475569;font-size:11px;font-weight:700;line-height:1;padding:1px 4px;border-radius:0 7px 0 7px;cursor:pointer}
   .taikyo-dismiss-btn:hover{background:#fff;color:#dc2626}
+  /* 🗑 取消した立会を最終確認帯の最下部に小さく(v1.30.208) */
+  .taikyo-dismissed-card{opacity:.6;background:#f8fafc !important;border-left:3px solid #d8b4fe !important;padding:2px 4px !important}
+  .taikyo-dismissed-card .tdc-row{display:flex;align-items:center;gap:4px;font-size:11px}
+  .taikyo-dismissed-card .tdc-badge{background:#d8b4fe;color:#000;font-size:8px;font-weight:700;padding:0 4px;border-radius:4px;white-space:nowrap;flex-shrink:0}
+  .taikyo-dismissed-card .tdc-name{flex:1;min-width:0;text-decoration:line-through;text-decoration-color:#94a3b8;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .taikyo-restore-btn{flex-shrink:0;border:none;background:#e2e8f0;color:#475569;font-size:11px;line-height:1;padding:1px 5px;border-radius:5px;cursor:pointer}
+  .taikyo-restore-btn:hover{background:#16a34a;color:#fff}
   /* 🗓 要対応リスト ボタン+モーダル(v1.30.183) */
   .al-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#ef4444;color:#fff;font-size:11px;font-weight:700;margin-left:2px;line-height:1}
   #actionListBtn:not(.has-items) .al-count{background:#9ca3af}
@@ -2430,7 +2437,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.207</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.208</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4623,6 +4630,7 @@ function renderChecks(){
       key:`staff-${staff}`,
       headerHtml:`<span class="dot" style="background:${STAFF_COLORS[staff]}"></span>${staff}`,
       headerCls:"",
+      date: dStr,
       filter: ck => ck.checkDate===dStr && ck.staff===staff,
     }));
   }else{
@@ -4638,6 +4646,7 @@ function renderChecks(){
         key:`date-${dStr}`,
         headerHtml:`${d.getMonth()+1}/${d.getDate()}<span class="dow">(${DOW_JA[d.getDay()]})</span>`,
         headerCls:cls.join(" "),
+        date: dStr,
         filter: ck => ck.checkDate===dStr,
       };
     });
@@ -4670,6 +4679,16 @@ function renderChecks(){
     console.log(`[checks] buckets — future:${fut} undated:${und} (range ${rangeStart}..${rangeEnd})`);
   }
 
+  // 🗑 取消した立会(未定)を最終確認帯の各日の一番下に小さく出す(カレンダーからは外す)v1.30.208
+  const __taikyoVE = (typeof buildTaikyoVirtuals_==='function') ? buildTaikyoVirtuals_() : [];
+  const __dismByDate = {};
+  __taikyoVE.forEach(ev=>{
+    if(!ev || !ev._provisional || !ev._dismissed || !ev.date) return;
+    if(typeof motoukeKey_==='function' && hiddenCategories.has(motoukeKey_(ev.contractor))) return;
+    (__dismByDate[ev.date] = __dismByDate[ev.date] || []).push(ev);
+  });
+  const __dismCardHtml = ev=>`<div class="check-card taikyo-dismissed-card"><div class="tdc-row"><span class="tdc-badge">立会取消</span><span class="tdc-name" title="${escapeHtml((ev._bukken||'')+(ev._room?(' '+ev._room):''))}">${escapeHtml(ev._bukken||'')}${ev._room?(' '+escapeHtml(ev._room)):''}</span><button class="taikyo-restore-btn" data-taikyo-restore="${escapeHtml(ev._taikyoRawId||'')}" title="立会を復活する">↩</button></div></div>`;
+
   const colCount = cols.length;
   const syncedAt = localStorage.getItem("buildcluster_gas_synced_at");
   const syncedLabel = syncedAt ? `(最終同期 ${new Date(syncedAt).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})})` : "(未同期)";
@@ -4692,7 +4711,8 @@ function renderChecks(){
         } else if(c.sortBy === "date-desc"){
           items = items.slice().sort((a,b)=>(b.checkDate||"").localeCompare(a.checkDate||""));
         }
-        const bodyHtml = items.map(ck=>renderCheckCard(ck, today)).join("");
+        const __dism = (c.date && __dismByDate[c.date]) ? __dismByDate[c.date].map(__dismCardHtml).join("") : "";
+        const bodyHtml = items.map(ck=>renderCheckCard(ck, today)).join("") + __dism;
         return `<div class="checks-col" data-col-key="${c.key}">
           <div class="checks-col-head ${c.headerCls}">${c.headerHtml}</div>
           <div class="checks-col-body">${bodyHtml}</div>
@@ -4707,6 +4727,10 @@ function renderChecks(){
   if(addCheckBtn) addCheckBtn.onclick = ()=>openCheckModal(null);
   document.getElementById("gasSettingsBtn").onclick = ()=>openGasSettings();
   document.getElementById("syncCheckBtn").onclick = ()=>syncChecksFromGAS();
+  // 🗑 取消した立会の復活(↩)
+  wrap.querySelectorAll("[data-taikyo-restore]").forEach(btn=>{
+    btn.onclick = (e)=>{ e.stopPropagation(); const raw=btn.dataset.taikyoRestore; if(raw && typeof mutateTaikyoOverrideRemote_==='function') mutateTaikyoOverrideRemote_(raw, {dismissed:false}).catch(()=>{}); };
+  });
   wrap.querySelectorAll("[data-check-id]").forEach(el=>{
     const ck = state.checks.find(x=>x.id===el.dataset.checkId);
     if(!ck) return;
@@ -10683,7 +10707,7 @@ function renderCalendar(){
     // v1.12〜 退去立会(見積アプリ→shared-config)の仮想イベントも合流
     const taikyoVirtuals = buildTaikyoVirtuals_();
     // 📋 事務タスク(チェックリスト)はカレンダーに出さずバッジ専用にする(行削除で消えない)
-    const events = [...state.events, ...taikyoVirtuals].filter(c.filterEvent).filter(e=>!isJimuTaskEvent_(e)).filter(e=>!isCompletedJizenEvent_(e));
+    const events = [...state.events, ...taikyoVirtuals].filter(c.filterEvent).filter(e=>!isJimuTaskEvent_(e)).filter(e=>!isCompletedJizenEvent_(e)).filter(e=>!(e.source==='taikyo-shared' && e._dismissed));   // 🗑 取消した立会はグリッドから外し最終確認帯の下へ(v1.30.208)
     // 🔧 事前イベント: 時間未定(anytime)は専用の「事前帯」へ。時刻あり(timed)は通常どおり9-18時グリッドに配置(v1.30.136)
     const __isJizenEv = e => (typeof isJizenEvent_==='function' && isJizenEvent_(e));
     const __isBandJizen = e => !e.allday && __isJizenEv(e) && e.timeMode!=='timed';   // 時間未定の事前=帯
