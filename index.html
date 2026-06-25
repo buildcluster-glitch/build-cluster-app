@@ -2413,7 +2413,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.196</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.197</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3800,6 +3800,19 @@
 // ===== 定数 =====
 // 出社/休暇/予定アサインで扱うユーザー(松尾はユーザー対象外 — 名前は履歴/参加者として残るが選択肢からは除外)
 const STAFF = ["山田裕貴","大村将史","南部大我","木村優作","鈴木悠平","最上登生","まどか"];
+// 🔄 当番(週次ローテ・月曜始まり): 社長→大村→南部→木村→鈴木→最上。アンカー=2026-06-22週=大村将史(山田指定2026-06-24)v1.30.197
+const TOBAN_ORDER = ["山田裕貴","大村将史","南部大我","木村優作","鈴木悠平","最上登生"];
+const TOBAN_ANCHOR_MONDAY = "2026-06-22";   // この週の当番=
+const TOBAN_ANCHOR_STAFF  = "大村将史";
+function mondayOf_(d){ const dt = (d instanceof Date) ? new Date(d) : new Date(String(d)); if(isNaN(dt)) return null; dt.setHours(0,0,0,0); const wd=(dt.getDay()+6)%7; dt.setDate(dt.getDate()-wd); return dt; }
+function tobanOfDate_(d){
+  const m = mondayOf_(d), anchor = mondayOf_(TOBAN_ANCHOR_MONDAY);
+  if(!m || !anchor) return "";
+  const weeks = Math.round((m - anchor)/(7*86400000));
+  const n = TOBAN_ORDER.length;
+  const anchorIdx = Math.max(0, TOBAN_ORDER.indexOf(TOBAN_ANCHOR_STAFF));
+  return TOBAN_ORDER[((anchorIdx + weeks) % n + n) % n];
+}
 const STAFF_COLORS = {
   "鈴木悠平":"#b6d7a8", // 緑 (指定 2026-05-31)
   "大村将史":"#fca5a5", // 薄赤
@@ -5252,7 +5265,10 @@ function buildAttendancePayload(){
         staff: l.staff, type: l.type, memo: l.memo||"",
         start: l.start, end: l.end,
       })),
-      duty: dutyEntries.map(l => l.staff),   // 今週の当番(該当日に当番期間が含まれてる人)
+      duty: Array.from(new Set([   // 今週の当番: 週次ローテ自動 + 手動当番エントリ(v1.30.197)
+        ...(typeof tobanOfDate_==='function' && tobanOfDate_(d) ? [tobanOfDate_(d)] : []),
+        ...dutyEntries.map(l => l.staff)
+      ])),
     });
   }
   return {
@@ -9925,9 +9941,15 @@ function renderLeaveBand(){
       </span>
       <span class="sec-divider"></span>
       <span class="sec sec-duty">
-        <span class="sec-title">🔄</span>
+        <span class="sec-title" title="週次ローテ(月曜始まり): 社長→大村→南部→木村→鈴木→最上">🔄 当番</span>
         <button class="add-duty-inline" id="addDutyInline" title="当番(週次)を追加">＋</button>
-        ${todayDuty.length===0 ? '<span class="leave-empty">当番未登録</span>' : todayDuty.map(l=>leaveChip(l,true)).join('')}
+        ${(()=>{
+          const __t = (typeof tobanOfDate_==='function') ? tobanOfDate_(todayStr) : "";
+          if(!__t) return '';
+          const __bg = STAFF_COLORS[__t] || "#fde68a";
+          return `<span class="leave-badge duty-auto" title="今週の当番(週次ローテ自動・月曜始まり)" style="background:${__bg};color:${textColorFor(__bg)}"><span class="lb-staff">${escapeHtml((typeof getStaffDisplayName==='function')?getStaffDisplayName(__t):__t)}</span><span class="lb-type">当番</span></span>`;
+        })()}
+        ${todayDuty.map(l=>leaveChip(l,true)).join('')}
       </span>
       ${(()=>{
         // 📞 電話番: 事務まどかが今日休みの時だけ、出社メンバーから選ぶ(全員共有・日付ごと) v1.30.111
