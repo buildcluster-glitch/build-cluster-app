@@ -201,6 +201,12 @@
   .add-leave-inline:hover,.add-duty-inline:hover{background:var(--hover);border-color:var(--accent);color:var(--accent)}
   .add-duty-inline{background:#fef3c7;border-color:#f59e0b;color:#92400e}
   .add-duty-inline:hover{background:#fde68a;color:#78350f}
+  /* ✅ 当番完了ボタン(週次・全員共有)v1.30.198 */
+  .duty-done-btn{font-size:11px;border:1px solid #cbd5e1;background:#f8fafc;color:#475569;border-radius:8px;padding:1px 9px;cursor:pointer;white-space:nowrap;margin-left:3px;font-weight:700}
+  .duty-done-btn:hover{background:#eef2f7;border-color:#16a34a;color:#16a34a}
+  .duty-done-btn.on{background:#16a34a;color:#fff;border-color:#15803d}
+  .leave-badge.duty-done{opacity:.55}
+  .leave-badge.duty-done .lb-staff{text-decoration:line-through}
   /* 有給年間集計テーブル */
   .ys-table{width:100%;border-collapse:collapse;font-size:11px}
   .ys-table th,.ys-table td{border:1px solid var(--border);padding:3px 5px;text-align:center;white-space:nowrap}
@@ -2413,7 +2419,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.197</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.198</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3813,6 +3819,8 @@ function tobanOfDate_(d){
   const anchorIdx = Math.max(0, TOBAN_ORDER.indexOf(TOBAN_ANCHOR_STAFF));
   return TOBAN_ORDER[((anchorIdx + weeks) % n + n) % n];
 }
+// 当番の役割(ホバー表示用)v1.30.198
+const TOBAN_ROLES_TEXT = "【役割】\n・在庫チェック\n・倉庫整理（必要であればみんなに声掛け）\n・ゴミ籠交換手配\n・敷地内除草チェック（必要であればみんなに声掛け）";
 const STAFF_COLORS = {
   "鈴木悠平":"#b6d7a8", // 緑 (指定 2026-05-31)
   "大村将史":"#fca5a5", // 薄赤
@@ -5859,6 +5867,48 @@ async function setPhoneDuty_(date, staff){
     }catch(_){}
   }
   await pushPhoneDutyMap_(map);
+  return map;
+}
+// ✅ 当番完了(週次)を全端末共有 — shared-config 'toban_done' v1.30.198
+//   value(JSON) = { done:{ [weekMonday(YYYY-MM-DD)]: {at, by} }, updatedAt }。週(月曜)単位で完了フラグ。
+const TOBAN_DONE_KEY = "buildcluster_toban_done";
+function loadTobanDone_(){ try{ const o=JSON.parse(localStorage.getItem(TOBAN_DONE_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
+function saveTobanDone_(map){ try{ localStorage.setItem(TOBAN_DONE_KEY, JSON.stringify(map||{})); }catch(e){} }
+function mergeTobanDoneMaps_(a,b){ const out={}; const keys=new Set([...Object.keys(a||{}),...Object.keys(b||{})]); keys.forEach(k=>{ const ea=a&&a[k], eb=b&&b[k]; if(!ea){out[k]=eb;return;} if(!eb){out[k]=ea;return;} out[k]=(String(eb.at||'')>=String(ea.at||''))?eb:ea; }); return out; }
+function tobanWeekKey_(d){ const m=mondayOf_(d||new Date()); return m?fmtDate(m):""; }
+function getTobanDoneEntry_(weekKey){ return loadTobanDone_()[weekKey]||null; }
+async function fetchTobanDone_(opts={}){
+  const s=loadGasSettings(); const local=loadTobanDone_();
+  if(!s.url||!s.token){ return local; }
+  try{
+    const url=`${s.url}?action=get-shared-config&key=toban_done&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res=await fetch(url,{method:'GET',redirect:'follow'}); if(!res.ok) throw new Error('HTTP '+res.status);
+    const data=await res.json(); let raw=data.value;
+    if(raw===''||raw==null) raw={done:{}}; else if(typeof raw==='string'){ try{raw=JSON.parse(raw);}catch(e){raw={done:{}};} }
+    const remote=(raw&&raw.done&&typeof raw.done==='object')?raw.done:{};
+    const merged=mergeTobanDoneMaps_(remote, local);
+    saveTobanDone_(merged);
+    if(!opts.silent && typeof render==='function') render();
+    return merged;
+  }catch(err){ if(!opts.silent) console.warn('[toban_done] fetch失敗:', err.message); return local; }
+}
+async function pushTobanDoneMap_(map){
+  const s=loadGasSettings(); if(!s.url||!s.token) return;
+  const payload={ done:map||{}, updatedAt:new Date().toISOString() };
+  try{ await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'toban_done',value:JSON.stringify(payload),token:s.token,savedBy:'calendar-app'})}); }catch(e){ console.warn('[toban_done] push失敗:', e.message); }
+}
+async function setTobanDone_(weekKey, done){
+  const stamp=()=>({ done:true, at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
+  let map=loadTobanDone_(); if(done) map[weekKey]=stamp(); else delete map[weekKey]; saveTobanDone_(map);
+  const s=loadGasSettings();
+  if(s.url&&s.token){
+    try{ const url=`${s.url}?action=get-shared-config&key=toban_done&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+      const res=await fetch(url,{method:'GET',redirect:'follow'});
+      if(res.ok){ const d=await res.json(); let raw=d.value; if(typeof raw==='string'){ try{raw=JSON.parse(raw);}catch(_){raw=null;} }
+        if(raw&&raw.done&&typeof raw.done==='object'){ map=mergeTobanDoneMaps_(raw.done, loadTobanDone_()); if(done) map[weekKey]=stamp(); else delete map[weekKey]; saveTobanDone_(map); } }
+    }catch(_){}
+  }
+  await pushTobanDoneMap_(map);
   return map;
 }
 // ===========================================================
@@ -9073,6 +9123,7 @@ async function syncChecksFromGAS(opts){
     if(typeof fetchCheckWorkers_==='function') fetchCheckWorkers_({silent:true}).catch(()=>{});
     // 📞 再同期時は電話番も最新を取りに行く(v1.30.111)
     if(typeof fetchPhoneDuty_==='function') fetchPhoneDuty_({silent:true}).catch(()=>{});
+    if(typeof fetchTobanDone_==='function') fetchTobanDone_({silent:true}).catch(()=>{});   // ✅当番完了も最新化 v1.30.198
     // ⚠ 再同期時はアラートも最新を取りに行く(v1.30.115)
     if(typeof fetchAlerts_==='function') fetchAlerts_({silent:true}).catch(()=>{});
     // 🚫 再同期時は事前「行かない」も最新を取りに行く(v1.30.131)
@@ -9941,15 +9992,24 @@ function renderLeaveBand(){
       </span>
       <span class="sec-divider"></span>
       <span class="sec sec-duty">
-        <span class="sec-title" title="週次ローテ(月曜始まり): 社長→大村→南部→木村→鈴木→最上">🔄 当番</span>
-        <button class="add-duty-inline" id="addDutyInline" title="当番(週次)を追加">＋</button>
         ${(()=>{
           const __t = (typeof tobanOfDate_==='function') ? tobanOfDate_(todayStr) : "";
-          if(!__t) return '';
-          const __bg = STAFF_COLORS[__t] || "#fde68a";
-          return `<span class="leave-badge duty-auto" title="今週の当番(週次ローテ自動・月曜始まり)" style="background:${__bg};color:${textColorFor(__bg)}"><span class="lb-staff">${escapeHtml((typeof getStaffDisplayName==='function')?getStaffDisplayName(__t):__t)}</span><span class="lb-type">当番</span></span>`;
+          const __wk = (typeof tobanWeekKey_==='function') ? tobanWeekKey_(todayStr) : "";
+          const __doneE = (typeof getTobanDoneEntry_==='function') ? getTobanDoneEntry_(__wk) : null;
+          const __done = !!__doneE;
+          const __roleTip = "週次ローテ(月曜始まり): 社長→大村→南部→木村→鈴木→最上\n\n"+TOBAN_ROLES_TEXT;
+          let h = `<span class="sec-title" title="${escapeHtml(__roleTip)}" style="cursor:help">🔄 当番</span>`;
+          if(__t){
+            const __bg = STAFF_COLORS[__t] || "#fde68a";
+            const __nm = (typeof getStaffDisplayName==='function')?getStaffDisplayName(__t):__t;
+            h += `<span class="leave-badge duty-auto${__done?' duty-done':''}" title="${escapeHtml('今週の当番(週次ローテ自動・月曜始まり)\n\n'+TOBAN_ROLES_TEXT)}" style="background:${__bg};color:${textColorFor(__bg)}"><span class="lb-staff">${escapeHtml(__nm)}</span><span class="lb-type">当番</span></span>`;
+          }
+          h += todayDuty.map(l=>leaveChip(l,true)).join('');
+          // ✅ 今週の当番 完了ボタン(全員共有)
+          const __byTip = __done ? `完了済${__doneE.by?'（'+__doneE.by+'）':''}（クリックで取消）` : '今週の当番を完了にする';
+          h += `<button class="duty-done-btn${__done?' on':''}" id="dutyDoneBtn" data-wk="${escapeHtml(__wk)}" title="${escapeHtml(__byTip)}">${__done?'✅ 完了':'✅完了にする'}</button>`;
+          return h;
         })()}
-        ${todayDuty.map(l=>leaveChip(l,true)).join('')}
       </span>
       ${(()=>{
         // 📞 電話番: 事務まどかが今日休みの時だけ、出社メンバーから選ぶ(全員共有・日付ごと) v1.30.111
@@ -9971,7 +10031,14 @@ function renderLeaveBand(){
     </div>
   `;
   document.getElementById("addLeaveInline").onclick = ()=>openLeaveModal(null, {type:"会社休日"});
-  document.getElementById("addDutyInline").onclick = ()=>openLeaveModal(null, {type:"当番"});
+  // ✅ 当番完了トグル(全員共有・週次)v1.30.198
+  const __dutyDoneBtn = document.getElementById("dutyDoneBtn");
+  if(__dutyDoneBtn){ __dutyDoneBtn.onclick = ()=>{
+    const wk = __dutyDoneBtn.dataset.wk; if(!wk) return;
+    const now = (typeof getTobanDoneEntry_==='function') && getTobanDoneEntry_(wk);
+    if(typeof setTobanDone_==='function') setTobanDone_(wk, !now).catch(()=>{});
+    render();
+  }; }
   // 📞 電話番 選択(まどか休み日のみ表示)
   const __phoneSel = document.getElementById("phoneDutySel");
   if(__phoneSel){ __phoneSel.onchange = ()=>{ if(typeof setPhoneDuty_==='function') setPhoneDuty_(todayStr, __phoneSel.value).catch(()=>{}); render(); }; }
@@ -17543,6 +17610,11 @@ setTimeout(()=>{
     if(typeof fetchPhoneDuty_==='function'){
       fetchPhoneDuty_({silent:true, push:true}).catch(()=>{});
       setInterval(()=>fetchPhoneDuty_({silent:true}).catch(()=>{}), 5*60*1000);
+    }
+    // ✅ 当番完了(週次・全員共有)取得 v1.30.198
+    if(typeof fetchTobanDone_==='function'){
+      fetchTobanDone_({silent:true}).catch(()=>{});
+      setInterval(()=>fetchTobanDone_({silent:true}).catch(()=>{}), 5*60*1000);
     }
     // ⚠ アラート(全員共有) 取得・初回push・以後5分ごと(v1.30.115)
     if(typeof fetchAlerts_==='function'){
