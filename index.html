@@ -2437,7 +2437,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.210</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.211</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3823,6 +3823,57 @@
 // ビルドクラスタ スケジュール管理アプリ Phase 1A
 // データは localStorage に保存（Phase 1Bで Firebase 化予定）
 // =========================================================
+
+// ===== 起動高速化(2026-06-25): get-shared-config 単発を1回のバッチに束ねる =====
+//   携帯回線で起動時に共有設定を18種別々に取得→往復が積もり最大1分。対策=最初の get-shared-config が
+//   バッチ(get-shared-configs)を1回だけ発行し、起動直後の連続read(TTL内)は同じ結果を共有=往復≒1回に集約。
+//   ・save-shared-config を検知したらキャッシュ無効化(直後の再readは最新)
+//   ・バッチが values を返さない=GAS未デプロイ→以降バッチを諦めて従来の単発取得に素通り(無breakage)
+//   ・get-shared-configs / -config-meta / __probe / 未知キー は横取りしない
+(function(){
+  if (window._gcBatchInstalled) return; window._gcBatchInstalled = true;
+  var _origFetch = window.fetch.bind(window);
+  var GC_KEYS = ['staffMaster','staffAvailability','taikyo_tachiai_schedule','taikyo_overrides','taikyo_comments','taikyo_shiryo_ready','repair_overrides','repair_comments','repair_pos','check_workers','phone_duty','toban_done','alerts','skip_visit','staff_leaves','event_deletions','jimu_messages','jizen_schedule','hatchusho_data'];
+  var TTL = 45000; // 起動バーストを束ねる窓(45秒)
+  var _cache = null, _cacheAt = 0, _inflight = null, _unsupported = false;
+  function _ensureBatch(base, token){
+    if (_unsupported) return Promise.resolve(null);
+    if (_cache && (Date.now() - _cacheAt) < TTL) return Promise.resolve(_cache);
+    if (_inflight) return _inflight;
+    var url = base + '?action=get-shared-configs&keys=' + encodeURIComponent(GC_KEYS.join(',')) + '&token=' + encodeURIComponent(token) + '&t=' + Date.now();
+    _inflight = _origFetch(url, { method:'GET', redirect:'follow' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){ if (d && d.ok && d.values) { _cache = d.values; _cacheAt = Date.now(); } else { _unsupported = true; } return _cache; })
+      .catch(function(){ return _cache; })
+      .then(function(v){ _inflight = null; return v; });
+    return _inflight;
+  }
+  window.fetch = function(input, init){
+    try {
+      var u = (typeof input === 'string') ? input : (input && input.url);
+      if (u) {
+        var bodyStr = (init && typeof init.body === 'string') ? init.body : '';
+        if (/action=save-shared-config/.test(u) || /save-shared-config/.test(bodyStr)) { _cache = null; } // 書込→無効化
+        var m = u.match(/[?&]action=get-shared-config&key=([^&]+)/); // 単発のみ(-configs/-metaは不一致)
+        if (m) {
+          var key = decodeURIComponent(m[1]);
+          if (GC_KEYS.indexOf(key) >= 0) {
+            var base = u.split('?')[0];
+            var tm = u.match(/[?&]token=([^&]+)/);
+            var token = tm ? decodeURIComponent(tm[1]) : '';
+            return _ensureBatch(base, token).then(function(vals){
+              if (vals && Object.prototype.hasOwnProperty.call(vals, key)) {
+                return new Response(JSON.stringify({ ok:true, value: vals[key], _fromBatch:true }), { status:200, headers:{ 'Content-Type':'application/json' } });
+              }
+              return _origFetch(input, init); // バッチ未対応/キー無し→従来取得
+            });
+          }
+        }
+      }
+    } catch(_) {}
+    return _origFetch(input, init);
+  };
+})();
 
 // ===== 定数 =====
 // 出社/休暇/予定アサインで扱うユーザー(松尾はユーザー対象外 — 名前は履歴/参加者として残るが選択肢からは除外)
