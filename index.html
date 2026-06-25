@@ -2425,7 +2425,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.199</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.200</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -8289,83 +8289,106 @@ function buildHatchushoFromResto_(p){
 function openHatchushoPrint_(rec){
   const h = rec.header || {};
   const rows = rec.rows || [];
-  // 業者ごとにグループ化(rows は印刷順=業者→工期 で来ている前提・順序維持)
-  const groups = [];
-  rows.forEach(r=>{
-    const c = r.contractor || "(業者未設定)";
-    let g = groups[groups.length-1];
-    if(!g || g.contractor !== c){ g = {contractor:c, items:[]}; groups.push(g); }
-    g.items.push(r);
-  });
+  // 工期表示 (見積アプリ formatHatchuPeriod 相当: 開始〜終了。曜付きは fmtHatchuDate_ 側)
   const period = r=>{
     const a = fmtHatchuDate_(r.periodStart), b = fmtHatchuDate_(r.periodEnd);
     if(a && b && a!==b) return `${a}〜${b}`;
     return a || b || "";
   };
-  const bodyRows = groups.map(g=>{
-    let sub = 0;
-    const trs = g.items.map(r=>{
-      sub += (+r.amount||0);
-      const amtStr = (r.amount!=null && r.amount!=="") ? `¥${(+r.amount).toLocaleString()}` : "";
-      const spec = [r.spec, r.remark].filter(Boolean).join(" ");
-      return `<tr>
-        <td>${escapeHtml(r.contractor||"")}</td>
-        <td class="nw">${escapeHtml(period(r))}</td>
-        <td>${escapeHtml(r.room||"")}</td>
-        <td>${escapeHtml(r.workName||"")}</td>
-        <td>${escapeHtml(r.surface||"")}</td>
-        <td>${escapeHtml(spec)}</td>
-        <td class="num">${(r.qty!=null&&r.qty!=="")?escapeHtml(String(r.qty)):""}</td>
-        <td>${escapeHtml(r.unit||"")}</td>
-        <td class="num">${amtStr}</td>
-      </tr>`;
-    }).join("");
-    const subTr = `<tr class="sub"><td colspan="8">工事店 小計(税別) — ${escapeHtml(g.contractor)}</td><td class="num">¥${sub.toLocaleString()}</td></tr>`;
-    return trs + subTr;
-  }).join("");
-  // ヘッダ表 (公式の並び。住所/工事名称は3列ぶん幅取り)
-  const fmtMD = s=>{ const d=parseDate(s); return isNaN(d)?String(s||""):`${d.getMonth()+1}/${d.getDate()}`; };
-  const cell = (k,v,span)=> `<div class="hk">${escapeHtml(k)}</div><div class="hvv"${span?` style="grid-column:span ${span}"`:""}>${escapeHtml(v||"")}</div>`;
-  const headerGrid = [
-    cell("工事名称", h.kojiName, 3),
-    cell("退去月", h.moveoutMonth), cell("元請会社", h.client),
-    cell("AP名", h.bukken),         cell("号室", h.room),
-    cell("住所", h.address, 3),
-    cell("入居日", fmtMD(h.moveinDate)), cell("除菌日", fmtMD(h.disinfectDate)),
-    cell("間取り", h.layout),            cell("鍵交換日", fmtMD(h.keyChangeDate)),
-    cell("駐車場有無", h.parkingExist),  cell("空き駐車場", h.vacantParking),
-    cell("鍵業者", h.keyContractor),     cell("水道・電気", h.waterElec),
-    cell("玄関鍵", h.entranceKey),       cell("エントランス開錠", h.entranceUnlock),
-    cell("担当者", h.pic),               cell("電話番号", h.picTel),
-  ].join("");
+  // 外注 / 自社(ビルドクラスタ)に分離 — 見積アプリ printHatchu と同じ構成
+  const isJisha = r => /自社工事|ビルドクラスタ/.test(r.contractor||"");
+  const gai   = rows.filter(r=>!isJisha(r));
+  const jisha = rows.filter(r=> isJisha(r));
+  const gaiTotal = gai.reduce((s,r)=> s + (+r.amount||0), 0);
+  // 行HTML (見積アプリ rowHtml と同一: 自社行は工事店名/施工面を空欄・備考列=金額)
+  const rowHtml = r=>{
+    const ji = isJisha(r);
+    const amt = (+r.amount||0);
+    const amtStr = amt>0 ? `¥${amt.toLocaleString()}` : "";
+    const spec = [r.spec, r.remark].filter(Boolean).join(" ");
+    return `<tr>
+      <td>${ji?"":escapeHtml(r.contractor||"")}</td>
+      <td class="c">${escapeHtml(period(r))}</td>
+      <td>${escapeHtml(r.room||"")}</td>
+      <td>${escapeHtml(r.workName||"")}</td>
+      <td>${ji?"":escapeHtml(r.surface||"")}</td>
+      <td>${escapeHtml(spec)}</td>
+      <td class="num">${(r.qty!=null&&r.qty!=="")?escapeHtml(String(r.qty)):""}</td>
+      <td class="c">${escapeHtml(r.unit||"")}</td>
+      <td class="num">${amtStr}</td>
+    </tr>`;
+  };
+  // 全業者まとめ印刷: 外注行 → 工事店 小計 → 自社工事セクション → 自社行 (見積アプリと同一)
+  const bodyRows = `
+    ${gai.map(rowHtml).join("")}
+    ${gai.length?`<tr class="hp-subtotal"><td colspan="8" style="text-align:right;">工事店 小計</td><td class="num">¥${gaiTotal.toLocaleString()}</td></tr>`:""}
+    ${jisha.length?`<tr class="hp-section hp-section-jisha"><td colspan="9">🏠 自社工事(ビルドクラスタ)</td></tr>`:""}
+    ${jisha.map(rowHtml).join("")}`;
   // 発行元: JSONにissuer指定があれば優先。なければ元請で自動判定(山一/みどり/光和→光和工業)
   const issuer = h.issuerName
-    ? {name:h.issuerName, lines:[h.issuerAddr, h.issuerTel, h.issuerFax].filter(Boolean)}
+    ? {name:h.issuerName, lines:[h.issuerAddr, h.issuerTel, h.issuerFax].filter(Boolean), logo:h.issuerLogo||""}
     : (/山一|みどり|光和/.test(String(h.client||""))
-        ? {name:"(有)光和工業", lines:["黒川郡大和町杜の丘1-10-1","TEL:022-358-6092","FAX:022-358-8244"]}
-        : {name:"株式会社ビルドクラスタ", lines:["仙台市泉区八乙女2-7-4-101","TEL:050-5530-6899","FAX:022-774-1419"]});
+        ? {name:"(有)光和工業", lines:["黒川郡大和町杜の丘1-10-1","TEL:022-358-6092","FAX:022-358-8244"], logo:""}
+        : {name:"株式会社ビルドクラスタ", lines:["仙台市泉区八乙女2-7-4-101","TEL:050-5530-6899","FAX:022-774-1419"], logo:""});
   const issue = warekiStr_(rec.issueDate);
+  // 情報欄 (見積アプリ hp-info / hp-grid と同一の並び・黄色マーカー)
+  const v = x => escapeHtml(x||"");
+  const headerInfo = `
+    <div class="hp-info">
+      <div>工事名称: <b>${v(h.kojiName)}</b></div>
+      <div>退去月: <b>${v(h.moveoutMonth)}</b></div>
+      <div>元請会社: ${v(h.client)}</div>
+      <div></div>
+      <div>AP名: <b>${v(h.bukken)}</b></div>
+      <div>号室: <b>${v(h.room)}</b></div>
+      <div>住所: ${v(h.address)}</div>
+      <div></div>
+    </div>
+    <div class="hp-grid">
+      <div>入居日: <b style="background:#fef08a;">${v(h.moveinDate)}</b></div>
+      <div>除菌日: <b style="background:#fef08a;">${v(h.disinfectDate)}</b></div>
+      <div>間取り: <b>${v(h.layout)}</b></div>
+      <div>鍵交換日: ${v(h.keyChangeDate)}</div>
+      <div>駐車場有無: <b>${v(h.parkingExist)}</b></div>
+      <div>空き駐車場: <b>${v(h.vacantParking)}</b></div>
+      <div>鍵業者: ${v(h.keyContractor)}</div>
+      <div>水道・電気: <b>${v(h.waterElec)}</b></div>
+      <div>玄関鍵: <b>${v(h.entranceKey)}</b></div>
+      <div>エントランス開錠: <b>${v(h.entranceUnlock)}</b></div>
+      <div>担当者: <b>${v(h.pic)}</b></div>
+      <div></div>
+      <div>電話番号: ${v(h.picTel)}</div>
+    </div>`;
   ensureHatchushoStyle_();
   const inner = `
     <div class="hov-toolbar no-print">
       <button class="hov-print">🖨 印刷</button>
       <button class="hov-close">✕ 閉じる</button>
     </div>
-    <div class="hov-scroll"><div class="sheet">
-      <div class="doc-head">
-        <div class="doc-title">発 注 明 細 書</div>
-        <div class="issuer">${issue?`<div class="issue-date">${escapeHtml(issue)}</div>`:""}<b>${escapeHtml(issuer.name)}</b>${issuer.lines.map(l=>`<br>${escapeHtml(l)}`).join("")}</div>
+    <div class="hov-scroll"><div class="sheet"><div class="hatchu-print">
+      <div class="hp-head">
+        <div class="hp-left"><div style="font-weight:bold;font-size:13pt;text-decoration:underline;text-underline-offset:2px;">発注明細書</div></div>
+        <div class="hp-right">
+          ${issue?`<div style="text-align:right;">${escapeHtml(issue)}</div>`:""}
+          <div class="hp-issuer">
+            ${issuer.logo?`<img class="hp-logo" src="${escapeHtml(issuer.logo)}" alt="logo">`:""}
+            <div class="hp-issuer-text">
+              <div><b>${escapeHtml(issuer.name)}</b></div>
+              ${issuer.lines.map(l=>`<div>${escapeHtml(l)}</div>`).join("")}
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="onchu">工事店各位　御中</div>
-      <div class="hgrid">${headerGrid}</div>
-      <table>
+      <div style="margin:2mm 0;text-decoration:underline;">工事店各位 御中</div>
+      ${headerInfo}
+      <table class="hp-t">
         <thead><tr>
           <th>工事店名</th><th>工期</th><th>室名</th><th>工事名称</th><th>施工面</th><th>特記事項/品番</th><th>数量</th><th>単位</th><th>備考</th>
         </tr></thead>
         <tbody>${bodyRows}</tbody>
       </table>
-      <div class="note">※ 社内用発注明細書(スケジュール管理アプリ生成)。${rec._localGen ? "カレンダー進捗データから生成(見積アプリの発注書JSON未配信のため電話番号/駐車場/玄関鍵等は空欄)" : `見積アプリ発注確定データ(hatchusho_data)由来${rec.updatedAt?" / 更新: "+escapeHtml((rec.updatedAt||"").slice(0,16).replace("T"," ")):""}`}</div>
-    </div></div>`;
+      <div class="note no-print">※ 社内用発注明細書(スケジュール管理アプリ生成)。${rec._localGen ? "カレンダー進捗データから生成(見積アプリの発注書JSON未配信のため電話番号/駐車場/玄関鍵等は空欄)" : `見積アプリ発注確定データ(hatchusho_data)由来${rec.updatedAt?" / 更新: "+escapeHtml((rec.updatedAt||"").slice(0,16).replace("T"," ")):""}`}</div>
+    </div></div></div>`;
   // アプリ内オーバーレイで表示 (window.open は PWA/標準窓でブロックされ得るため不使用)
   let ov = document.getElementById("hatchushoOverlay");
   if(ov) ov.remove();
@@ -8391,32 +8414,36 @@ function ensureHatchushoStyle_(){
     #hatchushoOverlay .hov-print{background:#2563eb;color:#fff}
     #hatchushoOverlay .hov-close{background:#e2e8f0;color:#334155}
     #hatchushoOverlay .hov-scroll{flex:1;min-height:0;overflow:auto;padding:16px}
-    #hatchushoOverlay .sheet{background:#fff;max-width:1000px;margin:0 auto;padding:24px 28px;box-shadow:0 1px 6px rgba(0,0,0,.15);font-size:12px;color:#111}
-    #hatchushoOverlay .doc-head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:10px}
-    #hatchushoOverlay .doc-title{font-size:22px;font-weight:800;letter-spacing:4px}
-    #hatchushoOverlay .issuer{text-align:right;font-size:11px;line-height:1.5}
-    #hatchushoOverlay .issuer b{font-size:13px}
-    #hatchushoOverlay .issue-date{text-align:right;font-size:11px;color:#444;margin:0 0 6px}
-    #hatchushoOverlay .onchu{font-size:13px;font-weight:700;margin:2px 0 10px}
-    #hatchushoOverlay .hgrid{display:grid;grid-template-columns:auto 1fr auto 1fr;border:1px solid #cbd5e1;margin-bottom:12px}
-    #hatchushoOverlay .hk{background:#f1f5f9;font-weight:700;padding:5px 8px;border-bottom:1px solid #e2e8f0;border-right:1px solid #e2e8f0;white-space:nowrap}
-    #hatchushoOverlay .hvv{padding:5px 8px;border-bottom:1px solid #e2e8f0;border-right:1px solid #e2e8f0;min-width:120px}
-    #hatchushoOverlay table{width:100%;border-collapse:collapse}
-    #hatchushoOverlay th,#hatchushoOverlay td{border:1px solid #cbd5e1;padding:4px 6px;text-align:left;vertical-align:top}
-    #hatchushoOverlay th{background:#fde9d9;font-weight:700;white-space:nowrap;text-align:center}
-    #hatchushoOverlay td.num{text-align:right;white-space:nowrap}
-    #hatchushoOverlay td.nw{white-space:nowrap}
-    #hatchushoOverlay tr.sub td{background:#f8fafc;font-weight:700;text-align:right}
-    #hatchushoOverlay tr.grand td{background:#111;color:#fff;font-weight:800;text-align:right;font-size:13px}
-    #hatchushoOverlay .note{font-size:10px;color:#94a3b8;margin-top:10px}
+    #hatchushoOverlay .sheet{background:#fff;width:210mm;margin:0 auto;padding:12mm;box-shadow:0 1px 6px rgba(0,0,0,.15);box-sizing:border-box}
+    /* ===== 見積アプリ printHatchu (.hatchu-print) と同一の発注明細書スタイル ===== */
+    #hatchushoOverlay .hatchu-print{font-family:'Yu Gothic','MS PGothic','游ゴシック',sans-serif;color:#000;font-size:8.5pt;line-height:1.25}
+    #hatchushoOverlay .hatchu-print .hp-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.5mm}
+    #hatchushoOverlay .hatchu-print .hp-issuer{border:1px solid #000;padding:1mm 3mm;font-size:7.5pt;margin-top:1mm;line-height:1.25;display:flex;align-items:center;gap:3mm}
+    #hatchushoOverlay .hatchu-print .hp-issuer img.hp-logo{max-height:14mm;max-width:30mm;object-fit:contain;flex-shrink:0}
+    #hatchushoOverlay .hatchu-print .hp-issuer .hp-issuer-text{line-height:1.3}
+    #hatchushoOverlay .hatchu-print .hp-info{display:grid;grid-template-columns:1.6fr 1fr 1.6fr 1fr;gap:0.5mm 4mm;margin:1mm 0;font-size:8pt}
+    #hatchushoOverlay .hatchu-print .hp-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.5mm 12mm;margin:1mm 0 1.5mm;padding:1.5mm 3mm;border:1px solid #ccc;background:#fff;font-size:8pt}
+    #hatchushoOverlay .hatchu-print .hp-t{width:100%;border-collapse:collapse;font-size:8pt}
+    #hatchushoOverlay .hatchu-print .hp-t thead{display:table-row-group}
+    #hatchushoOverlay .hatchu-print .hp-t th,#hatchushoOverlay .hatchu-print .hp-t td{border:1px solid #000;padding:1.2mm;vertical-align:middle;text-align:center;line-height:1.3;height:6mm}
+    #hatchushoOverlay .hatchu-print .hp-t th{background:#fed7aa !important;color:#7c2d12 !important;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;font-weight:600}
+    #hatchushoOverlay .hatchu-print .hp-t td.c{text-align:center;white-space:nowrap}
+    #hatchushoOverlay .hatchu-print .hp-t td.num{text-align:center;white-space:nowrap}
+    #hatchushoOverlay .hatchu-print .hp-t td:nth-child(2),#hatchushoOverlay .hatchu-print .hp-t th:nth-child(2){white-space:nowrap}
+    #hatchushoOverlay .hatchu-print .hp-t td:nth-child(5),#hatchushoOverlay .hatchu-print .hp-t th:nth-child(5){white-space:nowrap}
+    #hatchushoOverlay .hatchu-print .hp-t th:nth-child(4),#hatchushoOverlay .hatchu-print .hp-t td:nth-child(4){width:26%}
+    #hatchushoOverlay .hatchu-print .hp-t th:nth-child(6),#hatchushoOverlay .hatchu-print .hp-t td:nth-child(6){width:16%}
+    #hatchushoOverlay .hatchu-print .hp-t tr.hp-subtotal td{background:#f3f4f6;-webkit-print-color-adjust:exact;font-size:8pt;font-style:italic}
+    #hatchushoOverlay .hatchu-print .hp-t tr.hp-section td{-webkit-print-color-adjust:exact;print-color-adjust:exact;font-weight:bold;padding:1mm 2mm;font-size:9pt;border-top:1.5px solid #000 !important}
+    #hatchushoOverlay .hatchu-print .hp-t tr.hp-section-jisha td{background:#dbeafe !important;color:#1e40af}
+    #hatchushoOverlay .hatchu-print .note{font-size:7pt;color:#94a3b8;margin-top:3mm}
     @media print{
       body.hatchusho-open > *:not(#hatchushoOverlay){display:none !important}
       #hatchushoOverlay{position:absolute;background:#fff}
-      #hatchushoOverlay .hov-toolbar{display:none}
+      #hatchushoOverlay .hov-toolbar,#hatchushoOverlay .no-print{display:none !important}
       #hatchushoOverlay .hov-scroll{overflow:visible;padding:0}
-      #hatchushoOverlay .sheet{box-shadow:none;max-width:none;padding:0}
-      #hatchushoOverlay th{background:#fde9d9 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-      #hatchushoOverlay tr.grand td{background:#111 !important;color:#fff !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      #hatchushoOverlay .sheet{box-shadow:none;width:auto;max-width:none;padding:0}
+      #hatchushoOverlay .hatchu-print .hp-t th{background:#fed7aa !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     }
   `;
   document.head.appendChild(st);
