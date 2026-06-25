@@ -2425,7 +2425,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.201</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.202</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2523,6 +2523,7 @@
   <div class="repair-toolbar repair-main-bar">
     <input id="repairSearch" placeholder="🔎 物件名/住所/お客様/業者">
     <button class="nav-btn" id="repairReload" title="Drive再同期">🔄</button>
+    <button class="nav-btn" id="repairArchiveBtn" title="📚 過去の記録を年ごとに見る・Excel保存">📚</button>
     <button class="rf-toggle" id="repairFilterToggle" title="絞り込み(状態/元請け/並び)">▾ 絞り込み</button>
   </div>
   <!-- 担当(人別)バッジは常時表示(山田の希望 v1.30.84) -->
@@ -2627,6 +2628,7 @@
       <span class="sep"></span>
       <input id="restoSearch" placeholder="🔎 物件名/住所/業者で絞り込み">
       <button class="nav-btn" id="restoReload" title="Drive再同期">🔄</button>
+      <button class="nav-btn" id="restoArchiveBtn" title="📚 過去の記録を年ごとに見る・Excel保存">📚</button>
     </div>
     <!-- 👤 見積作成者別バッジ(常時表示・クリックで絞り込み) v1.30.85 -->
     <div class="resto-toolbar">
@@ -14947,6 +14949,141 @@ function staffBadgesMini_(staffStr, opts){
   }).join("");
 }
 
+// ===== 📚 過去アーカイブ閲覧 (年ごと・読取専用・Excel(CSV)保存) v1.30.202 =====
+//   普段の修繕/原状回復ビューは3ヶ月で軽いまま、ここだけ年を指定して台帳から広く取得して見る。
+//   state.repairs/restorations は一切触らない(隔離)。完了案件も見たいので生propertiesを年でフィルタ。
+let __archiveRows = [];        // 読み込み済みの全行(その年)
+let __archiveYear = null;      // 読み込み済みの年
+let __archiveType = "all";     // 表示フィルタ: all / 原状回復 / 修繕
+let __archiveLoading = false;
+// 年判定に使う代表日付(最終確認→対応→完工→依頼→受注→退去月 の順)
+function __archiveDate_(p){
+  const d = pickIsoDate_(p.finalCheckDateIso, p.finalCheckDate)
+    || normalizeDate(p.checkDate) || normalizeDate(p.finalDate)
+    || pickIsoDate_(p.responseDateIso, p.responseDate)
+    || normalizeDate(p.completeDate) || normalizeDate(p.requestDate)
+    || normalizeDate(p.orderDate) || (p.move_out_month||"") || "";
+  return String(d||"");
+}
+async function fetchArchiveYear_(year){
+  const s = loadGasSettings();
+  if(!s.url||!s.token) throw new Error("GAS未設定");
+  const now = new Date();
+  // 今日からその年の1月まで遡るのに必要な月数 + バッファ
+  const monthsBack = (now.getFullYear()-year)*12 + now.getMonth() + 2;
+  const mm = Math.min(Math.max(monthsBack, 3), 60);
+  const res = await fetch(s.url, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
+    body: JSON.stringify({action:"task-sync", token:s.token, kojiFilter:"all", maxMonths:mm})});
+  const data = await res.json();
+  if(data.error) throw new Error(data.error);
+  const props = data.properties || [];
+  const Y = String(year);
+  const rows = [];
+  props.forEach(p=>{
+    const d = __archiveDate_(p);
+    if(d.slice(0,4) !== Y) return;                       // その年だけ(1/1〜12/31)
+    const koji = String(p.kojiName||"").trim();
+    rows.push({
+      type: koji==="原状回復工事" ? "原状回復" : "修繕",
+      date: d.slice(0,10),
+      name: p.name||"", room: p.room||"",
+      client: p.clientRaw || p.contractor || p.contractorName || p.clientCat || "",
+      pic: p.estimatedBy || p.pic || p.salesPerson || p.atenaTantou || "",
+      status: p.status||"", workflow: p.workflowStatus||"",
+      amount: (p.tmRepair && p.tmRepair.amountExTax) || p.amountExTax || 0,
+      desc: (p.requestDetail || p.requestDetailFull || (koji && koji!=="原状回復工事" ? koji : "") || "").replace(/\s+/g," ").slice(0,120),
+    });
+  });
+  rows.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  return rows;
+}
+function __archiveFiltered_(){
+  return __archiveType==="all" ? __archiveRows : __archiveRows.filter(r=>r.type===__archiveType);
+}
+function ensureArchiveModal_(){
+  if(document.getElementById("archiveModal")) return;
+  const ov = document.createElement("div");
+  ov.className = "modal-overlay"; ov.id = "archiveModal";
+  ov.innerHTML = `
+    <div class="modal" style="max-width:920px;width:96vw">
+      <div class="modal-header">📚 過去の記録 <span style="font-weight:400;font-size:11px;color:var(--muted)">年を選ぶとその年(1/1〜12/31)の修繕・原状回復を台帳から読み込みます（閲覧専用）</span></div>
+      <div class="modal-body" style="max-height:78vh;overflow:auto">
+        <div id="arc-years" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px"></div>
+        <div id="arc-types" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px"></div>
+        <div id="arc-summary" style="font-size:12px;color:var(--muted);margin-bottom:6px"></div>
+        <div id="arc-result"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="arc-csv">📥 Excel(CSV)で保存</button>
+        <button class="btn" id="arc-close">閉じる</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.onclick = e=>{ if(e.target===ov) ov.classList.remove("show"); };
+  ov.querySelector("#arc-close").onclick = ()=> ov.classList.remove("show");
+  ov.querySelector("#arc-csv").onclick = exportArchiveCsv_;
+}
+function openArchiveModal_(defaultType){
+  ensureArchiveModal_();
+  __archiveType = defaultType || "all";
+  const ov = document.getElementById("archiveModal");
+  ov.classList.add("show");
+  renderArchiveModal_();
+}
+function renderArchiveModal_(){
+  const ov = document.getElementById("archiveModal"); if(!ov) return;
+  const nowY = new Date().getFullYear();
+  // 年ボタン(今年〜4年前)
+  const years = [nowY, nowY-1, nowY-2, nowY-3, nowY-4];
+  ov.querySelector("#arc-years").innerHTML = years.map(y=>
+    `<button class="btn arc-year${__archiveYear===y?' primary':''}" data-y="${y}" ${__archiveLoading?'disabled':''}>${y}年</button>`
+  ).join("");
+  ov.querySelectorAll(".arc-year").forEach(b=> b.onclick = async ()=>{
+    const y = +b.dataset.y;
+    __archiveLoading = true; __archiveYear = y; renderArchiveModal_();
+    try{ __archiveRows = await fetchArchiveYear_(y); }
+    catch(e){ __archiveRows = []; if(typeof showAutoSyncToast==='function') showAutoSyncToast("📚 読み込み失敗: "+e.message); }
+    __archiveLoading = false; renderArchiveModal_();
+  });
+  // 種別フィルタ
+  const types = [["all","全部"],["原状回復","🏠原状回復"],["修繕","🔧修繕"]];
+  ov.querySelector("#arc-types").innerHTML = (__archiveYear? types.map(([v,l])=>
+    `<button class="btn arc-type${__archiveType===v?' primary':''}" data-t="${v}">${l}</button>`).join("") : "");
+  ov.querySelectorAll(".arc-type").forEach(b=> b.onclick = ()=>{ __archiveType=b.dataset.t; renderArchiveModal_(); });
+  // 本体
+  const res = ov.querySelector("#arc-result");
+  const sum = ov.querySelector("#arc-summary");
+  if(__archiveLoading){ res.innerHTML = `<div style="text-align:center;padding:30px;color:var(--muted)">⏳ ${__archiveYear}年を読み込み中…（古い年ほど時間がかかります）</div>`; sum.textContent=""; return; }
+  if(__archiveYear===null){ res.innerHTML = `<div style="text-align:center;padding:30px;color:var(--muted)">上の「◯年」ボタンを押すと、その年の記録を読み込みます。</div>`; sum.textContent=""; return; }
+  const rows = __archiveFiltered_();
+  const total = rows.reduce((s,r)=>s+(+r.amount||0),0);
+  sum.textContent = `${__archiveYear}年 / ${rows.length}件 / 税別合計 ¥${total.toLocaleString()}`;
+  if(!rows.length){ res.innerHTML = `<div style="text-align:center;padding:24px;color:var(--muted)">${__archiveYear}年の該当データはありません（台帳の取得範囲外の可能性）。</div>`; return; }
+  const td = (v,cls)=>`<td class="${cls||''}" style="border:1px solid var(--border);padding:4px 6px;font-size:11px;vertical-align:top">${escapeHtml(String(v==null?'':v))}</td>`;
+  res.innerHTML = `<table style="width:100%;border-collapse:collapse">
+    <thead><tr>${["種別","日付","物件名","号室","元請","担当","営業","進行","金額(税別)","内容"].map(h=>`<th style="border:1px solid var(--border);padding:4px 6px;font-size:11px;background:#f1f5f9;white-space:nowrap">${h}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map(r=>`<tr>
+      ${td(r.type)}${td(r.date)}${td(r.name)}${td(r.room)}${td(r.client)}${td(r.pic)}${td(r.status)}${td(r.workflow)}
+      <td style="border:1px solid var(--border);padding:4px 6px;font-size:11px;text-align:right;white-space:nowrap">${r.amount?('¥'+(+r.amount).toLocaleString()):''}</td>
+      ${td(r.desc)}
+    </tr>`).join("")}</tbody></table>`;
+}
+function exportArchiveCsv_(){
+  if(__archiveYear===null || !__archiveRows.length){ if(typeof showAutoSyncToast==='function') showAutoSyncToast("📚 先に年を選んで読み込んでください"); return; }
+  const rows = __archiveFiltered_();
+  const head = ["種別","日付","物件名","号室","元請","担当","営業ステータス","進行ステータス","金額(税別)","内容"];
+  const esc = v => '"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+  const lines = [head.map(esc).join(",")];
+  rows.forEach(r=> lines.push([r.type,r.date,r.name,r.room,r.client,r.pic,r.status,r.workflow,r.amount,r.desc].map(esc).join(",")));
+  const blob = new Blob(["﻿"+lines.join("\r\n")], {type:"text/csv;charset=utf-8"});  // BOM付き=Excelで文字化けしない
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const tlabel = __archiveType==="all"?"全部":__archiveType;
+  a.href = url; a.download = `工事記録_${__archiveYear}年_${tlabel}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1500);
+}
+
 function renderRepairView(){
   const list = state.repairs || [];
   // フィルタチップ (workflowStatus 別 + 全件)
@@ -15337,6 +15474,7 @@ function openRepairWorkflowPop(id, anchor){
 document.getElementById("repairMineOnly").onchange = (e)=>{ repairMineOnly = e.target.checked; renderRepairView(); };
 document.getElementById("repairSearch").oninput = (e)=>{ repairSearch = e.target.value; renderRepairView(); };
 document.getElementById("repairReload").onclick = ()=>syncChecksFromGAS();
+{ const __ab=document.getElementById("repairArchiveBtn"); if(__ab) __ab.onclick=()=>openArchiveModal_("修繕"); }
 // 🔽 絞り込みトグル(スマホ): 状態/担当/元請け/並びチップの開閉(v1.30.83)
 (function(){
   const tg=document.getElementById("repairFilterToggle"), box=document.getElementById("repairFilterBox");
@@ -16462,6 +16600,7 @@ function restoUploadToDrive(base64Data, propName, roomNo){
 // 原状回復 ビュー イベント
 document.getElementById("restoSearch").oninput = (e)=>{ restoSearch=e.target.value; renderRestoList(); };
 document.getElementById("restoReload").onclick = ()=>syncChecksFromGAS();
+{ const __ab=document.getElementById("restoArchiveBtn"); if(__ab) __ab.onclick=()=>openArchiveModal_("原状回復"); }
 document.getElementById("restoBack").onclick = ()=>{
   if(restoDetailAsModal){ closeRestoDialog(); return; } // ダイアログ表示中は閉じる
   restoDetailId=null; renderRestoView();
