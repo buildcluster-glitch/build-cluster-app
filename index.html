@@ -2413,7 +2413,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.194</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.195</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -14126,6 +14126,15 @@ function mergeJimuTitle_(winnerTitle, loserTitle){
   });
   return extra.length ? (String(winnerTitle||"") + "\n" + extra.join("\n")) : (winnerTitle||"");
 }
+// 💬 業務連絡(messages)を id基準でユニオン。両端末のメッセージを消さない(タスク行ユニオンと同じ思想)v1.30.195
+//   どちらにも無ければ null(変更不要)。reactions は先勝ち(oldLocalを先に積む)。
+function unionMsgs_(a, b){
+  const A = Array.isArray(a) ? a : [], B = Array.isArray(b) ? b : [];
+  if(!A.length && !B.length) return null;
+  const byId = new Map();
+  A.concat(B).forEach(m=>{ if(m && m.id && !byId.has(m.id)) byId.set(m.id, m); });
+  return Array.from(byId.values()).sort((x,y)=>String(x.at||'').localeCompare(String(y.at||'')));
+}
 // id基準マージ: pending保護 + 削除伝播
 function cloudMergeById_(localArr, serverArr, pendingIds){
   pendingIds = pendingIds || new Set();
@@ -14184,6 +14193,16 @@ function cloudMergeById_(localArr, serverArr, pendingIds){
           });
           localArr[i] = newServer;
         }
+        // 💬 業務連絡(messages)はidユニオンで常に保持(どちらが新しくても消えない)。増えた分はpushして他端末へ伝播 v1.30.195
+        const __um = unionMsgs_(oldLocal.messages, newServer.messages);
+        if(__um){
+          localArr[i].messages = __um;
+          const __sN = Array.isArray(newServer.messages) ? newServer.messages.length : 0;
+          if(__um.length > __sN){
+            localArr[i].updatedAt = new Date().toISOString();
+            if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(localArr[i], 'upsert'); }catch(_){} }
+          }
+        }
       }
       serverMap.delete(lid);
     }
@@ -14203,6 +14222,12 @@ function normalizeCloudEvent_(x){
   if(Array.isArray(x.comments)) comments = x.comments;
   else if(typeof x.comments === 'string' && x.comments){
     try{ const p = JSON.parse(x.comments); if(Array.isArray(p)) comments = p; }catch(e){}
+  }
+  // 💬 業務連絡(messages)も comments と同様に保持(落とすと業務連絡が消える)v1.30.195
+  let messages = [];
+  if(Array.isArray(x.messages)) messages = x.messages;
+  else if(typeof x.messages === 'string' && x.messages){
+    try{ const p = JSON.parse(x.messages); if(Array.isArray(p)) messages = p; }catch(e){}
   }
   // 🕓 サーバー側のシリアル日付バグ吸収 (v1.11.1〜)
   //   "1899-12-30T10:00" → "10:00"
@@ -14241,6 +14266,7 @@ function normalizeCloudEvent_(x){
     color: x.color || '',
     memo: x.memo || '',
     comments,
+    messages,
     createdBy: x.createdBy || '',
     createdAt: x.createdAt || '',
     updatedAt: x.updatedAt || '',
@@ -14280,6 +14306,7 @@ function denormalizeEventForCloud_(ev){
     color: ev.color || '',
     memo: ev.memo || '',
     comments: Array.isArray(ev.comments) ? ev.comments : [],
+    messages: Array.isArray(ev.messages) ? ev.messages : [],   // 💬 業務連絡もクラウドへ送る(消失防止)v1.30.195
     createdBy: ev.createdBy || getMyself() || '',
     createdAt: ev.createdAt || new Date().toISOString(),
     updatedAt: ev.updatedAt || new Date().toISOString(),
