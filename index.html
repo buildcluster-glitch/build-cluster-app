@@ -2437,7 +2437,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.209</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.210</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3968,7 +3968,7 @@ const HOUR_START = 9;   // 表示開始
 const HOUR_END   = 18;  // 表示終了（18以降は「工事最終確認」セクション）
 // HOUR_PX は localStorage で永続化、月列幅は列ごと個別管理(セッション限定)
 const HOUR_PX_DEFAULT = 130;  // 旧220 → 130 (1時間あたり ≒ 4チップ分。詰まる時は自動拡大)
-const MONTH_COL_DEFAULT = window.innerWidth <= 700 ? 256 : 344; // 📱スマホ 旧220→256(物件名/×が見切れないよう拡幅・最終確認列と同幅で縦整列) / PC: 旧220→286→344
+const MONTH_COL_DEFAULT = window.innerWidth <= 700 ? 300 : 344; // 📱スマホ 旧220→256→300(物件名を省略せず全部表示・最終確認列と同幅で縦整列) / PC: 旧220→286→344
 let HOUR_PX = parseInt(localStorage.getItem("buildcluster_schedule_hour_px"),10) || HOUR_PX_DEFAULT;
 // ⚠ 旧v1.30.2の「スマホは80px」初期値は撤去(v1.30.11)。月(30日)ビューは1時間=130px前提の計算が
 //   混在しており、80pxにするとセルとチップの位置がズレて重なり/タイトル欠け(空白立会)が発生していた。
@@ -10738,6 +10738,17 @@ function renderCalendar(){
       // 📋 チェックリスト(箇条書き)イベントは1行に集約表示するので高さも1行扱い
       const taskInfo = (typeof getTaskInfo_==='function') ? getTaskInfo_(ev) : null;
       const lineCount = taskInfo ? 1 : (((ev.title||"").match(/\n/g) || []).length + 1);
+      // 📱 物件名が長くて1行に入らないときは2行折返しで「省略せず全部表示」。固定高チップなので高さも2行ぶん確保(v1.30.210)
+      let __nameLines = 1;
+      if(!taskInfo && lineCount === 1 && currentView === "month"){
+        const __t0 = String(ev.title||"").split(/\r?\n/)[0];
+        const __isTk0 = ev.source === "taikyo-shared" || String(ev.category||"").startsWith("立会");
+        const __colW0 = (typeof colWidths!=='undefined' && colWidths.get && colWidths.get(c.key)) || (typeof MONTH_COL_DEFAULT!=='undefined' ? MONTH_COL_DEFAULT : 256);
+        const __perLine = Math.max(3, Math.floor((__colW0 - 150) / 13) - (__isTk0 ? 5 : 2));   // 名前が1行に入る概算字数(前置バッジ/号室/時刻ぶん控除)
+        if(__t0.length > __perLine) __nameLines = Math.min(3, Math.ceil(__t0.length / __perLine));   // 長いほど2〜3行で省略せず全部表示
+      }
+      const __wrapName = __nameLines > 1;
+      const __effLines = Math.max(lineCount, __nameLines);
       // 参加者バッジ: 2名以上で別行表示。1行あたり24px、7名以上は2段
       // ⚠ eventStaffList(staff分割+participants)で数える。立会の staff="南部,木村" 結合を
       //   1人と誤算してチップ高さが足りずバッジ行が切れる問題の修正(v1.30.33)
@@ -10780,7 +10791,7 @@ function renderCalendar(){
       const __willCard = __jizenSkipEarly || __hasSubRows;
       // カード枠(border1.5+padding2)分の高さ加算はカード時のみ
       const __carded = __willCard;
-      const chipHeight = (lineCount === 1 ? 28 : lineCount * 18 + 14) + __linkRow + __jizenRow + __estRow + __alertRow + (__carded ? 8 : 0);
+      const chipHeight = (__effLines === 1 ? 28 : __effLines * 18 + 14) + __linkRow + __jizenRow + __estRow + __alertRow + (__carded ? 8 : 0);
       // 月ビュー/終日/事前帯 はチップ高さ、それ以外は duration に応じた縦長ブロック
       const height = (isMonth || isFree || isJizen)
         ? chipHeight
@@ -10982,7 +10993,7 @@ function renderCalendar(){
           ? `<span style="white-space:pre-wrap;min-width:0;flex:1 1 auto;word-break:break-word">${titleHtml}${staffBadges}</span>`
           : (taskInfo
               ? `<span class="ct-text" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${compactTaskHtml}</span>`
-              : `<span style="display:inline-flex;min-width:0;flex:0 1 auto;align-items:baseline"><span class="ct-text" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(__nameMain)}</span>${__roomTail ? `<span class="ct-room" style="flex-shrink:0;font-weight:600">${escapeHtml(__roomTail)}</span>` : ""}</span>`);
+              : `<span style="display:inline-flex;min-width:0;flex:0 1 auto;align-items:baseline"><span class="ct-text" style="min-width:0;${__wrapName ? 'white-space:normal;display:-webkit-box;-webkit-line-clamp:'+__nameLines+';-webkit-box-orient:vertical;overflow:hidden;word-break:break-word' : 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap'}">${escapeHtml(__nameMain)}</span>${__roomTail ? `<span class="ct-room" style="flex-shrink:0;font-weight:600">${escapeHtml(__roomTail)}</span>` : ""}</span>`);
         const timeBox = isAnytime ? "" : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;
         // 参加者バッジ/見積行は title 外(チップ直下)に独立行として配置。工事ボリュームは号室の隣(__volBadge)。
         // ※複数行タイトル時は staffBadges を __titleInner 内に入れ込み済みなので外側では出さない(v1.30.170)
@@ -11002,7 +11013,7 @@ function renderCalendar(){
           ? `<span style="white-space:pre-wrap;min-width:0;flex:1 1 auto;word-break:break-word">${titleHtml}${staffBadges}</span>`
           : (taskInfo
               ? `<span class="ct-text" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${compactTaskHtml}</span>`
-              : `<span style="display:inline-flex;min-width:0;flex:0 1 auto;align-items:baseline"><span class="ct-text" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(__nameMain)}</span>${__roomTail ? `<span class="ct-room" style="flex-shrink:0;font-weight:600">${escapeHtml(__roomTail)}</span>` : ""}</span>`);
+              : `<span style="display:inline-flex;min-width:0;flex:0 1 auto;align-items:baseline"><span class="ct-text" style="min-width:0;${__wrapName ? 'white-space:normal;display:-webkit-box;-webkit-line-clamp:'+__nameLines+';-webkit-box-orient:vertical;overflow:hidden;word-break:break-word' : 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap'}">${escapeHtml(__nameMain)}</span>${__roomTail ? `<span class="ct-room" style="flex-shrink:0;font-weight:600">${escapeHtml(__roomTail)}</span>` : ""}</span>`);
         const timeBox = isAnytime ? "" : `<span class="chip-time">終日</span>`;
         el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${__skipBadge}${isMulti ? '' : staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${__alertHtml}`;
         // 担当色がある(1名でも)ならチップ全面を着色(v1.30.124: 単独担当で半分しか色が付かない問題)。色無し+複数バッジは薄グレー地
