@@ -2430,7 +2430,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.206</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.207</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -11000,8 +11000,9 @@ function renderCalendar(){
              ${showStaff ? (multi ? participantsHtml : (ev.staff ? `<div class="staff">${staffShortLabel}</div>`:"")) : ""}`;
         el.title = fullTooltip;
       }
-      // 🗑 立会(未定/確定)の取消(×)/復活(↩)。全員共有(taikyo_overrides.dismissed)・取消線+下に沈む v1.30.206
-      if(ev.source === "taikyo-shared" && ev._taikyoRawId){
+      // 🗑 立会(未定)の取消(×)/復活(↩)。全員共有(taikyo_overrides.dismissed)・取消線+下に沈む v1.30.206
+      //   ⚠ ×は「立会(未定)=仮押さえ」だけ。確定済みの立会には付けない(山田 v1.30.207)
+      if(ev.source === "taikyo-shared" && ev._provisional && ev._taikyoRawId){
         if(ev._dismissed) el.classList.add("taikyo-dismissed");
         if(getComputedStyle(el).position === "static") el.style.position = "relative";
         const __dbtn = document.createElement("button");
