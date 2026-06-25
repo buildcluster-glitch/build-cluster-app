@@ -207,6 +207,12 @@
   .duty-done-btn.on{background:#16a34a;color:#fff;border-color:#15803d}
   .leave-badge.duty-done{opacity:.55}
   .leave-badge.duty-done .lb-staff{text-decoration:line-through}
+  /* 🔄📞 ヘッダー(要対応の隣)の当番・電話番 v1.30.199 */
+  .header-duty-box{display:inline-flex;align-items:center;gap:8px;flex-wrap:nowrap}
+  .header-duty-box .hd-duty,.header-duty-box .hd-phone{display:inline-flex;align-items:center;gap:3px;white-space:nowrap}
+  .header-duty-box .hd-lbl{font-size:11px;color:#64748b;font-weight:700;cursor:help}
+  .header-duty-box .leave-badge{font-size:11px;padding:1px 6px;border-radius:8px}
+  .header-duty-box .leave-badge .lb-staff{font-weight:700}
   /* 有給年間集計テーブル */
   .ys-table{width:100%;border-collapse:collapse;font-size:11px}
   .ys-table th,.ys-table td{border:1px solid var(--border);padding:3px 5px;text-align:center;white-space:nowrap}
@@ -2419,11 +2425,12 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.198</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.199</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
   <button class="nav-btn" id="actionListBtn" title="🗓 要対応 — アポ日未設定(要日程)の修繕を一覧表示">🗓 要対応 <span id="actionListCount" class="al-count">0</span></button>
+  <span id="headerDutyBox" class="header-duty-box"></span>
   <div class="nav-date" id="navDate"></div>
   <div class="view-switch">
     <button data-view="task">📋 タスク</button>
@@ -4487,6 +4494,7 @@ function render(){
   renderHeader();
   renderStaffLegend();
   if(typeof updateActionListCount_==='function') updateActionListCount_();  // 🗓 要対応バッジ件数更新(v1.30.183)
+  if(typeof renderHeaderDuty_==='function') renderHeaderDuty_();  // 🔄📞 当番・電話番(要対応の隣・全ビュー共通)v1.30.199
 
   const calendarWrap = document.getElementById("calendarWrap");
   const taskView = document.getElementById("taskView");
@@ -9854,6 +9862,48 @@ function renderLeaveSummary(){
     + staffHtml;
 }
 
+// 🔄📞 当番・電話番をヘッダー(要対応の隣)に表示(v1.30.199・旧leaveBandから移設)
+function renderHeaderDuty_(){
+  const box = document.getElementById('headerDutyBox');
+  if(!box) return;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayStr = fmtDate(today);
+  const disp = (typeof getStaffDisplayName==='function') ? getStaffDisplayName : (x=>x);
+  let html = "";
+  // 🔄 今週の当番(自動ローテ)＋✅完了
+  const __t  = (typeof tobanOfDate_==='function') ? tobanOfDate_(todayStr) : "";
+  const __wk = (typeof tobanWeekKey_==='function') ? tobanWeekKey_(todayStr) : "";
+  const __doneE = (typeof getTobanDoneEntry_==='function') ? getTobanDoneEntry_(__wk) : null;
+  const __done = !!__doneE;
+  if(__t){
+    const bg = STAFF_COLORS[__t] || "#fde68a";
+    const roleTip = "今週の当番(週次ローテ・月曜始まり)\n\n"+TOBAN_ROLES_TEXT;
+    const byTip = __done ? `完了済${__doneE.by?'（'+__doneE.by+'）':''}（クリックで取消）` : '今週の当番を完了にする';
+    html += `<span class="hd-duty" title="${escapeHtml(roleTip)}"><span class="hd-lbl">🔄当番</span>`
+      + `<span class="leave-badge duty-auto${__done?' duty-done':''}" style="background:${bg};color:${textColorFor(bg)}"><span class="lb-staff">${escapeHtml(disp(__t))}</span></span>`
+      + `<button class="duty-done-btn${__done?' on':''}" id="dutyDoneBtn" data-wk="${escapeHtml(__wk)}" title="${escapeHtml(byTip)}">${__done?'✅完了':'✅'}</button></span>`;
+  }
+  // 📞 電話番(事務まどかが今日休みの平日のみ)
+  const offToday = (state.leaves||[]).filter(l=> l.type!=='当番' && l.type!=='出社' && todayStr>=l.start && todayStr<=l.end);
+  const offSet = new Set(offToday.map(l=>l.staff));
+  const __td = (typeof parseDate==='function') ? parseDate(todayStr) : new Date(todayStr);
+  const __isNichiShuku = __td && !isNaN(__td) && (__td.getDay()===0 || (typeof isHoliday==='function' && isHoliday(__td)));
+  if(offSet.has("まどか") && !__isNichiShuku){
+    const present = STAFF.filter(s=> !offSet.has(s));
+    const cur = (typeof getPhoneDuty_==='function') ? getPhoneDuty_(todayStr) : "";
+    const undecided = !cur;
+    html += `<span class="hd-phone"><span class="hd-lbl" title="まどか休み→出社メンバーで電話番を決める">📞電話番</span>`
+      + `<select id="phoneDutySel" class="phone-duty-sel" style="font-size:12px;padding:2px 6px;border-radius:6px;border:1.5px solid ${undecided?'#dc2626':'var(--border-strong)'};background:${undecided?'#fef2f2':'#fff'};font-weight:600;color:#0f172a">`
+      + `<option value="">${undecided?'⚠未定':'未定'}</option>`
+      + present.map(s=>`<option value="${escapeHtml(s)}" ${s===cur?'selected':''}>${escapeHtml(disp(s))}</option>`).join('')
+      + `</select></span>`;
+  }
+  box.innerHTML = html;
+  const ddb = box.querySelector('#dutyDoneBtn');
+  if(ddb){ ddb.onclick = ()=>{ const wk=ddb.dataset.wk; if(!wk) return; const now=(typeof getTobanDoneEntry_==='function')&&getTobanDoneEntry_(wk); if(typeof setTobanDone_==='function') setTobanDone_(wk, !now).catch(()=>{}); render(); }; }
+  const ps = box.querySelector('#phoneDutySel');
+  if(ps){ ps.onchange = ()=>{ if(typeof setPhoneDuty_==='function') setPhoneDuty_(todayStr, ps.value).catch(()=>{}); render(); }; }
+}
 function renderLeaveBand(){
   const today = new Date(); today.setHours(0,0,0,0);
   const todayStr = fmtDate(today);
@@ -9990,58 +10040,10 @@ function renderLeaveBand(){
         <button class="add-leave-inline" id="addLeaveInline" title="有給/休暇/別件を追加">＋</button>
         ${todayOff.length===0 ? '<span class="leave-empty">休み無し</span>' : todayOff.map(l=>leaveChip(l,false)).join('')}
       </span>
-      <span class="sec-divider"></span>
-      <span class="sec sec-duty">
-        ${(()=>{
-          const __t = (typeof tobanOfDate_==='function') ? tobanOfDate_(todayStr) : "";
-          const __wk = (typeof tobanWeekKey_==='function') ? tobanWeekKey_(todayStr) : "";
-          const __doneE = (typeof getTobanDoneEntry_==='function') ? getTobanDoneEntry_(__wk) : null;
-          const __done = !!__doneE;
-          const __roleTip = "週次ローテ(月曜始まり): 社長→大村→南部→木村→鈴木→最上\n\n"+TOBAN_ROLES_TEXT;
-          let h = `<span class="sec-title" title="${escapeHtml(__roleTip)}" style="cursor:help">🔄 当番</span>`;
-          if(__t){
-            const __bg = STAFF_COLORS[__t] || "#fde68a";
-            const __nm = (typeof getStaffDisplayName==='function')?getStaffDisplayName(__t):__t;
-            h += `<span class="leave-badge duty-auto${__done?' duty-done':''}" title="${escapeHtml('今週の当番(週次ローテ自動・月曜始まり)\n\n'+TOBAN_ROLES_TEXT)}" style="background:${__bg};color:${textColorFor(__bg)}"><span class="lb-staff">${escapeHtml(__nm)}</span><span class="lb-type">当番</span></span>`;
-          }
-          h += todayDuty.map(l=>leaveChip(l,true)).join('');
-          // ✅ 今週の当番 完了ボタン(全員共有)
-          const __byTip = __done ? `完了済${__doneE.by?'（'+__doneE.by+'）':''}（クリックで取消）` : '今週の当番を完了にする';
-          h += `<button class="duty-done-btn${__done?' on':''}" id="dutyDoneBtn" data-wk="${escapeHtml(__wk)}" title="${escapeHtml(__byTip)}">${__done?'✅ 完了':'✅完了にする'}</button>`;
-          return h;
-        })()}
-      </span>
-      ${(()=>{
-        // 📞 電話番: 事務まどかが今日休みの時だけ、出社メンバーから選ぶ(全員共有・日付ごと) v1.30.111
-        // ⚠ 日祝はまどか基本休みだが会社も休みなので電話番不要→出さない(v1.30.112)
-        const __td = (typeof parseDate==='function') ? parseDate(todayStr) : new Date(todayStr);
-        const __isNichiShuku = __td && !isNaN(__td) && (__td.getDay()===0 || (typeof isHoliday==='function' && isHoliday(__td)));
-        if(!offStaff.has("まどか") || __isNichiShuku) return "";
-        const cur = getPhoneDuty_(todayStr);
-        const undecided = !cur;
-        return `<span class="sec-divider"></span>
-        <span class="sec sec-phone">
-          <span class="sec-title" title="まどか休み→出社メンバーで電話番を決める">📞電話番</span>
-          <select id="phoneDutySel" class="phone-duty-sel" style="font-size:12px;padding:3px 6px;border-radius:6px;border:1.5px solid ${undecided?'#dc2626':'var(--border-strong)'};background:${undecided?'#fef2f2':'#fff'};font-weight:600;color:#0f172a">
-            <option value="">${undecided?'⚠ 未定':'未定'}</option>
-            ${present.map(s=>`<option value="${escapeHtml(s)}" ${s===cur?'selected':''}>${escapeHtml((typeof getStaffDisplayName==='function')?getStaffDisplayName(s):s)}</option>`).join('')}
-          </select>
-        </span>`;
-      })()}
     </div>
   `;
   document.getElementById("addLeaveInline").onclick = ()=>openLeaveModal(null, {type:"会社休日"});
-  // ✅ 当番完了トグル(全員共有・週次)v1.30.198
-  const __dutyDoneBtn = document.getElementById("dutyDoneBtn");
-  if(__dutyDoneBtn){ __dutyDoneBtn.onclick = ()=>{
-    const wk = __dutyDoneBtn.dataset.wk; if(!wk) return;
-    const now = (typeof getTobanDoneEntry_==='function') && getTobanDoneEntry_(wk);
-    if(typeof setTobanDone_==='function') setTobanDone_(wk, !now).catch(()=>{});
-    render();
-  }; }
-  // 📞 電話番 選択(まどか休み日のみ表示)
-  const __phoneSel = document.getElementById("phoneDutySel");
-  if(__phoneSel){ __phoneSel.onchange = ()=>{ if(typeof setPhoneDuty_==='function') setPhoneDuty_(todayStr, __phoneSel.value).catch(()=>{}); render(); }; }
+  // 当番・電話番はヘッダー(要対応の隣)へ移動した(renderHeaderDuty_)v1.30.199
   // 🏢 出社スタッフチップ クリック → フィルタトグル
   band.querySelectorAll("[data-staff-filter]").forEach(chip=>{
     chip.onclick = (e)=>{
