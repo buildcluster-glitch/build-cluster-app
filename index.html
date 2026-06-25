@@ -885,8 +885,8 @@
   /* 🗑 立会の取消(もう無さそう): 取消線+薄く v1.30.206 */
   .taikyo-dismissed{opacity:.55;filter:grayscale(.4)}
   .taikyo-dismissed .chip-title,.taikyo-dismissed .title,.taikyo-dismissed .ct-text{text-decoration:line-through;text-decoration-thickness:1.5px;text-decoration-color:#64748b}
-  .taikyo-dismiss-btn{position:absolute;top:0;right:0;z-index:4;border:none;background:rgba(255,255,255,.72);color:#475569;font-size:11px;font-weight:700;line-height:1;padding:1px 4px;border-radius:0 7px 0 7px;cursor:pointer}
-  .taikyo-dismiss-btn:hover{background:#fff;color:#dc2626}
+  .taikyo-dismiss-btn{flex:0 0 auto;align-self:center;margin:0 2px;border:none;background:rgba(148,163,184,.22);color:#475569;font-size:13px;font-weight:700;line-height:1;padding:2px 6px;border-radius:6px;cursor:pointer}
+  .taikyo-dismiss-btn:hover{background:#fecaca;color:#dc2626}
   /* 🗑 取消した立会を最終確認帯の最下部に小さく(v1.30.208) */
   .taikyo-dismissed-card{opacity:.6;background:#f8fafc !important;border-left:3px solid #d8b4fe !important;padding:2px 4px !important}
   .taikyo-dismissed-card .tdc-row{display:flex;align-items:center;gap:4px;font-size:11px}
@@ -2437,7 +2437,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.208</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.209</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3968,7 +3968,7 @@ const HOUR_START = 9;   // 表示開始
 const HOUR_END   = 18;  // 表示終了（18以降は「工事最終確認」セクション）
 // HOUR_PX は localStorage で永続化、月列幅は列ごと個別管理(セッション限定)
 const HOUR_PX_DEFAULT = 130;  // 旧220 → 130 (1時間あたり ≒ 4チップ分。詰まる時は自動拡大)
-const MONTH_COL_DEFAULT = window.innerWidth <= 700 ? 220 : 344; // 📱スマホは220px(最終確認列と同幅で縦に整列) / PC: 旧220→286→344
+const MONTH_COL_DEFAULT = window.innerWidth <= 700 ? 256 : 344; // 📱スマホ 旧220→256(物件名/×が見切れないよう拡幅・最終確認列と同幅で縦整列) / PC: 旧220→286→344
 let HOUR_PX = parseInt(localStorage.getItem("buildcluster_schedule_hour_px"),10) || HOUR_PX_DEFAULT;
 // ⚠ 旧v1.30.2の「スマホは80px」初期値は撤去(v1.30.11)。月(30日)ビューは1時間=130px前提の計算が
 //   混在しており、80pxにするとセルとチップの位置がズレて重なり/タイトル欠け(空白立会)が発生していた。
@@ -11024,25 +11024,23 @@ function renderCalendar(){
              ${showStaff ? (multi ? participantsHtml : (ev.staff ? `<div class="staff">${staffShortLabel}</div>`:"")) : ""}`;
         el.title = fullTooltip;
       }
-      // 🗑 立会(未定)の取消(×)/復活(↩)。全員共有(taikyo_overrides.dismissed)・取消線+下に沈む v1.30.206
-      //   ⚠ ×は「立会(未定)=仮押さえ」だけ。確定済みの立会には付けない(山田 v1.30.207)
-      if(ev.source === "taikyo-shared" && ev._provisional && ev._taikyoRawId){
-        if(ev._dismissed) el.classList.add("taikyo-dismissed");
-        if(getComputedStyle(el).position === "static") el.style.position = "relative";
+      // 🗑 立会(未定)の取消(×)。確定立会には付けない(v1.30.207)。取消済はグリッドから外れ最終確認帯の下へ(v1.30.208)
+      //   📱 ×は時刻ピルの手前にインライン配置=時刻に重ならない・見切れない(v1.30.209)
+      if(ev.source === "taikyo-shared" && ev._provisional && ev._taikyoRawId && !ev._dismissed){
         const __dbtn = document.createElement("button");
         __dbtn.className = "taikyo-dismiss-btn";
-        __dbtn.textContent = ev._dismissed ? "↩" : "×";
-        __dbtn.title = ev._dismissed ? "立会を復活する" : "もう無さそう→取消(取消線+下に沈める)";
+        __dbtn.textContent = "×";
+        __dbtn.title = "もう無さそう→取消(最終確認の下へ移動・↩で復活)";
         const __dstop = e2=>{ e2.stopPropagation(); };
         __dbtn.addEventListener("pointerdown", __dstop, true);
         __dbtn.addEventListener("mousedown", __dstop, true);
         __dbtn.addEventListener("click", e2=>{
           e2.stopPropagation(); e2.preventDefault();
-          const __raw = ev._taikyoRawId;
-          if(!ev._dismissed && !confirm(`「${ev.title}」の立会を取消にしますか？(取消線を付けて下に沈めます・↩で復活できます)`)) return;
-          if(typeof mutateTaikyoOverrideRemote_==='function') mutateTaikyoOverrideRemote_(__raw, {dismissed: !ev._dismissed}).catch(()=>{});
+          if(!confirm(`「${ev.title}」の立会を取消にしますか？(最終確認の下へ移動・↩で復活できます)`)) return;
+          if(typeof mutateTaikyoOverrideRemote_==='function') mutateTaikyoOverrideRemote_(ev._taikyoRawId, {dismissed:true}).catch(()=>{});
         });
-        el.appendChild(__dbtn);
+        const __timeEl = el.querySelector('.chip-time');
+        if(__timeEl) el.insertBefore(__dbtn, __timeEl); else el.appendChild(__dbtn);
       }
       attachDragOrClick(el, ev);
       attachChipHover(el, ev);
