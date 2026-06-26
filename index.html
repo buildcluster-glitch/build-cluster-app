@@ -2437,7 +2437,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.218</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.219</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -16011,7 +16011,8 @@ function restoIsGaichuTrade(t){ return RESTO_GAICHU_TRADE_RE.test(_restoTaskText
 function restoEffCategory(t){
   if(!t) return "";
   if(t.category!=="inhouse") return t.category;
-  if(restoIsProposal(t)) return "proposal";
+  // 🔧 v1.30.219(山田): 「提案・要手配」も普通にやる工事として扱う(proposal振り分けを廃止)。減工事(reduced)だけが「やらない工事」。
+  //   外注定番工種(クロス/床等)→outsourceの振り分けは維持(自社工事進捗を膨らませない・大村まどか報告対応はそのまま)。
   if(restoIsGaichuTrade(t)) return "outsource";
   return "inhouse";
 }
