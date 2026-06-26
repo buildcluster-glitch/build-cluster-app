@@ -2437,7 +2437,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.219</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.220</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -16005,14 +16005,16 @@ const RESTO_GAICHU_TRADE_RE = /クロス|ｸﾛｽ|内装|クッションフロ�
 const RESTO_PROPOSAL_RE = /提案|お願い致します|手配をお願い|確認・手配|確認手配/;
 function _restoTaskText(t){ return `${t?.name||""} ${t?.spec||""}`; }
 function restoIsProposal(t){ return RESTO_PROPOSAL_RE.test(_restoTaskText(t)); }
-function restoIsGaichuTrade(t){ return RESTO_GAICHU_TRADE_RE.test(_restoTaskText(t)); }
+// 外注定番工種は「工事名」だけで判定(v1.30.220)。特記/品番に"フロアタイル"等が付随言及されてても誤って外注化しない(扉カット加工 等の自社付随作業対策)
+function restoIsGaichuTrade(t){ return RESTO_GAICHU_TRADE_RE.test(String(t?.name||"")); }
 // 表示・集計上の「実効カテゴリ」: 自社(inhouse)でも 提案→"proposal" / 外注定番工種→"outsource" に振り直す。
 //   ※t.category(保存値)自体は変えない(合計(外注)は保存値ベースのまま=未割当工種で外注額を膨らませない)。
 function restoEffCategory(t){
   if(!t) return "";
   if(t.category!=="inhouse") return t.category;
-  // 🔧 v1.30.219(山田): 「提案・要手配」も普通にやる工事として扱う(proposal振り分けを廃止)。減工事(reduced)だけが「やらない工事」。
-  //   外注定番工種(クロス/床等)→outsourceの振り分けは維持(自社工事進捗を膨らませない・大村まどか報告対応はそのまま)。
+  // 🔧 v1.30.220(山田): 「提案・要手配」は外注語より優先で自社工事に(クロス洗浄"提案"等が業者未設定で外注に落ちないように)。減工事(reduced)だけが「やらない工事」。
+  if(restoIsProposal(t)) return "inhouse";
+  // 工事名が外注定番工種(クロス貼替/床全面 等)=外注。業者未設定でも自社進捗に混ぜない(大村まどか報告対応は維持・判定は工事名のみ)。
   if(restoIsGaichuTrade(t)) return "outsource";
   return "inhouse";
 }
