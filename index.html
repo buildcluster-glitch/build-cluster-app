@@ -2437,7 +2437,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.220</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.221</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -16516,13 +16516,16 @@ function restoFmtDateTime(ts){
 
 function renderRestoTaskRow(t, cat){
   const qtyStr = t.qty ? `${t.qty}${t.unit||""}` : (t.unit||"");
-  // 表示名: 仕様(具体的内容)があればそれをタイトルに。工種(交換・補修工事等)は小さく後ろへ
-  //   ※「交換・補修工事」等の工種名が太字で並んで内容が分からない問題の対策 (v1.29.16)
+  // 表示名(太字): 基本は工事名(name)。nameが汎用工種(交換・補修工事 等)で specに具体内容がある時だけ specをタイトルに(v1.30.221)。
+  //   ※以前(v1.29.16)は specを常に優先したが、specが「※カビ汚損有り」等の"注記"だと注記が太字・工事名が細字になる問題(山田)→ name優先に修正。
   const __specTrim = String(t.spec||"").trim();
-  const dispName = __specTrim || t.name;
+  const __nameTrim = String(t.name||"").trim();
+  const __nameGeneric = /^(交換[・･]?補修工事|交換工事|補修工事|取付工事|撤去工事|調整工事|清掃工事|クリーニング工事|その他工事|原状回復工事|修繕工事|工事)$/.test(__nameTrim);
+  const dispName = (__nameGeneric && __specTrim) ? __specTrim : (__nameTrim || __specTrim);
+  const __otherText = (dispName === __specTrim) ? __nameTrim : __specTrim;   // タイトルに使わなかった方をsub(細字)へ
   const sub = [];
   if(t.surface) sub.push(escapeHtml(t.surface));
-  if(__specTrim && t.name && String(t.name).trim() !== __specTrim) sub.push(escapeHtml(t.name));
+  if(__otherText && __otherText !== dispName) sub.push(escapeHtml(__otherText));
   if(t.schedule) sub.push("📅 "+escapeHtml(t.schedule));
   if(t.amount) sub.push(`<span class="rt-amount">¥${(+t.amount).toLocaleString()}</span>`);
   const logCount = (t.logs||[]).length;
