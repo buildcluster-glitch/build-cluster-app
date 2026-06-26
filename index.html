@@ -2437,7 +2437,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.214</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.215</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4735,7 +4735,7 @@ function renderChecks(){
   const __taikyoVE = (typeof buildTaikyoVirtuals_==='function') ? buildTaikyoVirtuals_() : [];
   const __dismByDate = {};
   __taikyoVE.forEach(ev=>{
-    if(!ev || !ev._provisional || !ev._dismissed || !ev.date) return;
+    if(!ev || !ev._dismissed || !ev.date) return;   // 未定/確定どちらの取消立会も最終確認帯の下に出す(v1.30.215)
     if(typeof motoukeKey_==='function' && hiddenCategories.has(motoukeKey_(ev.contractor))) return;
     (__dismByDate[ev.date] = __dismByDate[ev.date] || []).push(ev);
   });
@@ -11114,9 +11114,9 @@ function renderCalendar(){
              ${showStaff ? (multi ? participantsHtml : (ev.staff ? `<div class="staff">${staffShortLabel}</div>`:"")) : ""}`;
         el.title = fullTooltip;
       }
-      // 🗑 立会(未定)の取消(×)。確定立会には付けない(v1.30.207)。取消済はグリッドから外れ最終確認帯の下へ(v1.30.208)
+      // 🗑 立会(未定/確定どちらも)の取消(×)。山田v1.30.215で確定立会にも復活(v207の未定限定を撤回)。取消済はグリッドから外れ最終確認帯の下へ(v1.30.208)
       //   📱 ×は時刻ピルの手前にインライン配置=時刻に重ならない・見切れない(v1.30.209)
-      if(ev.source === "taikyo-shared" && ev._provisional && ev._taikyoRawId && !ev._dismissed){
+      if(ev.source === "taikyo-shared" && ev._taikyoRawId && !ev._dismissed){
         const __dbtn = document.createElement("button");
         __dbtn.className = "taikyo-dismiss-btn";
         __dbtn.textContent = "×";
