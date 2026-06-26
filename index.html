@@ -2437,7 +2437,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.217</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.218</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4672,7 +4672,7 @@ function renderChecks(){
   const wrap = document.getElementById("checksSection");
   const today = new Date(); today.setHours(0,0,0,0);
   // 🔧最終確認カードは原状回復のみ。修繕工事は除外(予定表の修繕チップ側で扱う)
-  const visibleChecks = dedupeChecks(state.checks).filter(c=>!isRepairCheck_(c) && !hiddenCategories.has(motoukeKey_(c.contractor)));  // 元請けカテゴリフィルタを最終確認にも適用(v1.30.42)
+  const visibleChecks = dedupeChecks(state.checks).filter(c=>(!isRepairCheck_(c) || c.hasFinalCheck) && !hiddenCategories.has(motoukeKey_(c.contractor)));  // 原状回復+「最終確認日を持つ修繕」を帯に表示(v1.30.218)。元請けカテゴリフィルタも適用(v1.30.42)
 
   // 列を作る（カレンダーの列構造に合わせる）
   let cols = [];
@@ -9305,6 +9305,7 @@ async function syncChecksFromGAS(opts){
         staff: "",  // 作業担当(現地担当)=初期は空。割当は check_workers オーバーレイで適用(v1.30.95)
         estimatorName: p.estimatedBy || p.staff || p.assignee || p.pic || p.salesPerson || "",  // 見積作成者(「見積：◯◯」バッジ用・色は付けない)
         checkDate: pickIsoDate_(p.finalCheckDateIso, p.finalCheckDate, p.checkDate, p.finalDate),   // ISOアンカー優先(v1.30.27)
+        hasFinalCheck: !!(p.finalCheckDateIso || p.finalCheckDate),   // 真の最終確認日を持つ=修繕でも最終確認帯に出す(v1.30.218)
         originalCheckDate: normalizeDate(p.originalFinalDate || p.originalFinalCheckDate),
         moveInDate: normalizeDate(p.moveInDate || p.moveIn || p.movein),
         status: p.status || "清掃完了",
@@ -9839,7 +9840,7 @@ function renderCategoryFilter(){
   };
   inRange.forEach(ev=> bumpCat(eventMotouke_(ev)));   // 予定/立会は元請け推定(事前等の空contractorも物件マスタで補完)
   (state.repairs||[]).forEach(r=>{ const d=r.responseDate; if(d && d>=rangeStart && d<=rangeEnd) bumpCat(r.contractor); });
-  (state.checks||[]).forEach(c=>{ const d=c.checkDate; if(d && d>=rangeStart && d<=rangeEnd && !(typeof isRepairCheck_==='function' && isRepairCheck_(c))) bumpCat(c.contractor); });
+  (state.checks||[]).forEach(c=>{ const d=c.checkDate; const __isRC=(typeof isRepairCheck_==='function' && isRepairCheck_(c)); if(d && d>=rangeStart && d<=rangeEnd && (!__isRC || c.hasFinalCheck)) bumpCat(c.contractor); });  // 最終確認日を持つ修繕も件数に算入(v1.30.218)
 
   // 並び順: CONTRACTORS配列順 → 未分類
   const contractorOrder = new Map(CONTRACTORS.map((c,i)=>[c.name, i]));
