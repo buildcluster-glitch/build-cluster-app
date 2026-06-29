@@ -2447,7 +2447,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.232</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.233</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -15372,14 +15372,14 @@ function ensureArchiveModal_(){
         <div id="arc-result"></div>
       </div>
       <div class="modal-footer">
-        <button class="btn" id="arc-csv">📥 Excel(CSV)で保存</button>
+        <button class="btn" id="arc-csv">📦 この年を保存(工事＋予定)</button>
         <button class="btn" id="arc-close">閉じる</button>
       </div>
     </div>`;
   document.body.appendChild(ov);
   ov.onclick = e=>{ if(e.target===ov) ov.classList.remove("show"); };
   ov.querySelector("#arc-close").onclick = ()=> ov.classList.remove("show");
-  ov.querySelector("#arc-csv").onclick = exportArchiveCsv_;
+  ov.querySelector("#arc-csv").onclick = exportArchiveAll_;
 }
 function openArchiveModal_(defaultType){
   ensureArchiveModal_();
@@ -15415,7 +15415,8 @@ function renderArchiveModal_(){
   if(__archiveYear===null){ res.innerHTML = `<div style="text-align:center;padding:30px;color:var(--muted)">上の「◯年」ボタンを押すと、その年の記録を読み込みます。</div>`; sum.textContent=""; return; }
   const rows = __archiveFiltered_();
   const total = rows.reduce((s,r)=>s+(+r.amount||0),0);
-  sum.textContent = `${__archiveYear}年 / ${rows.length}件 / 税別合計 ¥${total.toLocaleString()}`;
+  const evCount = (state.events||[]).filter(e=> e && e.date && String(e.date).slice(0,4)===String(__archiveYear) && e.source!=="taikyo-shared").length;
+  sum.textContent = `${__archiveYear}年 / 工事 ${rows.length}件 / 予定・タスク ${evCount}件 / 工事 税別合計 ¥${total.toLocaleString()}`;
   if(!rows.length){ res.innerHTML = `<div style="text-align:center;padding:24px;color:var(--muted)">${__archiveYear}年の該当データはありません（台帳の取得範囲外の可能性）。</div>`; return; }
   const td = (v,cls)=>`<td class="${cls||''}" style="border:1px solid var(--border);padding:4px 6px;font-size:11px;vertical-align:top">${escapeHtml(String(v==null?'':v))}</td>`;
   res.innerHTML = `<table style="width:100%;border-collapse:collapse">
@@ -15440,6 +15441,41 @@ function exportArchiveCsv_(){
   a.href = url; a.download = `工事記録_${__archiveYear}年_${tlabel}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url), 1500);
+}
+// 📅 予定・タスク(state.events)をその年分CSVで保存。立会仮想(taikyo-shared)は除外。v1.30.233
+function exportArchiveEventsCsv_(){
+  if(__archiveYear===null) return 0;
+  const Y = String(__archiveYear);
+  const evs = (state.events||[]).filter(e=> e && e.date && String(e.date).slice(0,4)===Y && e.source!=="taikyo-shared");
+  if(!evs.length) return 0;
+  evs.sort((a,b)=> String((a.date||"")+(a.start||"")).localeCompare(String((b.date||"")+(b.start||""))));
+  const head = ["日付","時刻","件名","担当","カテゴリ","メモ・タスク"];
+  const esc = v => '"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+  const lines = [head.map(esc).join(",")];
+  evs.forEach(e=>{
+    const tm = (e.timeMode==='timed' && e.start) ? `${e.start}${e.end?("〜"+e.end):""}` : (e.allday?"終日":"");
+    const who = (typeof getStaffDisplayName==='function' && e.staff) ? getStaffDisplayName(e.staff) : (e.staff||"");
+    lines.push([e.date, tm, e.title||"", who, e.category||"", String(e.memo||"").replace(/\r?\n/g," / ")].map(esc).join(","));
+  });
+  const blob = new Blob(["﻿"+lines.join("\r\n")], {type:"text/csv;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `予定タスク_${__archiveYear}年.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1500);
+  return evs.length;
+}
+// 📦 この年を丸ごと保存: 工事記録(修繕・原状回復) + 予定・タスク を続けてDL。v1.30.233
+function exportArchiveAll_(){
+  if(__archiveYear===null){ if(typeof showAutoSyncToast==='function') showAutoSyncToast("📚 先に年を選んでください"); return; }
+  let n = 0;
+  if(__archiveRows && __archiveRows.length){ exportArchiveCsv_(); n++; }
+  setTimeout(()=>{
+    const ev = exportArchiveEventsCsv_();
+    if(typeof showAutoSyncToast==='function'){
+      showAutoSyncToast(`📦 ${__archiveYear}年を保存: 工事${__archiveRows.length}件${ev?` + 予定・タスク${ev}件`:''}（ダウンロードフォルダ）`);
+    }
+  }, 400);
 }
 
 function renderRepairView(){
