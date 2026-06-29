@@ -2440,7 +2440,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.229</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.230</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9674,6 +9674,7 @@ async function pushAppointmentToGAS(driveFileId, fields){
     if(fields.responseTime   !== undefined) body.responseTime   = fields.responseTime;
     if(fields.workflowStatus !== undefined) body.workflowStatus = fields.workflowStatus;
     if(fields.status         !== undefined) body.status         = fields.status;
+    if(fields.completeDate   !== undefined) body.completeDate   = fields.completeDate;  // 🏁 完了日(台帳completeDateセル・master_sync側対応後に書込) v1.30.230
     const res = await fetch(s.url, {
       method:"POST",
       headers:{"Content-Type":"text/plain;charset=utf-8"},
@@ -9713,6 +9714,42 @@ async function pushFinalDateToGAS(driveFileId, finalDate){
   }catch(e){
     hideSyncIndicator("error", "書き戻し失敗");
     throw e;
+  }
+}
+
+// 🏁 原状回復の「完了/完了取消」を台帳(master_sync)へ書き戻し。v1.30.230
+//   done=true : 営業status=完工 / 工事workflowStatus=完了 / completeDate=今日 を台帳へ。
+//   done=false: 完了前のstatus/workflowStatusに戻し completeDateをクリア。
+//   Drive同期由来(extDriveFileId あり)のみ対象。手動追加物件は台帳が無いのでスキップ。
+//   ※ status/workflowStatus は既存 task-update-appointment で即反映。completeDate は master_sync側の
+//      対応後に台帳セルへ書込(未対応なら無視されるが、ローカルcompleteDateは同期でも温存される)。
+async function pushRestoCompleteToGAS_(p, done){
+  if(!p) return;
+  const fid = p.extDriveFileId;
+  if(!fid) return; // 台帳リンク無し(手動追加等)=書き戻し対象外
+  const s = (typeof loadGasSettings==='function') ? loadGasSettings() : null;
+  if(!s || !s.url || !s.token) return; // GAS未設定なら静かにスキップ(ローカル完了は維持)
+  let fields;
+  if(done){
+    // 完了前のステータスを退避(取消時に戻すため・初回のみ)
+    if(p._statusBeforeComplete === undefined) p._statusBeforeComplete = p.status || "";
+    if(p._wfBeforeComplete     === undefined) p._wfBeforeComplete     = p.workflowStatus || "";
+    p.status = "完工";
+    p.workflowStatus = "完了";
+    fields = { status:"完工", workflowStatus:"完了", completeDate: p.completeDate || "" };
+  }else{
+    const prevStatus = (p._statusBeforeComplete !== undefined && p._statusBeforeComplete !== "") ? p._statusBeforeComplete : "受注（工事指示有）";
+    const prevWf     = (p._wfBeforeComplete     !== undefined) ? p._wfBeforeComplete     : "";
+    p.status = prevStatus;
+    p.workflowStatus = prevWf;
+    delete p._statusBeforeComplete; delete p._wfBeforeComplete;
+    fields = { status:prevStatus, workflowStatus:prevWf, completeDate:"" };
+  }
+  try{
+    await pushAppointmentToGAS(fid, fields);
+  }catch(e){
+    console.warn("[resto-complete push] failed:", e);
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast("⚠ 台帳への完了書き戻しに失敗。ローカルは完了のままです(☁全同期で再試行できます)");
   }
 }
 document.getElementById("ck-delete").onclick = async ()=>{
@@ -16837,11 +16874,13 @@ function restoToggleArchive(){
   const p = state.restorations.find(x=>x.id===restoDetailId);
   if(!p) return;
   if(restoIsArchived(p)){
-    if(!confirm("完了を取り消して進行中に戻しますか？")) return;
+    if(!confirm("完了を取り消して進行中に戻しますか？\n(台帳のステータス・完了日も元に戻します)")) return;
     p.completeDate = "";
+    pushRestoCompleteToGAS_(p, false);   // 🏁 台帳を完了前のステータスに戻す(バックグラウンド) v1.30.230
   }else{
-    if(!confirm(`「${p.name}${p.room?" "+p.room:""}」を完全完了にしますか？\n(一覧の「完了済」に移動します)`)) return;
+    if(!confirm(`「${p.name}${p.room?" "+p.room:""}」を完全完了にしますか？\n(一覧の「完了済」に移動 + 台帳も「完工/完了・完了日」に書き戻します)`)) return;
     p.completeDate = fmtDate(new Date());
+    pushRestoCompleteToGAS_(p, true);    // 🏁 台帳を完工/完了+完了日に書き戻す(バックグラウンド) v1.30.230
   }
   restoSave();
   if(restoDetailAsModal){ closeRestoDialog(); return; } // ダイアログ表示中はダイアログを閉じる
