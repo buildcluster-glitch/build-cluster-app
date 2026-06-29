@@ -2437,7 +2437,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.223</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.224</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3837,6 +3837,8 @@
   var GC_KEYS = ['staffMaster','staffAvailability','taikyo_tachiai_schedule','taikyo_overrides','taikyo_comments','taikyo_shiryo_ready','repair_overrides','repair_comments','repair_pos','check_workers','phone_duty','toban_done','alerts','skip_visit','staff_leaves','event_deletions','jimu_messages','jizen_schedule'];
   var TTL = 45000; // 起動バーストを束ねる窓(45秒)
   var _cache = null, _cacheAt = 0, _inflight = null, _unsupported = false;
+  // 🔄 手動全同期で「今すぐ最新」を取るため、45秒キャッシュを外から無効化できるようにする(v1.30.224)
+  window.__gcBatchInvalidate = function(){ _cache = null; _cacheAt = 0; };
   function _ensureBatch(base, token){
     if (_unsupported) return Promise.resolve(null);
     if (_cache && (Date.now() - _cacheAt) < TTL) return Promise.resolve(_cache);
@@ -14814,8 +14816,16 @@ document.getElementById('cs-pull-now').onclick = async ()=>{
 // ☁ = 全同期ボタン (v1.29.9): クラウド(予定/休暇DB) + Drive(master_sync: 最終確認・立会・事前等) をまとめて実行
 //   設定モーダルは ⚙ から (以前は☁=設定を開くだけだった)
 document.getElementById('cloudSyncBtn').onclick = ()=>{
-  runCloudOpenSync({manual:true});   // クラウド同期 (push pending + pull)
-  syncChecksFromGAS();               // Drive同期 (未設定なら設定誘導confirm)
+  // 🔄 手動全同期=今すぐ最新。45秒バッチキャッシュを無効化してから取りに行く(v1.30.224)
+  if(typeof window.__gcBatchInvalidate==='function') window.__gcBatchInvalidate();
+  runCloudOpenSync({manual:true});   // クラウド同期 (push pending + pull) 予定/休暇
+  syncChecksFromGAS();               // Drive同期 (最終確認/修繕/原状回復・未設定なら設定誘導confirm)
+  // 🗓 立会も今すぐ最新に(従来は起動時+5分ごとのみ→手動☁でも強制取得。ボタン説明文どおりの動きに)v1.30.224
+  if(typeof fetchTaikyoSchedule==='function')   fetchTaikyoSchedule({force:true, silent:true}).catch(()=>{});      // 立会 本体
+  if(typeof fetchTaikyoOverrides_==='function') fetchTaikyoOverrides_({silent:true}).catch(()=>{});                // 担当/日時 上書き
+  if(typeof fetchTaikyoShiryoReady==='function')fetchTaikyoShiryoReady({force:true, silent:true}).catch(()=>{});   // 📄資料作成済フラグ
+  if(typeof fetchTaikyoComments_==='function')  fetchTaikyoComments_({silent:true}).catch(()=>{});                 // 💬立会コメント
+  if(typeof fetchJizenSchedule==='function')    fetchJizenSchedule({force:true, silent:true}).catch(()=>{});       // 📌事前
 };
 
 // ===========================================================
