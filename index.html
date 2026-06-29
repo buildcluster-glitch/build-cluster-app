@@ -2447,7 +2447,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.233</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.234</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -8210,16 +8210,20 @@ function dedupeJizenEvents_(){
     if(!groups.has(key)) groups.set(key, []);
     groups.get(key).push(e);
   });
-  // 各グループ 1件に集約。残す=sid持ち優先→updatedAt新しい(ユーザー移動済を優先)
+  // 各グループ 1件に集約。残す=updatedAt新しい(ユーザー移動済)を最優先。sidはkeepへ移植。
   const removeIds = new Set();
   groups.forEach(list=>{
     if(list.length <= 1) return;
     list.sort((a,b)=>{
-      const as = a._jizenSourceId?1:0, bs = b._jizenSourceId?1:0;
-      if(as !== bs) return bs - as;                 // sid持ちを先頭に
+      // 🛡 v1.30.234: ユーザー移動(updatedAt新しい)を最優先で残す。
+      //   旧=「sid持ち優先」だと、日付を編集した孤児(クラウド送信でsidが落ちた複製)より
+      //   古い日付のsid持ちが生き残り「事前の日時変更が元に戻る」バグになっていた。
+      //   sidは下でkeepへ移植するので順位判定には使わない。
       return (new Date(b.updatedAt||0)) - (new Date(a.updatedAt||0));
     });
     const keep = list[0]; let mergedC = false;
+    // sidをkeepへ移植(keepが孤児でもグループ内のsidを引き継ぎ=見積連携/発注確定取消検出を維持)v1.30.234
+    if(!keep._jizenSourceId){ const __wsid = list.find(e=>e._jizenSourceId); if(__wsid){ keep._jizenSourceId = __wsid._jizenSourceId; } }
     list.slice(1).forEach(e=>{
       // 💬 コメント/リアクションを生存側へ統合(端末別idでコメントが消える問題の修正 v1.30.81)
       if(Array.isArray(e.comments) && e.comments.length){
