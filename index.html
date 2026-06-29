@@ -1555,6 +1555,13 @@
   .resto-card.st-todo{border-left-color:#ec4899}
   .resto-card.st-wip {border-left-color:#eab308}
   .resto-card.st-done{border-left-color:#16a34a}
+  /* ✅ 完了済(✓完了でアーカイブ): その場でグレー+取り消し線で残す(同期を待たず即表示)v1.30.232 */
+  .resto-card.resto-done{background:#f1f5f9;border-left-color:#16a34a;opacity:.62}
+  .resto-card.resto-done .rc-name{color:#94a3b8;text-decoration:line-through}
+  .resto-card.resto-done .rc-name .rc-room{color:#94a3b8}
+  .resto-card.resto-done .rc-sub{color:#cbd5e1}
+  .resto-card.resto-done:hover{opacity:.92}
+  .resto-card .rc-done-badge{background:#16a34a;color:#fff;font-size:9px;font-weight:700;padding:0 5px;border-radius:3px;text-decoration:none;display:inline-block;vertical-align:middle;margin-right:4px;flex-shrink:0}
   .resto-card:hover{box-shadow:0 2px 6px rgba(0,0,0,.08)}
   /* 1行レイアウト: 物件名 | 進捗テキスト | 進捗バー | 確認日 | 退去 | ステータスピル */
   .resto-card .rc-row{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
@@ -2440,7 +2447,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.231</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.232</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -16211,10 +16218,13 @@ function renderRestoList(){
   const q = restoSearch.trim().toLowerCase();
   let items = all.filter(p=>{
     // ステータスフィルタ
-    if(restoStatusFilter==="archived"){ if(!restoIsArchived(p)) return false; }
-    else if(restoIsArchived(p)) return false;
-    if(restoStatusFilter==="todo" && restoDominantStatus(p)!=="todo") return false;
-    if(restoStatusFilter==="wip" && restoDominantStatus(p)!=="wip") return false;
+    //  完了済(archived)は 進行中/全件 では「グレー+取り消し線で末尾に残す」(同期を待たず即表示・v1.30.232)。
+    //  未対応/対応中 タブは進行中のみ。完了済タブは完了済のみ。
+    const __arch = restoIsArchived(p);
+    if(restoStatusFilter==="archived"){ if(!__arch) return false; }
+    else if(restoStatusFilter==="todo"){ if(__arch || restoDominantStatus(p)!=="todo") return false; }
+    else if(restoStatusFilter==="wip"){ if(__arch || restoDominantStatus(p)!=="wip") return false; }
+    // active / all → __arch も残す(下で末尾ソート)
     // 検索
     if(q){
       const taskHay = (p.tasks||[]).map(t=>`${t.name} ${t.contractor||""} ${t.room||""}`).join(" ");
@@ -16223,8 +16233,12 @@ function renderRestoList(){
     }
     return true;
   });
-  // 発注日新しい順
-  items.sort((a,b)=>(b.orderDate||"0000").localeCompare(a.orderDate||"0000"));
+  // 完了済を末尾(グレー)に・その中/未完了は発注日新しい順
+  items.sort((a,b)=>{
+    const aa = restoIsArchived(a)?1:0, ab = restoIsArchived(b)?1:0;
+    if(aa !== ab) return aa - ab;   // 未完了が上・完了済は下
+    return (b.orderDate||"0000").localeCompare(a.orderDate||"0000");
+  });
 
   // 👤 見積作成者別バッジ(p.staff)。件数は状態+検索後の集合で算出 → クリックで絞り込み(v1.30.85)
   const personCounts = {};
@@ -16297,6 +16311,7 @@ function renderRestoList(){
 function renderRestoCard(p){
   const pr = restoProgress(p);
   const st = restoDominantStatus(p);
+  const __archived = restoIsArchived(p);   // ✅ 完了済=グレー+取り消し線で残す(v1.30.232)
   const roomStr = p.room ? escapeHtml(p.room)+(/^\d+$/.test(p.room)?"号室":"") : "";
   const progressLabel = pr.total
     ? `自社 <b>${pr.done}/${pr.total}</b>（${pr.pct}%）`
@@ -16388,8 +16403,8 @@ function renderRestoCard(p){
     estBadgeHtml = `<span class="rc-est" title="見積担当: ${escapeHtml(p.staff)}" style="background:${estBg};color:${estFg};font-size:10px;font-weight:700;padding:1px 7px;border-radius:6px;flex-shrink:0">見積:${escapeHtml(estNm)}</span>`;
   }
   return `
-    <div class="resto-card st-${st}" data-id="${p.id}">
-      <div class="rc-name">${escapeHtml(p.name||"(物件名なし)")} <span class="rc-room">${roomStr}</span></div>
+    <div class="resto-card st-${st}${__archived?' resto-done':''}" data-id="${p.id}">
+      <div class="rc-name">${__archived?'<span class="rc-done-badge">✓完了</span>':''}${escapeHtml(p.name||"(物件名なし)")} <span class="rc-room">${roomStr}</span></div>
       <div class="rc-row">
         ${estBadgeHtml}
         ${volBadgeHtml}
