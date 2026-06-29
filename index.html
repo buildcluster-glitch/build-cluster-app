@@ -2440,7 +2440,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.228</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.229</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -6675,23 +6675,34 @@ function dedupeTaikyoVirtuals_(virtuals){
 //   「物件名(正規化)+号室+日付」で1件に集約。確定>仮置き、時刻あり>なし を優先して残す。
 function dedupeTaikyoSlots_(virtuals){
   if(!virtuals || virtuals.length < 2) return virtuals || [];
-  const keyOf = v => normShiryoKey_(v._bukken, v._room) + "|" + (v.date||"");
-  // 確定>仮置き / 時刻あり>なし / 営業時間内(6-20時)の時刻を最優先(クラ助の00:30化け等の異常時刻を避ける)
+  const nbk = s => String(s||"").normalize("NFKC").replace(/\s|　/g,"");          // 物件名正規化
+  const nrm = s => nbk(s).replace(/号室|号|室/g,"");                              // 号室正規化
+  const keyOf = v => normShiryoKey_(v._bukken, v._room) + "|" + (v.date||"");    // 物件+号室+日付
+  const bdOf  = v => nbk(v._bukken) + "||" + (v.date||"");                       // 物件+日付(号室無視)
+  // 確定>仮置き / 担当付き>なし / 時刻あり>なし / 営業時間内(6-20時)の時刻を最優先(クラ助の00:30化け等の異常時刻を避ける)
   const score = v => {
     let s = v._provisional ? 0 : 2;
+    if(String(v.staff||'').trim()) s += 1;   // 担当付き(確定)を残骸(担当空)より優先 v1.30.229
     if(v.timeMode==='timed'){
       const hh = parseInt(String(v.start||"").slice(0,2), 10);
       s += (hh>=6 && hh<=20) ? 2 : 1;   // 営業時間内=+2 / 深夜等=+1
     }
     return s;
   };
+  // ① 同一スロット(物件+号室+日付)を集約
   const byKey = new Map();
   virtuals.forEach(v=>{
     const k = keyOf(v);
     const ex = byKey.get(k);
     if(!ex || score(v) > score(ex)) byKey.set(k, v);
   });
-  return [...byKey.values()];
+  let kept = [...byKey.values()];
+  // ② 号室の表記ゆれ重複を除去: 同一物件+同一日付で「号室空」の建物レベル立会は、
+  //    号室付きの兄弟(クラ助の号室"1"等)があれば残骸として落とす。
+  //    例: 見積=「上桜木浅野貸家H棟」号室空 と クラ助=同物件・号室"1" が別キーで二重表示→1件に集約 v1.30.229
+  const roomedBD = new Set(kept.filter(v=> nrm(v._room)).map(bdOf));
+  kept = kept.filter(v=> nrm(v._room) || !roomedBD.has(bdOf(v)));
+  return kept;
 }
 // 立会仮想イベントの正規ビルダー: 生成 → スロット重複集約 → 手動との重複排除。全ての描画/集計はこれを使う
 // 🏢 立会の元請けを物件マスタ(state.bukken)から判定(無ければ空=後で山一フォールバック)。v1.30.40
