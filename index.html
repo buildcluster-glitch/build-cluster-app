@@ -2437,7 +2437,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.225</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.226</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -6935,14 +6935,15 @@ function showTaikyoStaffPicker(el, ev){
       pop.remove(); render();
     };
   }
-  // 🚫 ドタキャン: 現在の立会日(入力欄の値)をグレー跡として残す→新しい日付に変えて反映
+  // 🚫 ドタキャン: 跡は「元の立会日時」(_taikyoOrig=ヒントの『元』)で残す。日時を先に変えてもズレない(山田 v1.30.226)
+  //   新しい日時は上の「日時」変更で立会本体が移動。ドタキャン跡は取消された元の枠に残る。
   const __tkDota = pop.querySelector('.tk-dt-dotakyan');
   if(__tkDota){ __tkDota.onclick = ()=>{
-    const d = pop.querySelector('.tk-dt-date').value;
-    const t = pop.querySelector('.tk-dt-time').value.trim();
+    const d = ev._taikyoOrigDate || ev.date || (pop.querySelector('.tk-dt-date')||{}).value || "";
+    const t = String(ev._taikyoOrigTime || "").trim();
     if(!d){ alert('元の立会日付が空です'); return; }
     const lbl = (`${ev._bukken||''} ${ev._room||''}`).trim() || (ev.title||'').split(/\r?\n/)[0].replace(/^立会\s*/,'');
-    if(!confirm(`立会 ${d}${t?(" "+t):""} をドタキャン跡(グレー)として残しますか？\nこの後、日付を新しい日に変えてください。`)) return;
+    if(!confirm(`元の立会 ${d}${t?(" "+t):""} をドタキャン跡(グレー)として残しますか？\n（新しい日時は上の「日時」で変更すると立会本体が移動します）`)) return;
     createDotakyanGhost_(`立会 ${lbl}`, d, t);
     __tkDota.textContent = '✓ ドタキャン跡を残しました'; __tkDota.disabled = true;
   }; }
