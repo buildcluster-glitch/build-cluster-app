@@ -2440,7 +2440,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.230</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.231</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9747,6 +9747,9 @@ async function pushRestoCompleteToGAS_(p, done){
   }
   try{
     await pushAppointmentToGAS(fid, fields);
+    if(typeof showAutoSyncToast==='function'){
+      showAutoSyncToast(done ? "✓ 見積アプリの台帳も完了にしました(完了日を記録)" : "↩ 見積アプリの台帳を元のステータスに戻しました");
+    }
   }catch(e){
     console.warn("[resto-complete push] failed:", e);
     if(typeof showAutoSyncToast==='function') showAutoSyncToast("⚠ 台帳への完了書き戻しに失敗。ローカルは完了のままです(☁全同期で再試行できます)");
@@ -16874,11 +16877,11 @@ function restoToggleArchive(){
   const p = state.restorations.find(x=>x.id===restoDetailId);
   if(!p) return;
   if(restoIsArchived(p)){
-    if(!confirm("完了を取り消して進行中に戻しますか？\n(台帳のステータス・完了日も元に戻します)")) return;
+    if(!confirm("完了を取り消して進行中に戻しますか？\n\n・見積アプリの台帳も元のステータス・完了日に戻ります")) return;
     p.completeDate = "";
     pushRestoCompleteToGAS_(p, false);   // 🏁 台帳を完了前のステータスに戻す(バックグラウンド) v1.30.230
   }else{
-    if(!confirm(`「${p.name}${p.room?" "+p.room:""}」を完全完了にしますか？\n(一覧の「完了済」に移動 + 台帳も「完工/完了・完了日」に書き戻します)`)) return;
+    if(!confirm(`「${p.name}${p.room?" "+p.room:""}」を完全完了にしますか？\n\n・カレンダー一覧の「完了済」に移動\n・見積アプリの台帳も「完了」になります(今日の日付を完了日に記録)`)) return;
     p.completeDate = fmtDate(new Date());
     pushRestoCompleteToGAS_(p, true);    // 🏁 台帳を完工/完了+完了日に書き戻す(バックグラウンド) v1.30.230
   }
