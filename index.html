@@ -887,6 +887,9 @@
   .taikyo-dismissed .chip-title,.taikyo-dismissed .title,.taikyo-dismissed .ct-text{text-decoration:line-through;text-decoration-thickness:1.5px;text-decoration-color:#64748b}
   .taikyo-dismiss-btn{flex:0 0 auto;align-self:center;margin:0 2px;border:none;background:rgba(148,163,184,.22);color:#475569;font-size:13px;font-weight:700;line-height:1;padding:2px 6px;border-radius:6px;cursor:pointer}
   .taikyo-dismiss-btn:hover{background:#fecaca;color:#dc2626}
+  /* 🤝 現地承諾の立会は物件名を赤文字に(立会表のセル赤文字と同じ)v1.30.227 */
+  .tk-genchi-shoudaku .ct-text,.tk-genchi-shoudaku .ct-room{color:#dc2626 !important;font-weight:700}
+  .tk-genchi-shoudaku .title,.tk-genchi-shoudaku .chip-title{color:#dc2626 !important}
   /* 🗑 取消した立会を最終確認帯の最下部に小さく(v1.30.208) */
   .taikyo-dismissed-card{opacity:.6;background:#f8fafc !important;border-left:3px solid #d8b4fe !important;padding:2px 4px !important}
   .taikyo-dismissed-card .tdc-row{display:flex;align-items:center;gap:4px;font-size:11px}
@@ -2437,7 +2440,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.226</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.227</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5528,6 +5531,7 @@ async function fetchTaikyoSchedule(opts={}){
           staffOrig: r.staff || "",
           address: r.address || "",
           koji: r.koji || "",
+          shoudaku: r.shoudaku || "",   // 🤝 承諾区分(クラ助が立会表のセル文字色で算出: 赤='現地承諾'/黒='立会のみ')v1.30.227
           provisional: !!r.provisional || /担当未定/.test(r.koji||"") || String(r.id||"").startsWith("tachiai_tentative_"), // クラ助の仮置き立会
           updatedAt: r.updatedAt || "",
         }));
@@ -6809,6 +6813,7 @@ function buildTaikyoVirtualEvent_(r){
     _readOnly: true,
     _shiryoReady: (typeof isShiryoReady_==='function') ? isShiryoReady_(r.bukken, r.room) : false, // 📄資料作成済(見積アプリ)
     _dismissed: !!(__ovEntry && __ovEntry.dismissed),   // 🗑 「もう無さそう」で取消(全員共有・取消線+下に沈む)v1.30.206
+    _genchiShoudaku: (r.shoudaku === '現地承諾'),   // 🤝 現地承諾(立会表が赤文字)→カレンダーも赤文字で表示 v1.30.227
     updatedAt: r.updatedAt || "",
   };
 }
@@ -11115,6 +11120,8 @@ function renderCalendar(){
              ${showStaff ? (multi ? participantsHtml : (ev.staff ? `<div class="staff">${staffShortLabel}</div>`:"")) : ""}`;
         el.title = fullTooltip;
       }
+      // 🤝 現地承諾の立会は赤文字(立会表のセル赤文字と同じ見せ方)v1.30.227。立会のみ/不明は通常色
+      if(ev.source === "taikyo-shared" && ev._genchiShoudaku){ el.classList.add("tk-genchi-shoudaku"); }
       // 🗑 取消(×)は「立会(未定)」だけに出す(山田 v1.30.216で確定)。確定の普通の立会には付けない。取消済はグリッドから外れ最終確認帯の下へ(v1.30.208)
       //   📱 ×は時刻ピルの手前にインライン配置=時刻に重ならない・見切れない(v1.30.209)
       if(ev.source === "taikyo-shared" && ev._provisional && ev._taikyoRawId && !ev._dismissed){
