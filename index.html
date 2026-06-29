@@ -2440,7 +2440,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.227</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.228</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -6649,9 +6649,9 @@ async function fetchTaikyoShiryoReady(opts={}){
 function dedupeTaikyoVirtuals_(virtuals){
   if(!virtuals || !virtuals.length) return virtuals || [];
   // 手動立会 = state.events のうち 共有由来でなく タイトルに「立会」を含むもの
-  //   ⚠ ドタキャン跡(🚫ドタキャン 立会 …)は「立会」を含むが手動立会ではない。除外しないと本物の立会を隠してしまう(v1.30.132)
+  //   ⚠ 日時変更跡(🔄日時変更 立会 …/旧:🚫ドタキャン)は「立会」を含むが手動立会ではない。除外しないと本物の立会を隠してしまう(v1.30.132/v1.30.228)
   const manual = (state.events||[]).filter(e =>
-    e && e.source !== "taikyo-shared" && /立会/.test(String(e.title||"")) && !/ドタキャン/.test(String(e.title||""))
+    e && e.source !== "taikyo-shared" && /立会/.test(String(e.title||"")) && !/ドタキャン|日時変更/.test(String(e.title||""))
   );
   if(!manual.length) return virtuals;
   // 日付 → 正規化タイトル配列(スペース/号室記号を落として部分一致しやすく)
@@ -6857,7 +6857,7 @@ function showTaikyoStaffPicker(el, ev){
         <input type="time" class="tk-dt-time" value="${(ev.timeMode==='timed' && ev.start)?escapeHtml(ev.start):''}">
         <button class="tk-dt-restore" title="元の日時に戻す">↺</button>
       </div>
-      <button class="tk-dt-dotakyan" style="margin-top:6px;padding:5px 10px;border:1px solid #cbd5e1;background:#f1f5f9;color:#475569;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">🚫 ドタキャン(この日を取消跡に)</button>
+      <button class="tk-dt-dotakyan" style="margin-top:6px;padding:5px 10px;border:1px solid #cbd5e1;background:#f1f5f9;color:#475569;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">🔄 日時変更(この日に変更跡を残す)</button>
       <div class="tk-dt-hint" style="font-size:10px;color:var(--muted);margin-top:4px"></div>
     </div>
     <div class="qp-sec">
@@ -6948,9 +6948,9 @@ function showTaikyoStaffPicker(el, ev){
     const t = String(ev._taikyoOrigTime || "").trim();
     if(!d){ alert('元の立会日付が空です'); return; }
     const lbl = (`${ev._bukken||''} ${ev._room||''}`).trim() || (ev.title||'').split(/\r?\n/)[0].replace(/^立会\s*/,'');
-    if(!confirm(`元の立会 ${d}${t?(" "+t):""} をドタキャン跡(グレー)として残しますか？\n（新しい日時は上の「日時」で変更すると立会本体が移動します）`)) return;
+    if(!confirm(`元の立会 ${d}${t?(" "+t):""} に「日時変更」跡(グレー)を残しますか？\n（新しい日時は上の「日時」で変更すると立会本体が移動します）`)) return;
     createDotakyanGhost_(`立会 ${lbl}`, d, t);
-    __tkDota.textContent = '✓ ドタキャン跡を残しました'; __tkDota.disabled = true;
+    __tkDota.textContent = '✓ 日時変更跡を残しました'; __tkDota.disabled = true;
   }; }
   // 🕐 日時変更 (全員共有)
   const dateEl = pop.querySelector('.tk-dt-date');
@@ -12029,14 +12029,14 @@ function createDotakyanGhost_(label, date, time){
   const m = String(time||"").match(/^(\d{1,2})[:：](\d{2})/);
   const ev = {
     id: uid(),
-    title: `🚫ドタキャン ${label}${time?(" "+time):""}`.trim(),
+    title: `🔄日時変更 ${label}${time?(" "+time):""}`.trim(),
     category:"", contractor:"", staff:"", participants:[],
     date: date,
     start: m ? `${String(m[1]).padStart(2,'0')}:${m[2]}` : "09:00",
     end:   m ? `${String(Math.min(+m[1]+1,18)).padStart(2,'0')}:${m[2]}` : "10:00",
     allday:false, timeMode: m ? "timed" : "anytime",
-    color:"#cbd5e1",   // グレー=ドタキャン跡
-    memo:`ドタキャン(日程変更)\n元の予定: ${date}${time?(" "+time):""}`,
+    color:"#cbd5e1",   // グレー=日時変更跡(旧:ドタキャン跡)
+    memo:`日時変更(元の予定)\n元の予定: ${date}${time?(" "+time):""}`,
     importance:[], updatedAt:new Date().toISOString(),
   };
   if(typeof pushHistory==='function') pushHistory();
@@ -12044,7 +12044,7 @@ function createDotakyanGhost_(label, date, time){
   if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(ev,'upsert'); }catch(_){} }
   saveState();
   if(typeof render==='function') render();
-  if(typeof showAutoSyncToast==='function') showAutoSyncToast(`🚫 ${date} にドタキャン跡を残しました。新しい日付に変更してください`);
+  if(typeof showAutoSyncToast==='function') showAutoSyncToast(`🔄 ${date} に日時変更跡を残しました。新しい日付に変更してください`);
   return ev;
 }
 // 🔆 修繕チップを光らせる(変更/移動の完了を明示)。render後に呼ぶ。v1.30.163
@@ -12216,7 +12216,7 @@ function showRepairQuickPop(r, anchorEl){
         <input type="text" id="qp-resp-time" value="${escapeHtml(r.responseTime||'')}" placeholder="10:00" style="width:70px;padding:5px 6px;font-size:12px;border:1px solid var(--border);border-radius:6px">
         <button id="qp-resp-apply" class="qp-detail" style="padding:5px 10px;flex-shrink:0">変更</button>
       </div>
-      <button id="qp-dotakyan" style="margin-top:6px;padding:5px 10px;border:1px solid #cbd5e1;background:#f1f5f9;color:#475569;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">🚫 ドタキャン(この日を取消跡に)</button>
+      <button id="qp-dotakyan" style="margin-top:6px;padding:5px 10px;border:1px solid #cbd5e1;background:#f1f5f9;color:#475569;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">🔄 日時変更(この日に変更跡を残す)</button>
     </div>
     <div class="qp-sec">
       <div class="qp-label">🔨 作業担当者</div>
@@ -12278,9 +12278,9 @@ function showRepairQuickPop(r, anchorEl){
     const d = pop.querySelector('#qp-resp-date').value;
     const t = pop.querySelector('#qp-resp-time').value.trim();
     if(!d){ alert('元のアポ日付が空です'); return; }
-    if(!confirm(`${d}${t?(" "+t):""} をドタキャン跡(グレー)として残しますか？\nこの後、日付を新しい日に変えて「変更」を押してください。`)) return;
+    if(!confirm(`${d}${t?(" "+t):""} に「日時変更」跡(グレー)を残しますか？\nこの後、日付を新しい日に変えて「変更」を押してください。`)) return;
     createDotakyanGhost_(`${r.name}${r.room?" "+r.room:""}`, d, t);
-    __dotaBtn.textContent = '✓ ドタキャン跡を残しました'; __dotaBtn.disabled = true;
+    __dotaBtn.textContent = '✓ 日時変更跡を残しました'; __dotaBtn.disabled = true;
   }; }
   pop.querySelector('#qp-resp-apply').onclick = async ()=>{
     const btn = pop.querySelector('#qp-resp-apply');
