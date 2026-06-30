@@ -2447,7 +2447,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.237</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.238</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -6831,7 +6831,7 @@ function buildTaikyoVirtualEvent_(r){
     _readOnly: true,
     _shiryoReady: (typeof isShiryoReady_==='function') ? isShiryoReady_(r.bukken, r.room) : false, // 📄資料作成済(見積アプリ)
     _dismissed: !!(__ovEntry && __ovEntry.dismissed),   // 🗑 「もう無さそう」で取消(全員共有・取消線+下に沈む)v1.30.206
-    _genchiShoudaku: (r.shoudaku === '現地承諾'),   // 🤝 現地承諾(立会表が赤文字)→カレンダーも赤文字で表示 v1.30.227
+    _genchiShoudaku: /現地承諾/.test(String(r.shoudaku||"").normalize('NFKC')),   // 🤝 現地承諾(立会表が赤文字)→カレンダーも赤文字。表記ゆれ(空白/全角/前後文字)に強い部分一致に(v1.30.238・厳密一致だと拾えない事故の修正)
     updatedAt: r.updatedAt || "",
   };
 }
