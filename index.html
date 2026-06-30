@@ -2447,7 +2447,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.235</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.236</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4756,7 +4756,7 @@ function renderChecks(){
       <span class="count" title="表示中/全件 (複製は自動非表示)">${visibleChecks.length}${visibleChecks.length!==state.checks.length?` / ${state.checks.length}`:""}</span>
       <span class="checks-synced" style="font-size:11px;color:var(--muted);margin-left:6px">${syncedLabel}</span>
       <div style="flex:1"></div>
-      <button class="nav-btn" id="syncCheckBtn" title="master_sync GAS から最終確認日を取得">🔄 Drive同期</button>
+      <!-- 🔄 Drive同期ボタンは削除(2026-06-30 v1.30.236): 上部「☁全同期」がDrive同期を含むため重複。⚙設定と最終同期表示は残す -->
       <button class="nav-btn" id="gasSettingsBtn" title="GAS URL/Token 設定">⚙</button>
       <!-- ＋追加ボタン削除 (2026-05-31): 工事最終確認は台帳から自動取得のため手動登録不要 -->
     </div>
@@ -4784,7 +4784,7 @@ function renderChecks(){
   const addCheckBtn = document.getElementById("addCheckBtn");
   if(addCheckBtn) addCheckBtn.onclick = ()=>openCheckModal(null);
   document.getElementById("gasSettingsBtn").onclick = ()=>openGasSettings();
-  document.getElementById("syncCheckBtn").onclick = ()=>syncChecksFromGAS();
+  // 🔄 Drive同期ボタンは削除(v1.30.236)。同期は上部☁全同期/各タブの再読込/自動同期で実行
   // 🗑 取消した立会の復活(↩)
   wrap.querySelectorAll("[data-taikyo-restore]").forEach(btn=>{
     btn.onclick = (e)=>{ e.stopPropagation(); const raw=btn.dataset.taikyoRestore; if(raw && typeof mutateTaikyoOverrideRemote_==='function') mutateTaikyoOverrideRemote_(raw, {dismissed:false}).catch(()=>{}); };
