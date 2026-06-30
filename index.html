@@ -2447,7 +2447,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.239</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.240</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3509,6 +3509,14 @@
         </label>
         <div style="font-size:11px;color:var(--muted);margin-left:24px">
           フォーカス時 / 5分ごとに自動再取得（差分があった時だけ右下に通知）
+        </div>
+      </div>
+      <div class="field" style="border-top:1px dashed var(--border);padding-top:10px;margin-top:4px">
+        <label>
+          <input type="checkbox" id="opt-direct-morning" checked> 🚗 直行マーカーを朝9時に表示
+        </label>
+        <div style="font-size:11px;color:var(--muted);margin-left:24px">
+          最終確認を「直行」にすると、その日の朝9時に目印チップを出します（この端末のみ・OFFで非表示・すぐ反映）
         </div>
       </div>
       <div class="field" style="display:none">
@@ -8897,6 +8905,12 @@ function openGasSettings(){
   document.getElementById("gas-months").value= s.maxMonths || 3;
   document.getElementById("gas-auto-sync").checked = s.autoRefreshEnabled !== false;
   document.getElementById("gas-task-url").value = s.taskManagerUrl || "";
+  // 🚗 直行マーカー表示トグル(この端末のみ・即時反映・保存ボタン不要)v1.30.240
+  const __dm = document.getElementById("opt-direct-morning");
+  if(__dm){
+    __dm.checked = (typeof directMorningOn_==='function') ? directMorningOn_() : true;
+    __dm.onchange = ()=>{ if(typeof setDirectMorningOn_==='function') setDirectMorningOn_(__dm.checked); if(typeof render==='function') render(); };
+  }
   gasSettingsModal.classList.add("show");
 }
 function closeGasSettings(){ gasSettingsModal.classList.remove("show"); }
@@ -10444,6 +10458,33 @@ function renderLeaveBand(){
 // 時間列の左固定: CSS position:sticky で実現 (v1.30.6〜)。
 // 旧 setupTimeColStickyFallback(scroll+rAFでtranslateX追従)はスマホの慣性スクロールで震えるため廃止。
 
+// 🚗 直行の最終確認は当日の朝9時に「直行マーカー」を仮想チップで出す(まどか要望①・v1.30.240)
+//   localStorageトグルで戻せる(既定ON)。読取専用=ドラッグ/編集/同期しない。物件名+担当を朝枠に出して直行が一目で分かる。
+function directMorningOn_(){ try{ return localStorage.getItem('bc_direct_morning') !== '0'; }catch(_){ return true; } }
+function setDirectMorningOn_(on){ try{ localStorage.setItem('bc_direct_morning', on ? '1' : '0'); }catch(_){} }
+function buildDirectMorningVirtuals_(){
+  if(!directMorningOn_()) return [];
+  const out = [];
+  (state.checks||[]).forEach(ck=>{
+    if(!ck || !ck.checkDate) return;
+    if(!/直行/.test(String(ck.commute||""))) return;
+    const nm = String(ck.title||"").trim();
+    const __who = (ck.staff && typeof surnameOf_==='function') ? surnameOf_(ck.staff) : (ck.staff||"");
+    out.push({
+      id: "_direct_"+ck.id, _checkId: ck.id,
+      title: `🚗直行 ${nm}${__who?(" "+__who):""}`,
+      category: "", staff: ck.staff || "", participants: [],
+      date: ck.checkDate,
+      start: "09:00", end: "09:30", allday: false, timeMode: "timed",
+      color: "#dbeafe",   // 直行=薄青(勤怠バッジと同系)
+      memo: "",           // 目印はシンプルに(📝アイコン抑制)。説明はタイトル「🚗直行」で自明
+      importance: [],
+      source: "direct-morning", _readOnly: true,
+      updatedAt: ck.updatedAt || "",
+    });
+  });
+  return out;
+}
 function renderCalendar(){
   const cols = timeColumns();
   const colCount = cols.length;
@@ -10866,13 +10907,15 @@ function renderCalendar(){
   }
   // イベントタイトルにひもづく原状回復物件を返す(なければnull)。📋進捗アイコン用。共通キャッシュ照合を使用(v1.30.165)
   function getEventResto_(ev){ return findEventResto_(ev); }
+  // 🚗 直行マーカー(直行の最終確認→朝9時の仮想チップ)はループ前に1回だけ生成して各列で再利用 v1.30.240
+  const directMorningVE = buildDirectMorningVirtuals_();
   cols.forEach(c=>{
     const dayCol = grid.querySelector(`.day-col[data-col-key="${c.key}"]`);
     const subCols = dayCol.querySelectorAll(".sub-col");
     // v1.12〜 退去立会(見積アプリ→shared-config)の仮想イベントも合流
     const taikyoVirtuals = buildTaikyoVirtuals_();
     // 📋 事務タスク(チェックリスト)はカレンダーに出さずバッジ専用にする(行削除で消えない)
-    const events = [...state.events, ...taikyoVirtuals].filter(c.filterEvent).filter(e=>!isJimuTaskEvent_(e)).filter(e=>!isCompletedJizenEvent_(e)).filter(e=>!(e.source==='taikyo-shared' && e._dismissed));   // 🗑 取消した立会はグリッドから外し最終確認帯の下へ(v1.30.208)
+    const events = [...state.events, ...taikyoVirtuals, ...directMorningVE].filter(c.filterEvent).filter(e=>!isJimuTaskEvent_(e)).filter(e=>!isCompletedJizenEvent_(e)).filter(e=>!(e.source==='taikyo-shared' && e._dismissed));   // 🗑 取消した立会はグリッドから外し最終確認帯の下へ(v1.30.208)
     // 🔧 事前イベント: 時間未定(anytime)は専用の「事前帯」へ。時刻あり(timed)は通常どおり9-18時グリッドに配置(v1.30.136)
     const __isJizenEv = e => (typeof isJizenEvent_==='function' && isJizenEvent_(e));
     const __isBandJizen = e => !e.allday && __isJizenEv(e) && e.timeMode!=='timed';   // 時間未定の事前=帯
@@ -10923,7 +10966,8 @@ function renderCalendar(){
       // 連携情報行(重い/着工/最終確認/入居): 文字数で 1-2行ぶん見積もる
       // 🤝 立会チップは原状回復の連携情報(進捗/清掃/最確/入居/鍵/除菌/ボリューム)を出さない=立会はスッキリ表示(v1.30.235・山田)
       const __isTachiaiChip = ev.source === "taikyo-shared" || String(ev.category||"").startsWith("立会");
-      const __linkInfo = __isTachiaiChip ? {html:"",text:""} : getEventLinkInfo_(ev);
+      const __noLinkInfo = __isTachiaiChip || ev.source === "direct-morning";   // 🚗 直行マーカーも連携情報/volを出さない(v1.30.240)
+      const __linkInfo = __noLinkInfo ? {html:"",text:""} : getEventLinkInfo_(ev);
       const __linkText = __linkInfo?.text || "";
       // 📌 事前: 工事内容(memoの「工事:◯◯」)をチップ2行目に表示(v1.30.56)
       //   汎用の工事種別(原状回復工事/修繕工事 等)は自明なので非表示。具体的な作業内容だけ出す(v1.30.87)
@@ -11047,7 +11091,7 @@ function renderCalendar(){
         if(__mm){ __nameMain = __mm[1]; __roomTail = __mm[2]; }
       }
       // 🏷 工事ボリューム(昔/普/重/激重)バッジ: 号室の隣(タイトル末尾)に。連携情報行から移設(v1.30.100)
-      const __volLevel = (!__isTachiaiChip && __progResto && __progResto.workVolume && __progResto.workVolume!=="無") ? __progResto.workVolume : "";
+      const __volLevel = (!__noLinkInfo && __progResto && __progResto.workVolume && __progResto.workVolume!=="無") ? __progResto.workVolume : "";
       const __volBadge = __volLevel
         ? `<span class="chip-vol" style="flex-shrink:0;background:${__VOL_COLORS[__volLevel]||'#6b7280'};color:#fff;font-size:9px;font-weight:700;padding:0 5px;border-radius:3px;margin-left:4px;white-space:nowrap" title="工事ボリューム: ${escapeHtml(__volLevel)}">${escapeHtml(__volLevel)}</span>`
         : "";
@@ -11081,7 +11125,7 @@ function renderCalendar(){
       const memoIcon = ev.memo ? `<span class="chip-memo" title="📝 ${escapeHtml(ev.memo)}">📝</span>` : "";
       // 📋 原状回復 進捗アイコン: ひもづく物件がある時のみ。押下でカレンダー上に進捗ダイアログ。
       //   ⚠ 立会チップには出さない(v1.30.35)。__isTachiaiChip/__progResto は高さ計算前に算出済(v1.30.96)
-      const progIcon = (__progResto && !__isTachiaiChip)
+      const progIcon = (__progResto && !__noLinkInfo)
         ? `<span class="chip-prog" data-resto-id="${escapeHtml(String(__progResto.id))}" role="button" title="📋 原状回復の進捗を表示">📋</span>`
         : "";
       // 📐 見積作成者バッジ「見積:姓」— 作業担当(チップ色/丸バッジ)とは別物と分かるグレーのゴーストバッジ。
@@ -12681,6 +12725,10 @@ function attachDragOrClick(el, ev){
     e.stopPropagation();
     // 事前予定の「1クリック→進捗ダイアログ」待機タイマーがあれば取消(ダブルクリック優先)
     if(el._jizenClickTimer){ clearTimeout(el._jizenClickTimer); el._jizenClickTimer = null; }
+    if(ev.source === "direct-morning"){   // 🚗 直行マーカーは編集不可。変更は最終確認カードの勤怠から(v1.30.240)
+      if(typeof showAutoSyncToast==='function') showAutoSyncToast('🚗 直行の目印です。変更は最終確認カードの🚗勤怠から');
+      return;
+    }
     if(ev.source === "taikyo-shared" || ev._readOnly){
       showTaikyoStaffPicker(el, ev);
       return;
