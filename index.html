@@ -2447,7 +2447,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.241</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.242</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -10471,7 +10471,7 @@ function buildDirectMorningVirtuals_(){
     const nm = String(ck.title||"").trim();
     out.push({
       id: "_direct_"+ck.id, _checkId: ck.id,
-      title: `🚗直行 最終確認 ${nm}`,   // 🚗直行＋最終確認と分かる表記(担当は色で分かるので姓は載せない)v1.30.241
+      title: `🚗直行 ${nm}`,   // 「最終確認」はcatPrefixの紫バッジで表示(v1.30.242)。担当は色で分かるので姓は載せない
       category: "", staff: ck.staff || "", participants: [],
       date: ck.checkDate,
       start: "09:00", end: "09:30", allday: false, timeMode: "timed",
@@ -11073,9 +11073,11 @@ function renderCalendar(){
         ? `元請: ${cont.name}${cat ? " ・ 種別: "+cat.name : ""}`
         : (cat ? `種別: ${cat.name}` : "");
       // 立会の元請けは「立会」バッジの色で識別(JSB=アンバー/みどり=緑/山一=紫)。文字バッジは出さない(v1.30.41・山田)
-      const catPrefix = cat
+      const catPrefix = (ev.source === "direct-morning")
+        ? `<span class="title-cat" title="直行の最終確認" style="background:#7c3aed;color:#fff;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;line-height:14px;height:16px;display:inline-flex;align-items:center;justify-content:center">最終確認</span>`   // 🚗直行マーカーは「最終確認」を紫バッジで(v1.30.242)
+        : (cat
         ? `<span class="title-cat" title="${escapeHtml(badgeTooltip)}" style="background:${catBoxBg||"rgba(255,255,255,.35)"};color:${catBoxFg};padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;line-height:14px;height:16px;display:inline-flex;align-items:center;justify-content:center">${escapeHtml(cat.name)}</span>`
-        : "";
+        : "");
       // チップ用: 1行目のみ表示。複数行/メモはホバーで全文表示。
       let titleFirstLine = (ev.title || "").split(/\r?\n/)[0];
       // カテゴリバッジ(事前等)と同じ語がタイトル先頭にあれば重複なので除去(「事前 事前 物件」→「物件」)v1.30.100
