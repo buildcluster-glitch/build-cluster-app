@@ -2447,7 +2447,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.238</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.239</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3915,6 +3915,7 @@ const STAFF_COLORS = {
   "最上登生":"#d8b4fe", // 薄紫
   "まどか"  :"#a855f7", // 紫
   "松尾"    :"#fb923c", // オレンジ
+  "外注業者":"#76a5af", // 🛠 業者(VENDOR_WORKER_COLORと同色)=予定の担当ピッカーで業者を選べる v1.30.239
 };
 const PALETTE = ["#a7f3d0","#fca5a5","#7dd3fc","#bfdbfe","#fde68a","#d8b4fe","#a855f7","#fb923c","#3b82f6","#10b981","#ef4444","#6b7280"];
 
@@ -7126,6 +7127,7 @@ function showEventStaffPicker(el, ev){
           const leader = selStaff[0]===s;
           return `<button data-staff="${escapeHtml(s)}" class="${on?"on":""}" style="background:${sc};color:${textColorFor(sc)}"><span class="qp-dot" style="background:${textColorFor(sc)==='#ffffff'?'rgba(255,255,255,.6)':'rgba(0,0,0,.3)'}"></span>${leader?"★":""}${escapeHtml(s)}</button>`;
         }).join("")}
+        ${(function(){ const sc=VENDOR_WORKER_COLOR; const on=selStaff.includes(VENDOR_WORKER); const leader=selStaff[0]===VENDOR_WORKER; return `<button data-staff="${VENDOR_WORKER}" class="${on?"on":""}" style="background:${sc};color:${textColorFor(sc)}"><span class="qp-dot" style="background:${textColorFor(sc)==='#ffffff'?'rgba(255,255,255,.6)':'rgba(0,0,0,.3)'}"></span>${leader?"★":""}🛠${VENDOR_WORKER}</button>`; })()}
       </div>
       ${ev.color ? `<div style="font-size:10px;color:var(--muted);margin-top:4px">※ 手動色が設定済みのため、担当を変えてもチップ色は変わりません(色は詳細編集で変更)</div>` : ""}
     </div>
@@ -7190,7 +7192,7 @@ function showEventStaffPicker(el, ev){
       b.classList.toggle('on', on);
       // ★リーダー表示を更新
       const sc = bs ? (STAFF_COLORS[bs]||"#9ca3af") : "#cbd5e1";
-      if(bs) b.innerHTML = `<span class="qp-dot" style="background:${textColorFor(sc)==='#ffffff'?'rgba(255,255,255,.6)':'rgba(0,0,0,.3)'}"></span>${selStaff[0]===bs?"★":""}${escapeHtml(bs)}`;
+      if(bs) b.innerHTML = `<span class="qp-dot" style="background:${textColorFor(sc)==='#ffffff'?'rgba(255,255,255,.6)':'rgba(0,0,0,.3)'}"></span>${selStaff[0]===bs?"★":""}${bs===VENDOR_WORKER?"🛠":""}${escapeHtml(bs)}`;
     });
   };
   pop.querySelectorAll("#evStaffPickerList [data-staff]").forEach(btn=>{
