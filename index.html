@@ -2447,7 +2447,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.240</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.241</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -10469,15 +10469,14 @@ function buildDirectMorningVirtuals_(){
     if(!ck || !ck.checkDate) return;
     if(!/直行/.test(String(ck.commute||""))) return;
     const nm = String(ck.title||"").trim();
-    const __who = (ck.staff && typeof surnameOf_==='function') ? surnameOf_(ck.staff) : (ck.staff||"");
     out.push({
       id: "_direct_"+ck.id, _checkId: ck.id,
-      title: `🚗直行 ${nm}${__who?(" "+__who):""}`,
+      title: `🚗直行 最終確認 ${nm}`,   // 🚗直行＋最終確認と分かる表記(担当は色で分かるので姓は載せない)v1.30.241
       category: "", staff: ck.staff || "", participants: [],
       date: ck.checkDate,
       start: "09:00", end: "09:30", allday: false, timeMode: "timed",
-      color: "#dbeafe",   // 直行=薄青(勤怠バッジと同系)
-      memo: "",           // 目印はシンプルに(📝アイコン抑制)。説明はタイトル「🚗直行」で自明
+      color: "",          // 担当者カラーで着色(ev.staff→STAFF_COLORS)。直行は🚗で識別(薄青固定は廃止)v1.30.241
+      memo: "",           // 目印はシンプルに(📝アイコン抑制)。説明はタイトル「🚗直行 最終確認」で自明
       importance: [],
       source: "direct-morning", _readOnly: true,
       updatedAt: ck.updatedAt || "",
@@ -10980,7 +10979,7 @@ function renderCalendar(){
       //   高さ計算と描画で同じ判定を使う(片方だけだと0高さで見切れる)v1.30.96
       const __progResto = getEventResto_(ev);
       const __estNameRaw = ev.estimatorName || (__progResto && __progResto.staff) || "";
-      const __estName2 = (!__isTachiaiChip && __estNameRaw && (typeof isHiddenStaffBadge_!=='function' || !isHiddenStaffBadge_(__estNameRaw))) ? __estNameRaw : "";
+      const __estName2 = (!__noLinkInfo && __estNameRaw && (typeof isHiddenStaffBadge_!=='function' || !isHiddenStaffBadge_(__estNameRaw))) ? __estNameRaw : "";   // 🚗直行マーカーも見積担当バッジ非表示(v1.30.241)
       const __estShort = surnameOf_(__estName2);   // 姓だけ表示(山田裕貴→山田)
       const __estText = __estShort ? `見積:${__estShort}` : "";
       // 🔗 連携情報行: 文字数で1-2行(最大2行クランプ)。見積は連携情報があれば同居=別行を作らずチップ全体を3行に収める(v1.30.97)
@@ -11204,7 +11203,7 @@ function renderCalendar(){
           : (taskInfo
               ? `<span class="ct-text" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${compactTaskHtml}</span>`
               : `<span style="display:inline-flex;min-width:0;flex:0 1 auto;align-items:baseline"><span class="ct-text" style="min-width:0;${__wrapName ? 'white-space:normal;display:-webkit-box;-webkit-line-clamp:'+__nameLines+';-webkit-box-orient:vertical;overflow:hidden;word-break:break-word' : 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap'}">${escapeHtml(__nameMain)}</span>${__roomTail ? `<span class="ct-room" style="flex-shrink:0;font-weight:600">${escapeHtml(__roomTail)}</span>` : ""}</span>`);
-        const timeBox = isAnytime ? "" : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;
+        const timeBox = (isAnytime || ev.source==="direct-morning") ? "" : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;   // 🚗直行マーカーは時刻(09:00)を出さない(v1.30.241)
         // 参加者バッジ/見積行は title 外(チップ直下)に独立行として配置。工事ボリュームは号室の隣(__volBadge)。
         // ※複数行タイトル時は staffBadges を __titleInner 内に入れ込み済みなので外側では出さない(v1.30.170)
         el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${__skipBadge}${isMulti ? '' : staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${__alertHtml}`;
