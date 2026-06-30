@@ -2447,7 +2447,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.236</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.237</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7520,6 +7520,16 @@ function parseTasks_(title){
   });
   return items;
 }
+// 🛡 タスク行の進捗ランク(完了✅2 > 進行中🔄1 > 未着手0 / 非タスク行-1)。🗑📦印は除いて判定。v1.30.237
+//   端末間マージ/分裂統合で「完了→未着手」に戻る(完了タスク復活)のを防ぐため、共有行はランクが高い方を採用する。
+function taskLineRank_(ln){
+  const w = String(ln||"").replace(/^\s*(🗑|📦)\s*/, "");
+  const m = w.match(TASK_BULLET_RE);
+  if(!m) return -1;
+  const mk = m[2]||"";
+  return /^(✅|☑|✓)$/.test(mk) ? 2 : (mk==="🔄" ? 1 : 0);
+}
+function isPlainTaskLine_(ln){ return !/^\s*(🗑|📦)/.test(String(ln||"")); }   // ゴミ箱/アーカイブでない=アクティブ行
 // チェックリスト対象か(タスク行が2件以上)。対象なら集計を返す
 function getTaskInfo_(ev){
   if(!ev || !ev.title || ev.title.indexOf("\n") < 0) return null;
@@ -7813,10 +7823,16 @@ function consolidateAllJimu_(){
       evs.sort((a,b)=> (lineCount(b)-lineCount(a)) || String(a.id||'').localeCompare(String(b.id||'')));
       const canon=evs[0];
       const canonLines=String(canon.title||'').split(/\r?\n/);
-      const seen=new Set(canonLines.map(taskTextKey_).filter(Boolean));
+      // key→canonLines内のindex。共有行は「進んだ状態(完了など)」で上書き=完了の復活防止 v1.30.237
+      const idxByKey=new Map();
+      canonLines.forEach((ln,i)=>{ const k=taskTextKey_(ln); if(k && !idxByKey.has(k)) idxByKey.set(k,i); });
       evs.slice(1).forEach(ev=>{
-        // 本文のタスク行を canonical にユニオン(相手にしか無い行を救出)
-        String(ev.title||'').split(/\r?\n/).forEach(ln=>{ const k=taskTextKey_(ln); if(k && !seen.has(k)){ seen.add(k); canonLines.push(ln); } });
+        // 本文のタスク行を canonical にユニオン(相手にしか無い行を救出・共有行はランクが高い方を採用)
+        String(ev.title||'').split(/\r?\n/).forEach(ln=>{
+          const k=taskTextKey_(ln); if(!k) return;
+          if(!idxByKey.has(k)){ idxByKey.set(k, canonLines.length); canonLines.push(ln); }
+          else { const i=idxByKey.get(k); if(isPlainTaskLine_(canonLines[i]) && isPlainTaskLine_(ln) && taskLineRank_(ln) > taskLineRank_(canonLines[i])) canonLines[i]=ln; }
+        });
         // 💬 業務連絡(messages)も統合
         if(Array.isArray(ev.messages)&&ev.messages.length){ if(!Array.isArray(canon.messages)) canon.messages=[]; const ids=new Set(canon.messages.map(m=>m&&m.id)); ev.messages.forEach(m=>{ if(m&&m.id&&!ids.has(m.id)){ canon.messages.push(m); ids.add(m.id);} }); }
         // 重複イベント削除(tombstoneで全端末に伝播)
@@ -14597,14 +14613,23 @@ function taskTextKey_(ln){
   return t.normalize("NFKC").replace(/\s|　/g, "").toLowerCase();
 }
 function mergeJimuTitle_(winnerTitle, loserTitle){
+  // loser行を key→行 で索引(同keyは先頭優先)
+  const loserByKey = new Map();
+  String(loserTitle||"").split(/\r?\n/).forEach(ln=>{ const k=taskTextKey_(ln); if(k && !loserByKey.has(k)) loserByKey.set(k, ln); });
   const seen = new Set();
-  String(winnerTitle||"").split(/\r?\n/).forEach(ln=>{ const k=taskTextKey_(ln); if(k) seen.add(k); });
-  const extra = [];
-  String(loserTitle||"").split(/\r?\n/).forEach(ln=>{
+  // winner行を保持。共有タスク行は loser の方が進んでいれば loser行(✅+完了ログ込み)を採用=完了の復活防止 v1.30.237
+  const out = String(winnerTitle||"").split(/\r?\n/).map(ln=>{
     const k = taskTextKey_(ln);
-    if(k && !seen.has(k)){ seen.add(k); extra.push(ln); }   // 相手にしか無いタスク行を救出
+    if(!k) return ln;                  // 非タスク行(見出し等)はそのまま
+    seen.add(k);
+    const lln = loserByKey.get(k);
+    if(lln && isPlainTaskLine_(ln) && isPlainTaskLine_(lln) && taskLineRank_(lln) > taskLineRank_(ln)) return lln;
+    return ln;
   });
-  return extra.length ? (String(winnerTitle||"") + "\n" + extra.join("\n")) : (winnerTitle||"");
+  // loserにしか無いタスク行を末尾に救出
+  const extra = [];
+  loserByKey.forEach((ln,k)=>{ if(!seen.has(k)) extra.push(ln); });
+  return extra.length ? out.concat(extra).join("\n") : out.join("\n");
 }
 // 💬 業務連絡(messages)を id基準でユニオン。両端末のメッセージを消さない(タスク行ユニオンと同じ思想)v1.30.195
 //   どちらにも無ければ null(変更不要)。reactions は先勝ち(oldLocalを先に積む)。
