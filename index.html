@@ -2447,7 +2447,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.234</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.235</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -10903,7 +10903,9 @@ function renderCalendar(){
       const __staffRows = __staffN >= 2 ? (__staffN >= 7 ? 2 : 1) : 0;
       // 1行 = 28px(text 17px + padding 上下6+6)。明示改行のみ高さ追加
       // 連携情報行(重い/着工/最終確認/入居): 文字数で 1-2行ぶん見積もる
-      const __linkInfo = getEventLinkInfo_(ev);
+      // 🤝 立会チップは原状回復の連携情報(進捗/清掃/最確/入居/鍵/除菌/ボリューム)を出さない=立会はスッキリ表示(v1.30.235・山田)
+      const __isTachiaiChip = ev.source === "taikyo-shared" || String(ev.category||"").startsWith("立会");
+      const __linkInfo = __isTachiaiChip ? {html:"",text:""} : getEventLinkInfo_(ev);
       const __linkText = __linkInfo?.text || "";
       // 📌 事前: 工事内容(memoの「工事:◯◯」)をチップ2行目に表示(v1.30.56)
       //   汎用の工事種別(原状回復工事/修繕工事 等)は自明なので非表示。具体的な作業内容だけ出す(v1.30.87)
@@ -10914,7 +10916,6 @@ function renderCalendar(){
       const __jizenRow = __jizenKoji ? 14 : 0;
       // 📐 見積作成者(姓のみ)。ev.estimatorName(事前) > 紐づく原状回復(__progResto.staff)。立会は出さない。
       //   高さ計算と描画で同じ判定を使う(片方だけだと0高さで見切れる)v1.30.96
-      const __isTachiaiChip = ev.source === "taikyo-shared" || String(ev.category||"").startsWith("立会");
       const __progResto = getEventResto_(ev);
       const __estNameRaw = ev.estimatorName || (__progResto && __progResto.staff) || "";
       const __estName2 = (!__isTachiaiChip && __estNameRaw && (typeof isHiddenStaffBadge_!=='function' || !isHiddenStaffBadge_(__estNameRaw))) ? __estNameRaw : "";
@@ -11028,7 +11029,7 @@ function renderCalendar(){
         if(__mm){ __nameMain = __mm[1]; __roomTail = __mm[2]; }
       }
       // 🏷 工事ボリューム(昔/普/重/激重)バッジ: 号室の隣(タイトル末尾)に。連携情報行から移設(v1.30.100)
-      const __volLevel = (__progResto && __progResto.workVolume && __progResto.workVolume!=="無") ? __progResto.workVolume : "";
+      const __volLevel = (!__isTachiaiChip && __progResto && __progResto.workVolume && __progResto.workVolume!=="無") ? __progResto.workVolume : "";
       const __volBadge = __volLevel
         ? `<span class="chip-vol" style="flex-shrink:0;background:${__VOL_COLORS[__volLevel]||'#6b7280'};color:#fff;font-size:9px;font-weight:700;padding:0 5px;border-radius:3px;margin-left:4px;white-space:nowrap" title="工事ボリューム: ${escapeHtml(__volLevel)}">${escapeHtml(__volLevel)}</span>`
         : "";
