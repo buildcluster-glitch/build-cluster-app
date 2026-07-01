@@ -1949,6 +1949,18 @@
     /* 📱 チップは完全1行省略 (狭い列で子要素が折返すと28px枠外に隠れ「空白チップ」になるため)。
        PCは連携情報行の2行目折返しを維持するのでこの指定はスマホ限定 */
     .event-chip .chip-title.single-line{flex-wrap:nowrap}
+    /* 📱 カレンダーを一段縮小(v1.30.244・山田「もう少し縮小」): 文字/チップ/バッジ/最終確認カードを圧縮 */
+    .event-chip .chip-title{font-size:10px;padding:3px 6px;min-height:18px;line-height:1.2;gap:4px}
+    .event-chip .chip-time{font-size:8.5px}
+    .event-chip .title-cat{font-size:8px !important;padding:1px 4px !important;height:13px !important;line-height:11px !important}
+    .event-chip .chip-link-info{font-size:8px !important}
+    .day-col-header{font-size:11px}
+    .day-col-header .dow{font-size:9px}
+    .checks-col-head{font-size:11px}
+    .check-card .ck-title{font-size:10.5px}
+    .check-card .badge-sm{font-size:8.5px !important;padding:0 4px !important}
+    .resto-card .rc-name{font-size:12.5px}
+    .resto-card .rc-row{gap:5px}
     /* 📱 下部ナビ表示 + 各ビューの高さ/余白調整 (ID指定=後続の基本CSS display:none より優先) */
     #mobileNav{display:flex}
     /* iOSは100vhがブラウザUI込みで実際の表示域より大きい → dvh(動的ビューポート)優先 */
@@ -2447,7 +2459,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.243</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.244</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4041,7 +4053,7 @@ const HOUR_START = 9;   // 表示開始
 const HOUR_END   = 18;  // 表示終了（18以降は「工事最終確認」セクション）
 // HOUR_PX は localStorage で永続化、月列幅は列ごと個別管理(セッション限定)
 const HOUR_PX_DEFAULT = 260;  // 旧220→130→260 (1時間の行高を倍に・山田 v1.30.214。詰まり解消)
-const HOUR_PX_MOBILE = 170;   // 📱スマホは縮小表示(260の約65%・山田 v1.30.243)。狭い画面に多く収める
+const HOUR_PX_MOBILE = 150;   // 📱スマホは縮小表示(v1.30.243:170→v1.30.244:150)。狭い画面に多く収める
 const MONTH_COL_DEFAULT = window.innerWidth <= 700 ? 300 : 344; // 📱スマホ 旧220→256→300(物件名を省略せず全部表示・最終確認列と同幅で縦整列) / PC: 旧220→286→344
 // 📱スマホは常に縮小(HOUR_PX_MOBILE)。PCは保存値 or PC既定。v1.30.243
 let HOUR_PX = (window.innerWidth <= 700) ? HOUR_PX_MOBILE : (parseInt(localStorage.getItem("buildcluster_schedule_hour_px"),10) || HOUR_PX_DEFAULT);
@@ -11002,7 +11014,8 @@ function renderCalendar(){
       const __willCard = __jizenSkipEarly || __hasSubRows;
       // カード枠(border1.5+padding2)分の高さ加算はカード時のみ
       const __carded = __willCard;
-      const chipHeight = (__effLines === 1 ? 28 : __effLines * 18 + 14) + __linkRow + __jizenRow + __estRow + __alertRow + (__carded ? 8 : 0);
+      let chipHeight = (__effLines === 1 ? 28 : __effLines * 18 + 14) + __linkRow + __jizenRow + __estRow + __alertRow + (__carded ? 8 : 0);
+      if(window.innerWidth <= 700){ chipHeight = Math.round(chipHeight * 0.78); }   // 📱スマホはチップ箱も縮小(v1.30.244)
       // 月ビュー/終日/事前帯 はチップ高さ、それ以外は duration に応じた縦長ブロック
       const height = (isMonth || isFree || isJizen)
         ? chipHeight
@@ -11528,7 +11541,9 @@ function fixChipOverlaps(grid){
     const naturalH = title.scrollHeight;
     title.style.display = prevDisplay;
     // 1行チップは nowrap で高さ28px固定。fixChipOverlaps は折返さない前提で拡大のみ
-    const needed = Math.max(28, naturalH + 12);
+    //   📱スマホは下限/余白を詰めて縮小(v1.30.244)
+    const __mob = window.innerWidth <= 700;
+    const needed = Math.max(__mob ? 20 : 28, naturalH + (__mob ? 7 : 12));
     const currentH = parseFloat(chip.style.height) || chip.offsetHeight;
     // 拡大方向のみ反映(縮小は禁止 — renderCalendar で計算した chipHeight が優先)
     if(needed > currentH){
