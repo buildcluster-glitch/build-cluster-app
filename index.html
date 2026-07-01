@@ -2459,7 +2459,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.244</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.245</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9316,10 +9316,15 @@ async function syncChecksFromGAS(opts){
   const __lastFullAt = +(localStorage.getItem("buildcluster_drive_full_at")||0);
   const __forceFull  = !__lastSyncAt || (Date.now() - __lastFullAt) > 60*60*1000;
   const __since = (!!silent && !__forceFull) ? __lastSyncAt : "";   // 手動(!silent)/初回/1時間ごと=フル
+  // ⏱ サーバー無応答で「読み込み中」が永久に固まるのを防ぐ=75秒で打切り(v1.30.245)
+  const __syncCtrl = (typeof AbortController!=='undefined') ? new AbortController() : null;
+  let __syncTimedOut = false;
+  const __syncTO = __syncCtrl ? setTimeout(()=>{ __syncTimedOut = true; try{ __syncCtrl.abort(); }catch(_){} }, 75000) : null;
   try{
     const res = await fetch(s.url, {
       method:"POST",
       headers:{"Content-Type":"text/plain;charset=utf-8"}, // GASでCORSプリフライト回避
+      signal: __syncCtrl ? __syncCtrl.signal : undefined,
       body: JSON.stringify({
         action:"task-sync",
         token:s.token,
@@ -9328,6 +9333,7 @@ async function syncChecksFromGAS(opts){
         since: __since,   // 空=フル / ISO時刻=その時刻以降の更新分だけ(GAS差分)
       })
     });
+    if(__syncTO) clearTimeout(__syncTO);   // 応答が来た→タイマー解除
     const data = await res.json();
     if(data.error){ throw new Error(data.error); }
     const properties = data.properties || [];
@@ -9491,9 +9497,11 @@ async function syncChecksFromGAS(opts){
     }
   }catch(e){
     console.error(e);
-    if(!silent) hideSyncIndicator("error", "同期失敗: " + e.message);
+    const __emsg = __syncTimedOut ? "サーバー応答なし(75秒でタイムアウト)。もう一度お試しください" : ("同期失敗: " + e.message);
+    if(!silent) hideSyncIndicator("error", __emsg);
     else if(_drvSilentShown) hideSyncIndicator("error", "ドライブ同期失敗");
   }finally{
+    if(__syncTO) clearTimeout(__syncTO);
     if(_drvSilentTimer) clearTimeout(_drvSilentTimer);
     if(!silent || _drvSilentShown) setSyncBtnLoading(false);
   }
