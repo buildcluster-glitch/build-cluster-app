@@ -2459,7 +2459,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.245</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.246</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9314,8 +9314,13 @@ async function syncChecksFromGAS(opts){
   // 🔁 差分同期(v1.30.213): 自動/サイレントは前回以降に更新された台帳だけ取得(since)。手動🔄・初回・1時間ごとはフル(since無し)で再照合し集約/取りこぼし/削除を正す。
   const __lastSyncAt = localStorage.getItem("buildcluster_drive_synced_at") || "";
   const __lastFullAt = +(localStorage.getItem("buildcluster_drive_full_at")||0);
-  const __forceFull  = !__lastSyncAt || (Date.now() - __lastFullAt) > 60*60*1000;
-  const __since = (!!silent && !__forceFull) ? __lastSyncAt : "";   // 手動(!silent)/初回/1時間ごと=フル
+  // 🛟 台帳データが空(前回フルがハング/失敗して土台が無い)なのに差分モードだと0件で永久に空のまま
+  //   →台帳系が全部空なら強制フルで土台を取り直す(自動復活)v1.30.246
+  const __gasBaseEmpty = !(state.checks||[]).some(c=>c && c.source==="gas-sync")
+                      && !(state.repairs||[]).length
+                      && !(state.restorations||[]).length;
+  const __forceFull  = !__lastSyncAt || __gasBaseEmpty || (Date.now() - __lastFullAt) > 60*60*1000;
+  const __since = (!!silent && !__forceFull) ? __lastSyncAt : "";   // 手動(!silent)/初回/1時間ごと/土台空=フル
   // ⏱ サーバー無応答で「読み込み中」が永久に固まるのを防ぐ=75秒で打切り(v1.30.245)
   const __syncCtrl = (typeof AbortController!=='undefined') ? new AbortController() : null;
   let __syncTimedOut = false;
