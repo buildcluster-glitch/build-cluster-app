@@ -2491,7 +2491,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.251</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.252</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -13928,9 +13928,10 @@ function scrollToToday(){
   const now = new Date();
   // 垂直: デフォルトは 9時(グリッド先頭)固定 (HOUR_START=9 → scrollTop 0)
   body.scrollTop = 0;
-  // 水平: 月ビューで「前日」の列が左端に来るようスクロール(前日の位置が都合よい・山田 v1.30.137)
+  // 水平: 左端アンカー = PC:前日(前日の位置が都合よい・山田 v1.30.137) / 📱スマホ:当日(デフォは今日から・山田 v1.30.252。前日は左へ1スクロールで見える)
   if(currentView==="month"){
-    const anchor = new Date(now); anchor.setDate(anchor.getDate()-1);   // 前日を左端アンカーに
+    const anchor = new Date(now);
+    if(window.innerWidth > 700) anchor.setDate(anchor.getDate()-1);   // PCのみ前日を左端アンカーに
     const anchorStr = fmtDate(anchor);
     const todayStr = fmtDate(now);
     // ヘッダ・グリッド両方探す。前日列が無ければ今日列にフォールバック
