@@ -1961,6 +1961,18 @@
     .check-card .badge-sm{font-size:8.5px !important;padding:0 4px !important}
     .resto-card .rc-name{font-size:12.5px}
     .resto-card .rc-row{gap:5px}
+    /* 📱 修繕チップの物件名は省略(…)せず2行まで折返して全部見せる(v1.30.248・山田「ヴィラやか…の見切れなくしたい」)
+       業者バッジ(🛠アルファブレインジャパン等)に幅を取られてもタイトルが読める。!important=インラインstyleのellipsis指定を上書き */
+    .repair-appt-grid .rg-label{
+      white-space:normal !important;
+      display:-webkit-box !important;
+      -webkit-line-clamp:2;
+      -webkit-box-orient:vertical;
+      overflow:hidden !important;
+      word-break:break-word;
+    }
+    /* 名前が2行になってもバッジ行コンテナが縦に伸びるよう折返し許可 */
+    .repair-appt-grid .chip-title > span:first-child{align-items:flex-start !important}
     /* 📱 下部ナビ表示 + 各ビューの高さ/余白調整 (ID指定=後続の基本CSS display:none より優先) */
     #mobileNav{display:flex}
     /* iOSは100vhがブラウザUI込みで実際の表示域より大きい → dvh(動的ビューポート)優先 */
@@ -2459,7 +2471,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.247</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.248</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
