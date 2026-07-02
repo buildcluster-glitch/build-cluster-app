@@ -2482,7 +2482,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.249</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.250</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3552,6 +3552,14 @@
         </label>
         <div style="font-size:11px;color:var(--muted);margin-left:24px">
           最終確認を「直行」にすると、その日の朝9時に目印チップを出します（この端末のみ・OFFで非表示・すぐ反映）
+        </div>
+      </div>
+      <div class="field">
+        <label>
+          <input type="checkbox" id="opt-auto-grow-rows" checked> 📏 予定が多い時間は行を自動で広げる
+        </label>
+        <div style="font-size:11px;color:var(--muted);margin-left:24px">
+          あふれた予定をスクロールに隠さず、行の高さを広げて全部見せます（この端末のみ・OFF=従来のスクロール＋▼あとN件バッジ・すぐ反映）
         </div>
       </div>
       <div class="field" style="display:none">
@@ -8970,6 +8978,12 @@ function openGasSettings(){
     __dm.checked = (typeof directMorningOn_==='function') ? directMorningOn_() : true;
     __dm.onchange = ()=>{ if(typeof setDirectMorningOn_==='function') setDirectMorningOn_(__dm.checked); if(typeof render==='function') render(); };
   }
+  // 📏 行の自動拡張トグル(この端末のみ・即時反映)v1.30.250
+  const __agr = document.getElementById("opt-auto-grow-rows");
+  if(__agr){
+    __agr.checked = (typeof autoGrowRowsOn_==='function') ? autoGrowRowsOn_() : true;
+    __agr.onchange = ()=>{ if(typeof setAutoGrowRowsOn_==='function') setAutoGrowRowsOn_(__agr.checked); if(typeof render==='function') render(); };
+  }
   gasSettingsModal.classList.add("show");
 }
 function closeGasSettings(){ gasSettingsModal.classList.remove("show"); }
@@ -11578,6 +11592,8 @@ function renderCalendar(){
   if(__isMonth){
     attachColResizeHandles(colCount);
     // hour-cell スクロール式に移行したため fixChipOverlaps は不要
+    // 📏 予定が多い時間は行を自動で広げて全部見せる(v1.30.250)→広げ切れない分だけ▼バッジ
+    if(typeof autoGrowHourRows_==='function') autoGrowHourRows_(grid);
     // 🔻 セル内スクロールで隠れた予定の見落とし防止バッジ(v1.30.249)
     if(typeof updateCellOverflowBadges_==='function') updateCellOverflowBadges_();
   }
@@ -11585,6 +11601,54 @@ function renderCalendar(){
   attachRowResizeHandle();
 }
 
+// 📏 予定が多い時間帯は行高を自動で広げて全部見せる(v1.30.250・山田「行が勝手に追加されるってことはできる？」)
+//   月ビュー限定。各時間の必要高さ(セルscrollHeight)の最大値まで行を伸ばし、時刻ラベル/罫線/セルを累積オフセットで再配置。
+//   上限=HOUR_PX×3(暴走防止・超えた分は従来のセル内スクロール+▼あとN件バッジ)。⚙設定でOFF=従来の固定行高に戻せる(端末ごと)。
+function autoGrowRowsOn_(){ try{ return localStorage.getItem('bc_auto_grow_rows') !== '0'; }catch(_){ return true; } }
+function setAutoGrowRowsOn_(on){ try{ localStorage.setItem('bc_auto_grow_rows', on ? '1' : '0'); }catch(_){} }
+function autoGrowHourRows_(grid){
+  if(currentView !== "month" || !autoGrowRowsOn_() || !grid) return;
+  // 1) 各時間の必要行高(全列の最大)
+  const rowH = {};
+  let changed = false;
+  grid.querySelectorAll(".hour-cell").forEach(cell=>{
+    const h = +cell.dataset.hour;
+    const need = Math.max(HOUR_PX, Math.min(HOUR_PX*3, cell.scrollHeight + 6));
+    if(!rowH[h] || need > rowH[h]) rowH[h] = need;
+    if(need > HOUR_PX) changed = true;
+  });
+  if(!changed) return;   // あふれ無し=固定行高のまま(何もしない)
+  // 2) 累積オフセット
+  const tops = {}; let y = 0;
+  for(let h=HOUR_START; h<HOUR_END; h++){ tops[h] = y; y += (rowH[h] || HOUR_PX); }
+  tops[HOUR_END] = y;
+  // 3) 反映: grid高さ / 時刻ラベル / hour-cell / 罫線(時・15分)
+  grid.style.height = y + "px";
+  grid.querySelectorAll(".time-col .time-label").forEach((lb,i)=>{
+    const h = HOUR_START + i;
+    lb.style.top = (tops[h] !== undefined ? tops[h] : y) + "px";
+  });
+  grid.querySelectorAll(".hour-cell").forEach(cell=>{
+    const h = +cell.dataset.hour;
+    cell.style.top = tops[h] + "px";
+    cell.style.height = (rowH[h] || HOUR_PX) + "px";
+  });
+  const totalH = HOUR_END - HOUR_START;
+  grid.querySelectorAll(".sub-col").forEach(sc=>{
+    sc.querySelectorAll(".hour-line").forEach((ln,i)=>{
+      const h = HOUR_START + 1 + i;
+      ln.style.top = (tops[h] !== undefined ? tops[h] : y) + "px";
+    });
+    const qls = sc.querySelectorAll(".quarter-line");
+    let qi = 0;
+    for(let q=0; q<totalH*4; q++){
+      if(q % 4 === 0) continue;
+      const el2 = qls[qi++]; if(!el2) break;
+      const h = HOUR_START + Math.floor(q/4);
+      el2.style.top = (tops[h] + (rowH[h] || HOUR_PX) * ((q%4)/4)) + "px";
+    }
+  });
+}
 // 🔻 あふれた hour-cell に「▼あとN件」赤バッジ(v1.30.249・山田「スクロールだと見落とし発生しそう」)
 //   セル内スクロールで下に隠れている予定の件数を常時表示。タップでセル内を下へスクロール。
 //   スクロールに追従して件数更新・全部見えたら消える。sticky配置なのでスクロール中も見える。
