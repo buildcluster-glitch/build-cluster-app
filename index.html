@@ -2459,7 +2459,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.246</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.247</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -6318,7 +6318,29 @@ function addEventDeletion_(eventId){
   map[eventId] = new Date().toISOString();
   saveEventDeletions_(map);
   applyEventDeletionsToState_();
-  pushEventDeletionsMap_(map).catch(()=>{});
+  // 🛡 v1.30.247: 旧実装はローカル控えを丸ごと上書きpush→古い控えの端末が後からpushすると
+  //   他端末のtombstoneが巻き戻り「削除した予定が復活/他端末に残る」競合があった。
+  //   休暇(deleteLeaveOverlay_)と同じ「最新remote取得→マージ→自分の削除を乗せてpush」に修正。
+  (async ()=>{
+    try{
+      const s = loadGasSettings();
+      if(s.url && s.token){
+        const url = `${s.url}?action=get-shared-config&key=event_deletions&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+        const res = await fetch(url, {method:'GET', redirect:'follow'});
+        if(res.ok){
+          const d = await res.json();
+          let raw = d.value;
+          if(typeof raw === 'string'){ try{ raw = JSON.parse(raw); }catch(_){ raw = null; } }
+          const remote = (raw && raw.deletions && typeof raw.deletions==='object') ? raw.deletions : {};
+          const merged = pruneEventDeletions_(mergeEventDeletions_(remote, loadEventDeletions_()));
+          saveEventDeletions_(merged);
+          await pushEventDeletionsMap_(merged);
+          return;
+        }
+      }
+    }catch(_){}
+    pushEventDeletionsMap_(loadEventDeletions_()).catch(()=>{});   // remote取得失敗時は従来どおり(最低限自分の削除は届ける)
+  })();
 }
 // 復活防止: サーバー由来の予定で、tombstone(削除時刻)が予定のupdatedAtより新しいものは取り込まない
 function isEventTombstoned_(ev){
@@ -15005,6 +15027,7 @@ document.getElementById('cloudSyncBtn').onclick = ()=>{
   if(typeof fetchTaikyoShiryoReady==='function')fetchTaikyoShiryoReady({force:true, silent:true}).catch(()=>{});   // 📄資料作成済フラグ
   if(typeof fetchTaikyoComments_==='function')  fetchTaikyoComments_({silent:true}).catch(()=>{});                 // 💬立会コメント
   if(typeof fetchJizenSchedule==='function')    fetchJizenSchedule({force:true, silent:true}).catch(()=>{});       // 📌事前
+  if(typeof fetchEventDeletions_==='function')  fetchEventDeletions_({silent:true}).catch(()=>{});                 // 🗑 削除トゥームストーン(他端末で消した予定を☁でも即反映・v1.30.247)
 };
 
 // ===========================================================
