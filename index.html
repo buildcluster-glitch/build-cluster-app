@@ -901,6 +901,15 @@
     box-shadow:0 -1px 5px rgba(0,0,0,.2);
   }
   .hour-cell .cell-more:hover{background:#b91c1c}
+  /* ➕ 時間ブロック下端の予定追加帯: 予定びっちりでも押せる追加ボタン(v1.30.251) */
+  .hour-cell .cell-add-btn{
+    display:block;width:100%;
+    margin-top:auto;   /* flex縦積みの最下部(時と時の境目)に寄せる。詰まってる時は最後のチップの直後 */
+    border:1px dashed #c7d2fe;background:rgba(224,231,255,.35);color:#6366f1;
+    font-size:11px;font-weight:700;line-height:14px;height:16px;padding:0;
+    border-radius:5px;cursor:pointer;opacity:.55;flex-shrink:0;
+  }
+  .hour-cell .cell-add-btn:hover{opacity:1;background:#e0e7ff}
   /* 🗑 取消した立会を最終確認帯の最下部に小さく(v1.30.208) */
   .taikyo-dismissed-card{opacity:.6;background:#f8fafc !important;border-left:3px solid #d8b4fe !important;padding:2px 4px !important}
   .taikyo-dismissed-card .tdc-row{display:flex;align-items:center;gap:4px;font-size:11px}
@@ -2482,7 +2491,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.250</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.251</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -11570,6 +11579,25 @@ function renderCalendar(){
             setPasteAnchor_(c.contextDate, startMin, c.contextStaff || null);
           }
         };
+        // ➕ 予定追加帯: 各時間ブロックの下端(時と時の境目)に細い「＋」ボタン(v1.30.251・山田)
+        //   予定びっちりで余白ダブルクリックできない時も、ここを押せばその日・その時間で追加シートが開く。
+        const __addBtn = document.createElement("button");
+        __addBtn.className = "cell-add-btn";
+        __addBtn.type = "button";
+        __addBtn.textContent = "＋";
+        __addBtn.title = `${c.contextDate||""} ${cell.dataset.hour}時台に予定を追加`;
+        __addBtn.onclick = (e)=>{
+          e.stopPropagation();
+          const hour = parseInt(cell.dataset.hour, 10);
+          openQuickOrFullEvent_({
+            date: c.contextDate,
+            staff: c.contextStaff || undefined,
+            start: `${pad(hour)}:00`,
+            end: `${pad(Math.min(HOUR_END, hour+1))}:00`
+          });
+        };
+        __addBtn.ondblclick = (e)=> e.stopPropagation();
+        cell.appendChild(__addBtn);
       });
     }
   });
@@ -11660,13 +11688,13 @@ function updateCellOverflowBadges_(){
     badge.className = "cell-more";
     const update = ()=>{
       const visBottom = cell.scrollTop + cell.clientHeight;
-      const n = [...cell.children].filter(k=> k!==badge && (k.offsetTop + k.offsetHeight) > visBottom + 4).length;
+      const n = [...cell.children].filter(k=> k!==badge && !k.classList.contains('cell-add-btn') && (k.offsetTop + k.offsetHeight) > visBottom + 4).length;   // ＋追加帯は件数に数えない(v1.30.251)
       if(n <= 0){ badge.style.display = "none"; }
       else { badge.style.display = ""; badge.textContent = `▼ あと${n}件`; }
     };
     badge.onclick = (e)=>{ e.stopPropagation(); cell.scrollTop += Math.max(40, cell.clientHeight*0.8); update(); };   // scrollBy(smooth)は環境で効かないためscrollTop直加算(v1.30.249)
     cell.appendChild(badge);
-    if(!cell.__moreScrollBound){ cell.__moreScrollBound = true; cell.addEventListener("scroll", ()=>{ const b=cell.querySelector(".cell-more"); if(b){ const visBottom=cell.scrollTop+cell.clientHeight; const n=[...cell.children].filter(k=>k!==b && (k.offsetTop+k.offsetHeight)>visBottom+4).length; if(n<=0){ b.style.display="none"; } else { b.style.display=""; b.textContent=`▼ あと${n}件`; } } }, {passive:true}); }
+    if(!cell.__moreScrollBound){ cell.__moreScrollBound = true; cell.addEventListener("scroll", ()=>{ const b=cell.querySelector(".cell-more"); if(b){ const visBottom=cell.scrollTop+cell.clientHeight; const n=[...cell.children].filter(k=>k!==b && !k.classList.contains('cell-add-btn') && (k.offsetTop+k.offsetHeight)>visBottom+4).length; if(n<=0){ b.style.display="none"; } else { b.style.display=""; b.textContent=`▼ あと${n}件`; } } }, {passive:true}); }
     update();
   });
 }
