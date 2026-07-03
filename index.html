@@ -2497,7 +2497,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.255</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.256</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9245,25 +9245,41 @@ function restoSyncTasks(existingTasks, serverTasks){
   });
 }
 // サーバー progress を適用 (TM applyProgressFromServer 相当)
+// 🛡 v1.30.256: タスクごとLWW=ローカルのstatusAt/checkAtが新しければ巻き戻さない
+//   (クリック→push(2秒デバウンス)前に同期が走ると、サーバーの古い進捗でクリックが消える競合の防止)
 function restoApplyProgress(prop, serverProgress){
   if(!serverProgress) return;
-  if(serverProgress.comments && serverProgress.comments.length) prop.comments = serverProgress.comments;
+  // 💬 コメントはidユニオン(サーバー順+ローカルにしか無い分を末尾へ)=直前のローカル追加が消えない
+  if(serverProgress.comments && serverProgress.comments.length){
+    const sv = serverProgress.comments;
+    const ids = new Set(sv.map(c=>c && c.id).filter(Boolean));
+    const localOnly = (prop.comments||[]).filter(c=>c && c.id && !ids.has(c.id));
+    prop.comments = localOnly.length ? sv.concat(localOnly) : sv;
+  }
   if(serverProgress.tasks){
     (prop.tasks||[]).forEach(t=>{
       const key = `${t.category||""}|${t.contractor||""}|${t.room||""}|${t.name||""}`;
       const sp = serverProgress.tasks[key];
       if(!sp) return;
-      t.status = sp.status || t.status;
-      t.doneAt = sp.doneAt || t.doneAt;
-      t.statusBy = sp.statusBy || t.statusBy || "";
-      t.statusAt = sp.statusAt || t.statusAt || null;
-      t.checkWork = sp.checkWork || false;
-      t.checkWorkBy = sp.checkWorkBy || "";
-      t.checkWorkAt = sp.checkWorkAt || null;
-      t.checkAmount = sp.checkAmount || false;
-      t.checkAmountBy = sp.checkAmountBy || "";
-      t.checkAmountAt = sp.checkAmountAt || null;
-      t.logs = (sp.logs && sp.logs.length) ? sp.logs : (t.logs||[]);
+      const localStatusNewer = (t.statusAt||0) > (sp.statusAt||0);
+      if(!localStatusNewer){
+        t.status = sp.status || t.status;
+        t.doneAt = sp.doneAt || t.doneAt;
+        t.statusBy = sp.statusBy || t.statusBy || "";
+        t.statusAt = sp.statusAt || t.statusAt || null;
+      }
+      if(!((t.checkWorkAt||0) > (sp.checkWorkAt||0))){
+        t.checkWork = sp.checkWork || false;
+        t.checkWorkBy = sp.checkWorkBy || "";
+        t.checkWorkAt = sp.checkWorkAt || null;
+      }
+      if(!((t.checkAmountAt||0) > (sp.checkAmountAt||0))){
+        t.checkAmount = sp.checkAmount || false;
+        t.checkAmountBy = sp.checkAmountBy || "";
+        t.checkAmountAt = sp.checkAmountAt || null;
+      }
+      // 作業ログ: 多い方を残す(ローカルで追加直後にサーバーの少ない版で消えない)
+      t.logs = (sp.logs && sp.logs.length >= (t.logs||[]).length) ? sp.logs : (t.logs||[]);
       t.note = sp.note || t.note;
     });
   }
@@ -16494,13 +16510,19 @@ async function restoPushProgressNow(propId){
   });
   const progress = {tasks, comments:prop.comments||[], updatedAt:Date.now(), updatedBy:getMyself()||""};
   try{
-    await fetch(s.url, {
+    // 🛡 v1.30.256: token必須(master_syncのdoPostは全アクションでtoken検証=旧実装は401で捨てられてた)＋応答チェック
+    const res = await fetch(s.url, {
       method:"POST", redirect:"follow",
       headers:{"Content-Type":"text/plain;charset=utf-8"},
-      body: JSON.stringify({action:"saveProgress", propertyName:prop.name, roomNumber:prop.room, progress}),
+      body: JSON.stringify({action:"saveProgress", token:s.token, propertyName:prop.name, roomNumber:prop.room, progress}),
     });
-    console.log("[resto] progress pushed:", prop.name, prop.room);
-  }catch(e){ console.warn("[resto] progress push failed", e); }
+    const data = await res.json().catch(()=>null);
+    if(!data || data.ok !== true) throw new Error((data && data.error) || "サーバー応答が不正(master_sync未対応の可能性)");
+    console.log("[resto] progress pushed:", prop.name, prop.room, data.keys!=null?`(共有${data.keys}件)`:"");
+  }catch(e){
+    console.warn("[resto] progress push failed", e);
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast("⚠ 進捗の共有保存に失敗(この端末には保存済): "+e.message);
+  }
 }
 // state保存 + 詳細表示中なら進捗プッシュ
 function restoSave(){
