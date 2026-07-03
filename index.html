@@ -2497,7 +2497,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.256</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.257</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2520,6 +2520,7 @@
   <button class="nav-btn icon-only" id="undoBtn" title="直前の変更を取り消し (Ctrl+Z)" disabled>↶</button>
   <button class="nav-btn icon-only" id="searchBtn" title="🔍 予定・立会・修繕・最終確認・休暇を横断検索 (/)">🔍</button>
   <button class="nav-btn icon-only" id="yearStatsBtn" title="📊 休日管理 (有給・休日年間集計)">📊</button>
+  <button class="nav-btn icon-only" id="bugReportBtn" title="🐞 バグ・要望の報告 (全員共有・見積アプリの報告と同様)">🐞<span id="bugReportBadge" class="al-count" style="display:none"></span></button>
   <button class="nav-btn" id="cloudSyncBtn" title="☁ 全同期 — クラウド(予定/休暇) + Drive(最終確認・立会・事前など) をまとめて今すぐ同期。設定は⚙"><span id="cloudSyncIcon">☁</span><span id="cloudSyncBadge" class="hidden"></span></button>
   <button class="nav-btn icon-only" id="gasSettingsBtnHeader" title="⚙ 設定 (GAS URL/Token)">⚙</button>
   <!-- 🚫 リセット(⟳ 全データ消去)ボタンは誤爆事故防止で撤去(山田 v1.30.222)。データ消去が必要なら Console で localStorage.removeItem("buildcluster_schedule_v1") -->
@@ -15644,6 +15645,178 @@ function staffBadgesMini_(staffStr, opts){
   }).join("");
 }
 
+// ===== 🐞 バグ・要望の報告ボード (全員共有・見積アプリの報告と同様) v1.30.257 =====
+//   shared-config 'calendar_reports' = JSON { reports:{ [id]:{id,type,text,status,by,at,appVer,comments:[],deleted,updatedAt} }, updatedAt }
+//   マルチ著者: 最新remote取得→id単位LWW(updatedAt)マージ→自分の変更→push。コメントはidユニオン。
+const CAL_REPORTS_KEY = "buildcluster_calendar_reports";
+function loadCalReports_(){ try{ const o=JSON.parse(localStorage.getItem(CAL_REPORTS_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
+function saveCalReports_(m){ try{ localStorage.setItem(CAL_REPORTS_KEY, JSON.stringify(m||{})); }catch(e){} }
+function mergeCalReports_(a,b){
+  const out={};
+  new Set([...Object.keys(a||{}),...Object.keys(b||{})]).forEach(id=>{
+    const x=a&&a[id], y=b&&b[id];
+    if(!x){ out[id]=y; return; } if(!y){ out[id]=x; return; }
+    const w = (String(y.updatedAt||'')>=String(x.updatedAt||'')) ? y : x;   // 新しい方を採用(LWW)
+    const l = (w===y)?x:y;
+    const r = Object.assign({}, w);
+    const ids=new Set((w.comments||[]).map(c=>c&&c.id).filter(Boolean));
+    const extra=(l.comments||[]).filter(c=>c&&c.id&&!ids.has(c.id));   // 相手にしか無いコメントを救出
+    if(extra.length) r.comments=(w.comments||[]).concat(extra).sort((p,q)=>String(p.at||'').localeCompare(String(q.at||'')));
+    out[id]=r;
+  });
+  return out;
+}
+function updateBugReportBadge_(){
+  const b = document.getElementById("bugReportBadge"); if(!b) return;
+  const n = Object.values(loadCalReports_()).filter(r=>r && !r.deleted && r.status==="open").length;
+  if(n>0){ b.textContent = n; b.style.display = ""; } else { b.style.display = "none"; }
+}
+async function fetchCalReports_(opts={}){
+  const s = loadGasSettings();
+  const local = loadCalReports_();
+  if(!s.url || !s.token){ updateBugReportBadge_(); return local; }
+  try{
+    const url = `${s.url}?action=get-shared-config&key=calendar_reports&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res = await fetch(url, {method:'GET', redirect:'follow'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json();
+    let raw = data.value;
+    if(raw==='' || raw==null) raw = {reports:{}};
+    else if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(e){ raw={reports:{}}; } }
+    const remote = (raw && raw.reports && typeof raw.reports==='object') ? raw.reports : {};
+    const merged = mergeCalReports_(remote, loadCalReports_());   // ⚠await中の投稿を消さないよう「今」のローカルでマージ(スナップショットlocalは使わない)
+    saveCalReports_(merged);
+    updateBugReportBadge_();
+    if(opts.render && document.getElementById("bugReportModal")?.classList.contains("show")) renderBugReportModal_();
+    return merged;
+  }catch(err){ if(!opts.silent) console.warn('[calendar_reports] fetch失敗:', err.message); updateBugReportBadge_(); return local; }
+}
+async function pushCalReports_(){
+  const s = loadGasSettings(); if(!s.url || !s.token) return;
+  // 最新remote→マージ→push(他人の投稿を消さない)
+  let map = loadCalReports_();
+  try{
+    const url = `${s.url}?action=get-shared-config&key=calendar_reports&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res = await fetch(url, {method:'GET', redirect:'follow'});
+    if(res.ok){
+      const d = await res.json();
+      let raw = d.value;
+      if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(e){ raw=null; } }
+      if(raw && raw.reports) map = mergeCalReports_(raw.reports, loadCalReports_());
+    }
+  }catch(_){}
+  map = mergeCalReports_(map, loadCalReports_());   // ⚠await中の変更も拾う(スナップショットで上書きしない)
+  saveCalReports_(map);
+  try{
+    await fetch(s.url, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ action:'save-shared-config', key:'calendar_reports', value: JSON.stringify({reports:map, updatedAt:new Date().toISOString()}), token: s.token, savedBy:'calendar-app' }) });
+  }catch(e){ console.warn('[calendar_reports] push失敗:', e.message); if(typeof showAutoSyncToast==='function') showAutoSyncToast('⚠ 報告の共有保存に失敗(この端末には保存済)'); }
+}
+function mutateCalReport_(id, patch){
+  const map = loadCalReports_();
+  const cur = map[id] || {};
+  map[id] = Object.assign({}, cur, patch, { id, updatedAt:new Date().toISOString() });
+  saveCalReports_(map);
+  updateBugReportBadge_();
+  renderBugReportModal_();
+  pushCalReports_().catch(()=>{});
+}
+const CAL_REPORT_STATUS = [
+  {key:"open", label:"🔴 未対応", bg:"#fee2e2", fg:"#991b1b"},
+  {key:"wip",  label:"🟡 対応中", bg:"#fef9c3", fg:"#854d0e"},
+  {key:"done", label:"✅ 完了",   bg:"#dcfce7", fg:"#166534"},
+];
+function ensureBugReportModal_(){
+  if(document.getElementById("bugReportModal")) return;
+  const ov = document.createElement("div");
+  ov.className = "modal-overlay"; ov.id = "bugReportModal";
+  ov.innerHTML = `
+    <div class="modal" style="max-width:640px;width:96vw">
+      <div class="modal-header">🐞 バグ・要望の報告 <span style="font-weight:400;font-size:11px;color:var(--muted)">全員共有・見積アプリの報告と同じノリでどうぞ</span></div>
+      <div class="modal-body" style="max-height:74vh;overflow:auto">
+        <div style="display:flex;gap:6px;margin-bottom:8px;align-items:flex-start">
+          <select id="br-type" style="padding:6px;border:1px solid var(--border-strong);border-radius:6px;font-size:12px;flex-shrink:0">
+            <option value="bug">🐞 バグ</option>
+            <option value="normal">⚪ 通常(要望)</option>
+          </select>
+          <textarea id="br-text" rows="2" placeholder="内容(例: ○○すると△△になる / ○○が欲しい)" style="flex:1;padding:6px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;resize:vertical"></textarea>
+          <button class="btn primary" id="br-post" style="flex-shrink:0">投稿</button>
+        </div>
+        <div id="br-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="br-close">閉じる</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.onclick = e=>{ if(e.target===ov) ov.classList.remove("show"); };
+  ov.querySelector("#br-close").onclick = ()=> ov.classList.remove("show");
+  ov.querySelector("#br-post").onclick = ()=>{
+    const text = ov.querySelector("#br-text").value.trim();
+    if(!text){ alert("内容を入力してください"); return; }
+    const ver = (document.querySelector(".app-title span")||{}).textContent || "";
+    mutateCalReport_(uid(), { type: ov.querySelector("#br-type").value, text, status:"open",
+      by: getMyself()||"", at: new Date().toISOString(), appVer: ver, comments: [] });
+    ov.querySelector("#br-text").value = "";
+  };
+}
+function openBugReportModal_(){
+  ensureBugReportModal_();
+  document.getElementById("bugReportModal").classList.add("show");
+  renderBugReportModal_();
+  fetchCalReports_({render:true, silent:true}).catch(()=>{});   // 開いたら最新を取得
+}
+function renderBugReportModal_(){
+  const list = document.getElementById("br-list"); if(!list) return;
+  const items = Object.values(loadCalReports_()).filter(r=>r && !r.deleted)
+    .sort((a,b)=>String(b.at||'').localeCompare(String(a.at||'')));
+  if(!items.length){ list.innerHTML = `<div style="text-align:center;padding:24px;color:var(--muted)">まだ報告はありません</div>`; return; }
+  const me = getMyself()||"";
+  list.innerHTML = items.map(r=>{
+    const st = CAL_REPORT_STATUS.find(s=>s.key===r.status) || CAL_REPORT_STATUS[0];
+    const typeBadge = r.type==="bug"
+      ? `<span style="background:#fecdd3;color:#9f1239;font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px">🐞 バグ</span>`
+      : `<span style="background:#e2e8f0;color:#475569;font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px">⚪ 通常</span>`;
+    const d = new Date(r.at); const dStr = isNaN(d) ? "" : `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    const cmts = (r.comments||[]).map(c=>`<div style="font-size:11px;padding:3px 6px;background:#f8fafc;border-radius:5px;margin-top:3px"><b>${escapeHtml(c.by||"?")}</b> ${escapeHtml(c.text||"")}</div>`).join("");
+    return `<div style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:8px">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <button data-br-status="${r.id}" title="クリックでステータス切替" style="background:${st.bg};color:${st.fg};border:none;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;cursor:pointer">${st.label}</button>
+        ${typeBadge}
+        <span style="font-size:10px;color:var(--muted);margin-left:auto">${escapeHtml(r.by||"?")} ・ ${dStr}${r.appVer?` ・ ${escapeHtml(r.appVer)}`:""}</span>
+      </div>
+      <div style="font-size:13px;margin-top:5px;white-space:pre-wrap;word-break:break-word">${escapeHtml(r.text||"")}</div>
+      ${cmts}
+      <div style="display:flex;gap:6px;margin-top:5px">
+        <button data-br-cmt="${r.id}" class="btn" style="font-size:10px;padding:2px 8px">💬 コメント${(r.comments||[]).length?` (${(r.comments||[]).length})`:""}</button>
+        ${(r.by===me||!r.by) ? `<button data-br-del="${r.id}" class="btn" style="font-size:10px;padding:2px 8px;color:#dc2626">🗑 削除</button>` : ""}
+      </div>
+    </div>`;
+  }).join("");
+  list.querySelectorAll("[data-br-status]").forEach(b=>{
+    b.onclick = ()=>{
+      const r = loadCalReports_()[b.dataset.brStatus]; if(!r) return;
+      const i = CAL_REPORT_STATUS.findIndex(s=>s.key===r.status);
+      mutateCalReport_(r.id, { status: CAL_REPORT_STATUS[(i+1) % CAL_REPORT_STATUS.length].key });
+    };
+  });
+  list.querySelectorAll("[data-br-cmt]").forEach(b=>{
+    b.onclick = ()=>{
+      const r = loadCalReports_()[b.dataset.brCmt]; if(!r) return;
+      const text = prompt("コメント", ""); if(text===null || !text.trim()) return;
+      const comments = (r.comments||[]).concat([{id:uid(), by:getMyself()||"", at:new Date().toISOString(), text:text.trim()}]);
+      mutateCalReport_(r.id, { comments });
+    };
+  });
+  list.querySelectorAll("[data-br-del]").forEach(b=>{
+    b.onclick = ()=>{
+      if(!confirm("この報告を削除しますか？")) return;
+      mutateCalReport_(b.dataset.brDel, { deleted:true });
+    };
+  });
+}
+document.getElementById("bugReportBtn").onclick = openBugReportModal_;
+
 // ===== 📚 過去アーカイブ閲覧 (年ごと・読取専用・Excel(CSV)保存) v1.30.202 =====
 //   普段の修繕/原状回復ビューは3ヶ月で軽いまま、ここだけ年を指定して台帳から広く取得して見る。
 //   state.repairs/restorations は一切触らない(隔離)。完了案件も見たいので生propertiesを年でフィルタ。
@@ -18567,6 +18740,11 @@ setTimeout(()=>{
     if(typeof fetchEventDeletions_==='function'){
       fetchEventDeletions_({silent:true, push:true}).catch(()=>{});
       setInterval(()=>fetchEventDeletions_({silent:true}).catch(()=>{}), 5*60*1000);
+      // 🐞 バグ・要望の報告(全員共有)=起動時+5分ごとに取得(ヘッダーの未対応バッジ更新)v1.30.257
+      if(typeof fetchCalReports_==='function'){
+        fetchCalReports_({silent:true}).catch(()=>{});
+        setInterval(()=>fetchCalReports_({silent:true, render:true}).catch(()=>{}), 5*60*1000);
+      }
     }
     // 🌴 休暇(全端末共有) 取得→state.leaves再構築・初回はローカル分push(移行)・以後5分ごと(v1.30.94)
     if(typeof fetchLeaves_==='function'){
