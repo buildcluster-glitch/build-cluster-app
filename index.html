@@ -2497,7 +2497,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.258</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.259</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3576,10 +3576,10 @@
       </div>
       <div class="field">
         <label>
-          <input type="checkbox" id="opt-auto-grow-rows" checked> 📏 行の高さを予定に合わせて自動調整
+          <input type="checkbox" id="opt-auto-grow-rows" checked> 📏 予定が多い時間は行を自動で広げる
         </label>
         <div style="font-size:11px;color:var(--muted);margin-left:24px">
-          多い時間は行を広げて全部見せ、空白の時間はぎゅっと圧縮します（この端末のみ・OFF=固定行高＋スクロール＋▼あとN件バッジ・すぐ反映）
+          あふれた予定をスクロールに隠さず、行の高さを広げて全部見せます（空白の行は縮めません／この端末のみ・OFF=従来のスクロール＋▼あとN件バッジ・すぐ反映）
         </div>
       </div>
       <div class="field" style="display:none">
@@ -11663,25 +11663,17 @@ function autoGrowRowsOn_(){ try{ return localStorage.getItem('bc_auto_grow_rows'
 function setAutoGrowRowsOn_(on){ try{ localStorage.setItem('bc_auto_grow_rows', on ? '1' : '0'); }catch(_){} }
 function autoGrowHourRows_(grid){
   if(currentView !== "month" || !autoGrowRowsOn_() || !grid) return;
-  // 1) 各時間の必要行高 = 中身(チップ)の実高さにピッタリ(全列の最大)。
-  //    📏 v1.30.255: 空白の行は「ぎゅっと」圧縮(山田)。scrollHeightは縮小判定に使えない(常に>=clientHeight)ため
-  //    子要素の下端(offsetTop+offsetHeight)で中身を実測。＋追加帯/▼バッジは中身に数えず、＋の高さぶん(20px)だけ確保。
-  const ROW_MIN = 32;   // 空白行の最小高(＋追加帯16px+余白。時刻ラベルも読める)
+  // 1) 各時間の必要行高(全列の最大)。予定が多い時間は広げるだけ。空白の行は従来のHOUR_PXのまま(時間軸は等間隔)。
+  //    ⚠ v1.30.255の「空白行をぎゅっと圧縮(32px)」は山田の指示で撤回(v1.30.259)=下限をHOUR_PXに戻す・広げる方向のみ。
   const rowH = {};
   let changed = false;
   grid.querySelectorAll(".hour-cell").forEach(cell=>{
-    let contentBottom = 0;
-    for(const k of cell.children){
-      if(k.classList.contains('cell-add-btn') || k.classList.contains('cell-more')) continue;
-      const b = k.offsetTop + k.offsetHeight;
-      if(b > contentBottom) contentBottom = b;
-    }
-    const need = Math.max(ROW_MIN, Math.min(HOUR_PX*3, contentBottom + 20));
     const h = +cell.dataset.hour;
+    const need = Math.max(HOUR_PX, Math.min(HOUR_PX*3, cell.scrollHeight + 6));
     if(!rowH[h] || need > rowH[h]) rowH[h] = need;
+    if(need > HOUR_PX) changed = true;
   });
-  Object.keys(rowH).forEach(h=>{ if(rowH[h] !== HOUR_PX) changed = true; });
-  if(!changed) return;   // 全行ちょうどHOUR_PX=何もしない
+  if(!changed) return;   // あふれ無し=固定行高のまま(何もしない)
   // 2) 累積オフセット
   const tops = {}; let y = 0;
   for(let h=HOUR_START; h<HOUR_END; h++){ tops[h] = y; y += (rowH[h] || HOUR_PX); }
