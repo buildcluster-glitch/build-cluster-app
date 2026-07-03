@@ -2497,7 +2497,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.257</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.258</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -13957,20 +13957,24 @@ document.getElementById("todayBtn").onclick = ()=>{
 // 👤 マイ ボタン: 左クリックで設定モーダルを開く (フィルタON/OFFはモーダル内で操作)
 document.getElementById("myEventsBtn").onclick = ()=>openMyself();
 
-// 🔍 カレンダー縮小表示(PCのみ・50/70/100%・カレンダー領域だけzoom)v1.30.253・山田
-//   localStorage bc_cal_zoom で端末ごとに記憶。縮小時は見えるエリアが同じになるよう高さを1/zに補正。
-function applyCalZoom_(){
+// 🔍 カレンダー縮小表示(カレンダー領域だけzoom)v1.30.253・山田
+//   PC=ヘッダーの70/85/100%スイッチ(bc_cal_zoom) / 📱スマホ=ピンチイン・アウトで連続可変(bc_cal_zoom_mobile・v1.30.258)。
+//   縮小/拡大しても見えるエリアが同じになるよう高さを1/zに補正(素の高さを測ってから適用)。
+function calZoomKey_(){ return window.innerWidth <= 700 ? "bc_cal_zoom_mobile" : "bc_cal_zoom"; }
+function calZoomVal_(){
+  const z = parseFloat(localStorage.getItem(calZoomKey_())||"1") || 1;
+  return Math.min(1.5, Math.max(0.5, z));
+}
+function applyCalZoom_(zOverride){
   const wrap = document.getElementById("calendarWrap") || document.querySelector(".calendar-wrap");
   if(!wrap) return;
-  let z = 1;
-  if(window.innerWidth > 700){ z = parseFloat(localStorage.getItem("bc_cal_zoom")||"1") || 1; }
-  if(z === 1){
-    wrap.style.zoom = "";
-    wrap.style.height = "";
-  }else{
+  const z = (zOverride != null) ? zOverride : calZoomVal_();
+  // 一旦解除して素の見た目高さを測る→同じ見た目高さになるよう1/zで補正(PC/スマホ両方のCSS高さ計算に追従)
+  wrap.style.zoom = ""; wrap.style.height = "";
+  if(Math.abs(z - 1) > 0.01){
+    const h0 = wrap.getBoundingClientRect().height;
     wrap.style.zoom = String(z);
-    const top = wrap.getBoundingClientRect().top;   // zoomは自要素の位置には効かない=topは実座標
-    wrap.style.height = Math.max(200, Math.round((window.innerHeight - top - 10) / z)) + "px";
+    if(h0 > 0) wrap.style.height = Math.max(200, Math.round(h0 / z)) + "px";
   }
   document.querySelectorAll("#calZoomSwitch button").forEach(b=>{
     b.classList.toggle("active", Math.abs(parseFloat(b.dataset.z) - z) < 0.01);
@@ -13978,12 +13982,44 @@ function applyCalZoom_(){
 }
 document.querySelectorAll("#calZoomSwitch button").forEach(b=>{
   b.onclick = ()=>{
-    try{ localStorage.setItem("bc_cal_zoom", b.dataset.z); }catch(_){}
+    try{ localStorage.setItem(calZoomKey_(), b.dataset.z); }catch(_){}
     applyCalZoom_();
   };
 });
 applyCalZoom_();   // 起動時に前回の縮小率を復元
 window.addEventListener("resize", ()=>{ if(typeof applyCalZoom_==='function') applyCalZoom_(); });
+// 📱 ピンチイン/アウトでカレンダーを拡大縮小(スマホ・v1.30.258・山田)。2本指の距離比→zoom(0.5〜1.5・100%付近スナップ)。
+//   離した時に記憶(次回起動も同じ倍率)。1本指のスクロール/ドラッグには影響しない(2本指の時だけ発動)。
+(function setupCalPinchZoom_(){
+  const body = document.getElementById("calBody");
+  if(!body) return;
+  let pinching = false, startDist = 0, startZ = 1, curZ = 1, raf = 0;
+  const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  body.addEventListener("touchstart", (e)=>{
+    if(e.touches.length === 2){
+      pinching = true;
+      startDist = dist(e.touches) || 1;
+      startZ = curZ = calZoomVal_();
+    }
+  }, {passive:true});
+  body.addEventListener("touchmove", (e)=>{
+    if(!pinching || e.touches.length !== 2) return;
+    e.preventDefault();   // ブラウザのページ全体ズームを抑止(カレンダーだけズーム)
+    let z = startZ * (dist(e.touches) / startDist);
+    z = Math.min(1.5, Math.max(0.5, z));
+    if(Math.abs(z - 1) <= 0.06) z = 1;   // 100%付近はスナップ
+    curZ = z;
+    if(!raf){ raf = requestAnimationFrame(()=>{ raf = 0; applyCalZoom_(curZ); }); }
+  }, {passive:false});
+  const endPinch = ()=>{
+    if(!pinching) return;
+    pinching = false;
+    try{ localStorage.setItem(calZoomKey_(), String(curZ)); }catch(_){}
+    applyCalZoom_();
+  };
+  body.addEventListener("touchend", endPinch, {passive:true});
+  body.addEventListener("touchcancel", endPinch, {passive:true});
+})();
 
 // 「今日」位置にスクロール（垂直=現在時刻付近、水平=月ビューで今日の列）
 function scrollToToday(){
