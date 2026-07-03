@@ -2497,7 +2497,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.259</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.260</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -15762,13 +15762,19 @@ function ensureBugReportModal_(){
     <div class="modal" style="max-width:640px;width:96vw">
       <div class="modal-header">🐞 バグ・要望の報告 <span style="font-weight:400;font-size:11px;color:var(--muted)">全員共有・見積アプリの報告と同じノリでどうぞ</span></div>
       <div class="modal-body" style="max-height:74vh;overflow:auto">
-        <div style="display:flex;gap:6px;margin-bottom:8px;align-items:flex-start">
+        <div style="display:flex;gap:6px;margin-bottom:4px;align-items:flex-start">
           <select id="br-type" style="padding:6px;border:1px solid var(--border-strong);border-radius:6px;font-size:12px;flex-shrink:0">
             <option value="bug">🐞 バグ</option>
             <option value="normal">⚪ 通常(要望)</option>
           </select>
           <textarea id="br-text" rows="2" placeholder="内容(例: ○○すると△△になる / ○○が欲しい)" style="flex:1;padding:6px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;resize:vertical"></textarea>
           <button class="btn primary" id="br-post" style="flex-shrink:0">投稿</button>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+          <input type="file" id="br-photo-file" accept="image/*" style="display:none">
+          <button class="btn" id="br-photo-btn" style="font-size:11px;padding:4px 10px">📷 画像添付</button>
+          <img id="br-photo-preview" style="display:none;max-height:56px;max-width:110px;border-radius:6px;border:1px solid var(--border);cursor:pointer" title="クリックで添付取消">
+          <span id="br-photo-note" style="font-size:10px;color:var(--muted)"></span>
         </div>
         <div id="br-list"></div>
       </div>
@@ -15779,13 +15785,33 @@ function ensureBugReportModal_(){
   document.body.appendChild(ov);
   ov.onclick = e=>{ if(e.target===ov) ov.classList.remove("show"); };
   ov.querySelector("#br-close").onclick = ()=> ov.classList.remove("show");
+  // 📷 画像添付(v1.30.260): 既存のrestoCompressImageで約40KBに圧縮→共有JSONに載せて全員に見える
+  const __brFile = ov.querySelector("#br-photo-file");
+  const __brPrev = ov.querySelector("#br-photo-preview");
+  const __brNote = ov.querySelector("#br-photo-note");
+  ov.querySelector("#br-photo-btn").onclick = ()=> __brFile.click();
+  __brFile.onchange = async ()=>{
+    const f = __brFile.files && __brFile.files[0];
+    if(!f) return;
+    __brNote.textContent = "圧縮中…";
+    try{
+      const dataUrl = await restoCompressImage(f, 40000);
+      __brPrev.src = dataUrl; __brPrev.style.display = ""; __brPrev.dataset.photo = dataUrl;
+      __brNote.textContent = "添付済(画像クリックで取消)";
+    }catch(e){ __brNote.textContent = "画像の読み込みに失敗"; }
+    __brFile.value = "";
+  };
+  const __brClearPhoto = ()=>{ __brPrev.style.display = "none"; __brPrev.removeAttribute("src"); delete __brPrev.dataset.photo; __brNote.textContent = ""; };
+  __brPrev.onclick = __brClearPhoto;
   ov.querySelector("#br-post").onclick = ()=>{
     const text = ov.querySelector("#br-text").value.trim();
-    if(!text){ alert("内容を入力してください"); return; }
+    const photo = __brPrev.dataset.photo || null;
+    if(!text && !photo){ alert("内容を入力してください"); return; }
     const ver = (document.querySelector(".app-title span")||{}).textContent || "";
     mutateCalReport_(uid(), { type: ov.querySelector("#br-type").value, text, status:"open",
-      by: getMyself()||"", at: new Date().toISOString(), appVer: ver, comments: [] });
+      by: getMyself()||"", at: new Date().toISOString(), appVer: ver, comments: [], photo });
     ov.querySelector("#br-text").value = "";
+    __brClearPhoto();
   };
 }
 function openBugReportModal_(){
@@ -15814,6 +15840,7 @@ function renderBugReportModal_(){
         <span style="font-size:10px;color:var(--muted);margin-left:auto">${escapeHtml(r.by||"?")} ・ ${dStr}${r.appVer?` ・ ${escapeHtml(r.appVer)}`:""}</span>
       </div>
       <div style="font-size:13px;margin-top:5px;white-space:pre-wrap;word-break:break-word">${escapeHtml(r.text||"")}</div>
+      ${(r.photo && /^data:image\//.test(r.photo)) ? `<img data-br-zoom="${r.id}" src="${r.photo}" style="margin-top:5px;max-height:130px;max-width:100%;border-radius:6px;border:1px solid var(--border);cursor:zoom-in" title="クリックで拡大">` : ""}
       ${cmts}
       <div style="display:flex;gap:6px;margin-top:5px">
         <button data-br-cmt="${r.id}" class="btn" style="font-size:10px;padding:2px 8px">💬 コメント${(r.comments||[]).length?` (${(r.comments||[]).length})`:""}</button>
@@ -15835,6 +15862,10 @@ function renderBugReportModal_(){
       const comments = (r.comments||[]).concat([{id:uid(), by:getMyself()||"", at:new Date().toISOString(), text:text.trim()}]);
       mutateCalReport_(r.id, { comments });
     };
+  });
+  // 📷 添付画像クリック→拡大(既存の写真ズームを流用)v1.30.260
+  list.querySelectorAll("[data-br-zoom]").forEach(img=>{
+    img.onclick = ()=>{ if(typeof restoShowPhotoZoom==='function') restoShowPhotoZoom(img.src); };
   });
   list.querySelectorAll("[data-br-del]").forEach(b=>{
     b.onclick = ()=>{
