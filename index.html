@@ -2497,7 +2497,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.260</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.261</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3725,7 +3725,14 @@
             <button class="btn" id="all-snap-restore" style="white-space:nowrap">⏪ 復元</button>
           </div>
           <div style="font-size:10px;color:var(--muted);margin-top:4px">
-            9時/13時/18時の各時刻を過ぎてアプリが開いていると自動保存(変化がない時はスキップ)。保存期間14日。<br>
+            この端末内の自動保存(変化があれば最短8分間隔)。保存期間14日。
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+            <select id="all-srv-snap-select" style="padding:6px;font-size:13px;flex:1"></select>
+            <button class="btn" id="all-srv-snap-restore" style="white-space:nowrap">☁ 復元</button>
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-top:4px">
+            ☁ サーバーバックアップ: 毎日<strong>0時・15時</strong>の2枠、枠を過ぎて最初に誰かのアプリが動いた時に予定/タスク/休暇をサーバーへ自動保存(曜日×2枠=<strong>2週間ぶん14世代</strong>ローテ・全員共通)。端末が壊れてもここから戻せます。<br>
             復元すると現在のデータは「復元前の退避」として残り、ページを再読込します。<br>
             ⚠ 復元はこの端末のみ。クラウド同期で他端末の新しい変更が優先される場合があります。
           </div>
@@ -4412,6 +4419,71 @@ function snapLabel_(key){
   if(tag.indexOf("pre")===0) return `${m}/${day}(${yobi}) ${tag.slice(3,5)}:${tag.slice(5,7)} 復元前の退避`;
   if(tag.length>=4) return `${m}/${day}(${yobi}) ${tag.slice(0,2)}:${tag.slice(2,4)} のバックアップ`;  // HHMM(v1.30.153)
   return `${m}/${day}(${yobi}) ${parseInt(tag,10)}時のバックアップ`;   // 旧 HH 形式
+}
+// ===== ☁ サーバーバックアップ (0時/15時の2枠×曜日=14世代ローテ・全員共通) v1.30.261・山田 =====
+//   ローカルsnapの弱点=各端末のブラウザ内のみ→サーバー(shared-config・Drive退避)にも軽量形式で自動退避。
+//   枠を過ぎて最初に動いた端末が1回だけ保存(重複防止=indexの日付+端末ローカルマーカー)。GAS変更不要(汎用KV)。
+function srvBackupSlotKey_(d){
+  const slot = d.getHours() >= 15 ? "15" : "00";
+  return `calendar_backup_${d.getDay()}_${slot}`;   // 例: calendar_backup_4_15 (木曜15時枠)
+}
+async function maybeServerBackup_(){
+  try{
+    const s = loadGasSettings(); if(!s.url || !s.token) return;
+    const now = new Date();
+    const key = srvBackupSlotKey_(now);
+    const today = snapDateStr_(now);
+    const marker = key + "|" + today;
+    if(localStorage.getItem("bc_srv_backup_done") === marker) return;   // この端末は今日この枠を確認済
+    // 誰かが既に今日この枠を保存済みか(index=1回の軽いGETだけ)
+    let index = {};
+    try{
+      const r = await fetch(`${s.url}?action=get-shared-config&key=calendar_backup_index&token=${encodeURIComponent(s.token)}&t=${Date.now()}`, {redirect:'follow'});
+      if(r.ok){ const d = await r.json(); let raw = d.value; if(typeof raw==='string' && raw){ try{ raw = JSON.parse(raw); }catch(_){ raw = null; } } if(raw && raw.entries) index = raw.entries; }
+    }catch(_){}
+    if(index[key] && String(index[key].at||"").slice(0,10) === today){
+      try{ localStorage.setItem("bc_srv_backup_done", marker); }catch(_){}
+      return;   // 他端末が保存済
+    }
+    // 保存(軽量形式=予定/事務タスク/休暇。原状回復/立会等は台帳/共有が正本なので含めない)
+    const json = buildLightSnap_();
+    const res = await fetch(s.url, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ action:'save-shared-config', key, value: json, token: s.token, savedBy: (typeof getMyself==='function' && getMyself()) || 'calendar' }) });
+    const d2 = await res.json().catch(()=>null);
+    if(!d2 || d2.ok !== true) throw new Error((d2 && d2.error) || 'save失敗');
+    // index更新(復元一覧・重複防止用)
+    index[key] = { at: new Date().toISOString(), by: (typeof getMyself==='function' && getMyself()) || '', kb: Math.round(json.length/1024) };
+    await fetch(s.url, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ action:'save-shared-config', key:'calendar_backup_index', value: JSON.stringify({entries:index, updatedAt:new Date().toISOString()}), token: s.token, savedBy:'calendar-app' }) });
+    try{ localStorage.setItem("bc_srv_backup_done", marker); }catch(_){}
+    console.log("[srv-backup] ☁サーバーへ保存:", key, Math.round(json.length/1024)+"KB");
+  }catch(e){ console.warn("[srv-backup] 失敗:", e.message); }
+}
+async function restoreServerBackup_(key, label){
+  const s = loadGasSettings(); if(!s.url || !s.token){ alert("GAS URL/Token が未設定です"); return; }
+  if(!confirm(`「${label}」のサーバーバックアップに復元します。\n\n現在のデータは「復元前」として退避されます。\n復元後にページを再読込します。よろしいですか？\n\n⚠ 復元はこの端末のみ。クラウド同期で他端末の新しい変更が優先される場合があります。`)) return;
+  try{
+    const r = await fetch(`${s.url}?action=get-shared-config&key=${encodeURIComponent(key)}&token=${encodeURIComponent(s.token)}&t=${Date.now()}`, {redirect:'follow'});
+    const d = await r.json();
+    const raw = d && d.value;
+    if(!raw) throw new Error("サーバーにバックアップが見つかりません");
+    let parsed; try{ parsed = JSON.parse(raw); }catch(e){ throw new Error("バックアップデータが壊れています"); }
+    if(!parsed || !parsed._light) throw new Error("バックアップ形式が不正です");
+    // 現在データを退避(誤復元しても戻れる・ローカルsnapと同じ場所)
+    const now = new Date();
+    const preKey = SNAP_PREFIX + snapDateStr_(now) + "_pre" + String(now.getHours()).padStart(2,"0") + String(now.getMinutes()).padStart(2,"0");
+    try{ localStorage.setItem(preKey, buildLightSnap_()); }catch(_){}
+    // 軽量マージ(restoreSnapshot_の_light分岐と同じ): 予定/タスク/休暇だけ上書き・原状回復/物件マスタ等は維持
+    let cur = {};
+    try{ cur = JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}"); }catch(_){ cur = {}; }
+    cur.events = parsed.events || [];
+    cur.leaves = parsed.leaves || [];
+    cur.tasks = parsed.tasks || [];
+    cur.taskTrash = parsed.taskTrash || [];
+    cur.companyPeriods = parsed.companyPeriods || [];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cur));
+    location.reload();
+  }catch(e){ alert("復元失敗: " + e.message); }
 }
 // 🧹 旧形式(全データ丸ごと=2MB級)のバックアップを自動削除。軽量化(_light)以前の重いsnapが
 //   居座って容量を食う問題の自動修復(v1.30.156)。データはクラウド+本体にあるので消して安全。
@@ -15315,6 +15387,32 @@ function openAllSettings(focus){
         }).join('')
       : '<option value="">(まだバックアップなし — 9時/13時/18時に自動保存)</option>';
   }
+  // ☁ サーバーバックアップ一覧 (index 1GET・新しい順) v1.30.261
+  const srvSel = document.getElementById('all-srv-snap-select');
+  if(srvSel){
+    srvSel.innerHTML = '<option value="">☁ 読込中…</option>';
+    (async ()=>{
+      try{
+        const s = loadGasSettings();
+        if(!s.url || !s.token){ srvSel.innerHTML = '<option value="">(GAS未設定)</option>'; return; }
+        const r = await fetch(`${s.url}?action=get-shared-config&key=calendar_backup_index&token=${encodeURIComponent(s.token)}&t=${Date.now()}`, {redirect:'follow'});
+        const d = await r.json();
+        let raw = d && d.value;
+        if(typeof raw==='string' && raw){ try{ raw = JSON.parse(raw); }catch(_){ raw = null; } }
+        const entries = (raw && raw.entries) || {};
+        const opts = Object.keys(entries).map(k=>Object.assign({k}, entries[k]))
+          .sort((a,b)=>String(b.at||'').localeCompare(String(a.at||'')));
+        srvSel.innerHTML = opts.length
+          ? opts.map(o=>{
+              const dd = new Date(o.at);
+              const yobi = ["日","月","火","水","木","金","土"][dd.getDay()];
+              const lbl = isNaN(dd) ? o.k : `${dd.getMonth()+1}/${dd.getDate()}(${yobi}) ${String(dd.getHours()).padStart(2,'0')}:${String(dd.getMinutes()).padStart(2,'0')} サーバー保存`;
+              return `<option value="${escapeHtml(o.k)}">${lbl}${o.by?` (${escapeHtml(o.by)})`:''}${o.kb?` ${o.kb}KB`:''}</option>`;
+            }).join('')
+          : '<option value="">(まだサーバー保存なし — 0時/15時以降に自動保存)</option>';
+      }catch(e){ srvSel.innerHTML = '<option value="">(読込失敗: '+escapeHtml(e.message)+')</option>'; }
+    })();
+  }
 
   allSettingsModal.classList.add('show');
   // フォーカス対象セクションへスクロール
@@ -15334,6 +15432,13 @@ document.getElementById('all-snap-restore').onclick = ()=>{
   const key = document.getElementById('all-snap-select').value;
   if(!key){ alert("まだバックアップがありません。\n9時/13時/18時にアプリを開いていると自動保存されます。"); return; }
   restoreSnapshot_(key);
+};
+// ☁ サーバーバックアップ復元 v1.30.261
+document.getElementById('all-srv-snap-restore').onclick = ()=>{
+  const sel = document.getElementById('all-srv-snap-select');
+  const key = sel && sel.value;
+  if(!key){ alert("サーバーバックアップがまだありません。\n毎日0時/15時を過ぎて誰かのアプリが動くと自動保存されます。"); return; }
+  restoreServerBackup_(key, sel.options[sel.selectedIndex].textContent);
 };
 
 // 📤 全件強制PUSH は v1.30.1 で廃止 (他端末の予定を一括上書きする事故リスクのため。通常の自動同期で十分)
@@ -18803,6 +18908,11 @@ setTimeout(()=>{
       if(typeof fetchCalReports_==='function'){
         fetchCalReports_({silent:true}).catch(()=>{});
         setInterval(()=>fetchCalReports_({silent:true, render:true}).catch(()=>{}), 5*60*1000);
+      }
+      // ☁ サーバーバックアップ(0時/15時の枠・枠後に最初に動いた端末が保存)v1.30.261
+      if(typeof maybeServerBackup_==='function'){
+        setTimeout(()=>{ maybeServerBackup_().catch(()=>{}); }, 25*1000);   // 起動直後の同期ラッシュを避けて25秒後
+        setInterval(()=>{ maybeServerBackup_().catch(()=>{}); }, 30*60*1000);
       }
     }
     // 🌴 休暇(全端末共有) 取得→state.leaves再構築・初回はローカル分push(移行)・以後5分ごと(v1.30.94)
