@@ -2503,7 +2503,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.287</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.288</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -10873,7 +10873,7 @@ function renderLeaveBand(){
       && todayStr>=l.start && todayStr<=l.end).map(l=>l.staff)
   );
   // 在席 = STAFF にいて今日休みじゃない人。日祝は「出勤レコードのある人」だけ。
-  const present = isNichiShuku
+  let present = isNichiShuku
     ? STAFF.filter(s => workStaff.has(s))
     : STAFF.filter(s => !offStaff.has(s));
   // 日祝で明示レコードも出勤レコードも無い人 → 自動休日として「日祝」チップで休暇スタッフに表示
@@ -10881,7 +10881,13 @@ function renderLeaveBand(){
     ? STAFF.filter(s => !workStaff.has(s) && !offStaff.has(s))
         .map(s => ({ id:`auto-nichishuku-${s}`, staff:s, type:"日祝", start:todayStr, end:todayStr, __auto:true }))
     : [];
-  const todayOffAll = todayOff.concat(autoOff);
+  let todayOffAll = todayOff.concat(autoOff);
+  // 👤 ログインユーザーを先頭に(出社・休暇スタッフ両方)v1.30.288
+  const __me = (typeof getMyself==='function') ? getMyself() : "";
+  if(__me){
+    present = present.filter(s=>s===__me).concat(present.filter(s=>s!==__me));
+    todayOffAll = todayOffAll.filter(l=>l.staff===__me).concat(todayOffAll.filter(l=>l.staff!==__me));
+  }
   // 当番（今日該当する週次）
   const todayDuty = state.leaves.filter(l =>
     l.type === "当番" && todayStr >= l.start && todayStr <= l.end
