@@ -2503,7 +2503,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.276</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.277</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4743,14 +4743,15 @@ function weatherIcon_(code){
   return "";
 }
 // 天気の種別で色分け(山田要望: 晴=オレンジ/曇=グレー/雨=青/雪=水色/雷雨=紫) v1.30.274
+//   v1.30.277: 雨の青が薄く「色なし」に見えた→全色を濃くして差をハッキリ
 function weatherPill_(code){
   if(code==null) return {bg:'#e5e7eb', fg:'#475569'};
-  if(code<=1) return {bg:'#ffe4c4', fg:'#c2410c'};                                   // 快晴/晴れ=オレンジ
-  if(code===2||code===3||code===45||code===48) return {bg:'#e2e8f0', fg:'#475569'};  // 曇り/霧=グレー
-  if((code>=51&&code<=67)||(code>=80&&code<=82)) return {bg:'#bfdbfe', fg:'#1d4ed8'}; // 雨=青
-  if((code>=71&&code<=77)||code===85||code===86) return {bg:'#cffafe', fg:'#0e7490'}; // 雪=水色
-  if(code>=95) return {bg:'#e9d5ff', fg:'#7e22ce'};                                   // 雷雨=紫
-  return {bg:'#e2e8f0', fg:'#475569'};
+  if(code<=1) return {bg:'#fdba74', fg:'#7c2d12'};                                   // 快晴/晴れ=オレンジ(濃)
+  if(code===2||code===3||code===45||code===48) return {bg:'#cbd5e1', fg:'#334155'};  // 曇り/霧=グレー(濃)
+  if((code>=51&&code<=67)||(code>=80&&code<=82)) return {bg:'#93c5fd', fg:'#1e3a8a'}; // 雨=青(濃)
+  if((code>=71&&code<=77)||code===85||code===86) return {bg:'#a5f3fc', fg:'#155e75'}; // 雪=水色(濃)
+  if(code>=95) return {bg:'#d8b4fe', fg:'#6b21a8'};                                   // 雷雨=紫(濃)
+  return {bg:'#cbd5e1', fg:'#334155'};
 }
 let __weatherFetching = false;
 async function fetchWeather_(opts={}){
