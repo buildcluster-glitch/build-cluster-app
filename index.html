@@ -2503,7 +2503,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.271</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.272</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3586,6 +3586,14 @@
         </label>
         <div style="font-size:11px;color:var(--muted);margin-left:24px">
           あふれた予定をスクロールに隠さず、行の高さを広げて全部見せます（空白の行は縮めません／この端末のみ・OFF=従来のスクロール＋▼あとN件バッジ・すぐ反映）
+        </div>
+      </div>
+      <div class="field">
+        <label>
+          <input type="checkbox" id="opt-weather" checked> 🌤 日付に天気予報（降水確率）を表示
+        </label>
+        <div style="font-size:11px;color:var(--muted);margin-left:24px">
+          日中9〜18時の最大降水確率＋天気アイコンを日付ヘッダーに表示（仙台・前後1週間ぶん・Open-Meteo・この端末のみ・2時間ごと更新）
         </div>
       </div>
       <div class="field" style="display:none">
@@ -4705,6 +4713,102 @@ function timeColumns(){
       contextStaff: null,
     };
   });
+}
+
+// ===== 🌤 天気予報(降水確率) Open-Meteo・9〜18時集計・前後1週間 v1.30.272 =====
+//   無料・APIキー不要・CORS対応。仙台(既定)の日中(9〜18時)の「最大降水確率」と代表天気を日付ヘッダーに出す。
+//   位置は localStorage(bc_weather_lat/lon)で上書き可。2時間キャッシュ。
+const WEATHER_CACHE_KEY = "bc_weather_cache";
+const WEATHER_TTL_MS = 2*60*60*1000;   // 2時間で再取得
+function weatherEnabled_(){ return localStorage.getItem("bc_weather_on") !== "0"; }   // 既定ON
+function setWeatherEnabled_(on){ try{ localStorage.setItem("bc_weather_on", on?"1":"0"); }catch(_){} }
+function weatherLatLon_(){
+  const lat = parseFloat(localStorage.getItem("bc_weather_lat")||"") || 38.2682;   // 仙台市
+  const lon = parseFloat(localStorage.getItem("bc_weather_lon")||"") || 140.8694;
+  return {lat, lon};
+}
+function loadWeatherCache_(){ try{ const o=JSON.parse(localStorage.getItem(WEATHER_CACHE_KEY)||"null"); return (o&&o.days)?o:null; }catch(e){ return null; } }
+function weatherIcon_(code){
+  if(code==null) return "";
+  if(code===0) return "☀️";
+  if(code<=2) return "🌤";
+  if(code===3) return "☁️";
+  if(code===45||code===48) return "🌫";
+  if(code>=51&&code<=57) return "🌦";
+  if(code>=61&&code<=67) return "🌧";
+  if(code>=71&&code<=77) return "❄️";
+  if(code>=80&&code<=82) return "🌧";
+  if(code>=85&&code<=86) return "🌨";
+  if(code>=95) return "⛈";
+  return "";
+}
+let __weatherFetching = false;
+async function fetchWeather_(opts={}){
+  if(__weatherFetching) return loadWeatherCache_();
+  if(!weatherEnabled_()) return null;
+  const cached = loadWeatherCache_();
+  const {lat, lon} = weatherLatLon_();
+  const stale = !cached || (Date.now() - (cached.at||0) >= WEATHER_TTL_MS) || cached.lat!==lat || cached.lon!==lon;
+  if(!opts.force && !stale) return cached;
+  __weatherFetching = true;
+  try{
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
+      + `&hourly=precipitation_probability,weather_code&timezone=Asia%2FTokyo&past_days=7&forecast_days=10`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json();
+    const H = data.hourly || {};
+    const times = H.time || [];
+    const pops  = H.precipitation_probability || [];
+    const codes = H.weather_code || H.weathercode || [];
+    const days = {};
+    for(let i=0;i<times.length;i++){
+      const t = times[i];                 // "2026-07-05T09:00"
+      const hour = parseInt(t.slice(11,13),10);
+      if(hour<9 || hour>18) continue;      // 9〜18時のみ集計
+      const date = t.slice(0,10);
+      const d = days[date] || (days[date] = {pop:-1, hasPop:false, code:null, midCode:0});
+      if(hour===12) d.midCode = codes[i];
+      const p = pops[i];
+      if(p!=null){ d.hasPop = true; if(p > d.pop){ d.pop = p; d.code = codes[i]; } }  // 最大降水確率とそのコード
+    }
+    Object.keys(days).forEach(dt=>{
+      const d = days[dt];
+      if(d.code==null) d.code = d.midCode;      // 降水0でも日中(12時)の天気を代表に
+      if(!d.hasPop) d.pop = null;               // 確率データ無し(過去等)は%を出さずアイコンのみ
+      delete d.hasPop; delete d.midCode;
+    });
+    const out = {at: Date.now(), lat, lon, days};
+    try{ localStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify(out)); }catch(_){}
+    return out;
+  }catch(e){ if(!opts.silent) console.warn('[weather] 取得失敗:', e.message); return cached; }
+  finally{ __weatherFetching = false; }
+}
+// 日付ヘッダー(.day-col-header[data-date])に天気バッジを差し込む(列生成とは分離)
+function injectWeatherHeaders_(){
+  const head = document.getElementById("calHead");
+  if(!head) return;
+  const cache = weatherEnabled_() ? loadWeatherCache_() : null;
+  head.querySelectorAll('.day-col-header[data-date]').forEach(el=>{
+    const old = el.querySelector('.wx-badge'); if(old) old.remove();
+    const date = el.dataset.date; if(!date) return;
+    const w = (cache && cache.days) ? cache.days[date] : null;
+    if(!w) return;
+    const hasPop = (w.pop!=null);
+    const pop = hasPop ? Math.max(0, Math.round(w.pop)) : null;
+    const color = !hasPop ? '#64748b' : (pop>=70 ? '#0369a1' : pop>=40 ? '#0891b2' : '#94a3b8');
+    const weight = (hasPop && pop>=40) ? '700' : '600';
+    const span = document.createElement('span');
+    span.className = 'wx-badge';
+    span.style.cssText = `display:flex;align-items:center;justify-content:center;gap:1px;font-size:9px;line-height:1;margin-top:1px;color:${color};font-weight:${weight}`;
+    span.title = hasPop ? `9〜18時 降水確率 最大${pop}%（Open-Meteo）` : `日中の天気（Open-Meteo）`;
+    span.innerHTML = `<span style="font-size:11px">${weatherIcon_(w.code)}</span>${hasPop?`<span>${pop}%</span>`:''}`;
+    el.appendChild(span);
+  });
+}
+// 取得→ヘッダー反映(起動時・定期・ナビ時に呼ぶ)
+function refreshWeather_(opts={}){
+  fetchWeather_(opts).then(()=>{ if(typeof injectWeatherHeaders_==='function') injectWeatherHeaders_(); }).catch(()=>{});
 }
 
 // ===== レンダリング =====
@@ -9095,6 +9199,16 @@ function openGasSettings(){
     __agr.checked = (typeof autoGrowRowsOn_==='function') ? autoGrowRowsOn_() : true;
     __agr.onchange = ()=>{ if(typeof setAutoGrowRowsOn_==='function') setAutoGrowRowsOn_(__agr.checked); if(typeof render==='function') render(); };
   }
+  // 🌤 天気予報トグル(この端末のみ・即時反映)v1.30.272
+  const __wx = document.getElementById("opt-weather");
+  if(__wx){
+    __wx.checked = (typeof weatherEnabled_==='function') ? weatherEnabled_() : true;
+    __wx.onchange = ()=>{
+      if(typeof setWeatherEnabled_==='function') setWeatherEnabled_(__wx.checked);
+      if(__wx.checked && typeof refreshWeather_==='function') refreshWeather_({silent:true});   // ONにしたら取得
+      else if(typeof injectWeatherHeaders_==='function') injectWeatherHeaders_();                // OFFは即消す
+    };
+  }
   gasSettingsModal.classList.add("show");
 }
 function closeGasSettings(){ gasSettingsModal.classList.remove("show"); }
@@ -10763,6 +10877,7 @@ function renderCalendar(){
   const resizeHandle = currentView==="month" ? '<span class="col-resize-handle" title="ドラッグで列幅変更"></span>' : '';
   head.innerHTML = `<div class="time-col-header"></div>` +
     cols.map(c=>`<div class="day-col-header ${c.headerCls}" data-col-key="${c.key}" data-date="${c.contextDate||''}" data-staff="${c.contextStaff||''}" title="クリックで休暇/有給登録">${c.headerHtml}${resizeHandle}</div>`).join("");
+  if(typeof injectWeatherHeaders_==='function') injectWeatherHeaders_();   // 🌤 天気バッジ(キャッシュがあれば即・取得は起動時/定期)
   // 日付ヘッダクリックで休暇/有給登録モーダル
   head.querySelectorAll('.day-col-header[data-col-key]').forEach(el=>{
     el.style.cursor = "pointer";
@@ -19054,6 +19169,11 @@ setTimeout(()=>{
       if(typeof fetchCalReports_==='function'){
         fetchCalReports_({silent:true}).catch(()=>{});
         setInterval(()=>fetchCalReports_({silent:true, render:true}).catch(()=>{}), 5*60*1000);
+      }
+      // 🌤 天気予報(降水確率・仙台既定)=起動時+2時間ごとに取得→日付ヘッダーに反映 v1.30.272
+      if(typeof refreshWeather_==='function'){
+        refreshWeather_({silent:true});
+        setInterval(()=>refreshWeather_({silent:true}), WEATHER_TTL_MS);
       }
       // ☁ サーバーバックアップ(0時/15時の枠・枠後に最初に動いた端末が保存)v1.30.261
       if(typeof maybeServerBackup_==='function'){
