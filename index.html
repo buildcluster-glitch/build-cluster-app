@@ -2497,7 +2497,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.263</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.264</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -8382,12 +8382,18 @@ function showTaskChecklistPopup(el, ev){
 // 同一 _jizenSourceId(=台帳NO)で複数イベントが出来てしまった場合の重複統合
 // (複数デバイス/全件PULLで二重insert発生。さらにクラウド送信では _jizenSourceId が
 //  落ちるため「sid有り」と「sid無し(孤児)」のペアになる → title でも統合する)
+// 🧩 事前タイトルの正規化キー(重複統合用)。NFKC(ローマ数字/全半角)+建物注記の括弧除去。
+//   ⚠「(N日目)」(別日にも追加のコピー)は残す=多日程の別コピーを誤統合しない(v1.30.264でv262の副作用修正)
+function normJizenTitle_(s){
+  return String(s||'').normalize('NFKC')
+    .replace(/[（(](?![\d０-９]+\s*日目)[^（()）]*[）)]/g, '')   // 「(第10冬見ビル)」等は除去 / 「(2日目)」は温存
+    .replace(/\s+|　/g,'');
+}
 function dedupeJizenEvents_(){
   const evs = state.events || [];
   // タイトル(物件名+号室)正規化キーで全事前イベントをグループ化(別sid・同タイトルの重複も集約)
-  //   NFKC正規化でローマ数字(Ⅱ↔II)・全角/半角の表記ゆれを吸収(v1.30.217・八乙女Ⅱ103の二重表示修正)
-  //   +括弧書き除去(v1.30.262・まどか報告): 「フローセラス銀杏町(第10冬見ビル)」と「フローセラス銀杏町」が別物扱いで事前2個になるのを防ぐ
-  const norm = s => String(s||'').normalize('NFKC').replace(/[（(][^（()）]*[）)]/g,'').replace(/\s+|　/g,'');
+  //   NFKC正規化でローマ数字(Ⅱ↔II)・全角/半角の表記ゆれを吸収(v1.30.217・八乙女Ⅱ103の二重表示修正)+建物括弧除去(v262/264)
+  const norm = normJizenTitle_;
   const groups = new Map(); // normTitle -> list
   evs.forEach(e=>{
     if(!isJizenEvent_(e)) return;
@@ -8446,11 +8452,11 @@ function applyJizenRecords_(records){
   const deduped = dedupeJizenEvents_(); // 既存の二重分を先に掃除
   records.forEach(r=>{
     const title = `事前 ${r.bukken}${r.room?" "+r.room:""}`;
-    const __titleNorm = title.normalize('NFKC').replace(/[（(][^（()）]*[）)]/g,"").replace(/\s+|　/g,"");   // NFKC+括弧書き除去で表記ゆれ吸収(v1.30.217/262)
+    const __titleNorm = normJizenTitle_(title);   // NFKC+建物括弧除去で表記ゆれ吸収(v1.30.217/262/264)
     // 既存イベント判定: sid一致 or 同タイトル(物件+号室)の事前があれば既存扱い → 別sid・同物件の二重insertを防ぐ
     const existing = (state.events||[]).find(e=>{
       if(e._jizenSourceId === r.id) return true;
-      if(isJizenEvent_(e) && String(e.title||"").normalize('NFKC').replace(/[（(][^（()）]*[）)]/g,"").replace(/\s+|　/g,"") === __titleNorm) return true;
+      if(isJizenEvent_(e) && normJizenTitle_(e.title) === __titleNorm) return true;
       return false;
     });
     if(existing){
