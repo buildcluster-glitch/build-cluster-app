@@ -1918,9 +1918,11 @@
     /* タッチターゲットを大きめに */
     .nav-btn{min-height:36px;padding:6px 10px;font-size:13px;flex-shrink:0}
     .nav-btn.icon-only{min-width:36px;padding:6px}
-    /* 📱 ☁同期ボタンをヘッダー先頭(タイトルの隣)へ。flex orderで前出し=横スクロールせず最初から見える */
+    /* 📱 ☁同期・🐞バグ報告ボタンをヘッダー先頭(タイトルの隣)へ。flex orderで前出し=横スクロールせず最初から見える */
     .app-title{order:-2}
     .nav-btn#cloudSyncBtn{order:-1;font-size:17px;min-width:44px;min-height:38px}
+    /* 🐞は横スクロールの奥に埋もれて押せなかった(v1.30.268)→ ☁の隣に前出し。バッジも見えるよう相対配置 */
+    .nav-btn#bugReportBtn{order:-1;font-size:18px;min-width:44px;min-height:38px;position:relative}
     /* 🚫 リセットボタンは誤タップ事故防止でスマホ非表示(全データ消去のため) */
     #resetBtn{display:none}
     /* 🔍 カレンダー縮小スイッチはPC専用(スマホはv244縮小済+ピンチズームで足りる) */
@@ -2503,7 +2505,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.267</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.268</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
