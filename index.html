@@ -2503,7 +2503,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.278</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.279</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4759,12 +4759,13 @@ async function fetchWeather_(opts={}){
   if(!weatherEnabled_()) return null;
   const cached = loadWeatherCache_();
   const {lat, lon} = weatherLatLon_();
-  const stale = !cached || (Date.now() - (cached.at||0) >= WEATHER_TTL_MS) || cached.lat!==lat || cached.lon!==lon;
+  const stale = !cached || (Date.now() - (cached.at||0) >= WEATHER_TTL_MS) || cached.lat!==lat || cached.lon!==lon || cached.v!==2;   // v!==2=旧スキーマ(ブロック無)は取り直す
   if(!opts.force && !stale) return cached;
   __weatherFetching = true;
   try{
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
-      + `&hourly=precipitation_probability,weather_code&timezone=Asia%2FTokyo&past_days=7&forecast_days=10`;
+      + `&hourly=precipitation_probability,weather_code,temperature_2m,relative_humidity_2m`
+      + `&timezone=Asia%2FTokyo&past_days=7&forecast_days=10`;
     const res = await fetch(url);
     if(!res.ok) throw new Error('HTTP '+res.status);
     const data = await res.json();
@@ -4772,30 +4773,45 @@ async function fetchWeather_(opts={}){
     const times = H.time || [];
     const pops  = H.precipitation_probability || [];
     const codes = H.weather_code || H.weathercode || [];
+    const temps = H.temperature_2m || [];
+    const hums  = H.relative_humidity_2m || [];
+    // 時間ごと(6〜18時)を保持 → 後で4ブロックに集計
     const days = {};
     for(let i=0;i<times.length;i++){
       const t = times[i];                 // "2026-07-05T09:00"
       const hour = parseInt(t.slice(11,13),10);
-      if(hour<9 || hour>18) continue;      // 9〜18時のみ集計
+      if(hour<6 || hour>18) continue;      // 6〜18時のみ
       const date = t.slice(0,10);
-      const d = days[date] || (days[date] = {pop:-1, hasPop:false, code:null, midCode:0});
-      if(hour===12) d.midCode = codes[i];
-      const p = pops[i];
-      if(p!=null){ d.hasPop = true; if(p > d.pop){ d.pop = p; d.code = codes[i]; } }  // 最大降水確率とそのコード
+      const d = days[date] || (days[date] = { h:{} });
+      d.h[hour] = { pop: pops[i], code: codes[i], temp: temps[i], hum: hums[i] };
     }
+    const BLOCKS = [[6,9],[9,12],[12,15],[15,18]];   // 山田指定の時間帯
     Object.keys(days).forEach(dt=>{
-      const d = days[dt];
-      if(d.code==null) d.code = d.midCode;      // 降水0でも日中(12時)の天気を代表に
-      if(!d.hasPop) d.pop = null;               // 確率データ無し(過去等)は%を出さずアイコンのみ
-      delete d.hasPop; delete d.midCode;
+      const HH = days[dt].h;
+      const blocks = BLOCKS.map(([lo,hi])=>{
+        let tsum=0,tn=0,hsum=0,hn=0,pmax=null;
+        for(let h=lo; h<hi; h++){
+          const x = HH[h]; if(!x) continue;
+          if(x.temp!=null){ tsum+=x.temp; tn++; }
+          if(x.hum!=null){ hsum+=x.hum; hn++; }
+          if(x.pop!=null){ pmax = (pmax==null)? x.pop : Math.max(pmax, x.pop); }
+        }
+        return { label:`${lo}-${hi}`, temp: tn?Math.round(tsum/tn):null, hum: hn?Math.round(hsum/hn):null, pop: pmax };
+      });
+      // 日のアイコン=9〜18時で最大降水確率の時刻の天気(降水無なら12時の天気)
+      let dayPop=-1, dayCode=null;
+      for(let h=9; h<=18; h++){ const x=HH[h]; if(!x||x.pop==null) continue; if(x.pop>dayPop){ dayPop=x.pop; dayCode=x.code; } }
+      if(dayCode==null) dayCode = HH[12] ? HH[12].code : (HH[9]? HH[9].code : 0);
+      days[dt] = { code: dayCode, pop: dayPop<0?null:dayPop, blocks };
     });
-    const out = {at: Date.now(), lat, lon, days};
+    const out = {at: Date.now(), v: 2, lat, lon, days};
     try{ localStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify(out)); }catch(_){}
     return out;
   }catch(e){ if(!opts.silent) console.warn('[weather] 取得失敗:', e.message); return cached; }
   finally{ __weatherFetching = false; }
 }
-// 日付ヘッダー(.day-col-header[data-date])に天気バッジを差し込む(列生成とは分離)
+// 日付ヘッダー(.day-col-header[data-date])に天気アイコンを差し込む(列生成とは分離)v1.30.279
+//   ヘッダーはアイコンだけ。ホバー/タップで 6-9/9-12/12-15/15-18 の気温・降水確率・湿度を表示。
 function injectWeatherHeaders_(){
   const head = document.getElementById("calHead");
   if(!head) return;
@@ -4805,18 +4821,70 @@ function injectWeatherHeaders_(){
     const date = el.dataset.date; if(!date) return;
     const w = (cache && cache.days) ? cache.days[date] : null;
     if(!w) return;
-    const hasPop = (w.pop!=null);
-    const pop = hasPop ? Math.max(0, Math.round(w.pop)) : null;
-    // 天気種別で色分けした色付きピルを、日付の「隣」に(=日付行の中に)差し込む(v1.30.274)
-    const pill = weatherPill_(w.code);
     const span = document.createElement('span');
     span.className = 'wx-badge';
-    span.style.cssText = `display:inline-flex;align-items:center;gap:2px;margin-left:5px;padding:1px 6px;border-radius:10px;font-size:12px;line-height:1.5;vertical-align:middle;white-space:nowrap;background:${pill.bg};color:${pill.fg};font-weight:800`;
-    span.title = hasPop ? `9〜18時 降水確率 最大${pop}%（Open-Meteo）` : `日中の天気（Open-Meteo）`;
-    span.innerHTML = `<span style="font-size:17px;line-height:1">${weatherIcon_(w.code)}</span>${hasPop?`<span>雨${pop}%</span>`:''}`;   // アイコンは天気1個だけ+「雨59%」=降水確率を文字で明示(v1.30.276)
-    const dateLine = el.querySelector(':scope > div') || el;   // 日付の行(先頭div)に載せる=日付の隣に横並び
+    span.dataset.wxDate = date;
+    span.style.cssText = `display:inline-flex;align-items:center;margin-left:5px;font-size:18px;line-height:1;vertical-align:middle;cursor:pointer`;
+    span.innerHTML = weatherIcon_(w.code);
+    span.addEventListener('mouseenter', ()=> showWxTip_(span, date));
+    span.addEventListener('mouseleave', hideWxTip_);
+    span.addEventListener('click', (e)=>{ e.stopPropagation(); toggleWxTip_(span, date); });   // スマホ=タップで開閉
+    const dateLine = el.querySelector(':scope > div') || el;   // 日付の行(先頭div)に載せる=日付の隣
     dateLine.appendChild(span);
   });
+}
+// 🌤 ホバー/タップ ツールチップ(時間帯別の気温/降水/湿度)
+function wxTipEl_(){
+  let t = document.getElementById("wxTip");
+  if(!t){
+    t = document.createElement("div"); t.id = "wxTip";
+    t.style.cssText = "position:fixed;z-index:9999;display:none;background:#fff;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:8px 10px;color:#0f172a;pointer-events:none";
+    document.body.appendChild(t);
+    document.addEventListener("click", hideWxTip_);   // 他所タップで閉じる(アイコンのclickはstopPropagation済)
+  }
+  return t;
+}
+function wxTipHtml_(date, w){
+  const dt = (typeof parseDate==='function') ? parseDate(date) : new Date(date);
+  const dow = (dt && !isNaN(dt)) ? DOW_JA[dt.getDay()] : '';
+  const md = date.slice(5).replace('-','/');
+  const cell = 'padding:2px 7px;text-align:right';
+  const rows = (w.blocks||[]).map(b=>{
+    const temp = (b.temp==null)?'—':`${b.temp}°`;
+    const pop  = (b.pop==null)?'—':`${b.pop}%`;
+    const hum  = (b.hum==null)?'—':`${b.hum}%`;
+    return `<tr>`
+      + `<td style="padding:2px 7px;text-align:left;color:#475569;font-weight:600">${b.label}</td>`
+      + `<td style="${cell};color:#b45309;font-weight:700">${temp}</td>`
+      + `<td style="${cell};color:#1d4ed8;font-weight:700">${pop}</td>`
+      + `<td style="${cell};color:#0891b2">${hum}</td></tr>`;
+  }).join('');
+  return `<div style="font-weight:700;font-size:12px;margin-bottom:4px">${weatherIcon_(w.code)} ${md}(${dow})</div>`
+    + `<table style="border-collapse:collapse;font-size:11.5px">`
+    + `<tr style="color:#94a3b8;font-size:10px"><th style="padding:2px 7px;text-align:left;font-weight:600">時間</th><th style="padding:2px 7px;font-weight:600">気温</th><th style="padding:2px 7px;font-weight:600">降水</th><th style="padding:2px 7px;font-weight:600">湿度</th></tr>`
+    + rows + `</table>`;
+}
+function showWxTip_(anchor, date){
+  const cache = weatherEnabled_() ? loadWeatherCache_() : null;
+  const w = (cache && cache.days) ? cache.days[date] : null;
+  if(!w || !w.blocks) return;
+  const t = wxTipEl_();
+  t.innerHTML = wxTipHtml_(date, w);
+  t.style.display = "block";
+  const r = anchor.getBoundingClientRect();
+  const tw = t.offsetWidth, th = t.offsetHeight;
+  let left = r.left, top = r.bottom + 5;
+  if(left + tw > window.innerWidth - 8) left = window.innerWidth - tw - 8;
+  if(left < 8) left = 8;
+  if(top + th > window.innerHeight - 8) top = r.top - th - 5;   // 下に入らなければ上に
+  t.style.left = Math.round(left) + "px";
+  t.style.top = Math.round(Math.max(8, top)) + "px";
+}
+function hideWxTip_(){ const t = document.getElementById("wxTip"); if(t) t.style.display = "none"; }
+function toggleWxTip_(anchor, date){
+  const t = document.getElementById("wxTip");
+  if(t && t.style.display === "block"){ hideWxTip_(); }
+  else { showWxTip_(anchor, date); }
 }
 // 取得→ヘッダー反映(起動時・定期・ナビ時に呼ぶ)
 function refreshWeather_(opts={}){
