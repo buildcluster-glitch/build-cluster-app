@@ -2503,7 +2503,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.265</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.266</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -10512,8 +10512,24 @@ function renderLeaveBand(){
     l.type !== "当番" && l.type !== "出社" && todayStr >= l.start && todayStr <= l.end
   );
   const offStaff = new Set(todayOff.map(l => l.staff));
-  // 在席 = STAFF にいて今日休みじゃない人
-  const present = STAFF.filter(s => !offStaff.has(s));
+  // 📅 日祝(日曜/祝日)は基本全員休み。出勤扱い(出社/当番/出張/研修)のレコードがある人だけ在席、
+  //    残りは出社メンバー以外=全員自動で休日扱い(v1.30.266)
+  const __ld = (typeof parseDate==='function') ? parseDate(todayStr) : new Date(todayStr);
+  const isNichiShuku = !!(__ld && !isNaN(__ld) && (__ld.getDay()===0 || (typeof isHoliday==='function' && isHoliday(__ld))));
+  const workStaff = new Set(
+    state.leaves.filter(l => (l.type==="出社"||l.type==="当番"||l.type==="出張"||l.type==="研修")
+      && todayStr>=l.start && todayStr<=l.end).map(l=>l.staff)
+  );
+  // 在席 = STAFF にいて今日休みじゃない人。日祝は「出勤レコードのある人」だけ。
+  const present = isNichiShuku
+    ? STAFF.filter(s => workStaff.has(s))
+    : STAFF.filter(s => !offStaff.has(s));
+  // 日祝で明示レコードも出勤レコードも無い人 → 自動休日として「日祝」チップで休暇スタッフに表示
+  const autoOff = isNichiShuku
+    ? STAFF.filter(s => !workStaff.has(s) && !offStaff.has(s))
+        .map(s => ({ id:`auto-nichishuku-${s}`, staff:s, type:"日祝", start:todayStr, end:todayStr, __auto:true }))
+    : [];
+  const todayOffAll = todayOff.concat(autoOff);
   // 当番（今日該当する週次）
   const todayDuty = state.leaves.filter(l =>
     l.type === "当番" && todayStr >= l.start && todayStr <= l.end
@@ -10597,6 +10613,10 @@ function renderLeaveBand(){
     const bg = STAFF_COLORS[l.staff] || "#fde68a";
     const fg = textColorFor(bg);
     const display = (typeof getStaffDisplayName === 'function') ? getStaffDisplayName(l.staff) : l.staff;
+    // 日祝の自動休日チップ: 薄めに表示・クリック編集なし(明示レコードではないため)
+    if(l.__auto){
+      return `<span class="leave-badge" style="background:${bg};color:${fg};opacity:.6" title="${escapeHtml(display)} 日祝(自動休)"><span class="lb-staff">${escapeHtml(display)}</span><span class="lb-type">日祝</span></span>`;
+    }
     const range = l.start===l.end ? l.start.slice(5) : `${l.start.slice(5)}〜${l.end.slice(5)}`;
     const typeLabel = leaveDispLabel_(l);
     const tooltip = `${display} ${typeLabel} ${range}${l.memo&&l.type!=="振休"?'\n'+l.memo:''}`;
@@ -10636,7 +10656,7 @@ function renderLeaveBand(){
       <span class="sec sec-off">
         <span class="sec-title">🏖 休暇スタッフ</span>
         <button class="add-leave-inline" id="addLeaveInline" title="有給/休暇/別件を追加">＋</button>
-        ${todayOff.length===0 ? '<span class="leave-empty">休み無し</span>' : todayOff.map(l=>leaveChip(l,false)).join('')}
+        ${todayOffAll.length===0 ? '<span class="leave-empty">休み無し</span>' : todayOffAll.map(l=>leaveChip(l,false)).join('')}
       </span>
     </div>
   `;
