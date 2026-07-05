@@ -2503,7 +2503,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.281</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.282</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4854,7 +4854,8 @@ function injectWeatherHeaders_(){
     const span = document.createElement('span');
     span.className = 'wx-badge';
     span.dataset.wxDate = date;
-    span.style.cssText = `display:inline-flex;align-items:center;margin-left:5px;font-size:18px;line-height:1;vertical-align:middle;cursor:pointer`;
+    // font-family=カラー絵文字を強制(☁/☀ が白黒記号にならないように)v1.30.282
+    span.style.cssText = `display:inline-flex;align-items:center;margin-left:5px;font-size:18px;line-height:1;vertical-align:middle;cursor:pointer;font-family:'Segoe UI Emoji','Apple Color Emoji','Noto Color Emoji',sans-serif`;
     span.innerHTML = weatherIcon_(w.code);
     span.addEventListener('mouseenter', ()=> showWxTip_(span, date));
     span.addEventListener('mouseleave', hideWxTip_);
@@ -4868,7 +4869,7 @@ function wxTipEl_(){
   let t = document.getElementById("wxTip");
   if(!t){
     t = document.createElement("div"); t.id = "wxTip";
-    t.style.cssText = "position:fixed;z-index:9999;display:none;background:#fff;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:8px 10px;color:#0f172a;pointer-events:none";
+    t.style.cssText = "position:fixed;z-index:9999;display:none;background:#fff;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:8px 10px;color:#0f172a;pointer-events:none;font-family:'Segoe UI Emoji','Apple Color Emoji','Noto Color Emoji',-apple-system,system-ui,sans-serif";
     document.body.appendChild(t);
     document.addEventListener("click", hideWxTip_);   // 他所タップで閉じる(アイコンのclickはstopPropagation済)
   }
