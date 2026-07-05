@@ -2503,7 +2503,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.284</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.285</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4789,7 +4789,7 @@ async function fetchWeather_(opts={}){
   if(!weatherEnabled_()) return null;
   const cached = loadWeatherCache_();
   const {lat, lon} = weatherLatLon_();
-  const stale = !cached || (Date.now() - (cached.at||0) >= WEATHER_TTL_MS) || cached.lat!==lat || cached.lon!==lon || cached.v!==3;   // v!==3=旧スキーマ(ブロック/天気名無)は取り直す
+  const stale = !cached || (Date.now() - (cached.at||0) >= WEATHER_TTL_MS) || cached.lat!==lat || cached.lon!==lon || cached.v!==4;   // v!==4=旧スキーマ(ブロック天気コード無)は取り直す
   if(!opts.force && !stale) return cached;
   __weatherFetching = true;
   try{
@@ -4819,14 +4819,16 @@ async function fetchWeather_(opts={}){
     Object.keys(days).forEach(dt=>{
       const HH = days[dt].h;
       const blocks = BLOCKS.map(([lo,hi])=>{
-        let tsum=0,tn=0,hsum=0,hn=0,pmax=null;
+        let tsum=0,tn=0,hsum=0,hn=0,pmax=null,pmaxCode=null,midCode=null;
         for(let h=lo; h<hi; h++){
           const x = HH[h]; if(!x) continue;
+          if(h===lo+1) midCode = x.code;   // 帯の中央付近(6-9→7時)を代表候補に
           if(x.temp!=null){ tsum+=x.temp; tn++; }
           if(x.hum!=null){ hsum+=x.hum; hn++; }
-          if(x.pop!=null){ pmax = (pmax==null)? x.pop : Math.max(pmax, x.pop); }
+          if(x.pop!=null){ if(pmax==null||x.pop>pmax){ pmax=x.pop; pmaxCode=x.code; } }   // 最大降水の時刻の天気
         }
-        return { label:`${lo}-${hi}`, temp: tn?Math.round(tsum/tn):null, hum: hn?Math.round(hsum/hn):null, pop: pmax };
+        const code = (pmaxCode!=null)? pmaxCode : (midCode!=null? midCode : (HH[lo]?HH[lo].code:null));
+        return { label:`${lo}-${hi}`, temp: tn?Math.round(tsum/tn):null, hum: hn?Math.round(hsum/hn):null, pop: pmax, code };
       });
       // 日のアイコン=9〜18時で最大降水確率の時刻の天気(降水無なら12時の天気)
       let dayPop=-1, dayCode=null;
@@ -4834,7 +4836,7 @@ async function fetchWeather_(opts={}){
       if(dayCode==null) dayCode = HH[12] ? HH[12].code : (HH[9]? HH[9].code : 0);
       days[dt] = { code: dayCode, pop: dayPop<0?null:dayPop, blocks, name: wxDayName_(HH) };
     });
-    const out = {at: Date.now(), v: 3, lat, lon, days};
+    const out = {at: Date.now(), v: 4, lat, lon, days};
     try{ localStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify(out)); }catch(_){}
     return out;
   }catch(e){ if(!opts.silent) console.warn('[weather] 取得失敗:', e.message); return cached; }
@@ -4887,7 +4889,7 @@ function wxTipHtml_(date, w){
     const pop  = (b.pop==null)?'—':`${b.pop}%`;
     const hum  = (b.hum==null)?'—':`${b.hum}%`;
     return `<tr>`
-      + `<td style="padding:2px 7px;text-align:left;color:#475569;font-weight:600">${b.label}</td>`
+      + `<td style="padding:2px 7px;text-align:left;color:#475569;font-weight:600"><span style="font-size:14px">${weatherIcon_(b.code)}</span> ${b.label}</td>`
       + `<td style="${cell};color:#b45309;font-weight:700">${temp}</td>`
       + `<td style="${cell};color:#1d4ed8;font-weight:700">${pop}</td>`
       + `<td style="${cell};color:#0891b2">${hum}</td></tr>`;
