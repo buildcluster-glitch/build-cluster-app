@@ -1918,11 +1918,9 @@
     /* タッチターゲットを大きめに */
     .nav-btn{min-height:36px;padding:6px 10px;font-size:13px;flex-shrink:0}
     .nav-btn.icon-only{min-width:36px;padding:6px}
-    /* 📱 ☁同期・🐞バグ報告ボタンをヘッダー先頭(タイトルの隣)へ。flex orderで前出し=横スクロールせず最初から見える */
+    /* 📱 ☁同期ボタンをヘッダー先頭(タイトルの隣)へ。flex orderで前出し=横スクロールせず最初から見える */
     .app-title{order:-2}
     .nav-btn#cloudSyncBtn{order:-1;font-size:17px;min-width:44px;min-height:38px}
-    /* 🐞は横スクロールの奥に埋もれて押せなかった(v1.30.268)→ ☁の隣に前出し。バッジも見えるよう相対配置 */
-    .nav-btn#bugReportBtn{order:-1;font-size:18px;min-width:44px;min-height:38px;position:relative}
     /* 🚫 リセットボタンは誤タップ事故防止でスマホ非表示(全データ消去のため) */
     #resetBtn{display:none}
     /* 🔍 カレンダー縮小スイッチはPC専用(スマホはv244縮小済+ピンチズームで足りる) */
@@ -2505,7 +2503,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.268</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.269</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -15893,10 +15891,13 @@ function updateBugReportBadge_(){
   const n = Object.values(loadCalReports_()).filter(r=>r && !r.deleted && r.status==="open").length;
   if(n>0){ b.textContent = n; b.style.display = ""; } else { b.style.display = "none"; }
 }
+let __brFetchState = "idle";   // idle | loading | ok | error | nosync — 空表示の理由を出し分けるため(v1.30.269)
+let __brFetchErr = "";
 async function fetchCalReports_(opts={}){
   const s = loadGasSettings();
   const local = loadCalReports_();
-  if(!s.url || !s.token){ updateBugReportBadge_(); return local; }
+  if(!s.url || !s.token){ __brFetchState="nosync"; updateBugReportBadge_(); if(opts.render && document.getElementById("bugReportModal")?.classList.contains("show")) renderBugReportModal_(); return local; }
+  __brFetchState = "loading";
   try{
     const url = `${s.url}?action=get-shared-config&key=calendar_reports&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
     const res = await fetch(url, {method:'GET', redirect:'follow'});
@@ -15908,10 +15909,11 @@ async function fetchCalReports_(opts={}){
     const remote = (raw && raw.reports && typeof raw.reports==='object') ? raw.reports : {};
     const merged = mergeCalReports_(remote, loadCalReports_());   // ⚠await中の投稿を消さないよう「今」のローカルでマージ(スナップショットlocalは使わない)
     saveCalReports_(merged);
+    __brFetchState = "ok"; __brFetchErr = "";
     updateBugReportBadge_();
     if(opts.render && document.getElementById("bugReportModal")?.classList.contains("show")) renderBugReportModal_();
     return merged;
-  }catch(err){ if(!opts.silent) console.warn('[calendar_reports] fetch失敗:', err.message); updateBugReportBadge_(); return local; }
+  }catch(err){ __brFetchState="error"; __brFetchErr=err.message||String(err); if(!opts.silent) console.warn('[calendar_reports] fetch失敗:', err.message); updateBugReportBadge_(); if(opts.render && document.getElementById("bugReportModal")?.classList.contains("show")) renderBugReportModal_(); return local; }
 }
 async function pushCalReports_(){
   const s = loadGasSettings(); if(!s.url || !s.token) return;
@@ -16033,6 +16035,9 @@ function ensureBugReportModal_(){
 function openBugReportModal_(){
   ensureBugReportModal_();
   document.getElementById("bugReportModal").classList.add("show");
+  // ローカルに何も無い端末(=投稿履歴なし)は取得頼み → 開いた瞬間は「読み込み中」を出す(v1.30.269)
+  const s = (typeof loadGasSettings==='function') ? loadGasSettings() : {};
+  if(!Object.values(loadCalReports_()).some(r=>r && !r.deleted) && s.url && s.token) __brFetchState = "loading";
   renderBugReportModal_();
   fetchCalReports_({render:true, silent:true}).catch(()=>{});   // 開いたら最新を取得
 }
@@ -16040,7 +16045,23 @@ function renderBugReportModal_(){
   const list = document.getElementById("br-list"); if(!list) return;
   const items = Object.values(loadCalReports_()).filter(r=>r && !r.deleted)
     .sort((a,b)=>String(b.at||'').localeCompare(String(a.at||'')));
-  if(!items.length){ list.innerHTML = `<div style="text-align:center;padding:24px;color:var(--muted)">まだ報告はありません</div>`; return; }
+  if(!items.length){
+    // 空表示の理由を出し分け(v1.30.269)。「PCでは見えるがスマホで空」の主因=この端末は投稿履歴が無く、
+    // 取得(fetch)頼み → 未同期/取得失敗だと空に見える。原因を明示して迷子を防ぐ。
+    const s = (typeof loadGasSettings==='function') ? loadGasSettings() : {};
+    let msg;
+    if(!s.url || !s.token){
+      msg = `⚠ この端末はクラウド同期が未設定のため、他の端末の報告を取得できません。<br><b>⚙設定</b>で同期URL/Tokenを入れてください。`;
+    }else if(__brFetchState==="loading"){
+      msg = `⏳ 読み込み中…`;
+    }else if(__brFetchState==="error"){
+      msg = `⚠ 報告の取得に失敗しました（通信エラー）。<br>電波の良い所で🐞を開き直すか、☁で全同期してください。<br><span style="font-size:10px">${escapeHtml(__brFetchErr||'')}</span>`;
+    }else{
+      msg = `まだ報告はありません`;
+    }
+    list.innerHTML = `<div style="text-align:center;padding:24px;color:var(--muted);line-height:1.6">${msg}</div>`;
+    return;
+  }
   const me = getMyself()||"";
   list.innerHTML = items.map(r=>{
     const st = CAL_REPORT_STATUS.find(s=>s.key===r.status) || CAL_REPORT_STATUS[0];
