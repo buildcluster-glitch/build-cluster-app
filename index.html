@@ -806,6 +806,12 @@
   .quick-pop.task-pop .tp-row .tp-comment-btn{flex:0 0 auto;border:1px solid var(--border);background:#fff;color:#64748b;font-size:10px;font-weight:700;line-height:1;cursor:pointer;padding:2px 5px;border-radius:5px}
   .quick-pop.task-pop .tp-row .tp-comment-btn.has{background:#dbeafe;color:#1d4ed8;border-color:#bfdbfe}
   .quick-pop.task-pop .tp-row .tp-comment-btn:hover{border-color:#94a3b8}
+  /* 💬 タスクコメント常時表示(v1.30.265) */
+  .quick-pop.task-pop .tp-cmt-inline{margin:1px 0 5px 30px;display:flex;flex-direction:column;gap:2px}
+  .quick-pop.task-pop .tp-cmt-line{font-size:11px;line-height:1.35;color:#334155;background:#f1f5f9;border-radius:6px;padding:2px 7px;display:flex;gap:5px;align-items:baseline;flex-wrap:wrap}
+  .quick-pop.task-pop .tp-cmt-line > b{color:#1d4ed8;font-size:10px;flex-shrink:0}
+  .quick-pop.task-pop .tp-cmt-line .tp-cmt-txt{flex:1;min-width:0;word-break:break-word;white-space:pre-wrap}
+  .quick-pop.task-pop .tp-cmt-line .tp-cmt-time{font-size:9px;color:#94a3b8;flex-shrink:0}
   .quick-pop.task-pop .tp-row .tp-done-quick{flex:0 0 auto;border:1.5px solid #bbf7d0;background:#f0fdf4;color:#16a34a;font-size:12px;font-weight:800;line-height:1;cursor:pointer;padding:2px 6px;border-radius:5px}
   .quick-pop.task-pop .tp-row .tp-done-quick:hover{background:#16a34a;color:#fff;border-color:#16a34a}
   .quick-pop.task-pop .tp-row .tp-del{flex:0 0 auto;border:0;background:transparent;color:#cbd5e1;font-size:16px;line-height:1;cursor:pointer;padding:0 2px}
@@ -2497,7 +2503,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.264</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.265</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -8160,7 +8166,12 @@ function showTaskChecklistPopup(el, ev){
       .sort((a,b)=> ((TASK_PRIO_RANK[a.prio]??2)-(TASK_PRIO_RANK[b.prio]??2)) || a.index-b.index);
     const doneTasks = ti.tasks.filter(t=>t.done);
     const trash = ti.trash || [];
-    const rowHtml = (t)=>`
+    const __fmtCmtT_ = (at)=>{ if(!at) return ''; const d=new Date(at); if(isNaN(d)) return ''; const p=n=>String(n).padStart(2,'0'); const td=new Date(); td.setHours(0,0,0,0); return d>=td?`${p(d.getHours())}:${p(d.getMinutes())}`:`${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+    const rowHtml = (t)=>{
+      // 💬 コメント常時表示(v1.30.265・鈴木要望「以前のように常時表示」): タスク行の下にインライン表示
+      const __cs = getTaskCmts_(taskCKey_(t.text));
+      const __cmtBlock = __cs.length ? `<div class="tp-cmt-inline">${__cs.map(c=>`<div class="tp-cmt-line"><b>${escapeHtml(c.author||'?')}</b><span class="tp-cmt-txt">${escapeHtml(c.text||'')}</span><span class="tp-cmt-time">${escapeHtml(__fmtCmtT_(c.at))}</span></div>`).join('')}</div>` : '';
+      return `
       <div class="tp-row ${t.done?'done':''}${t.inProgress?' inprogress':''}" style="border-left:3px solid ${(t.prio&&TASK_PRIO_COLOR[t.prio])||'transparent'}">
         <select class="tp-prio-sel" data-line="${t.index}" title="優先度を選択" style="color:${TASK_PRIO_COLOR[t.prio||'']}">
           <option value="🔴" ${(t.prio||'')==='🔴'?'selected':''}>高</option>
@@ -8182,7 +8193,8 @@ function showTaskChecklistPopup(el, ev){
         ${(()=>{ const n=getTaskCmts_(taskCKey_(t.text)).length; return `<button class="tp-comment-btn ${n?'has':''}" data-line="${t.index}" title="このタスクのコメント">💬${n||''}</button>`; })()}
         ${!t.done ? `<button class="tp-done-quick" data-line="${t.index}" title="一発で完了にする">✓</button>` : ""}
         <button class="tp-del" data-line="${t.index}" title="ゴミ箱へ">×</button>
-      </div>`;
+      </div>${__cmtBlock}`;
+    };
     // 未完了を優先度グループごとに区切り線で分割
     let __prevRank = null;
     const pendingHtml = pending.map(t=>{
