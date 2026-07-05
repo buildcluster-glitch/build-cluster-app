@@ -2497,7 +2497,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.261</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.262</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -6223,7 +6223,7 @@ function wireAlertInput_(pop){
   const inp=pop.querySelector('.qp-alert-input'); if(!inp) return;
   let __last=inp.value;
   const save=()=>{ if(inp.value===__last) return; __last=inp.value; if(typeof setAlert_==='function') setAlert_(inp.dataset.alertId, inp.value).catch(()=>{}); if(typeof render==='function') render(); };
-  inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); save(); inp.blur(); } });
+  inp.addEventListener('keydown', e=>{ if(e.key==='Enter' && !e.isComposing && e.keyCode!==229){ e.preventDefault(); save(); inp.blur(); } });   // IME変換確定Enterでは発火しない(v1.30.262)
   inp.addEventListener('blur', save);
 }
 // ===========================================================
@@ -7247,7 +7247,7 @@ function showTaikyoStaffPicker(el, ev){
   };
   if(pop.querySelector('.tk-cmt-send')) pop.querySelector('.tk-cmt-send').onclick = sendComment;
   if(inputEl){
-    inputEl.onkeydown = e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendComment(); } };
+    inputEl.onkeydown = e=>{ if(e.key==='Enter' && !e.shiftKey && !e.isComposing && e.keyCode!==229){ e.preventDefault(); sendComment(); } };   // IME変換Enter除外(v1.30.262)
   }
   // 開いた時に最新コメントを取得(他端末の更新を反映)
   if(typeof fetchTaikyoComments_==='function') fetchTaikyoComments_({silent:true}).then(()=>{ if(pop.isConnected) renderComments(); }).catch(()=>{});
@@ -7533,7 +7533,7 @@ function showEventStaffPicker(el, ev){
     renderC(); render();
   };
   pop.querySelector('.evp-cmt-send').onclick = sendC;
-  inputEl.onkeydown = e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendC(); } };
+  inputEl.onkeydown = e=>{ if(e.key==='Enter' && !e.shiftKey && !e.isComposing && e.keyCode!==229){ e.preventDefault(); sendC(); } };   // IME変換Enter除外(v1.30.262)
   const closeOnOutside = (ev2)=>{
     if(ev2.target.closest && ev2.target.closest('.reaction-picker')) return; // リアクションピッカー操作中は閉じない
     if(!pop.contains(ev2.target)){ pop.remove(); document.querySelectorAll('.reaction-picker').forEach(x=>x.remove()); document.removeEventListener("pointerdown", closeOnOutside, true); }
@@ -8133,7 +8133,7 @@ function showTaskChecklistPopup(el, ev){
     const inp=cp.querySelector('.tcp-input'), snd=cp.querySelector('.tcp-send');
     const doSend=()=>{ add(inp.value); inp.value=''; inp.focus(); };
     snd.onclick=doSend;
-    inp.onkeydown=e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); doSend(); } };
+    inp.onkeydown=e=>{ if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&e.keyCode!==229){ e.preventDefault(); doSend(); } };   // IME変換Enter除外=タスクのコメント増殖バグ修正(v1.30.262・鈴木報告)
     cp.querySelector('[data-role="close"]').onclick=()=>cp.remove();
     setTimeout(()=>inp.focus(),30);
     const closeOut=(e2)=>{ if(!cp.contains(e2.target) && !anchorEl.contains(e2.target)){ cp.remove(); document.removeEventListener('pointerdown',closeOut,true); } };
@@ -8336,7 +8336,7 @@ function showTaskChecklistPopup(el, ev){
     const sendMsg_ = (text)=>{ text=String(text||'').trim(); if(!text) return; if(!meSelf){ alert('先に「👤 自分」を設定してください(👤マイ)'); return; } const st=msgStaff_(); if(!st) return; msgReactPickerId=null; if(typeof addJimuMessage_==='function') addJimuMessage_(st, text, meSelf); };
     const msgInput = pop.querySelector('.tp-msg-input'), msgSend = pop.querySelector('.tp-msg-send');
     if(msgSend) msgSend.onclick = ()=>sendMsg_(msgInput.value);
-    if(msgInput) msgInput.onkeydown = e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMsg_(msgInput.value); } };
+    if(msgInput) msgInput.onkeydown = e=>{ if(e.key==='Enter' && !e.shiftKey && !e.isComposing && e.keyCode!==229){ e.preventDefault(); sendMsg_(msgInput.value); } };   // IME変換Enter除外(v1.30.262)
     pop.querySelectorAll('.tp-msg-del').forEach(b=>b.onclick=()=>{ if(!confirm('この業務連絡を削除しますか？')) return; const st=msgStaff_(); if(st&&typeof deleteJimuMessage_==='function') deleteJimuMessage_(st, b.dataset.mi); });
     pop.querySelectorAll('[data-mtr]').forEach(b=>b.onclick=()=>{ if(!meSelf){alert('先に「👤 自分」を設定してください');return;} const st=msgStaff_(); msgReactPickerId=null; renderInner(); if(st&&typeof toggleJimuReaction_==='function') toggleJimuReaction_(st, b.dataset.mi, b.dataset.mtr, meSelf); });
     pop.querySelectorAll('[data-mrad]').forEach(b=>b.onclick=()=>{ msgReactPickerId=(msgReactPickerId===b.dataset.mrad)?null:b.dataset.mrad; renderInner(); });
@@ -8386,7 +8386,8 @@ function dedupeJizenEvents_(){
   const evs = state.events || [];
   // タイトル(物件名+号室)正規化キーで全事前イベントをグループ化(別sid・同タイトルの重複も集約)
   //   NFKC正規化でローマ数字(Ⅱ↔II)・全角/半角の表記ゆれを吸収(v1.30.217・八乙女Ⅱ103の二重表示修正)
-  const norm = s => String(s||'').normalize('NFKC').replace(/\s+|　/g,'');
+  //   +括弧書き除去(v1.30.262・まどか報告): 「フローセラス銀杏町(第10冬見ビル)」と「フローセラス銀杏町」が別物扱いで事前2個になるのを防ぐ
+  const norm = s => String(s||'').normalize('NFKC').replace(/[（(][^（()）]*[）)]/g,'').replace(/\s+|　/g,'');
   const groups = new Map(); // normTitle -> list
   evs.forEach(e=>{
     if(!isJizenEvent_(e)) return;
@@ -8445,11 +8446,11 @@ function applyJizenRecords_(records){
   const deduped = dedupeJizenEvents_(); // 既存の二重分を先に掃除
   records.forEach(r=>{
     const title = `事前 ${r.bukken}${r.room?" "+r.room:""}`;
-    const __titleNorm = title.normalize('NFKC').replace(/\s+|　/g,"");   // NFKCで表記ゆれ吸収(v1.30.217)
+    const __titleNorm = title.normalize('NFKC').replace(/[（(][^（()）]*[）)]/g,"").replace(/\s+|　/g,"");   // NFKC+括弧書き除去で表記ゆれ吸収(v1.30.217/262)
     // 既存イベント判定: sid一致 or 同タイトル(物件+号室)の事前があれば既存扱い → 別sid・同物件の二重insertを防ぐ
     const existing = (state.events||[]).find(e=>{
       if(e._jizenSourceId === r.id) return true;
-      if(isJizenEvent_(e) && String(e.title||"").normalize('NFKC').replace(/\s+|　/g,"") === __titleNorm) return true;
+      if(isJizenEvent_(e) && String(e.title||"").normalize('NFKC').replace(/[（(][^（()）]*[）)]/g,"").replace(/\s+|　/g,"") === __titleNorm) return true;
       return false;
     });
     if(existing){
@@ -10678,6 +10679,30 @@ function buildDirectMorningVirtuals_(){
   });
   return out;
 }
+// 🧭 ポインタ座標→時刻(分)変換の共通ヘルパー(v1.30.262・まどか報告「16時に入れると13時台に飛ぶ」対応)
+//   壊れていた原因: clientY(見た目px)をHOUR_PX(素のpx)で割っていた→🔍縮小表示(zoom)中は倍率ぶん時刻が手前にズレる。
+//   さらに月ビューは行高可変(自動拡張)で線形計算自体が不成立。
+//   → 月ビュー=ポインタ直下の hour-cell(data-hour)+セル内比率で算出(zoom/可変行高どちらでも正確)。
+//     hour-cellが無い場所(週/日ビュー等)=zoomで割ってから従来計算。
+function calGridZoom_(){
+  const w = document.getElementById("calendarWrap") || document.querySelector(".calendar-wrap");
+  const z = w ? parseFloat(w.style.zoom) : 1;
+  return (z && z > 0) ? z : 1;
+}
+function pointToMinInCol_(clientX, clientY, subCol){
+  try{
+    const els = document.elementsFromPoint(clientX, clientY);
+    const cell = els && els.find(el=>el.classList && el.classList.contains("hour-cell"));
+    if(cell && cell.dataset.hour != null){
+      const r = cell.getBoundingClientRect();
+      const frac = Math.max(0, Math.min(0.999, (clientY - r.top) / (r.height || 1)));
+      return (+cell.dataset.hour)*60 + Math.floor(frac*60);
+    }
+  }catch(_){}
+  if(!subCol) return HOUR_START*60;
+  const rect = subCol.getBoundingClientRect();
+  return HOUR_START*60 + Math.max(0, Math.floor(((clientY - rect.top) / calGridZoom_()) / HOUR_PX * 60));
+}
 function renderCalendar(){
   const cols = timeColumns();
   const colCount = cols.length;
@@ -11622,7 +11647,7 @@ function renderCalendar(){
       sc.ondblclick = (e)=>{
         if(e.target!==sc) return;
         const rect = sc.getBoundingClientRect();
-        const y = e.clientY - rect.top;
+        const y = (e.clientY - rect.top) / calGridZoom_();   // 🔍 縮小表示中の座標→時刻ズレ補正(v1.30.262・まどか報告)
         const minutes = Math.floor(y / HOUR_PX * 60);
         const startMin = HOUR_START*60 + Math.floor(minutes/SLOT_MIN)*SLOT_MIN;
         const startH = Math.floor(startMin/60), startM = startMin%60;
@@ -11640,7 +11665,7 @@ function renderCalendar(){
         if(e.target!==sc) return;
         clearEventSelection_();
         const rect = sc.getBoundingClientRect();
-        const minutes = Math.floor((e.clientY - rect.top) / HOUR_PX * 60);
+        const minutes = Math.floor(((e.clientY - rect.top) / calGridZoom_()) / HOUR_PX * 60);   // 🔍 縮小補正(v1.30.262)
         const startMin = HOUR_START*60 + Math.floor(minutes/SLOT_MIN)*SLOT_MIN;
         setActiveSlot_({ kind:'subcol', colKey: sc.dataset.colKey, startMin });
         if(eventClipboard.length){
@@ -12239,7 +12264,7 @@ function buildTipChat_(tip, headHtml, api){
   const inp=tip.querySelector('.cht-in'), snd=tip.querySelector('.cht-send');
   const send=()=>{ const v=(inp.value||'').trim(); if(!v) return; api.onSend(v, rerender); };
   if(snd) snd.onclick=send;
-  if(inp) inp.onkeydown=e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();} };
+  if(inp) inp.onkeydown=e=>{ if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&e.keyCode!==229){e.preventDefault();send();} };   // IME変換Enter除外(v1.30.262)
 }
 function showChipTip(ev, mouseX, mouseY){
   const tip = ensureChipTip();
@@ -13120,14 +13145,23 @@ function attachDragOrClick(el, ev){
         const subCol = target?.closest(".sub-col");
         if(subCol){
           const colRect = subCol.getBoundingClientRect();
-          const y = mvEv.clientY - colRect.top - offsetY + (rect.height/2);
-          // スナップした top 位置を計算（ドラッグは1時間刻み）
-          const minutes = Math.max(0, Math.floor(y / HOUR_PX * 60));
-          const startMin = HOUR_START*60 + Math.floor(minutes/DRAG_SNAP_MIN)*DRAG_SNAP_MIN;
-          const snapY = ((startMin - HOUR_START*60)/60) * HOUR_PX;
+          // 🧭 掴み位置補正込みのアンカー(チップ中心)を実座標のまま hour-cell 基準で時刻化(v1.30.262・zoom/可変行高対応)
+          const anchorY = mvEv.clientY - offsetY + (rect.height/2);
+          const absMin = pointToMinInCol_(mvEv.clientX, anchorY, subCol);
+          const startMin = Math.max(HOUR_START*60, Math.floor(absMin/DRAG_SNAP_MIN)*DRAG_SNAP_MIN);
           indicator.style.display = "";
           indicator.style.left = (colRect.left+2) + "px";
-          indicator.style.top  = (colRect.top + snapY) + "px";
+          // インジケータ位置: 月=対象hour-cellの実座標 / 他=zoom補正した線形位置
+          let __indTop;
+          const __dayCol = subCol.closest(".day-col");
+          const __indCell = __dayCol ? __dayCol.querySelector('.hour-cell[data-hour="'+Math.floor(startMin/60)+'"]') : null;
+          if(__indCell){
+            const cr = __indCell.getBoundingClientRect();
+            __indTop = cr.top + ((startMin%60)/60)*cr.height;
+          }else{
+            __indTop = colRect.top + (((startMin - HOUR_START*60)/60) * HOUR_PX) * calGridZoom_();
+          }
+          indicator.style.top  = __indTop + "px";
           indicator.style.width = (colRect.width-4) + "px";
           // 時刻ツールチップ
           const duration = timeToMin(ev.end) - timeToMin(ev.start);
@@ -13228,10 +13262,10 @@ function attachDragOrClick(el, ev){
       if(!subCol){ render(); return; } // 範囲外 → キャンセル(復元)
       const colKey = subCol.dataset.colKey;
       const colRect = subCol.getBoundingClientRect();
-      const y = upEv.clientY - colRect.top - offsetY + (rect.height/2);
-      const minutes = Math.max(0, Math.floor(y / HOUR_PX * 60));
-      // ドラッグドロップは1時間単位でスナップ
-      const startMin = HOUR_START*60 + Math.floor(minutes/DRAG_SNAP_MIN)*DRAG_SNAP_MIN;
+      // 🧭 hour-cell基準で時刻化(v1.30.262・zoom/可変行高でもドロップ位置どおりの時刻になる)
+      const __anchorY = upEv.clientY - offsetY + (rect.height/2);
+      const __absMin = pointToMinInCol_(upEv.clientX, __anchorY, subCol);
+      const startMin = Math.max(HOUR_START*60, Math.floor(__absMin/DRAG_SNAP_MIN)*DRAG_SNAP_MIN);
       const duration = timeToMin(ev.end) - timeToMin(ev.start);
       const endMin = Math.min((HOUR_END)*60, startMin + duration);
       const target_ev = state.events.find(e=>e.id===ev.id);
@@ -13254,8 +13288,8 @@ function attachDragOrClick(el, ev){
       setTimeout(()=>{
         pushHistory();
         if(target_ev.allday){
-          // 終日: freeTop を更新（時刻は触らない）
-          const rawTop = upEv.clientY - colRect.top - offsetY;
+          // 終日: freeTop を更新（時刻は触らない）。freeTopは素のpxなのでzoom補正(v1.30.262)
+          const rawTop = (upEv.clientY - colRect.top - offsetY) / calGridZoom_();
           target_ev.freeTop = Math.max(0, Math.round(rawTop / 4) * 4); // 4px単位スナップ
         }else{
           target_ev.start = `${pad(Math.floor(startMin/60))}:${pad(startMin%60)}`;
@@ -16667,7 +16701,7 @@ function renderRepairChat_(container, repairId){
   const inp = container.querySelector('#rchat-in'), snd = container.querySelector('#rchat-send');
   const send = ()=>{ const v=(inp.value||'').trim(); if(!v) return; if(!me){ alert('先に「👤 マイ」で自分を設定してください'); return; } addRepairComment_(repairId, v, me); inp.value=''; renderRepairChat_(container, repairId); };
   if(snd) snd.onclick = send;
-  if(inp) inp.onkeydown = e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); } };
+  if(inp) inp.onkeydown = e=>{ if(e.key==='Enter' && !e.shiftKey && !e.isComposing && e.keyCode!==229){ e.preventDefault(); send(); } };   // IME変換Enter除外(v1.30.262)
   container.querySelectorAll('.rchat-del').forEach(b=>{ b.onclick = ()=>{ if(confirm('この投稿を削除しますか？')){ deleteRepairComment_(repairId, b.dataset.cid); renderRepairChat_(container, repairId); } }; });
 }
 
@@ -17412,7 +17446,7 @@ function wireRestoTaskRows(el){
         restoAddLog(id, txt, photo);
         if(preview){ preview.style.display="none"; preview.src=""; delete preview.dataset.compressed; }
       };
-      logIn.onkeydown = e=>{ if(e.key==="Enter"){ e.preventDefault(); logAdd.click(); } };
+      logIn.onkeydown = e=>{ if(e.key==="Enter" && !e.isComposing && e.keyCode!==229){ e.preventDefault(); logAdd.click(); } };   // IME変換Enter除外(v1.30.262)
       logIn.onclick = e=>e.stopPropagation();
     }
     row.querySelectorAll('.rt-log .rm[data-log-idx]').forEach(btn=>{
@@ -17904,7 +17938,7 @@ bukkenModal.onclick = e=>{ if(e.target===bukkenModal) closeBukken(); };
     if(box.style.display === "none") return;
     if(e.key === "ArrowDown"){ e.preventDefault(); active = Math.min(matches.length-1, active+1); render(); }
     else if(e.key === "ArrowUp"){ e.preventDefault(); active = Math.max(0, active-1); render(); }
-    else if(e.key === "Enter" && active >= 0){ e.preventDefault(); pick(active); }
+    else if(e.key === "Enter" && !e.isComposing && e.keyCode!==229 && active >= 0){ e.preventDefault(); pick(active); }   // IME変換Enter除外(v1.30.262)
     else if(e.key === "Escape"){ hide(); }
   });
   ta.addEventListener("blur", ()=>setTimeout(hide, 150));
@@ -21069,7 +21103,7 @@ function bindEvents(){
 
   // settings
   $('#inv-add-member').onclick = addMember;
-  $('#inv-new-member').onkeydown = e=>{ if(e.key==='Enter') addMember(); };
+  $('#inv-new-member').onkeydown = e=>{ if(e.key==='Enter' && !e.isComposing && e.keyCode!==229) addMember(); };   // IME変換Enter除外(v1.30.262)
   $('#inv-members-edit').onclick = e=>{
     const b = e.target.closest('[data-mdel]');
     if(!b) return;
