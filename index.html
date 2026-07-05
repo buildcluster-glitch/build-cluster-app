@@ -2503,7 +2503,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.266</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.267</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4140,12 +4140,22 @@ function computeAutoHourPx(){
   return HOUR_PX_DEFAULT; // PC月ビューは固定。各時間セルがスクロールで吸収
 }
 
+// 📱 スマホで縮小(ピンチ)したとき列が細くなりすぎないよう、実効列幅に下限を設ける(v1.30.267・山田)。
+//   CSS zoom は縦横まとめて縮む → z<1 では列css幅を 1/z 方向に補正し、実効幅(css幅×z)が MOBILE_COL_MIN_EFF を下回らないようにする。
+//   結果: 縮小しても列幅は据え置き、縦(時間軸)だけ詰まって1日を広く見渡せる。
+const MOBILE_COL_MIN_EFF = 250;   // スマホ縮小時の実効列幅の下限(px)
+function colWDisp_(baseW, zOverride){
+  if(window.innerWidth > 700) return baseW;   // PCは補正なし(70/85/100%スイッチのまま)
+  const z = (zOverride != null) ? zOverride : ((typeof calZoomVal_==='function') ? calZoomVal_() : 1);
+  if(z >= 0.999) return baseW;                // 等倍/拡大時は据え置き
+  return Math.max(baseW, Math.round(MOBILE_COL_MIN_EFF / z));
+}
 // 月ビュー用 grid-template-columns 文字列を構築
-function buildMonthColTemplate(cols){
+function buildMonthColTemplate(cols, zOverride){
   const parts = [`${TIME_COL_W}px`];
   cols.forEach(c=>{
     const w = colWidths.get(c.key) || MONTH_COL_DEFAULT;
-    parts.push(`${w}px`);
+    parts.push(`${colWDisp_(w, zOverride)}px`);
   });
   return parts.join(' ');
 }
@@ -12002,7 +12012,7 @@ function attachColResizeHandles(colCount){
 }
 
 // 現在の列構造から grid-template-columns を再構築して各エリアに適用
-function rebuildColTemplate(){
+function rebuildColTemplate(zOverride){
   if(currentView !== "month") return;
   const grid = document.getElementById("calGrid");
   const keys = Array.from(grid.querySelectorAll('.day-col')).map(el=>el.dataset.colKey);
@@ -12010,17 +12020,18 @@ function rebuildColTemplate(){
   const parts = [`${TIME_COL_W}px`];
   keys.forEach(k=>{
     const w = colWidths.get(k) || MONTH_COL_DEFAULT;
-    parts.push(`${w}px`);
+    parts.push(`${colWDisp_(w, zOverride)}px`);
   });
   const calTemplate = parts.join(' ');
-  ["calHead","alldayBand","calGrid"].forEach(id=>{
+  ["calHead","alldayBand","calGrid","jizenBand"].forEach(id=>{
     const el = document.getElementById(id);
     if(el) el.style.gridTemplateColumns = calTemplate;
   });
   // checks-columns は date列に加え "future / undated" 2列が末尾にあるので +2列分追加
   const ccEl = document.querySelector(".checks-columns");
   if(ccEl){
-    const checksParts = [...parts, `${MONTH_COL_DEFAULT}px`, `${MONTH_COL_DEFAULT}px`];
+    const extraW = `${colWDisp_(MONTH_COL_DEFAULT, zOverride)}px`;
+    const checksParts = [...parts, extraW, extraW];
     ccEl.style.gridTemplateColumns = checksParts.join(' ');
   }
 }
@@ -14111,6 +14122,10 @@ function applyCalZoom_(zOverride){
     const h0 = wrap.getBoundingClientRect().height;
     wrap.style.zoom = String(z);
     if(h0 > 0) wrap.style.height = Math.max(200, Math.round(h0 / z)) + "px";
+  }
+  // 📱 スマホ縮小時は列が細くなりすぎないよう実効列幅を補正(縦だけ詰めて列幅は据え置き)v1.30.267
+  if(window.innerWidth <= 700 && currentView === "month" && typeof rebuildColTemplate === "function"){
+    rebuildColTemplate(z);
   }
   document.querySelectorAll("#calZoomSwitch button").forEach(b=>{
     b.classList.toggle("active", Math.abs(parseFloat(b.dataset.z) - z) < 0.01);
