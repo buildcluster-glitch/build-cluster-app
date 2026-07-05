@@ -2503,7 +2503,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.282</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.283</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4704,7 +4704,7 @@ function timeColumns(){
     if(isHoliday(d))   cls.push("holiday");
     return {
       key:`date-${dStr}`,
-      headerHtml:`<div>${d.getMonth()+1}/${d.getDate()}</div><div class="dow">(${DOW_JA[d.getDay()]})</div>`,
+      headerHtml:`<span class="hd-date">${d.getMonth()+1}/${d.getDate()}</span><span class="dow">(${DOW_JA[d.getDay()]})</span>`,   // 日付+曜日を1行に(天気アイコンをこの後ろに置く)v1.30.283
       headerCls: cls.join(" "),
       cellCls: cls.includes("today") ? "today" : "",
       filterEvent: ev => ev.date===dStr && isEventVisible(ev),
@@ -4860,8 +4860,10 @@ function injectWeatherHeaders_(){
     span.addEventListener('mouseenter', ()=> showWxTip_(span, date));
     span.addEventListener('mouseleave', hideWxTip_);
     span.addEventListener('click', (e)=>{ e.stopPropagation(); toggleWxTip_(span, date); });   // スマホ=タップで開閉
-    const dateLine = el.querySelector(':scope > div') || el;   // 日付の行(先頭div)に載せる=日付の隣
-    dateLine.appendChild(span);
+    // 「7/5(日) ☁️」の並び=曜日の直後に置く(日付・曜日は1行)
+    const dow = el.querySelector('.dow');
+    if(dow) dow.insertAdjacentElement('afterend', span);
+    else (el.querySelector(':scope > .hd-date, :scope > div') || el).appendChild(span);
   });
 }
 // 🌤 ホバー/タップ ツールチップ(時間帯別の気温/降水/湿度)
