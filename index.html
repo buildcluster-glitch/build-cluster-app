@@ -2497,7 +2497,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.262</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.263</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -15912,8 +15912,9 @@ function ensureBugReportModal_(){
         <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
           <input type="file" id="br-photo-file" accept="image/*" style="display:none">
           <button class="btn" id="br-photo-btn" style="font-size:11px;padding:4px 10px">📷 画像添付</button>
+          <span style="font-size:10px;color:var(--muted)">スクショは Ctrl+V 貼り付け／ドロップでもOK</span>
           <img id="br-photo-preview" style="display:none;max-height:56px;max-width:110px;border-radius:6px;border:1px solid var(--border);cursor:pointer" title="クリックで添付取消">
-          <span id="br-photo-note" style="font-size:10px;color:var(--muted)"></span>
+          <span id="br-photo-note" style="font-size:10px;color:#16a34a;font-weight:700"></span>
         </div>
         <div id="br-list"></div>
       </div>
@@ -15928,18 +15929,39 @@ function ensureBugReportModal_(){
   const __brFile = ov.querySelector("#br-photo-file");
   const __brPrev = ov.querySelector("#br-photo-preview");
   const __brNote = ov.querySelector("#br-photo-note");
-  ov.querySelector("#br-photo-btn").onclick = ()=> __brFile.click();
-  __brFile.onchange = async ()=>{
-    const f = __brFile.files && __brFile.files[0];
-    if(!f) return;
+  const __brAttach = async (f)=>{
+    if(!f || !/^image\//.test(f.type||"")) return false;
     __brNote.textContent = "圧縮中…";
     try{
       const dataUrl = await restoCompressImage(f, 40000);
       __brPrev.src = dataUrl; __brPrev.style.display = ""; __brPrev.dataset.photo = dataUrl;
       __brNote.textContent = "添付済(画像クリックで取消)";
-    }catch(e){ __brNote.textContent = "画像の読み込みに失敗"; }
+      return true;
+    }catch(e){ __brNote.textContent = "画像の読み込みに失敗"; return false; }
+  };
+  ov.querySelector("#br-photo-btn").onclick = ()=> __brFile.click();
+  __brFile.onchange = async ()=>{
+    const f = __brFile.files && __brFile.files[0];
+    if(f) await __brAttach(f);
     __brFile.value = "";
   };
+  // 📋 Ctrl+V貼り付けで添付(v1.30.263・まどかがスクショ貼り付け→無反応だった対策)。モーダル内どこでもOK
+  ov.addEventListener("paste", async (e)=>{
+    const items = (e.clipboardData && e.clipboardData.items) || [];
+    for(const it of items){
+      if(it.kind === "file" && /^image\//.test(it.type)){
+        e.preventDefault();
+        await __brAttach(it.getAsFile());
+        return;
+      }
+    }
+  });
+  // 🖱 ドラッグ&ドロップでも添付(v1.30.263)
+  ov.addEventListener("dragover", (e)=>{ if(e.dataTransfer && [...e.dataTransfer.types].includes("Files")){ e.preventDefault(); } });
+  ov.addEventListener("drop", async (e)=>{
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if(f && /^image\//.test(f.type||"")){ e.preventDefault(); await __brAttach(f); }
+  });
   const __brClearPhoto = ()=>{ __brPrev.style.display = "none"; __brPrev.removeAttribute("src"); delete __brPrev.dataset.photo; __brNote.textContent = ""; };
   __brPrev.onclick = __brClearPhoto;
   ov.querySelector("#br-post").onclick = ()=>{
