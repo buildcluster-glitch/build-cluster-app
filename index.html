@@ -2503,7 +2503,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.280</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.281</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3593,7 +3593,7 @@
           <input type="checkbox" id="opt-weather" checked> 🌤 日付に天気予報（降水確率）を表示
         </label>
         <div style="font-size:11px;color:var(--muted);margin-left:24px">
-          日中9〜18時の最大降水確率＋天気アイコンを日付ヘッダーに表示（仙台・前後1週間ぶん・Open-Meteo・この端末のみ・2時間ごと更新）
+          天気アイコンを日付ヘッダーに表示（仙台市青葉区・前後1週間ぶん・Open-Meteo・この端末のみ・2時間ごと更新）。アイコンにホバー/タップで時間帯別の気温・降水確率・湿度
         </div>
       </div>
       <div class="field" style="display:none">
@@ -4716,15 +4716,15 @@ function timeColumns(){
 }
 
 // ===== 🌤 天気予報(降水確率) Open-Meteo・9〜18時集計・前後1週間 v1.30.272 =====
-//   無料・APIキー不要・CORS対応。仙台(既定)の日中(9〜18時)の「最大降水確率」と代表天気を日付ヘッダーに出す。
+//   無料・APIキー不要・CORS対応。仙台市青葉区(既定)の日中(9〜18時)の「最大降水確率」と代表天気を日付ヘッダーに出す。
 //   位置は localStorage(bc_weather_lat/lon)で上書き可。2時間キャッシュ。
 const WEATHER_CACHE_KEY = "bc_weather_cache";
 const WEATHER_TTL_MS = 2*60*60*1000;   // 2時間で再取得
 function weatherEnabled_(){ return localStorage.getItem("bc_weather_on") !== "0"; }   // 既定ON
 function setWeatherEnabled_(on){ try{ localStorage.setItem("bc_weather_on", on?"1":"0"); }catch(_){} }
 function weatherLatLon_(){
-  const lat = parseFloat(localStorage.getItem("bc_weather_lat")||"") || 38.2682;   // 仙台市
-  const lon = parseFloat(localStorage.getItem("bc_weather_lon")||"") || 140.8694;
+  const lat = parseFloat(localStorage.getItem("bc_weather_lat")||"") || 38.2649;   // 仙台市青葉区(青葉区役所付近)
+  const lon = parseFloat(localStorage.getItem("bc_weather_lon")||"") || 140.8703;
   return {lat, lon};
 }
 function loadWeatherCache_(){ try{ const o=JSON.parse(localStorage.getItem(WEATHER_CACHE_KEY)||"null"); return (o&&o.days)?o:null; }catch(e){ return null; } }
