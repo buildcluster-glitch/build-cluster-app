@@ -2503,7 +2503,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.285</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.286</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -6972,6 +6972,110 @@ function deleteJimuMessage_(staff, msgId){
 function toggleJimuReaction_(staff, msgId, emoji, who){ if(!staff||!msgId||!emoji||!who) return; mutateJimuMessagesRemote_(staff, list=>{ const c=list.find(x=>x.id===msgId); if(c) __reactToggleObj_(c, emoji, who); return list; }); }
 function addJimuReaction_(staff, msgId, emoji, who){ if(!staff||!msgId||!emoji||!who) return; mutateJimuMessagesRemote_(staff, list=>{ const c=list.find(x=>x.id===msgId); if(c) __reactAddObj_(c, emoji, who); return list; }); }
 
+// 💬 タスク個別コメント(全員共有・shared-config 'jimu_task_comments') v1.30.286
+//   ⚠ 業務連絡(messages)と同じく event-sync は taskComments(ネスト)を保存しない→他端末に届かなかった。
+//      messagesと同型の shared-config KV に移行。ev.taskComments は applyJimuTaskCommentsToState_ で常にこのmapと同期。
+//   value = JSON { comments:{ [staff]:{ [taskKey]:[{id,author,text,at}] } }, updatedAt }
+const JIMU_TC_CACHE_KEY = "buildcluster_jimu_task_comments_cache";
+const JIMU_TC_MIGRATED_KEY = "buildcluster_jimu_task_comments_migrated";
+let __refreshOpenTaskCmtUI_ = null;   // 開いているコメント欄を再描画するフック(ポップ側が差し替え)
+function loadJimuTcMap_(){ try{ const o=JSON.parse(localStorage.getItem(JIMU_TC_CACHE_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
+function saveJimuTcMap_(map){ try{ localStorage.setItem(JIMU_TC_CACHE_KEY, JSON.stringify(map||{})); }catch(e){} }
+function tcSig_(c){ return c ? (c.id ? 'id:'+c.id : `${c.author||''}|${c.text||''}|${c.at||''}`) : ''; }
+function ensureTcId_(c){ if(c && !c.id){ try{ c.id = uid(); }catch(_){ c.id = (c.at||'')+'|'+(c.text||''); } } return c; }
+function tcByKeyCopy_(byKey){ const o={}; Object.keys(byKey||{}).forEach(k=>{ if(Array.isArray(byKey[k])) o[k]=byKey[k].slice().sort((x,y)=>String(x.at||'').localeCompare(String(y.at||''))); }); return o; }
+// 共有map(staff→taskKey→[]) を state.events(事務).taskComments に反映
+function applyJimuTaskCommentsToState_(){
+  const m=loadJimuTcMap_();
+  const migrated=!!localStorage.getItem(JIMU_TC_MIGRATED_KEY);
+  (state.events||[]).forEach(e=>{
+    if(e && e.category==='事務' && e.staff){
+      const byKey=m[e.staff];
+      if(byKey && typeof byKey==='object') e.taskComments = tcByKeyCopy_(byKey);
+      else if(migrated) e.taskComments = {};   // 移行後は空=本当に無し。未移行ならローカルを温存
+    }
+  });
+}
+// 起動時: ローカル ev.taskComments を共有mapへ退避(applyで消える前に保護)
+function captureLocalJimuTaskComments_(){
+  const map=loadJimuTcMap_(); let changed=false;
+  (state.events||[]).forEach(e=>{
+    if(e && e.category==='事務' && e.staff && e.taskComments && typeof e.taskComments==='object'){
+      const cur=(map[e.staff]&&typeof map[e.staff]==='object')?map[e.staff]:{};
+      Object.keys(e.taskComments).forEach(k=>{
+        const src=Array.isArray(e.taskComments[k])?e.taskComments[k]:[]; if(!src.length) return;
+        const dst=Array.isArray(cur[k])?cur[k]:[]; const seen=new Set(dst.map(tcSig_));
+        src.forEach(c=>{ const sg=tcSig_(c); if(c&&!seen.has(sg)){ dst.push(ensureTcId_(c)); seen.add(sg); changed=true; } });
+        if(dst.length) cur[k]=dst;
+      });
+      if(Object.keys(cur).length) map[e.staff]=cur;
+    }
+  });
+  if(changed) saveJimuTcMap_(map);
+  return changed;
+}
+async function fetchJimuTaskComments_(opts={}){
+  const s=loadGasSettings();
+  if(!s.url||!s.token){ applyJimuTaskCommentsToState_(); return loadJimuTcMap_(); }
+  const url=`${s.url}?action=get-shared-config&key=jimu_task_comments&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+  try{
+    const res=await fetch(url,{method:'GET',redirect:'follow'}); if(!res.ok) throw new Error('HTTP '+res.status);
+    const data=await res.json(); let raw=data.value;
+    if(raw===''||raw==null) raw={comments:{}}; else if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(e){ raw={comments:{}}; } }
+    let remote=(raw&&raw.comments&&typeof raw.comments==='object')?raw.comments:{};
+    // 🔁 初回のみ(端末ごと): ローカル taskComments を remote に union して push(移行・消失防止)
+    if(opts.push && !localStorage.getItem(JIMU_TC_MIGRATED_KEY)){
+      let changed=false;
+      (state.events||[]).forEach(e=>{
+        if(e && e.category==='事務' && e.staff && e.taskComments && typeof e.taskComments==='object'){
+          const cur=(remote[e.staff]&&typeof remote[e.staff]==='object')?remote[e.staff]:{};
+          Object.keys(e.taskComments).forEach(k=>{
+            const src=Array.isArray(e.taskComments[k])?e.taskComments[k]:[]; if(!src.length) return;
+            const dst=Array.isArray(cur[k])?cur[k]:[]; const seen=new Set(dst.map(tcSig_));
+            src.forEach(c=>{ const sg=tcSig_(c); if(c&&!seen.has(sg)){ dst.push(ensureTcId_(c)); seen.add(sg); changed=true; } });
+            if(dst.length) cur[k]=dst;
+          });
+          if(Object.keys(cur).length) remote[e.staff]=cur;
+        }
+      });
+      localStorage.setItem(JIMU_TC_MIGRATED_KEY,'1');
+      if(changed && s.url && s.token){
+        const payload={comments:remote,updatedAt:new Date().toISOString()};
+        try{ await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'jimu_task_comments',value:JSON.stringify(payload),token:s.token,savedBy:'calendar-app'})}); }catch(e){}
+      }
+    }
+    saveJimuTcMap_(remote); applyJimuTaskCommentsToState_();
+    if(typeof __refreshOpenTaskCmtUI_==='function') __refreshOpenTaskCmtUI_();
+    if(!opts.silent && typeof render==='function') render();
+    return remote;
+  }catch(err){ if(!opts.silent) console.warn('[jimu_task_comments] fetch失敗:',err.message); applyJimuTaskCommentsToState_(); return loadJimuTcMap_(); }
+}
+// 最新remote取得→(staff,taskKey)のリストにmutatorを1回適用→キャッシュ更新→push(多著者で消えない)
+async function mutateJimuTaskCommentsRemote_(staff, taskKey, mutator){
+  if(!staff||!taskKey) return;
+  const s=loadGasSettings(); let map=loadJimuTcMap_();
+  if(s.url&&s.token){
+    try{
+      const url=`${s.url}?action=get-shared-config&key=jimu_task_comments&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+      const res=await fetch(url,{method:'GET',redirect:'follow'});
+      if(res.ok){ const d=await res.json(); let raw=d.value; if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(_){ raw=null; } } if(raw&&raw.comments&&typeof raw.comments==='object') map=raw.comments; }
+    }catch(_){}
+  }
+  const byKey=(map[staff]&&typeof map[staff]==='object')?map[staff]:{};
+  const list=Array.isArray(byKey[taskKey])?byKey[taskKey].slice():[];
+  const next=mutator(list)||[];
+  byKey[taskKey]=next; map[staff]=byKey;
+  saveJimuTcMap_(map); applyJimuTaskCommentsToState_();
+  if(typeof __refreshOpenTaskCmtUI_==='function') __refreshOpenTaskCmtUI_();
+  if(typeof render==='function') render();
+  if(s.url&&s.token){
+    const payload={comments:map,updatedAt:new Date().toISOString()};
+    try{ await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'jimu_task_comments',value:JSON.stringify(payload),token:s.token,savedBy:'calendar-app'})}); }
+    catch(e){ console.warn('[jimu_task_comments] push失敗:',e.message); }
+  }
+  return map;
+}
+
 // 立会レコードを仮想イベントに変換 (カレンダー描画用)
 // ====================================================================
 // 📄 立会「資料作成済」フラグ (taikyo_shiryo_ready) — 見積アプリ(v1.4.539)がpush
@@ -8351,17 +8455,33 @@ function showTaskChecklistPopup(el, ev){
     cp.style.left = Math.max(8, Math.min(rect.left, window.innerWidth-320))+'px';
     cp.style.top  = Math.min(rect.bottom+4, window.innerHeight-260)+'px';
     const persist = ()=>{ const cev=(state.events||[]).find(e=>e.id===ev.id); if(cev){ cev.updatedAt=new Date().toISOString(); saveState(); if(typeof cloudQueueEventChange==='function') cloudQueueEventChange(cev,'upsert'); } };
-    const wireDel = ()=>{ cp.querySelectorAll('.tcp-del').forEach(b=>{ b.onclick=()=>{ const cev=(state.events||[]).find(e=>e.id===ev.id); if(cev&&cev.taskComments&&cev.taskComments[key]){ cev.taskComments[key].splice(parseInt(b.dataset.cidx,10),1); persist(); refresh(); renderInner(); } }; }); };
+    const cevStaff_ = ()=>{ const cev=(state.events||[]).find(e=>e.id===ev.id)||ev; return cev && cev.staff; };   // 共有キー=担当者
+    const wireDel = ()=>{ cp.querySelectorAll('.tcp-del').forEach(b=>{ b.onclick=()=>{
+      const cev=(state.events||[]).find(e=>e.id===ev.id)||ev; const staff=cevStaff_();
+      const arr=(cev.taskComments&&cev.taskComments[key])||[]; const target=arr[parseInt(b.dataset.cidx,10)]; if(!target) return;
+      const sig=(typeof tcSig_==='function')?tcSig_(target):`${target.author||''}|${target.text||''}|${target.at||''}`;
+      arr.splice(parseInt(b.dataset.cidx,10),1); refresh(); renderInner();   // 楽観削除
+      if(staff && typeof mutateJimuTaskCommentsRemote_==='function') mutateJimuTaskCommentsRemote_(staff, key, list=> list.filter(x=>((typeof tcSig_==='function')?tcSig_(x):`${x.author||''}|${x.text||''}|${x.at||''}`)!==sig));
+      else persist();
+    }; }); };
     const refresh = ()=>{ const l=cp.querySelector('.tcp-list'); if(l) l.innerHTML=renderList(); wireDel(); };
-    const add = (text)=>{ text=String(text||'').trim(); if(!text) return; const cev=(state.events||[]).find(e=>e.id===ev.id); if(!cev) return; if(!cev.taskComments) cev.taskComments={}; if(!Array.isArray(cev.taskComments[key])) cev.taskComments[key]=[]; cev.taskComments[key].push({author:(me||'?'),text,at:new Date().toISOString()}); persist(); refresh(); renderInner(); };
+    const add = (text)=>{ text=String(text||'').trim(); if(!text) return; const cev=(state.events||[]).find(e=>e.id===ev.id)||ev; const staff=cevStaff_();
+      const c={ id:(typeof uid==='function'?uid():'c_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5)), author:(me||'?'), text, at:new Date().toISOString() };
+      if(!cev.taskComments) cev.taskComments={}; if(!Array.isArray(cev.taskComments[key])) cev.taskComments[key]=[]; cev.taskComments[key].push(c); refresh(); renderInner();   // 楽観表示
+      if(staff && typeof mutateJimuTaskCommentsRemote_==='function') mutateJimuTaskCommentsRemote_(staff, key, list=> list.some(x=>x&&x.id===c.id)?list:[...list,c]);
+      else persist();
+    };
+    __refreshOpenTaskCmtUI_ = ()=>{ try{ refresh(); }catch(_){} };   // 他端末の更新を取得したら開いてる欄を再描画
+    if(typeof fetchJimuTaskComments_==='function') fetchJimuTaskComments_({silent:true}).catch(()=>{});   // 開いたら最新取得
     wireDel();
     const inp=cp.querySelector('.tcp-input'), snd=cp.querySelector('.tcp-send');
     const doSend=()=>{ add(inp.value); inp.value=''; inp.focus(); };
     snd.onclick=doSend;
     inp.onkeydown=e=>{ if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&e.keyCode!==229){ e.preventDefault(); doSend(); } };   // IME変換Enter除外=タスクのコメント増殖バグ修正(v1.30.262・鈴木報告)
-    cp.querySelector('[data-role="close"]').onclick=()=>cp.remove();
+    const closePop_=()=>{ __refreshOpenTaskCmtUI_=null; cp.remove(); };
+    cp.querySelector('[data-role="close"]').onclick=closePop_;
     setTimeout(()=>inp.focus(),30);
-    const closeOut=(e2)=>{ if(!cp.contains(e2.target) && !anchorEl.contains(e2.target)){ cp.remove(); document.removeEventListener('pointerdown',closeOut,true); } };
+    const closeOut=(e2)=>{ if(!cp.contains(e2.target) && !anchorEl.contains(e2.target)){ __refreshOpenTaskCmtUI_=null; cp.remove(); document.removeEventListener('pointerdown',closeOut,true); } };
     setTimeout(()=>document.addEventListener('pointerdown',closeOut,true),60);
   };
   // テキストをインライン編集
@@ -8578,6 +8698,7 @@ function showTaskChecklistPopup(el, ev){
   document.body.appendChild(pop);
   // 💬 事務タスクポップを開いたら業務連絡の最新を取得(全員共有・他PCの書込みを即反映)v1.30.203
   if(cur && cur.category==='事務' && typeof fetchJimuMessages_==='function') fetchJimuMessages_({silent:true}).catch(()=>{});
+  if(cur && cur.category==='事務' && typeof fetchJimuTaskComments_==='function') fetchJimuTaskComments_({silent:true}).catch(()=>{});   // 💬タスクコメントも最新化 v1.30.286
   requestAnimationFrame(()=>{
     const rc = pop.getBoundingClientRect();
     const vw = window.innerWidth, vh = window.innerHeight, mg=8;
@@ -9879,6 +10000,8 @@ async function syncChecksFromGAS(opts){
     if(typeof applyRepairCommentsToState_==='function') applyRepairCommentsToState_();  // 💬 全員共有の進捗チャットを反映(v1.30.184)
     if(typeof applyJimuMessagesToState_==='function') applyJimuMessagesToState_();  // 💬 全員共有の業務連絡を反映(v1.30.203)
     if(typeof fetchJimuMessages_==='function') fetchJimuMessages_({silent:true}).catch(()=>{});  // 業務連絡も最新化
+    if(typeof applyJimuTaskCommentsToState_==='function') applyJimuTaskCommentsToState_();  // 💬 全員共有のタスクコメントを反映(v1.30.286)
+    if(typeof fetchJimuTaskComments_==='function') fetchJimuTaskComments_({silent:true}).catch(()=>{});  // タスクコメントも最新化
     if(typeof applyCheckWorkersToState_==='function') applyCheckWorkersToState_();  // 🏷 最終確認の作業担当(全員共有)を反映(v1.30.95・キャッシュ即適用)
     // 🔄 再同期時は修繕担当の最新オーバーレイも取りに行く→他PCの担当変更が即反映(v1.30.93)
     if(typeof fetchRepairOverrides_==='function') fetchRepairOverrides_({silent:true}).catch(()=>{});
@@ -19238,6 +19361,12 @@ setTimeout(()=>{
       try{ if(typeof captureLocalJimuMessages_==='function') captureLocalJimuMessages_(); }catch(_){}  // 先にローカルev.messagesを共有mapへ退避(applyで消える前)
       fetchJimuMessages_({silent:true, push:true}).catch(()=>{});
       setInterval(()=>fetchJimuMessages_({silent:true}).catch(()=>{}), 5*60*1000);
+    }
+    // 💬 タスク個別コメント (全員共有・shared-config jimu_task_comments) 取得・初回はローカル分をpush(移行)・以後5分ごと(v1.30.286)
+    if(typeof fetchJimuTaskComments_==='function'){
+      try{ if(typeof captureLocalJimuTaskComments_==='function') captureLocalJimuTaskComments_(); }catch(_){}  // 先にローカルev.taskCommentsを共有mapへ退避
+      fetchJimuTaskComments_({silent:true, push:true}).catch(()=>{});
+      setInterval(()=>fetchJimuTaskComments_({silent:true}).catch(()=>{}), 5*60*1000);
     }
     // 🕐 立会 上書き(担当・日時/全員共有) 取得・初回はローカル分をpush(移行)・以後5分ごと
     if(typeof fetchTaikyoOverrides_==='function'){
