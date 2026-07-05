@@ -2503,7 +2503,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.283</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.284</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -10840,9 +10840,12 @@ function renderLeaveBand(){
     const bg = STAFF_COLORS[l.staff] || "#fde68a";
     const fg = textColorFor(bg);
     const display = (typeof getStaffDisplayName === 'function') ? getStaffDisplayName(l.staff) : l.staff;
-    // 日祝の自動休日チップ: 薄めに表示・クリック編集なし(明示レコードではないため)
+    // 日祝の自動休日チップ: 薄めに表示・クリック編集なし(明示レコードではない)。ただし📋事務タスクは開けるように(v1.30.284・山田「休日スタッフでもタスクみれるように」)
     if(l.__auto){
-      return `<span class="leave-badge" style="background:${bg};color:${fg};opacity:.6" title="${escapeHtml(display)} 日祝(自動休)"><span class="lb-staff">${escapeHtml(display)}</span><span class="lb-type">日祝</span></span>`;
+      const _tpA = staffTaskProgress_(l.staff);
+      const __msgA = (typeof staffHasUnackMsg_==='function' && staffHasUnackMsg_(l.staff)) ? `<span class="msg-alert" title="💬 業務連絡(未確認) — リアクションで確認済みに">🔔</span>` : "";
+      const taskA = `<span class="lb-task${__msgA?' has-msg-alert':''}" data-task-staff="${escapeHtml(l.staff)}" title="📋 事務タスク${_tpA.has?' ('+_tpA.dn+'/'+_tpA.tt+')':''}">📋${__msgA}</span>`;
+      return `<span class="leave-badge" style="background:${bg};color:${fg};opacity:.72" title="${escapeHtml(display)} 日祝(自動休)"><span class="lb-staff">${escapeHtml(display)}</span><span class="lb-type">日祝</span>${taskA}</span>`;
     }
     const range = l.start===l.end ? l.start.slice(5) : `${l.start.slice(5)}〜${l.end.slice(5)}`;
     const typeLabel = leaveDispLabel_(l);
