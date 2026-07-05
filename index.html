@@ -2503,7 +2503,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.269</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.270</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -15871,6 +15871,23 @@ function staffBadgesMini_(staffStr, opts){
 const CAL_REPORTS_KEY = "buildcluster_calendar_reports";
 function loadCalReports_(){ try{ const o=JSON.parse(localStorage.getItem(CAL_REPORTS_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
 function saveCalReports_(m){ try{ localStorage.setItem(CAL_REPORTS_KEY, JSON.stringify(m||{})); }catch(e){} }
+// 📷 共有ストアはSheetセル(上限≈50000字)。画像1枚(base64)だけで超過し値全体が壊れる→全端末で空表示になる。
+//   対策: 共有に載せる版は安全予算(SHARE_MAX)内に収め、超える分は古い画像から落とす(=画像はローカル保持・hadPhoto印)。
+//   テキスト/コメント/ステータスは必ず共有される。v1.30.270
+const CAL_REPORTS_SHARE_MAX = 45000;
+function calReportsForShare_(map){
+  const out = {};
+  Object.keys(map||{}).forEach(id=>{ if(map[id]) out[id] = Object.assign({}, map[id]); });
+  const sizeOf = ()=> JSON.stringify({reports: out}).length;
+  // 画像付きを新しい順に並べ、超過している間は古い方から photo を外す(hadPhoto印を残す)
+  const withPhoto = Object.keys(out).filter(id=> out[id] && out[id].photo)
+    .sort((a,b)=> String(out[a].at||'').localeCompare(String(out[b].at||'')));  // 古い→新しい
+  for(let i=0; i<withPhoto.length && sizeOf() > CAL_REPORTS_SHARE_MAX; i++){
+    const r = out[withPhoto[i]];
+    delete r.photo; r.hadPhoto = true;
+  }
+  return out;
+}
 function mergeCalReports_(a,b){
   const out={};
   new Set([...Object.keys(a||{}),...Object.keys(b||{})]).forEach(id=>{
@@ -15879,6 +15896,9 @@ function mergeCalReports_(a,b){
     const w = (String(y.updatedAt||'')>=String(x.updatedAt||'')) ? y : x;   // 新しい方を採用(LWW)
     const l = (w===y)?x:y;
     const r = Object.assign({}, w);
+    // 📷 画像は共有ストア(セル上限)に載らないため、どちらかが持っていれば必ず残す(取得で自分の画像を失わない)v1.30.270
+    if(!r.photo && (w.photo || l.photo)) r.photo = w.photo || l.photo;
+    if((w.hadPhoto || l.hadPhoto) && !r.photo) r.hadPhoto = true;
     const ids=new Set((w.comments||[]).map(c=>c&&c.id).filter(Boolean));
     const extra=(l.comments||[]).filter(c=>c&&c.id&&!ids.has(c.id));   // 相手にしか無いコメントを救出
     if(extra.length) r.comments=(w.comments||[]).concat(extra).sort((p,q)=>String(p.at||'').localeCompare(String(q.at||'')));
@@ -15932,8 +15952,9 @@ async function pushCalReports_(){
   map = mergeCalReports_(map, loadCalReports_());   // ⚠await中の変更も拾う(スナップショットで上書きしない)
   saveCalReports_(map);
   try{
+    const share = calReportsForShare_(map);   // 📷 画像はセル上限内に収める(超過分はローカル保持)v1.30.270
     await fetch(s.url, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({ action:'save-shared-config', key:'calendar_reports', value: JSON.stringify({reports:map, updatedAt:new Date().toISOString()}), token: s.token, savedBy:'calendar-app' }) });
+      body: JSON.stringify({ action:'save-shared-config', key:'calendar_reports', value: JSON.stringify({reports:share, updatedAt:new Date().toISOString()}), token: s.token, savedBy:'calendar-app' }) });
   }catch(e){ console.warn('[calendar_reports] push失敗:', e.message); if(typeof showAutoSyncToast==='function') showAutoSyncToast('⚠ 報告の共有保存に失敗(この端末には保存済)'); }
 }
 function mutateCalReport_(id, patch){
@@ -15969,7 +15990,7 @@ function ensureBugReportModal_(){
         <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
           <input type="file" id="br-photo-file" accept="image/*" style="display:none">
           <button class="btn" id="br-photo-btn" style="font-size:11px;padding:4px 10px">📷 画像添付</button>
-          <span style="font-size:10px;color:var(--muted)">スクショは Ctrl+V 貼り付け／ドロップでもOK</span>
+          <span style="font-size:10px;color:var(--muted)">スクショは Ctrl+V／ドロップでもOK（大きい画像は投稿端末のみ表示・文面は全員共有）</span>
           <img id="br-photo-preview" style="display:none;max-height:56px;max-width:110px;border-radius:6px;border:1px solid var(--border);cursor:pointer" title="クリックで添付取消">
           <span id="br-photo-note" style="font-size:10px;color:#16a34a;font-weight:700"></span>
         </div>
@@ -16039,7 +16060,13 @@ function openBugReportModal_(){
   const s = (typeof loadGasSettings==='function') ? loadGasSettings() : {};
   if(!Object.values(loadCalReports_()).some(r=>r && !r.deleted) && s.url && s.token) __brFetchState = "loading";
   renderBugReportModal_();
-  fetchCalReports_({render:true, silent:true}).catch(()=>{});   // 開いたら最新を取得
+  fetchCalReports_({render:true, silent:true}).then(()=>{
+    // 🩹 画像肥大で共有ストアが壊れ空になっていても、報告を持つ端末が開いたらサイズ調整済みの綺麗な版を再共有して復旧。
+    //   空の端末(スマホ等)は何もしない=remoteを消さない。v1.30.270
+    if(s.url && s.token && Object.values(loadCalReports_()).some(r=>r && !r.deleted) && typeof pushCalReports_==='function'){
+      pushCalReports_().catch(()=>{});
+    }
+  }).catch(()=>{});
 }
 function renderBugReportModal_(){
   const list = document.getElementById("br-list"); if(!list) return;
@@ -16077,7 +16104,9 @@ function renderBugReportModal_(){
         <span style="font-size:10px;color:var(--muted);margin-left:auto">${escapeHtml(r.by||"?")} ・ ${dStr}${r.appVer?` ・ ${escapeHtml(r.appVer)}`:""}</span>
       </div>
       <div style="font-size:13px;margin-top:5px;white-space:pre-wrap;word-break:break-word">${escapeHtml(r.text||"")}</div>
-      ${(r.photo && /^data:image\//.test(r.photo)) ? `<img data-br-zoom="${r.id}" src="${r.photo}" style="margin-top:5px;max-height:130px;max-width:100%;border-radius:6px;border:1px solid var(--border);cursor:zoom-in" title="クリックで拡大">` : ""}
+      ${(r.photo && /^data:image\//.test(r.photo))
+        ? `<img data-br-zoom="${r.id}" src="${r.photo}" style="margin-top:5px;max-height:130px;max-width:100%;border-radius:6px;border:1px solid var(--border);cursor:zoom-in" title="クリックで拡大">`
+        : (r.hadPhoto ? `<div style="margin-top:5px;font-size:10px;color:var(--muted)">📷 画像あり（サイズ上限のため投稿した端末でのみ表示）</div>` : "")}
       ${cmts}
       <div style="display:flex;gap:6px;margin-top:5px">
         <button data-br-cmt="${r.id}" class="btn" style="font-size:10px;padding:2px 8px">💬 コメント${(r.comments||[]).length?` (${(r.comments||[]).length})`:""}</button>
