@@ -2503,7 +2503,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.273</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.274</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4742,6 +4742,16 @@ function weatherIcon_(code){
   if(code>=95) return "⛈";
   return "";
 }
+// 天気の種別で色分け(山田要望: 晴=オレンジ/曇=グレー/雨=青/雪=水色/雷雨=紫) v1.30.274
+function weatherPill_(code){
+  if(code==null) return {bg:'#e5e7eb', fg:'#475569'};
+  if(code<=1) return {bg:'#ffe4c4', fg:'#c2410c'};                                   // 快晴/晴れ=オレンジ
+  if(code===2||code===3||code===45||code===48) return {bg:'#e2e8f0', fg:'#475569'};  // 曇り/霧=グレー
+  if((code>=51&&code<=67)||(code>=80&&code<=82)) return {bg:'#bfdbfe', fg:'#1d4ed8'}; // 雨=青
+  if((code>=71&&code<=77)||code===85||code===86) return {bg:'#cffafe', fg:'#0e7490'}; // 雪=水色
+  if(code>=95) return {bg:'#e9d5ff', fg:'#7e22ce'};                                   // 雷雨=紫
+  return {bg:'#e2e8f0', fg:'#475569'};
+}
 let __weatherFetching = false;
 async function fetchWeather_(opts={}){
   if(__weatherFetching) return loadWeatherCache_();
@@ -4796,16 +4806,15 @@ function injectWeatherHeaders_(){
     if(!w) return;
     const hasPop = (w.pop!=null);
     const pop = hasPop ? Math.max(0, Math.round(w.pop)) : null;
-    // 日付の隣にインライン表示・アイコン大きめ・降水確率でカラフルなピル(v1.30.273)
-    const color = !hasPop ? '#475569' : (pop>=70 ? '#075985' : pop>=40 ? '#0369a1' : '#475569');
-    const bg    = !hasPop ? 'transparent' : (pop>=70 ? '#bae6fd' : pop>=40 ? '#e0f2fe' : '#f1f5f9');
-    const weight = (hasPop && pop>=40) ? '800' : '700';
+    // 天気種別で色分けした色付きピルを、日付の「隣」に(=日付行の中に)差し込む(v1.30.274)
+    const pill = weatherPill_(w.code);
     const span = document.createElement('span');
     span.className = 'wx-badge';
-    span.style.cssText = `display:inline-flex;align-items:center;gap:2px;margin-left:5px;padding:1px 6px;border-radius:10px;font-size:12px;line-height:1.5;vertical-align:middle;white-space:nowrap;background:${bg};color:${color};font-weight:${weight}`;
+    span.style.cssText = `display:inline-flex;align-items:center;gap:2px;margin-left:5px;padding:1px 6px;border-radius:10px;font-size:12px;line-height:1.5;vertical-align:middle;white-space:nowrap;background:${pill.bg};color:${pill.fg};font-weight:800`;
     span.title = hasPop ? `9〜18時 降水確率 最大${pop}%（Open-Meteo）` : `日中の天気（Open-Meteo）`;
     span.innerHTML = `<span style="font-size:17px;line-height:1">${weatherIcon_(w.code)}</span>${hasPop?`<span>${pop}%</span>`:''}`;
-    el.appendChild(span);
+    const dateLine = el.querySelector(':scope > div') || el;   // 日付の行(先頭div)に載せる=日付の隣に横並び
+    dateLine.appendChild(span);
   });
 }
 // 取得→ヘッダー反映(起動時・定期・ナビ時に呼ぶ)
