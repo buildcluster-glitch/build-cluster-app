@@ -2503,7 +2503,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.286</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.287</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -16298,6 +16298,35 @@ async function pushCalReports_(){
       body: JSON.stringify({ action:'save-shared-config', key:'calendar_reports', value: JSON.stringify({reports:share, updatedAt:new Date().toISOString()}), token: s.token, savedBy:'calendar-app' }) });
   }catch(e){ console.warn('[calendar_reports] push失敗:', e.message); if(typeof showAutoSyncToast==='function') showAutoSyncToast('⚠ 報告の共有保存に失敗(この端末には保存済)'); }
 }
+// 🔄 手動再共有(スマホにPCの内容が出ない時の修復＋診断) v1.30.287
+//   最新remote取得→ローカルとマージ→軽量版(画像除去・サイズ制限)を保存→サーバー応答を確認→再取得。
+//   結果(件数・KB・成否)をトーストで返す=遠隔でも状況が分かる。
+async function reshareBugReports_(btn){
+  const s = loadGasSettings();
+  if(!s.url || !s.token){ alert('この端末はクラウド同期が未設定です。⚙設定でURL/Tokenを入れてください。'); return; }
+  const orig = btn ? btn.textContent : '';
+  if(btn){ btn.disabled = true; btn.textContent = '更新中…'; }
+  try{
+    await fetchCalReports_({silent:true});   // 1) 他端末の投稿を取り込む
+    const map = loadCalReports_();
+    const share = calReportsForShare_(map);   // 2) 画像除去＋サイズ制限した共有版
+    const value = JSON.stringify({reports:share, updatedAt:new Date().toISOString()});
+    const kb = Math.round(value.length/1024*10)/10;
+    const cnt = Object.values(share).filter(r=>r && !r.deleted).length;
+    let ok = false, srvMsg = '';
+    try{
+      const res = await fetch(s.url, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body: JSON.stringify({ action:'save-shared-config', key:'calendar_reports', value, token:s.token, savedBy:'calendar-app' }) });
+      ok = res.ok;
+      try{ const d = await res.json(); if(d){ if(d.ok===false) ok=false; if(d.error) srvMsg=String(d.error); } }catch(_){}
+    }catch(e){ srvMsg = e.message||String(e); }
+    await fetchCalReports_({render:true, silent:true});   // 3) 保存後の値を取り直して表示
+    const shown = Object.values(loadCalReports_()).filter(r=>r && !r.deleted).length;
+    if(ok) alert(`✅ ${cnt}件を全員に再共有しました（約${kb}KB）。\n他の端末で🐞を開き直すと表示されます。\n（この端末の表示: ${shown}件）`);
+    else   alert(`⚠ 共有保存に失敗しました（約${kb}KB${srvMsg?'・'+srvMsg:''}）。\nサイズ超過などの可能性があります。画面のこの数字を伝えてください。`);
+  }catch(e){ alert('⚠ 通信エラー: '+(e.message||e)); }
+  finally{ if(btn){ btn.disabled=false; btn.textContent=orig; } }
+}
 function mutateCalReport_(id, patch){
   const map = loadCalReports_();
   const cur = map[id] || {};
@@ -16338,12 +16367,15 @@ function ensureBugReportModal_(){
         <div id="br-list"></div>
       </div>
       <div class="modal-footer">
+        <button class="btn" id="br-reshare" title="この端末の報告を全員に再共有し、最新を取得します（スマホに出ない時に）">🔄 再共有</button>
         <button class="btn" id="br-close">閉じる</button>
       </div>
     </div>`;
   document.body.appendChild(ov);
   ov.onclick = e=>{ if(e.target===ov) ov.classList.remove("show"); };
   ov.querySelector("#br-close").onclick = ()=> ov.classList.remove("show");
+  const __brReshare = ov.querySelector("#br-reshare");
+  if(__brReshare) __brReshare.onclick = ()=> reshareBugReports_(__brReshare);
   // 📷 画像添付(v1.30.260): 既存のrestoCompressImageで約40KBに圧縮→共有JSONに載せて全員に見える
   const __brFile = ov.querySelector("#br-photo-file");
   const __brPrev = ov.querySelector("#br-photo-preview");
