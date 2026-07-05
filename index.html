@@ -2503,7 +2503,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.272</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.273</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4796,13 +4796,15 @@ function injectWeatherHeaders_(){
     if(!w) return;
     const hasPop = (w.pop!=null);
     const pop = hasPop ? Math.max(0, Math.round(w.pop)) : null;
-    const color = !hasPop ? '#64748b' : (pop>=70 ? '#0369a1' : pop>=40 ? '#0891b2' : '#94a3b8');
-    const weight = (hasPop && pop>=40) ? '700' : '600';
+    // 日付の隣にインライン表示・アイコン大きめ・降水確率でカラフルなピル(v1.30.273)
+    const color = !hasPop ? '#475569' : (pop>=70 ? '#075985' : pop>=40 ? '#0369a1' : '#475569');
+    const bg    = !hasPop ? 'transparent' : (pop>=70 ? '#bae6fd' : pop>=40 ? '#e0f2fe' : '#f1f5f9');
+    const weight = (hasPop && pop>=40) ? '800' : '700';
     const span = document.createElement('span');
     span.className = 'wx-badge';
-    span.style.cssText = `display:flex;align-items:center;justify-content:center;gap:1px;font-size:9px;line-height:1;margin-top:1px;color:${color};font-weight:${weight}`;
+    span.style.cssText = `display:inline-flex;align-items:center;gap:2px;margin-left:5px;padding:1px 6px;border-radius:10px;font-size:12px;line-height:1.5;vertical-align:middle;white-space:nowrap;background:${bg};color:${color};font-weight:${weight}`;
     span.title = hasPop ? `9〜18時 降水確率 最大${pop}%（Open-Meteo）` : `日中の天気（Open-Meteo）`;
-    span.innerHTML = `<span style="font-size:11px">${weatherIcon_(w.code)}</span>${hasPop?`<span>${pop}%</span>`:''}`;
+    span.innerHTML = `<span style="font-size:17px;line-height:1">${weatherIcon_(w.code)}</span>${hasPop?`<span>${pop}%</span>`:''}`;
     el.appendChild(span);
   });
 }
