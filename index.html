@@ -2503,7 +2503,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.279</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.280</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4742,6 +4742,36 @@ function weatherIcon_(code){
   if(code>=95) return "⛈";
   return "";
 }
+// 天気コード→ざっくり種別(和名生成用)
+function wxCat_(code){
+  if(code==null) return null;
+  if(code<=1) return 'sunny';
+  if(code===2||code===3||code===45||code===48) return 'cloudy';
+  if((code>=71&&code<=77)||code===85||code===86) return 'snow';
+  if(code>=95) return 'thunder';
+  return 'rain';   // 51-67, 80-82
+}
+const WX_CAT_JA = {sunny:'晴れ', cloudy:'曇り', rain:'雨', snow:'雪', thunder:'雷雨'};
+// 日中(6〜18時)の推移から和名を作る: 「曇りのち晴れ」「雨時々曇り」「晴れ一時雨」等 v1.30.280
+function wxDayName_(HH){
+  const seq = [];
+  for(let h=6; h<=18; h++){ const x=HH[h]; if(!x) continue; const c=wxCat_(x.code); if(c) seq.push(c); }
+  if(!seq.length) return '';
+  const segs = [];   // 連続する同種をまとめる
+  seq.forEach(c=>{ if(!segs.length || segs[segs.length-1].c!==c) segs.push({c,n:1}); else segs[segs.length-1].n++; });
+  const uniq = [...new Set(seq)];
+  if(uniq.length===1) return WX_CAT_JA[seq[0]];
+  if(segs.length===2) return `${WX_CAT_JA[segs[0].c]}のち${WX_CAT_JA[segs[1].c]}`;   // A→B の推移
+  if(segs.length===uniq.length && uniq.length>=3)   // A→B→C… 単調に移り変わる → 最初のち最後
+    return `${WX_CAT_JA[segs[0].c]}のち${WX_CAT_JA[segs[segs.length-1].c]}`;
+  // 混在: 主(時間の長い方)＋従。従が1区間だけ=一時 / 複数に散らばる=時々
+  const counts = {}; seq.forEach(c=> counts[c]=(counts[c]||0)+1);
+  const sev = {sunny:0, cloudy:1, snow:2, rain:3, thunder:4};
+  const order = uniq.slice().sort((a,b)=> (counts[b]-counts[a]) || (sev[b]-sev[a]));
+  const base = order[0], sec = order[1];
+  const secSegs = segs.filter(s=>s.c===sec).length;
+  return `${WX_CAT_JA[base]}${secSegs<=1?'一時':'時々'}${WX_CAT_JA[sec]}`;
+}
 // 天気の種別で色分け(山田要望: 晴=オレンジ/曇=グレー/雨=青/雪=水色/雷雨=紫) v1.30.274
 //   v1.30.277: 雨の青が薄く「色なし」に見えた→全色を濃くして差をハッキリ
 function weatherPill_(code){
@@ -4759,7 +4789,7 @@ async function fetchWeather_(opts={}){
   if(!weatherEnabled_()) return null;
   const cached = loadWeatherCache_();
   const {lat, lon} = weatherLatLon_();
-  const stale = !cached || (Date.now() - (cached.at||0) >= WEATHER_TTL_MS) || cached.lat!==lat || cached.lon!==lon || cached.v!==2;   // v!==2=旧スキーマ(ブロック無)は取り直す
+  const stale = !cached || (Date.now() - (cached.at||0) >= WEATHER_TTL_MS) || cached.lat!==lat || cached.lon!==lon || cached.v!==3;   // v!==3=旧スキーマ(ブロック/天気名無)は取り直す
   if(!opts.force && !stale) return cached;
   __weatherFetching = true;
   try{
@@ -4802,9 +4832,9 @@ async function fetchWeather_(opts={}){
       let dayPop=-1, dayCode=null;
       for(let h=9; h<=18; h++){ const x=HH[h]; if(!x||x.pop==null) continue; if(x.pop>dayPop){ dayPop=x.pop; dayCode=x.code; } }
       if(dayCode==null) dayCode = HH[12] ? HH[12].code : (HH[9]? HH[9].code : 0);
-      days[dt] = { code: dayCode, pop: dayPop<0?null:dayPop, blocks };
+      days[dt] = { code: dayCode, pop: dayPop<0?null:dayPop, blocks, name: wxDayName_(HH) };
     });
-    const out = {at: Date.now(), v: 2, lat, lon, days};
+    const out = {at: Date.now(), v: 3, lat, lon, days};
     try{ localStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify(out)); }catch(_){}
     return out;
   }catch(e){ if(!opts.silent) console.warn('[weather] 取得失敗:', e.message); return cached; }
@@ -4859,7 +4889,7 @@ function wxTipHtml_(date, w){
       + `<td style="${cell};color:#1d4ed8;font-weight:700">${pop}</td>`
       + `<td style="${cell};color:#0891b2">${hum}</td></tr>`;
   }).join('');
-  return `<div style="font-weight:700;font-size:12px;margin-bottom:4px">${weatherIcon_(w.code)} ${md}(${dow})</div>`
+  return `<div style="font-weight:700;font-size:12px;margin-bottom:4px">${weatherIcon_(w.code)} ${md}(${dow})${w.name?` <span style="color:#334155">${w.name}</span>`:''}</div>`
     + `<table style="border-collapse:collapse;font-size:11.5px">`
     + `<tr style="color:#94a3b8;font-size:10px"><th style="padding:2px 7px;text-align:left;font-weight:600">時間</th><th style="padding:2px 7px;font-weight:600">気温</th><th style="padding:2px 7px;font-weight:600">降水</th><th style="padding:2px 7px;font-weight:600">湿度</th></tr>`
     + rows + `</table>`;
