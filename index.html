@@ -2510,7 +2510,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.299</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.300</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -6987,6 +6987,15 @@ function addJimuMessage_(staff, text, author){
   mutateJimuMessagesRemote_(staff, list=> list.some(x=>x.id===m.id)?list:[...list,m]);
   return m;
 }
+function editJimuMessage_(staff, msgId, newText){
+  newText=String(newText||'').trim(); if(!staff||!msgId||!newText) return;
+  const ed=new Date().toISOString();
+  const map=loadJimuMsgMap_(); const list=map[staff];
+  if(Array.isArray(list)){ const m=list.find(x=>x&&x.id===msgId); if(m){ m.text=newText; m.editedAt=ed; saveJimuMsgMap_(map); applyJimuMessagesToState_(); } }
+  if(typeof __refreshOpenJimuMsgUI_==='function') __refreshOpenJimuMsgUI_();
+  if(typeof render==='function') render();
+  mutateJimuMessagesRemote_(staff, l=> l.map(x=> x&&x.id===msgId ? Object.assign({},x,{text:newText,editedAt:ed}) : x));   // 全端末へ伝播
+}
 function deleteJimuMessage_(staff, msgId){
   if(!staff||!msgId) return;
   const map=loadJimuMsgMap_(); if(Array.isArray(map[staff])){ map[staff]=map[staff].filter(x=>x.id!==msgId); saveJimuMsgMap_(map); applyJimuMessagesToState_(); }
@@ -8530,9 +8539,9 @@ function showTaskChecklistPopup(el, ev){
       return cs.map((c,idx)=>{
         const tm = c.at ? (()=>{ const d=new Date(c.at); if(isNaN(d))return ''; const p=n=>String(n).padStart(2,'0'); const td=new Date();td.setHours(0,0,0,0); return d>=td?`${p(d.getHours())}:${p(d.getMinutes())}`:`${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`; })() : '';
         return `<div class="ev-comment-card ${c.author===me?'mine':''}" style="padding:3px 6px;font-size:11px;position:relative;border-radius:6px;margin-bottom:2px;background:#f8fafc">
-          ${c.author===me?`<button class="tcp-del" data-cidx="${idx}" style="position:absolute;right:2px;top:2px;border:0;background:transparent;color:#cbd5e1;cursor:pointer;font-size:11px">✕</button>`:''}
-          <div style="font-size:10px;color:var(--muted)"><b>${escapeHtml(c.author||'?')}</b> ${escapeHtml(tm)}</div>
-          <div style="white-space:pre-wrap">${escapeHtml(c.text||'')}</div>
+          ${c.author===me?`<span style="position:absolute;right:2px;top:2px;display:flex;gap:2px"><button class="tcp-edit" data-cidx="${idx}" title="編集" style="border:0;background:transparent;color:#94a3b8;cursor:pointer;font-size:11px;padding:0">✎</button><button class="tcp-del" data-cidx="${idx}" title="削除" style="border:0;background:transparent;color:#cbd5e1;cursor:pointer;font-size:11px;padding:0">✕</button></span>`:''}
+          <div style="font-size:10px;color:var(--muted)"><b>${escapeHtml(c.author||'?')}</b> ${escapeHtml(tm)}${c.editedAt?' <span style="color:#94a3b8">(編集済)</span>':''}</div>
+          <div class="tcp-text" style="white-space:pre-wrap;word-break:break-word">${escapeHtml(c.text||'')}</div>
         </div>`;
       }).join('');
     };
@@ -8540,7 +8549,7 @@ function showTaskChecklistPopup(el, ev){
       <div class="qp-title">💬 <span style="font-weight:600">${escapeHtml(taskText)}</span></div>
       <div class="tcp-list" style="max-height:200px;overflow:auto;margin-top:4px">${renderList()}</div>
       <div style="display:flex;gap:4px;margin-top:4px">
-        <textarea class="tcp-input" rows="1" placeholder="メッセージ (Enter送信)" style="flex:1;font-size:12px;resize:vertical;min-height:28px"></textarea>
+        <textarea class="tcp-input" rows="1" placeholder="メッセージ (Enter送信 / Shift+Enter改行)" style="flex:1;font-size:12px;resize:vertical;min-height:28px"></textarea>
         <button class="tcp-send btn">送信</button>
       </div>
       <div class="qp-actions"><button class="qp-close" data-role="close">閉じる</button></div>`;
@@ -8558,7 +8567,25 @@ function showTaskChecklistPopup(el, ev){
       if(staff && typeof mutateJimuTaskCommentsRemote_==='function') mutateJimuTaskCommentsRemote_(staff, key, list=> list.filter(x=>((typeof tcSig_==='function')?tcSig_(x):`${x.author||''}|${x.text||''}|${x.at||''}`)!==sig));
       else persist();
     }; }); };
-    const refresh = ()=>{ const l=cp.querySelector('.tcp-list'); if(l) l.innerHTML=renderList(); wireDel(); };
+    // ✎ タスクコメント編集(自分のみ・インライン・Shift+Enter改行/Enter確定/Esc取消)v1.30.300
+    const wireEdit = ()=>{ cp.querySelectorAll('.tcp-edit').forEach(b=>{ b.onclick=()=>{
+      const cev=(state.events||[]).find(e=>e.id===ev.id)||ev; const staff=cevStaff_();
+      const arr=(cev.taskComments&&cev.taskComments[key])||[]; const target=arr[parseInt(b.dataset.cidx,10)]; if(!target) return;
+      const sig=(typeof tcSig_==='function')?tcSig_(target):`${target.author||''}|${target.text||''}|${target.at||''}`;
+      const card=b.closest('.ev-comment-card'); const textDiv=card&&card.querySelector('.tcp-text'); if(!textDiv) return;
+      const ta=document.createElement('textarea'); ta.value=target.text||''; ta.style.cssText='width:100%;font-size:12px;resize:vertical;min-height:38px;box-sizing:border-box';
+      textDiv.replaceWith(ta); ta.focus(); ta.setSelectionRange(ta.value.length,ta.value.length);
+      let done=false;
+      const commit=()=>{ if(done)return; done=true; const nv=ta.value.replace(/\s+$/,'');
+        if(nv && nv!==target.text){ target.text=nv; target.editedAt=new Date().toISOString(); refresh(); renderInner();
+          if(staff && typeof mutateJimuTaskCommentsRemote_==='function') mutateJimuTaskCommentsRemote_(staff, key, list=> list.map(x=>{ const xs=(typeof tcSig_==='function')?tcSig_(x):`${x.author||''}|${x.text||''}|${x.at||''}`; return xs===sig ? Object.assign({},x,{text:nv,editedAt:target.editedAt}) : x; }));
+          else persist();
+        } else { refresh(); }
+      };
+      ta.onkeydown=e=>{ if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&e.keyCode!==229){ e.preventDefault(); commit(); } else if(e.key==='Escape'){ done=true; refresh(); } };
+      ta.onblur=commit;
+    }; }); };
+    const refresh = ()=>{ const l=cp.querySelector('.tcp-list'); if(l) l.innerHTML=renderList(); wireDel(); wireEdit(); };
     const add = (text)=>{ text=String(text||'').trim(); if(!text) return; const cev=(state.events||[]).find(e=>e.id===ev.id)||ev; const staff=cevStaff_();
       const c={ id:(typeof uid==='function'?uid():'c_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5)), author:(me||'?'), text, at:new Date().toISOString() };
       if(!cev.taskComments) cev.taskComments={}; if(!Array.isArray(cev.taskComments[key])) cev.taskComments[key]=[]; cev.taskComments[key].push(c); refresh(); renderInner();   // 楽観表示
@@ -8567,7 +8594,7 @@ function showTaskChecklistPopup(el, ev){
     };
     __refreshOpenTaskCmtUI_ = ()=>{ try{ refresh(); }catch(_){} };   // 他端末の更新を取得したら開いてる欄を再描画
     if(typeof fetchJimuTaskComments_==='function') fetchJimuTaskComments_({silent:true}).catch(()=>{});   // 開いたら最新取得
-    wireDel();
+    wireDel(); wireEdit();
     const inp=cp.querySelector('.tcp-input'), snd=cp.querySelector('.tcp-send');
     const doSend=()=>{ add(inp.value); inp.value=''; inp.focus(); };
     snd.onclick=doSend;
@@ -8658,9 +8685,9 @@ function showTaskChecklistPopup(el, ev){
     const msgsHtml = msgs.length ? msgs.map(m=>{
       const reacts=Object.entries(m.reactions||{}).filter(([_,u])=>Array.isArray(u)&&u.length).map(([em,users])=>{const on=meSelf&&users.includes(meSelf)?'on':'';return `<button class="reaction-btn ${on}" data-mtr="${escapeHtml(em)}" data-mi="${escapeHtml(m.id)}" title="${escapeHtml(users.join(', '))}">${em}<span class="r-count">${users.length}</span></button>`;}).join('');
       const picker = msgReactPickerId===m.id ? `<span style="display:inline-flex;gap:2px;margin-left:4px">${MSG_EMOJIS.map(em=>`<button class="reaction-btn" data-mrae="${escapeHtml(m.id)}" data-em="${em}" style="font-size:14px">${em}</button>`).join('')}</span>` : '';
-      return `<div class="tp-msg-card" style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:4px 7px;font-size:11px;position:relative">${m.author===meSelf?`<button class="tp-msg-del" data-mi="${escapeHtml(m.id)}" style="position:absolute;right:3px;top:3px;border:0;background:transparent;color:#cbd5e1;cursor:pointer;font-size:11px">✕</button>`:''}<div style="font-size:10px;color:#64748b"><b style="color:#1e293b">${escapeHtml(m.author||'?')}</b> ${escapeHtml(fmtMsgT(m.at))}</div><div style="white-space:pre-wrap;color:#0f172a">${escapeHtml(m.text||'')}</div><div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;align-items:center">${reacts}<button class="reaction-add" data-mrad="${escapeHtml(m.id)}" style="font-size:12px;padding:0 5px">+</button>${picker}</div></div>`;
+      return `<div class="tp-msg-card" style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:4px 7px;font-size:11px;position:relative">${m.author===meSelf?`<span style="position:absolute;right:3px;top:3px;display:flex;gap:2px"><button class="tp-msg-edit" data-mi="${escapeHtml(m.id)}" title="編集" style="border:0;background:transparent;color:#94a3b8;cursor:pointer;font-size:11px;padding:0">✎</button><button class="tp-msg-del" data-mi="${escapeHtml(m.id)}" title="削除" style="border:0;background:transparent;color:#cbd5e1;cursor:pointer;font-size:11px;padding:0">✕</button></span>`:''}<div style="font-size:10px;color:#64748b"><b style="color:#1e293b">${escapeHtml(m.author||'?')}</b> ${escapeHtml(fmtMsgT(m.at))}${m.editedAt?' <span style="color:#94a3b8">(編集済)</span>':''}</div><div class="tp-msg-text" style="white-space:pre-wrap;word-break:break-word;color:#0f172a">${escapeHtml(m.text||'')}</div><div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;align-items:center">${reacts}<button class="reaction-add" data-mrad="${escapeHtml(m.id)}" style="font-size:12px;padding:0 5px">+</button>${picker}</div></div>`;
     }).join('') : '<div style="font-size:11px;color:#94a3b8;text-align:center;padding:3px">まだ業務連絡はありません</div>';
-    const msgSectionHtml = (cur.category==='事務') ? `<div class="tp-msg" style="border-top:1px solid #eef2f7;margin-top:8px;padding-top:8px"><div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:5px">💬 業務連絡 <span style="font-weight:400;color:#94a3b8;font-size:10px">(${escapeHtml(cur.staff||'')}さんへ・出社時に確認)</span></div><div class="tp-msg-list" style="max-height:170px;overflow:auto;display:flex;flex-direction:column;gap:4px">${msgsHtml}</div><div style="display:flex;gap:4px;margin-top:6px"><textarea class="tp-msg-input" rows="1" placeholder="業務連絡を書く (Enter送信)" style="flex:1;font-size:12px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;resize:vertical;min-height:30px"></textarea><button class="tp-msg-send btn primary" style="font-size:12px;padding:5px 12px">送信</button></div></div>` : '';
+    const msgSectionHtml = (cur.category==='事務') ? `<div class="tp-msg" style="border-top:1px solid #eef2f7;margin-top:8px;padding-top:8px"><div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:5px">💬 業務連絡 <span style="font-weight:400;color:#94a3b8;font-size:10px">(${escapeHtml(cur.staff||'')}さんへ・出社時に確認)</span></div><div class="tp-msg-list" style="max-height:170px;overflow:auto;display:flex;flex-direction:column;gap:4px">${msgsHtml}</div><div style="display:flex;gap:4px;margin-top:6px"><textarea class="tp-msg-input" rows="1" placeholder="業務連絡を書く (Enter送信 / Shift+Enter改行)" style="flex:1;font-size:12px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;resize:vertical;min-height:30px"></textarea><button class="tp-msg-send btn primary" style="font-size:12px;padding:5px 12px">送信</button></div></div>` : '';
     pop.innerHTML = `
       <div class="qp-title">📋 ${head}タスク <span class="tp-count ${allDone?'done':''}">${allDone?'✓ ':''}${ti.done}/${ti.total}</span></div>
       <div class="tp-bar"><i style="width:${pct}%;background:${allDone?'#16a34a':'#3b82f6'}"></i></div>
@@ -8783,6 +8810,20 @@ function showTaskChecklistPopup(el, ev){
     if(msgSend) msgSend.onclick = ()=>sendMsg_(msgInput.value);
     if(msgInput) msgInput.onkeydown = e=>{ if(e.key==='Enter' && !e.shiftKey && !e.isComposing && e.keyCode!==229){ e.preventDefault(); sendMsg_(msgInput.value); } };   // IME変換Enter除外(v1.30.262)
     pop.querySelectorAll('.tp-msg-del').forEach(b=>b.onclick=()=>{ if(!confirm('この業務連絡を削除しますか？')) return; const st=msgStaff_(); if(st&&typeof deleteJimuMessage_==='function') deleteJimuMessage_(st, b.dataset.mi); });
+    // ✎ 業務連絡 編集(自分のみ・インライン・Shift+Enter改行/Enter確定/Esc取消)v1.30.300
+    pop.querySelectorAll('.tp-msg-edit').forEach(b=>b.onclick=()=>{
+      if(!meSelf){alert('先に「👤 自分」を設定してください');return;}
+      const st=msgStaff_(); const mid=b.dataset.mi;
+      const list=(typeof loadJimuMsgMap_==='function')?(loadJimuMsgMap_()[st]||[]):[];
+      const m=list.find(x=>x&&x.id===mid); if(!m) return;
+      const card=b.closest('.tp-msg-card'); const textDiv=card&&card.querySelector('.tp-msg-text'); if(!textDiv) return;
+      const ta=document.createElement('textarea'); ta.value=m.text||''; ta.style.cssText='width:100%;font-size:12px;resize:vertical;min-height:38px;box-sizing:border-box';
+      textDiv.replaceWith(ta); ta.focus(); ta.setSelectionRange(ta.value.length,ta.value.length);
+      let done=false;
+      const commit=()=>{ if(done)return; done=true; const nv=ta.value.replace(/\s+$/,''); if(nv && nv!==m.text && typeof editJimuMessage_==='function'){ editJimuMessage_(st, mid, nv); } else { renderInner(); } };
+      ta.onkeydown=e=>{ if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&e.keyCode!==229){ e.preventDefault(); commit(); } else if(e.key==='Escape'){ done=true; renderInner(); } };
+      ta.onblur=commit;
+    });
     pop.querySelectorAll('[data-mtr]').forEach(b=>b.onclick=()=>{ if(!meSelf){alert('先に「👤 自分」を設定してください');return;} const st=msgStaff_(); msgReactPickerId=null; renderInner(); if(st&&typeof toggleJimuReaction_==='function') toggleJimuReaction_(st, b.dataset.mi, b.dataset.mtr, meSelf); });
     pop.querySelectorAll('[data-mrad]').forEach(b=>b.onclick=()=>{ msgReactPickerId=(msgReactPickerId===b.dataset.mrad)?null:b.dataset.mrad; renderInner(); });
     pop.querySelectorAll('[data-mrae]').forEach(b=>b.onclick=()=>{ if(!meSelf){alert('先に「👤 自分」を設定してください');return;} const st=msgStaff_(); msgReactPickerId=null; renderInner(); if(st&&typeof addJimuReaction_==='function') addJimuReaction_(st, b.dataset.mrae, b.dataset.em, meSelf); });
