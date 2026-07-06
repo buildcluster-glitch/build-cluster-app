@@ -2538,7 +2538,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.307</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.311</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7869,10 +7869,11 @@ function showEventStaffPicker(el, ev){
     </div>
     <div class="qp-sec">
       <div class="qp-label">🕐 日時 <span style="font-weight:400;color:#94a3b8;font-size:10px">(全員で共有)</span></div>
-      <div style="display:flex;gap:6px;align-items:center">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <input type="date" id="evDtDate" value="${escapeHtml(ev.date||'')}" style="flex:1;min-width:0;padding:5px 6px;font-size:12px;border:1px solid var(--border-strong);border-radius:6px">
         <select id="evDtTime" style="width:96px;padding:5px 6px;font-size:12px;border:1px solid var(--border-strong);border-radius:6px">${__evTimeOptsHtml}</select>
         <button id="evDtApply" class="qp-detail" style="padding:6px 10px;flex-shrink:0;background:#e0e7ff;color:#3730a3">変更</button>
+        <button id="evDtMitei" class="qp-detail" style="padding:6px 10px;flex-shrink:0;background:#fef3c7;color:#92400e" title="ワンタップで時間未定にする(現在位置は保持)">🕔 未定に</button>
       </div>
     </div>
     <div class="qp-sec">
@@ -8016,6 +8017,31 @@ function showEventStaffPicker(el, ev){
       if(typeof flashEventChip_==='function') flashEventChip_(real.id);
       __evDtApply.textContent = '✓ 変更'; setTimeout(()=>{ try{ __evDtApply.textContent='変更'; }catch(_){} }, 1200);
       if(typeof showAutoSyncToast==='function'){ const dd=parseDate(nd); showAutoSyncToast(`✅ 予定を ${(dd&&!isNaN(dd))?`${dd.getMonth()+1}/${dd.getDate()}`:nd}${nt?` ${nt}`:'(時間未定)'} に変更`); }
+    };
+  }
+  // 🕔 v1.30.311: ワンタップで時間未定にする + 未定バッジ付与
+  //   timeMode=anytime にして時刻情報を消す
+  //   undecidedBadge=true を立てて、この予定だけチップに「未定」バッジ表示
+  //   同じボタンを再押下で undecidedBadge を off (トグル)
+  const __evDtMitei = pop.querySelector('#evDtMitei');
+  if(__evDtMitei){
+    __evDtMitei.onclick = ()=>{
+      const real = (state.events||[]).find(x=>x.id===ev.id);
+      if(!real){ return; }
+      if(typeof pushHistory==='function') pushHistory();
+      real.timeMode = 'anytime';
+      real.allday = false;   // anytime は時間グリッド配置
+      real.undecidedBadge = !real.undecidedBadge;   // トグル
+      real.updatedAt = new Date().toISOString();
+      saveState();
+      if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(real,'upsert'); }catch(_){} }
+      const sel = pop.querySelector('#evDtTime'); if(sel) sel.value = '';
+      render();
+      if(typeof flashEventChip_==='function') flashEventChip_(real.id);
+      const on = real.undecidedBadge === true;
+      __evDtMitei.textContent = on ? '✓ 未定' : '🕔 未定に';
+      setTimeout(()=>{ try{ __evDtMitei.textContent='🕔 未定に'; }catch(_){} }, 1200);
+      if(typeof showAutoSyncToast==='function') showAutoSyncToast(on ? '🕔 未定バッジを付与' : '🕔 未定バッジを解除');
     };
   }
   // ✏️編集: 簡易シートで編集(さらに細かい設定はシート内の✏️詳細から従来フォーム) v1.30.67
@@ -10864,6 +10890,8 @@ function renderCategoryFilter(){
     };
     wrap.appendChild(chip);
   });
+
+  // 🕔 v1.30.311: グローバルトグル削除 — 予定単位の undecidedBadge フラグ制御に一本化
 }
 
 function isEventVisible(ev){
@@ -12135,7 +12163,8 @@ function renderCalendar(){
               ? `<span class="ct-text" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${compactTaskHtml}</span>`
               : `<span style="display:inline-flex;min-width:0;flex:0 1 auto;align-items:baseline"><span class="ct-text" style="min-width:0;${__wrapName ? 'white-space:normal;display:-webkit-box;-webkit-line-clamp:'+__nameLines+';-webkit-box-orient:vertical;overflow:hidden;word-break:break-word' : 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap'}">${escapeHtml(__nameMain)}</span>${__roomTail ? `<span class="ct-room" style="flex-shrink:0;font-weight:600">${escapeHtml(__roomTail)}</span>` : ""}</span>`);
         const timeBox = (ev.source==="direct-morning") ? ""   // 🚗直行マーカーは時刻(09:00)を出さない(v1.30.241)
-          : isAnytime ? `<span class="chip-time" style="opacity:.7">未定</span>`   // 🕔時間未定=「未定」表示(v1.30.301・鈴木要望)
+          : (ev.undecidedBadge === true) ? `<span class="chip-time" style="opacity:.7">未定</span>`   // 🕔 v1.30.311: 予定単位の未定フラグ(担当ポップの🕔未定にボタンで付与)
+          : isAnytime ? ""   // anytime単独ではバッジ非表示 (時刻無しで判別可)
           : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;
         // 参加者バッジ/見積行は title 外(チップ直下)に独立行として配置。工事ボリュームは号室の隣(__volBadge)。
         // ※複数行タイトル時は staffBadges を __titleInner 内に入れ込み済みなので外側では出さない(v1.30.170)
