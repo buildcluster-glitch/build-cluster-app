@@ -101,6 +101,12 @@
   .announce-notyet{color:#b45309;font-weight:700}
   .announce-notyet-wrap{display:inline-flex;align-items:center;flex-wrap:wrap;gap:3px;font-size:10.5px;color:#92700e;font-weight:600}
   .announce-badge{display:inline-block;background:#fff;border:1px solid #fbbf24;color:#92400e;border-radius:9px;padding:1px 7px;font-size:11px;font-weight:700;line-height:1.5}
+  .announce-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:3px 12px}
+  .announce-head-label{font-size:11.5px;font-weight:700;color:#92400e}
+  .announce-head-unread{color:#dc2626;font-weight:700}
+  .announce-toggle{background:transparent;border:1px solid #fbbf24;color:#92400e;border-radius:6px;padding:1px 9px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap}
+  .announce-toggle:hover{background:#fde68a}
+  .announce-head + .announce-item{border-top:1px solid #fde68a}
   .announce-ack{background:#16a34a;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;white-space:nowrap}
   .announce-ack:hover{background:#15803d}
   .announce-acked{color:#16a34a;font-weight:700;font-size:11px;flex-shrink:0}
@@ -1945,6 +1951,9 @@
     .nav-btn#cloudSyncBtn{order:-1;font-size:17px;min-width:44px;min-height:38px}
     /* 🚫 リセットボタンは誤タップ事故防止でスマホ非表示(全データ消去のため) */
     #resetBtn{display:none}
+    /* 📢 連絡事項機能はスマホでは非表示(v1.30.305・山田) */
+    #announceBtn{display:none}
+    #announceBar{display:none !important}
     /* 🔍 カレンダー縮小スイッチはPC専用(スマホはv244縮小済+ピンチズームで足りる) */
     #calZoomSwitch{display:none}
 
@@ -2525,7 +2534,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.304</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.305</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7257,7 +7266,9 @@ function renderAnnounceBar_(){
   const all=announceStaffAll_();
   const disp=s=>(typeof getStaffDisplayName==='function')?getStaffDisplayName(s):s;
   bar.style.display='';
-  bar.innerHTML = items.map(it=>{
+  const collapsed = localStorage.getItem('bc_announce_collapsed')==='1';   // 折りたたみ状態(この端末のみ)v1.30.305
+  const myUnread = me ? items.filter(it=>!(it.acked||[]).includes(me)).length : 0;
+  const itemsHtml = items.map(it=>{
     const acked=it.acked||[]; const ackN=all.filter(a=>acked.includes(a)).length;
     const notYet=all.filter(s=>!acked.includes(s));
     const iAcked=me && acked.includes(me);
@@ -7272,8 +7283,13 @@ function renderAnnounceBar_(){
       ${mine ? `<button class="announce-del" data-aid="${it.id}" title="削除">🗑</button>` : ''}
     </div>`;
   }).join('');
-  bar.querySelectorAll('.announce-ack').forEach(b=>b.onclick=()=>ackAnnounce_(b.dataset.aid));
-  bar.querySelectorAll('.announce-del').forEach(b=>b.onclick=()=>{ if(confirm('この連絡事項を削除しますか？(全員から消えます)')) deleteAnnounce_(b.dataset.aid); });
+  bar.innerHTML = `<div class="announce-head"><span class="announce-head-label">📢 連絡事項 <b>${items.length}</b>件${collapsed&&myUnread?` <span class="announce-head-unread">(未確認${myUnread})</span>`:''}</span><button class="announce-toggle" title="折りたたみ/展開">${collapsed?'▼ 開く':'▲ 閉じる'}</button></div>${collapsed?'':itemsHtml}`;
+  const tg=bar.querySelector('.announce-toggle');
+  if(tg) tg.onclick=()=>{ try{ localStorage.setItem('bc_announce_collapsed', collapsed?'0':'1'); }catch(_){} renderAnnounceBar_(); };
+  if(!collapsed){
+    bar.querySelectorAll('.announce-ack').forEach(b=>b.onclick=()=>ackAnnounce_(b.dataset.aid));
+    bar.querySelectorAll('.announce-del').forEach(b=>b.onclick=()=>{ if(confirm('この連絡事項を削除しますか？(全員から消えます)')) deleteAnnounce_(b.dataset.aid); });
+  }
 }
 
 // 立会レコードを仮想イベントに変換 (カレンダー描画用)
