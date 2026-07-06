@@ -101,12 +101,14 @@
   .announce-notyet{color:#b45309;font-weight:700}
   .announce-notyet-wrap{display:inline-flex;align-items:center;flex-wrap:wrap;gap:3px;font-size:10.5px;color:#92700e;font-weight:600}
   .announce-badge{display:inline-block;background:#fff;border:1px solid #fbbf24;color:#92400e;border-radius:9px;padding:1px 7px;font-size:11px;font-weight:700;line-height:1.5}
-  .announce-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:3px 12px}
+  .announce-bar{position:relative}
   .announce-head-label{font-size:11.5px;font-weight:700;color:#92400e}
   .announce-head-unread{color:#dc2626;font-weight:700}
-  .announce-toggle{background:transparent;border:1px solid #fbbf24;color:#92400e;border-radius:6px;padding:1px 9px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap}
-  .announce-toggle:hover{background:#fde68a}
-  .announce-head + .announce-item{border-top:1px solid #fde68a}
+  .announce-collapsed{padding:4px 12px}
+  /* 右上の小さな ＋/− トグル(行を消費しない) */
+  .announce-toggle-float{position:absolute;top:4px;right:6px;width:20px;height:20px;line-height:18px;text-align:center;padding:0;border:1px solid #fbbf24;background:#fff;color:#92400e;border-radius:5px;font-size:14px;font-weight:800;cursor:pointer;z-index:3}
+  .announce-toggle-float:hover{background:#fde68a}
+  .announce-item:first-child{padding-right:32px}   /* トグルと重ならないよう先頭行の右に余白 */
   .announce-ack{background:#16a34a;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;white-space:nowrap}
   .announce-ack:hover{background:#15803d}
   .announce-acked{color:#16a34a;font-weight:700;font-size:11px;flex-shrink:0}
@@ -2534,7 +2536,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.305</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.306</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7283,8 +7285,12 @@ function renderAnnounceBar_(){
       ${mine ? `<button class="announce-del" data-aid="${it.id}" title="削除">🗑</button>` : ''}
     </div>`;
   }).join('');
-  bar.innerHTML = `<div class="announce-head"><span class="announce-head-label">📢 連絡事項 <b>${items.length}</b>件${collapsed&&myUnread?` <span class="announce-head-unread">(未確認${myUnread})</span>`:''}</span><button class="announce-toggle" title="折りたたみ/展開">${collapsed?'▼ 開く':'▲ 閉じる'}</button></div>${collapsed?'':itemsHtml}`;
-  const tg=bar.querySelector('.announce-toggle');
+  // ヘッダー行を作らず、右上の小さな ＋/− トグルだけで折りたたみ(v1.30.306・山田)
+  const toggleBtn = `<button class="announce-toggle-float" title="${collapsed?'連絡事項を開く':'折りたたむ'}">${collapsed?'＋':'－'}</button>`;
+  bar.innerHTML = collapsed
+    ? `<div class="announce-collapsed"><span class="announce-head-label">📢 連絡事項 <b>${items.length}</b>件${myUnread?` <span class="announce-head-unread">(未確認${myUnread})</span>`:''}</span></div>${toggleBtn}`
+    : `${itemsHtml}${toggleBtn}`;
+  const tg=bar.querySelector('.announce-toggle-float');
   if(tg) tg.onclick=()=>{ try{ localStorage.setItem('bc_announce_collapsed', collapsed?'0':'1'); }catch(_){} renderAnnounceBar_(); };
   if(!collapsed){
     bar.querySelectorAll('.announce-ack').forEach(b=>b.onclick=()=>ackAnnounce_(b.dataset.aid));
