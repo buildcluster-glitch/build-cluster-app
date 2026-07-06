@@ -114,6 +114,8 @@
   .announce-acked{color:#16a34a;font-weight:700;font-size:11px;flex-shrink:0}
   .announce-del{background:transparent;border:none;color:#b45309;cursor:pointer;font-size:13px;flex-shrink:0;opacity:.7}
   .announce-del:hover{opacity:1}
+  .announce-edit{background:transparent;border:none;color:#92700e;cursor:pointer;font-size:13px;flex-shrink:0;opacity:.7}
+  .announce-edit:hover{opacity:1}
   .leave-summary .ls-holiday{
     font-weight:800;color:#0369a1;background:#e0f2fe;
     padding:2px 9px;border-radius:11px;white-space:nowrap;
@@ -2536,7 +2538,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.306</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.307</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7260,6 +7262,10 @@ function ackAnnounce_(id){
 function deleteAnnounce_(id){
   mutateAnnounce_(map=>{ (map.items||[]).forEach(it=>{ if(it.id===id){ it.deleted=true; it.updatedAt=new Date().toISOString(); } }); return map; });
 }
+function editAnnounce_(id, newText){   // 投稿者が本文を編集(v1.30.307)。確認済みは維持(全員再確認させたい時は消して投稿し直し)
+  newText=String(newText||'').trim(); if(!id||!newText) return;
+  mutateAnnounce_(map=>{ (map.items||[]).forEach(it=>{ if(it.id===id){ it.text=newText; it.editedAt=new Date().toISOString(); it.updatedAt=new Date().toISOString(); } }); return map; });
+}
 function renderAnnounceBar_(){
   const bar=document.getElementById('announceBar'); if(!bar) return;
   const items=announceActiveItems_();
@@ -7279,9 +7285,10 @@ function renderAnnounceBar_(){
     return `<div class="announce-item" data-aid="${it.id}">
       <span class="announce-icon">📢</span>
       <span class="announce-text">${escapeHtml(it.text)}</span>
-      <span class="announce-meta">${escapeHtml(disp(it.by||''))} ${dt} ・ 確認 ${ackN}/${all.length}</span>
+      <span class="announce-meta">${escapeHtml(disp(it.by||''))} ${dt}${it.editedAt?' (編集済)':''} ・ 確認 ${ackN}/${all.length}</span>
       ${notYet.length?`<span class="announce-notyet-wrap">未:${notYet.map(s=>`<span class="announce-badge" title="${escapeHtml(disp(s))} 未確認">${escapeHtml(surnameOf_(s))}</span>`).join('')}</span>`:''}
       ${iAcked ? `<span class="announce-acked">✓確認済</span>` : `<button class="announce-ack" data-aid="${it.id}">✓ 確認</button>`}
+      ${mine ? `<button class="announce-edit" data-aid="${it.id}" title="編集">✎</button>` : ''}
       ${mine ? `<button class="announce-del" data-aid="${it.id}" title="削除">🗑</button>` : ''}
     </div>`;
   }).join('');
@@ -7295,6 +7302,17 @@ function renderAnnounceBar_(){
   if(!collapsed){
     bar.querySelectorAll('.announce-ack').forEach(b=>b.onclick=()=>ackAnnounce_(b.dataset.aid));
     bar.querySelectorAll('.announce-del').forEach(b=>b.onclick=()=>{ if(confirm('この連絡事項を削除しますか？(全員から消えます)')) deleteAnnounce_(b.dataset.aid); });
+    // ✎ 投稿者の本文編集(インライン・Enter確定/Shift+Enter改行/Esc取消)v1.30.307
+    bar.querySelectorAll('.announce-edit').forEach(b=>b.onclick=()=>{
+      const it=(loadAnnounceMap_().items||[]).find(x=>x.id===b.dataset.aid); if(!it) return;
+      const card=b.closest('.announce-item'); const textEl=card&&card.querySelector('.announce-text'); if(!textEl) return;
+      const ta=document.createElement('textarea'); ta.value=it.text||''; ta.style.cssText='flex:1 1 220px;min-width:140px;font-size:13px;resize:vertical;min-height:34px;box-sizing:border-box';
+      textEl.replaceWith(ta); ta.focus(); ta.setSelectionRange(ta.value.length,ta.value.length);
+      let done=false;
+      const commit=()=>{ if(done)return; done=true; const nv=ta.value.replace(/\s+$/,''); if(nv && nv!==it.text && typeof editAnnounce_==='function'){ editAnnounce_(b.dataset.aid, nv); } else { renderAnnounceBar_(); } };
+      ta.onkeydown=e=>{ if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&e.keyCode!==229){ e.preventDefault(); commit(); } else if(e.key==='Escape'){ done=true; renderAnnounceBar_(); } };
+      ta.onblur=commit;
+    });
   }
 }
 
