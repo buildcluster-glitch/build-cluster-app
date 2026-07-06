@@ -2503,7 +2503,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.292</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.293</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -11237,6 +11237,7 @@ function renderCalendar(){
   // wfBgMap はグローバル定義 (showRepairQuickPop等から参照されるため)
   // const は外で window.wfBgMap で公開済
   const dayRepairsForGrid = []; // 時間グリッドに配置する修繕アポ {r, hh, mm, colKey}
+  const jizenRepairByCol = {};  // 時刻なし修繕アポ(自動登録)は休日帯でなく事前帯へ(v1.30.293・山田)
   cols.forEach(c=>{
     const colLeaves = state.leaves.filter(c.filterLeave);
     let inner = colLeaves.map(l=>{
@@ -11349,7 +11350,7 @@ function renderCalendar(){
           const __descShortB = __descB ? (__descB.length>40 ? __descB.slice(0,40)+"…" : __descB) : "";
           const __descLineB = __descShortB ? `<span class="rac-desc" title="${escapeHtml(__descB)}">${escapeHtml(__descShortB)}</span>` : "";
           // 左カラーバーは廃止(v1.30.15): ピルの角丸に沿って曲がり「謎のピンクの三日月」に見えていた。状態は📞未等のミニバッジで表現
-          inner += `<span class="repair-appt-chip${(__repStaffBadgesB||__repAlertB||__descShortB)?' has-staffs':''}" data-repair-id="${r.id}" style="background:${wColor};color:${wFg}" title="${escapeHtml(tipLines)}"><span class="rac-row">${tagSpan}${noApptSpan}${wfMiniSpan}<span class="rac-label">${escapeHtml(label)}</span>${__doneBadgeB}${__vendorBadgeB}${__repCommuteB}${__repCmtB}</span>${__descLineB}${__repStaffBadgesB}${__repAlertB}</span>`;
+          jizenRepairByCol[c.key] = (jizenRepairByCol[c.key]||"") + `<span class="repair-appt-chip${(__repStaffBadgesB||__repAlertB||__descShortB)?' has-staffs':''}" data-repair-id="${r.id}" style="background:${wColor};color:${wFg}" title="${escapeHtml(tipLines)}"><span class="rac-row">${tagSpan}${noApptSpan}${wfMiniSpan}<span class="rac-label">${escapeHtml(label)}</span>${__doneBadgeB}${__vendorBadgeB}${__repCommuteB}${__repCmtB}</span>${__descLineB}${__repStaffBadgesB}${__repAlertB}</span>`;   // 事前帯へ(休日帯には出さない)v1.30.293
         }
       });
     }
@@ -11392,6 +11393,11 @@ function renderCalendar(){
       jHtml += `<div class="jizen-cell ${c.cellCls||''}" data-col-key="${c.key}" data-jizen-date="${c.contextDate||''}" data-jizen-staff="${c.contextStaff||''}" title="ダブルクリック: この日に事前予定を追加"></div>`;
     });
     jizenBand.innerHTML = jHtml;
+    // 🔧 時刻なし修繕アポ(自動登録)を事前帯の各セルへ差し込む(休日帯から移動)v1.30.293
+    Object.keys(jizenRepairByCol).forEach(key=>{
+      const cell = jizenBand.querySelector(`.jizen-cell[data-col-key="${key}"]`);
+      if(cell) cell.insertAdjacentHTML('beforeend', jizenRepairByCol[key]);
+    });
     // 空セルのダブルクリックで事前予定を新規作成(クイックシート)
     jizenBand.querySelectorAll(".jizen-cell").forEach(cell=>{
       cell.ondblclick = (e)=>{
@@ -11406,7 +11412,8 @@ function renderCalendar(){
   }
   // 修繕アポチップ → クイックポップオーバー (担当者・コメント編集)
   // 詳細編集 (元GAS書戻し可能)はポップ内の「✎ 詳細編集」ボタンから
-  allday.querySelectorAll("[data-repair-id]").forEach(el=>{
+  //   休日帯(残存)＋事前帯(v1.30.293で移動)の両方の修繕チップを配線
+  [...allday.querySelectorAll("[data-repair-id]"), ...(jizenBand ? jizenBand.querySelectorAll("[data-repair-id]") : [])].forEach(el=>{
     const r = (state.repairs||[]).find(x=>x.id===el.dataset.repairId);
     if(r) attachRepairChipHover(el, r);
     // 1クリック=詳細シート / ダブルクリック=作業担当ピッカー(v1.30.181)
