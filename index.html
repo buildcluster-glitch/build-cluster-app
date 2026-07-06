@@ -99,6 +99,8 @@
   .announce-text{font-weight:700;color:#78350f;font-size:13px;white-space:pre-wrap;word-break:break-word;flex:1 1 200px;min-width:120px}
   .announce-meta{font-size:10.5px;color:#92700e;font-weight:500;white-space:nowrap}
   .announce-notyet{color:#b45309;font-weight:700}
+  .announce-notyet-wrap{display:inline-flex;align-items:center;flex-wrap:wrap;gap:3px;font-size:10.5px;color:#92700e;font-weight:600}
+  .announce-badge{display:inline-block;background:#fff;border:1px solid #fbbf24;color:#92400e;border-radius:9px;padding:1px 7px;font-size:11px;font-weight:700;line-height:1.5}
   .announce-ack{background:#16a34a;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;white-space:nowrap}
   .announce-ack:hover{background:#15803d}
   .announce-acked{color:#16a34a;font-weight:700;font-size:11px;flex-shrink:0}
@@ -2523,7 +2525,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.302</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.303</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7262,7 +7264,8 @@ function renderAnnounceBar_(){
     return `<div class="announce-item" data-aid="${it.id}">
       <span class="announce-icon">📢</span>
       <span class="announce-text">${escapeHtml(it.text)}</span>
-      <span class="announce-meta">${escapeHtml(disp(it.by||''))} ${dt} ・ 確認 ${ackN}/${all.length}${notYet.length?` <span class="announce-notyet" title="未確認: ${escapeHtml(notYet.map(disp).join('、'))}">未: ${escapeHtml(notYet.map(disp).join(' '))}</span>`:''}</span>
+      <span class="announce-meta">${escapeHtml(disp(it.by||''))} ${dt} ・ 確認 ${ackN}/${all.length}</span>
+      ${notYet.length?`<span class="announce-notyet-wrap">未:${notYet.map(s=>`<span class="announce-badge" title="${escapeHtml(disp(s))} 未確認">${escapeHtml(surnameOf_(s))}</span>`).join('')}</span>`:''}
       ${iAcked ? `<span class="announce-acked">✓確認済</span>` : `<button class="announce-ack" data-aid="${it.id}">✓ 確認</button>`}
       ${mine ? `<button class="announce-del" data-aid="${it.id}" title="削除">🗑</button>` : ''}
     </div>`;
