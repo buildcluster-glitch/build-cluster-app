@@ -2503,7 +2503,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.291</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.292</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -11270,9 +11270,12 @@ function renderCalendar(){
         const t = String(r.responseTime||"").trim();
         const tm = t.match(/^(\d{1,2})[:時](\d{1,2})?/);
         let __gh = tm ? +tm[1] : -1, __gm = tm ? +(tm[2]||0) : 0;
-        // 18:00ちょうど(グリッド終端)は終日帯に落とさず、最終時間帯(17時セル最下部)に置いてグリッド表示
-        //   表示時刻は responseTime("18:00")が優先されるので位置だけ寄せる
-        if(__gh === HOUR_END && __gm === 0){ __gh = HOUR_END - 1; __gm = 59; }
+        // 範囲外の時刻(18:00ちょうど/19時など夜間/早朝)は終日帯に落とさず、グリッド端(最終行/先頭行)に寄せて表示。
+        //   表示時刻は responseTime("19:00")が優先されるので位置だけ寄せる(v1.30.292・山田「19時が出ない」)
+        if(tm){
+          if(__gh >= HOUR_END){ __gh = HOUR_END - 1; __gm = 59; }
+          else if(__gh < HOUR_START){ __gh = HOUR_START; __gm = 0; }
+        }
         const hasTimeInGrid = tm && (__gh >= HOUR_START) && (__gh < HOUR_END);
         // 🖱 時刻未設定でも「表示位置」(repair_pos)があればグリッドのその行に仮置き表示(台帳の時刻は空のまま)v1.30.161
         const __posMin = (!hasTimeInGrid && typeof getRepairPosMin_==='function') ? getRepairPosMin_(r.id) : null;
@@ -11642,7 +11645,7 @@ function renderCalendar(){
       // baseTop: 終日は freeTop、それ以外は start 時刻ベース
       const baseTop = isFree
         ? (typeof ev.freeTop === "number" ? ev.freeTop : 0)
-        : ((timeToMin(ev.start) - HOUR_START*60)/60)*HOUR_PX;
+        : (()=>{ const gridH=(HOUR_END-HOUR_START)*HOUR_PX; const raw=(timeToMin(ev.start)-HOUR_START*60)/60*HOUR_PX; return Math.max(0, Math.min(raw, gridH-24)); })();   // 範囲外(早朝/夜間19時等)はグリッド端に寄せて必ず表示 v1.30.292(表示時刻は ev.start のまま)
       // タイトル行数に応じてチップ高さを決定（改行ありで自動拡大、自然折返しも考慮）
       // 📋 チェックリスト(箇条書き)イベントは1行に集約表示するので高さも1行扱い
       const taskInfo = (typeof getTaskInfo_==='function') ? getTaskInfo_(ev) : null;
