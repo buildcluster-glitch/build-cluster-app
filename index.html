@@ -196,11 +196,11 @@
   .msg-alert{font-size:10px;margin-left:1px;line-height:1;animation:msgAlertPulse 1.4s ease-in-out infinite}
   .has-msg-alert{box-shadow:0 0 0 2px #ef4444 !important;border-radius:8px}
   @keyframes msgAlertPulse{0%,100%{opacity:1}50%{opacity:.35}}
-  /* 🟢 オンライン在席ドット: ドット自体が脈打つ(大きく→縮む)+輪。「生きてる」感を分かりやすく(v1.30.297) */
-  .presence-dot{animation:presenceGlow 1.5s ease-in-out infinite;transform-origin:center}
+  /* 🟢 オンライン在席ドット: ドット自体が軽く息づく(拡縮)。目立つが うるさくない幅・ゆっくり(v1.30.298) */
+  .presence-dot{animation:presenceGlow 2.6s ease-in-out infinite;transform-origin:center}
   @keyframes presenceGlow{
-    0%,100%{transform:scale(.85);box-shadow:0 0 0 1.5px #fff, 0 0 0 0 rgba(34,197,94,.5)}
-    50%    {transform:scale(1.55);box-shadow:0 0 0 1.5px #fff, 0 0 4px 1px rgba(34,197,94,.85)}
+    0%,100%{transform:scale(1);   box-shadow:0 0 0 1.5px #fff}
+    50%    {transform:scale(1.28);box-shadow:0 0 0 1.5px #fff, 0 0 3px 0 rgba(34,197,94,.6)}
   }
   @media (prefers-reduced-motion: reduce){ .presence-dot{animation:none} }
   .leave-badge:hover{filter:brightness(1.08);box-shadow:0 2px 6px rgba(0,0,0,.15)}
@@ -2510,7 +2510,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.297</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.298</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
