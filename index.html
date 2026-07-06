@@ -91,6 +91,19 @@
     padding:5px 12px;background:#f8fafc;border-bottom:1px solid var(--border);
     font-size:12px;line-height:1.6;
   }
+  /* 📢 全員への連絡事項バー(全員が確認したら消える)v1.30.302 */
+  .announce-bar{background:#fef9c3;border-bottom:2px solid #f59e0b}
+  .announce-item{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 12px;border-top:1px solid #fde68a}
+  .announce-item:first-child{border-top:none}
+  .announce-icon{font-size:16px;flex-shrink:0}
+  .announce-text{font-weight:700;color:#78350f;font-size:13px;white-space:pre-wrap;word-break:break-word;flex:1 1 200px;min-width:120px}
+  .announce-meta{font-size:10.5px;color:#92700e;font-weight:500;white-space:nowrap}
+  .announce-notyet{color:#b45309;font-weight:700}
+  .announce-ack{background:#16a34a;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;white-space:nowrap}
+  .announce-ack:hover{background:#15803d}
+  .announce-acked{color:#16a34a;font-weight:700;font-size:11px;flex-shrink:0}
+  .announce-del{background:transparent;border:none;color:#b45309;cursor:pointer;font-size:13px;flex-shrink:0;opacity:.7}
+  .announce-del:hover{opacity:1}
   .leave-summary .ls-holiday{
     font-weight:800;color:#0369a1;background:#e0f2fe;
     padding:2px 9px;border-radius:11px;white-space:nowrap;
@@ -2510,7 +2523,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.301</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.302</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2537,10 +2550,12 @@
   <button class="nav-btn" id="cloudSyncBtn" title="☁ 全同期 — クラウド(予定/休暇) + Drive(最終確認・立会・事前など) をまとめて今すぐ同期。設定は⚙"><span id="cloudSyncIcon">☁</span><span id="cloudSyncBadge" class="hidden"></span></button>
   <button class="nav-btn icon-only" id="gasSettingsBtnHeader" title="⚙ 設定 (GAS URL/Token)">⚙</button>
   <!-- 🚫 リセット(⟳ 全データ消去)ボタンは誤爆事故防止で撤去(山田 v1.30.222)。データ消去が必要なら Console で localStorage.removeItem("buildcluster_schedule_v1") -->
+  <button class="nav-btn" id="announceBtn" title="📢 全員への連絡事項を追加(全員が確認したら消えます)">📢 連絡</button>
   <button class="nav-btn" id="addLeaveBtn" title="有給・休暇・別件を追加">＋休</button>
   <button class="nav-btn primary" id="addBtn">＋予定</button>
 </header>
 
+<div class="announce-bar" id="announceBar" style="display:none"></div>
 <div class="leave-summary" id="leaveSummary"></div>
 
 <div class="leave-band" id="leaveBand">
@@ -5039,6 +5054,7 @@ function render(){
   document.getElementById("calBody").style.display = "";
 
   renderLeaveBand();
+  if(typeof renderAnnounceBar_==='function') renderAnnounceBar_();   // 📢 連絡事項バー(v1.30.302)
   renderCalendar();
   renderChecks();
   // 時間列の左固定は CSS position:sticky に移行 (v1.30.6)。
@@ -7162,6 +7178,97 @@ async function heartbeatPresence_(opts={}){
     await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:PRESENCE_KEY,value:JSON.stringify({presence:map,updatedAt:new Date().toISOString()}),token:s.token,savedBy:'calendar-app'})});
   }catch(_){}
   return map;
+}
+
+// 📢 全員への連絡事項(全員共有・shared-config 'calendar_announce') v1.30.302
+//   value = JSON { items:[{id,text,by,at,acked:[名前],deleted,updatedAt}], updatedAt }
+//   全STAFFが「確認」したら自動で消える(ヘッダー直下の目立つ帯に表示)。
+const ANNOUNCE_KEY = "calendar_announce";
+const ANNOUNCE_CACHE_KEY = "bc_announce_cache";
+function loadAnnounceMap_(){ try{ const o=JSON.parse(localStorage.getItem(ANNOUNCE_CACHE_KEY)||"null"); return (o&&Array.isArray(o.items))?o:{items:[]}; }catch(e){ return {items:[]}; } }
+function saveAnnounceMap_(m){ try{ localStorage.setItem(ANNOUNCE_CACHE_KEY, JSON.stringify(m||{items:[]})); }catch(e){} }
+function announceStaffAll_(){ return (typeof STAFF!=='undefined' && Array.isArray(STAFF)) ? STAFF : []; }
+function announceActiveItems_(){
+  const all=announceStaffAll_();
+  return (loadAnnounceMap_().items||[]).filter(it=> it && !it.deleted && !(all.length && all.every(s=> (it.acked||[]).includes(s))));
+}
+function mergeAnnounce_(a,b){
+  const out={}; const A=(a&&a.items)||[], B=(b&&b.items)||[];
+  [...A,...B].forEach(it=>{ if(!it||!it.id) return; const ex=out[it.id];
+    if(!ex){ out[it.id]=Object.assign({},it); return; }
+    const w=(String(it.updatedAt||'')>=String(ex.updatedAt||''))?it:ex;   // 新しい方のtext等を採用
+    const merged=Object.assign({},ex,w);
+    merged.acked=Array.from(new Set([...(ex.acked||[]),...(it.acked||[])]));   // 確認は和集合(消えない)
+    merged.deleted=!!(ex.deleted||it.deleted);
+    out[it.id]=merged;
+  });
+  return {items:Object.values(out).sort((x,y)=>String(x.at||'').localeCompare(String(y.at||''))), updatedAt:new Date().toISOString()};
+}
+async function fetchAnnounce_(opts={}){
+  const s=loadGasSettings();
+  if(!s.url||!s.token){ if(typeof renderAnnounceBar_==='function') renderAnnounceBar_(); return loadAnnounceMap_(); }
+  try{
+    const url=`${s.url}?action=get-shared-config&key=${ANNOUNCE_KEY}&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res=await fetch(url,{method:'GET',redirect:'follow'}); if(!res.ok) throw new Error('HTTP '+res.status);
+    const data=await res.json(); let raw=data.value;
+    if(raw===''||raw==null) raw={items:[]}; else if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(e){ raw={items:[]}; } }
+    const remote=(raw&&Array.isArray(raw.items))?raw:{items:[]};
+    saveAnnounceMap_(mergeAnnounce_(remote, loadAnnounceMap_()));
+    if(typeof renderAnnounceBar_==='function') renderAnnounceBar_();
+    return loadAnnounceMap_();
+  }catch(err){ if(!opts.silent) console.warn('[announce] fetch失敗:',err.message); if(typeof renderAnnounceBar_==='function') renderAnnounceBar_(); return loadAnnounceMap_(); }
+}
+async function mutateAnnounce_(mutator){
+  const s=loadGasSettings(); let map=loadAnnounceMap_();
+  if(s.url&&s.token){
+    try{ const url=`${s.url}?action=get-shared-config&key=${ANNOUNCE_KEY}&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+      const res=await fetch(url,{method:'GET',redirect:'follow'});
+      if(res.ok){ const d=await res.json(); let raw=d.value; if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(_){ raw=null; } } if(raw&&Array.isArray(raw.items)) map=mergeAnnounce_(raw, loadAnnounceMap_()); }
+    }catch(_){}
+  }
+  map=mutator(map)||map; map.updatedAt=new Date().toISOString();
+  saveAnnounceMap_(map);
+  if(typeof renderAnnounceBar_==='function') renderAnnounceBar_();
+  if(s.url&&s.token){ try{ await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:ANNOUNCE_KEY,value:JSON.stringify(map),token:s.token,savedBy:'calendar-app'})}); }catch(e){ console.warn('[announce] push失敗:',e.message); } }
+  return map;
+}
+function addAnnounce_(text){
+  text=String(text||'').trim(); if(!text) return;
+  const me=(typeof getMyself==='function')?getMyself():"";
+  const it={ id:uid(), text, by:me, at:new Date().toISOString(), acked: me?[me]:[], deleted:false, updatedAt:new Date().toISOString() };   // 投稿者は自動で確認済み
+  mutateAnnounce_(map=>{ map.items=(map.items||[]).concat([it]); return map; });
+}
+function ackAnnounce_(id){
+  const me=(typeof getMyself==='function')?getMyself():""; if(!me){ alert('先に「👤 自分」を設定してください(👤マイ)'); return; }
+  mutateAnnounce_(map=>{ (map.items||[]).forEach(it=>{ if(it.id===id){ it.acked=Array.from(new Set([...(it.acked||[]), me])); it.updatedAt=new Date().toISOString(); } }); return map; });
+}
+function deleteAnnounce_(id){
+  mutateAnnounce_(map=>{ (map.items||[]).forEach(it=>{ if(it.id===id){ it.deleted=true; it.updatedAt=new Date().toISOString(); } }); return map; });
+}
+function renderAnnounceBar_(){
+  const bar=document.getElementById('announceBar'); if(!bar) return;
+  const items=announceActiveItems_();
+  if(!items.length){ bar.style.display='none'; bar.innerHTML=''; return; }
+  const me=(typeof getMyself==='function')?getMyself():"";
+  const all=announceStaffAll_();
+  const disp=s=>(typeof getStaffDisplayName==='function')?getStaffDisplayName(s):s;
+  bar.style.display='';
+  bar.innerHTML = items.map(it=>{
+    const acked=it.acked||[]; const ackN=all.filter(a=>acked.includes(a)).length;
+    const notYet=all.filter(s=>!acked.includes(s));
+    const iAcked=me && acked.includes(me);
+    const mine=me && it.by===me;
+    const d=new Date(it.at); const p=n=>String(n).padStart(2,'0'); const dt=isNaN(d)?'':`${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    return `<div class="announce-item" data-aid="${it.id}">
+      <span class="announce-icon">📢</span>
+      <span class="announce-text">${escapeHtml(it.text)}</span>
+      <span class="announce-meta">${escapeHtml(disp(it.by||''))} ${dt} ・ 確認 ${ackN}/${all.length}${notYet.length?` <span class="announce-notyet" title="未確認: ${escapeHtml(notYet.map(disp).join('、'))}">未: ${escapeHtml(notYet.map(disp).join(' '))}</span>`:''}</span>
+      ${iAcked ? `<span class="announce-acked">✓確認済</span>` : `<button class="announce-ack" data-aid="${it.id}">✓ 確認</button>`}
+      ${mine ? `<button class="announce-del" data-aid="${it.id}" title="削除">🗑</button>` : ''}
+    </div>`;
+  }).join('');
+  bar.querySelectorAll('.announce-ack').forEach(b=>b.onclick=()=>ackAnnounce_(b.dataset.aid));
+  bar.querySelectorAll('.announce-del').forEach(b=>b.onclick=()=>{ if(confirm('この連絡事項を削除しますか？(全員から消えます)')) deleteAnnounce_(b.dataset.aid); });
 }
 
 // 立会レコードを仮想イベントに変換 (カレンダー描画用)
@@ -10147,6 +10254,7 @@ async function syncChecksFromGAS(opts){
     if(typeof fetchJimuMessages_==='function') fetchJimuMessages_({silent:true}).catch(()=>{});  // 業務連絡も最新化
     if(typeof applyJimuTaskCommentsToState_==='function') applyJimuTaskCommentsToState_();  // 💬 全員共有のタスクコメントを反映(v1.30.286)
     if(typeof fetchJimuTaskComments_==='function') fetchJimuTaskComments_({silent:true}).catch(()=>{});  // タスクコメントも最新化
+    if(typeof fetchAnnounce_==='function') fetchAnnounce_({silent:true});  // 📢 連絡事項も最新化(v1.30.302)
     if(typeof applyCheckWorkersToState_==='function') applyCheckWorkersToState_();  // 🏷 最終確認の作業担当(全員共有)を反映(v1.30.95・キャッシュ即適用)
     // 🔄 再同期時は修繕担当の最新オーバーレイも取りに行く→他PCの担当変更が即反映(v1.30.93)
     if(typeof fetchRepairOverrides_==='function') fetchRepairOverrides_({silent:true}).catch(()=>{});
@@ -14582,6 +14690,13 @@ function openLeaveModal(lv, defaults){
 function closeLeaveModal(){ leaveModal.classList.remove("show"); editingLeaveId=null; }
 document.getElementById("lv-cancel").onclick = closeLeaveModal;
 document.getElementById("addLeaveBtn").onclick = ()=>openLeaveModal(null);
+// 📢 全員への連絡事項を追加(v1.30.302)
+(function(){ const ab=document.getElementById("announceBtn"); if(!ab) return; ab.onclick = ()=>{
+  const me=(typeof getMyself==='function')?getMyself():"";
+  if(!me){ alert('先に「👤 自分」を設定してください(👤マイ)'); return; }
+  const t=prompt('📢 全員への連絡事項を入力してください。\n(全員が「確認」を押すと自動で消えます)');
+  if(t && t.trim() && typeof addAnnounce_==='function') addAnnounce_(t.trim());
+}; })();
 document.getElementById("lv-save").onclick = ()=>{
   const start = document.getElementById("lv-start").value;
   const end   = document.getElementById("lv-end").value;
@@ -19587,6 +19702,12 @@ setTimeout(()=>{
       setInterval(()=>{ if(typeof applyPresenceDots_==='function') applyPresenceDots_(); }, 30*1000);   // 表示のage-out(オフラインになった人のドットを消す)
       document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && typeof heartbeatPresence_==='function') heartbeatPresence_().catch(()=>{}); });
       window.addEventListener('pagehide', ()=>{ try{ heartbeatPresence_({leave:true}); }catch(_){} });   // 離脱時は自分を消す(ベストエフォート)
+    }
+    // 📢 全員への連絡事項(全員共有) 起動時+2分ごとに取得→ヘッダー帯に反映(v1.30.302)
+    if(typeof fetchAnnounce_==='function'){
+      fetchAnnounce_({silent:true});
+      setInterval(()=>fetchAnnounce_({silent:true}), 2*60*1000);
+      document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && typeof fetchAnnounce_==='function') fetchAnnounce_({silent:true}); });
     }
     // 🕐 立会 上書き(担当・日時/全員共有) 取得・初回はローカル分をpush(移行)・以後5分ごと
     if(typeof fetchTaikyoOverrides_==='function'){
