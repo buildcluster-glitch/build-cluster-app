@@ -196,6 +196,13 @@
   .msg-alert{font-size:10px;margin-left:1px;line-height:1;animation:msgAlertPulse 1.4s ease-in-out infinite}
   .has-msg-alert{box-shadow:0 0 0 2px #ef4444 !important;border-radius:8px}
   @keyframes msgAlertPulse{0%,100%{opacity:1}50%{opacity:.35}}
+  /* 🟢 オンライン在席ドット: 派手すぎない「ゆるい発光(呼吸)」でアクティブを示す(v1.30.295) */
+  .presence-dot{animation:presenceGlow 2.4s ease-in-out infinite}
+  @keyframes presenceGlow{
+    0%,100%{box-shadow:0 0 0 1.5px #fff, 0 0 2px 0 rgba(34,197,94,.35);opacity:.9}
+    50%    {box-shadow:0 0 0 1.5px #fff, 0 0 5px 1px rgba(34,197,94,.85);opacity:1}
+  }
+  @media (prefers-reduced-motion: reduce){ .presence-dot{animation:none} }
   .leave-badge:hover{filter:brightness(1.08);box-shadow:0 2px 6px rgba(0,0,0,.15)}
   .add-leave-inline,.add-duty-inline{
     border:1px solid var(--border-strong);background:#fff;color:var(--text);
@@ -2503,7 +2510,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.294</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.295</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
