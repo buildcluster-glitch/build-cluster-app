@@ -2510,7 +2510,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.298</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.299</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7739,7 +7739,7 @@ function showEventStaffPicker(el, ev){
       <div class="qp-label">💬 コメント <span class="evp-cmt-count" style="text-transform:none;color:var(--muted);font-weight:400"></span></div>
       <div class="qp-comments-list evp-cmt-list"></div>
       <div class="qp-comment-input">
-        <textarea class="evp-cmt-input" rows="1" placeholder="メッセージ (Enter送信)"></textarea>
+        <textarea class="evp-cmt-input" rows="1" placeholder="メッセージ (Enter送信 / Shift+Enter改行)"></textarea>
         <button class="evp-cmt-send">送信</button>
       </div>
     </div>
@@ -7889,9 +7889,9 @@ function showEventStaffPicker(el, ev){
         .filter(([_,u])=>Array.isArray(u)&&u.length>0)
         .map(([em,users])=>{ const on = me && users.includes(me) ? 'on':''; return `<button class="reaction-btn ${on}" data-react="${escapeHtml(em)}" data-cidx="${idx}" title="${escapeHtml(users.join(', '))}" style="font-size:10px;padding:0 5px">${em}<span class="r-count">${users.length}</span></button>`; }).join('');
       return `<div class="ev-comment-card ${mine?'mine':''}" style="padding:4px 6px;font-size:11px;position:relative">
-        ${mine?`<button class="ev-comment-del" data-delc="${idx}" style="font-size:11px;display:inline">✕</button>`:''}
-        <div class="ev-comment-head" style="font-size:10px"><span class="ev-comment-author">${escapeHtml(c.author||'?')}</span><span class="ev-comment-time">${escapeHtml(fmtT(c.at))}</span></div>
-        <div class="ev-comment-text" style="font-size:11px">${escapeHtml(c.text||'')}</div>
+        ${mine?`<span style="position:absolute;right:3px;top:2px;display:flex;gap:2px"><button class="ev-comment-edit" data-editc="${idx}" title="編集" style="font-size:11px;border:0;background:transparent;cursor:pointer;color:#94a3b8;padding:0">✎</button><button class="ev-comment-del" data-delc="${idx}" title="削除" style="font-size:11px;border:0;background:transparent;cursor:pointer;color:#cbd5e1;padding:0">✕</button></span>`:''}
+        <div class="ev-comment-head" style="font-size:10px"><span class="ev-comment-author">${escapeHtml(c.author||'?')}</span><span class="ev-comment-time">${escapeHtml(fmtT(c.at))}${c.editedAt?' <span style="color:#94a3b8">(編集済)</span>':''}</span></div>
+        <div class="ev-comment-text" style="font-size:11px;white-space:pre-wrap;word-break:break-word">${escapeHtml(c.text||'')}</div>
         <div class="ev-comment-reactions" style="margin-top:2px">${reactionsHtml}<button class="reaction-add" data-addr="${idx}" style="font-size:10px;padding:0 5px">+</button></div>
       </div>`;
     }).join('');
@@ -7899,6 +7899,19 @@ function showEventStaffPicker(el, ev){
       b.onclick = ()=>{ const i=+b.dataset.delc; const t=liveEv(); if(!Array.isArray(t.comments)||!t.comments[i]) return; if(!confirm('コメント削除？')) return;
         pushHistory(); t.comments.splice(i,1); t.updatedAt=new Date().toISOString(); saveState();
         if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(t,'upsert'); }catch(_){} } renderC(); render(); };
+    });
+    // ✎ コメント編集(自分のみ・インライン・Shift+Enterで改行/Enterで確定/Escで取消)v1.30.299
+    listEl.querySelectorAll('[data-editc]').forEach(b=>{
+      b.onclick = ()=>{ const i=+b.dataset.editc; const c=(liveEv().comments||[])[i]; if(!c) return;
+        const card=b.closest('.ev-comment-card'); const textDiv=card.querySelector('.ev-comment-text'); if(!textDiv) return;
+        const ta=document.createElement('textarea'); ta.value=c.text||'';
+        ta.style.cssText='width:100%;font-size:11px;resize:vertical;min-height:40px;box-sizing:border-box';
+        textDiv.replaceWith(ta); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+        let done=false;
+        const commit=()=>{ if(done) return; done=true; const nv=ta.value.replace(/\s+$/,''); const t=liveEv(); const cc=(t.comments||[])[i]; if(cc && nv && nv!==cc.text){ pushHistory(); cc.text=nv; cc.editedAt=new Date().toISOString(); t.updatedAt=new Date().toISOString(); saveState(); if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(t,'upsert'); }catch(_){} } render(); } renderC(); };
+        ta.onkeydown=e=>{ if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&e.keyCode!==229){ e.preventDefault(); commit(); } else if(e.key==='Escape'){ done=true; renderC(); } };
+        ta.onblur=commit;
+      };
     });
     // リアクション トグル(既存の絵文字をクリック=自分を付外し)
     const __syncReact = ()=>{ const t=liveEv(); t.updatedAt=new Date().toISOString(); saveState(); if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(t,'upsert'); }catch(_){} } renderC(); render(); };
