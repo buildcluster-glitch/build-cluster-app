@@ -2503,7 +2503,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.288</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.289</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3594,6 +3594,14 @@
         </label>
         <div style="font-size:11px;color:var(--muted);margin-left:24px">
           天気アイコンを日付ヘッダーに表示（仙台市青葉区・前後1週間ぶん・Open-Meteo・この端末のみ・2時間ごと更新）。アイコンにホバー/タップで時間帯別の気温・降水確率・湿度
+        </div>
+      </div>
+      <div class="field">
+        <label>
+          <input type="checkbox" id="opt-presence" checked> 🟢 今ひらいている人を表示（在席オンライン）
+        </label>
+        <div style="font-size:11px;color:var(--muted);margin-left:24px">
+          在席帯のチップに🟢＝今アプリを開いている人（約1分ごとに更新・2分アクセスが無ければオフライン扱い）。OFFにするとこの端末の🟢は消え、自分も相手に表示されません（この端末のみ・すぐ反映）
         </div>
       </div>
       <div class="field" style="display:none">
@@ -7076,6 +7084,60 @@ async function mutateJimuTaskCommentsRemote_(staff, taskKey, mutator){
   return map;
 }
 
+// 🟢 プレゼンス(誰が今開いているか・全員共有 shared-config 'calendar_presence') v1.30.289
+//   value = JSON { presence:{ [staff]: lastSeenISO }, updatedAt }。表示中の端末が60秒ごとにハートビート、直近2分以内=オンライン。
+//   ⚠ 真のリアルタイム同期(即時プッシュ)はGASでは不可。これはポーリング型の「在席表示」。ON/OFFは⚙設定(この端末のみ)。
+const PRESENCE_KEY = "calendar_presence";
+const PRESENCE_CACHE_KEY = "bc_presence_cache";
+const PRESENCE_ONLINE_MS = 2*60*1000;    // 直近2分=オンライン
+const PRESENCE_STALE_MS  = 15*60*1000;   // 15分でmapから間引き
+const PRESENCE_BEAT_MS   = 60*1000;      // 60秒ごとにハートビート
+function presenceEnabled_(){ return localStorage.getItem("bc_presence_on") !== "0"; }   // 既定ON
+function setPresenceEnabled_(on){ try{ localStorage.setItem("bc_presence_on", on?"1":"0"); }catch(_){} }
+function loadPresenceCache_(){ try{ const o=JSON.parse(localStorage.getItem(PRESENCE_CACHE_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
+function savePresenceCache_(m){ try{ localStorage.setItem(PRESENCE_CACHE_KEY, JSON.stringify(m||{})); }catch(e){} }
+function onlineStaffSet_(){
+  const c=loadPresenceCache_(), now=Date.now(), set=new Set();
+  Object.keys(c).forEach(st=>{ const t=Date.parse(c[st]||''); if(t && (now-t)<=PRESENCE_ONLINE_MS) set.add(st); });
+  return set;
+}
+// 在席帯のスタッフ/休暇チップに🟢オンラインドットを差し込む(描画とは分離)
+function applyPresenceDots_(){
+  const band=document.getElementById('leaveBand'); if(!band) return;
+  band.querySelectorAll('.presence-dot').forEach(d=>d.remove());
+  if(!presenceEnabled_()) return;
+  const online=onlineStaffSet_(), me=(typeof getMyself==='function')?getMyself():"";
+  band.querySelectorAll('[data-staff-filter], .leave-badge[data-staff]').forEach(chip=>{
+    const st=chip.dataset.staffFilter || chip.dataset.staff; if(!st||!online.has(st)) return;
+    const dot=document.createElement('span'); dot.className='presence-dot';
+    dot.title=(st===me?'あなた':st)+' — 今ひらいています';
+    dot.style.cssText='display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 1.5px #fff;margin-right:3px;vertical-align:middle;flex-shrink:0';
+    chip.insertBefore(dot, chip.firstChild);
+  });
+}
+async function heartbeatPresence_(opts={}){
+  if(!opts.leave){
+    if(!presenceEnabled_()) return;
+    if(typeof document!=='undefined' && document.visibilityState && document.visibilityState!=='visible') return;   // 表示中の端末のみ
+  }
+  const me=(typeof getMyself==='function')?getMyself():""; if(!me) return;
+  const s=loadGasSettings(); if(!s.url||!s.token) return;
+  let map={};
+  try{
+    const url=`${s.url}?action=get-shared-config&key=${PRESENCE_KEY}&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res=await fetch(url,{method:'GET',redirect:'follow'});
+    if(res.ok){ const d=await res.json(); let raw=d.value; if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(_){ raw=null; } } if(raw&&raw.presence&&typeof raw.presence==='object') map=raw.presence; }
+  }catch(_){}
+  const now=Date.now();
+  Object.keys(map).forEach(st=>{ const t=Date.parse(map[st]||''); if(!t || (now-t)>PRESENCE_STALE_MS) delete map[st]; });   // 古いエントリ間引き
+  if(opts.leave) delete map[me]; else map[me]=new Date().toISOString();
+  savePresenceCache_(map); applyPresenceDots_();
+  try{
+    await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:PRESENCE_KEY,value:JSON.stringify({presence:map,updatedAt:new Date().toISOString()}),token:s.token,savedBy:'calendar-app'})});
+  }catch(_){}
+  return map;
+}
+
 // 立会レコードを仮想イベントに変換 (カレンダー描画用)
 // ====================================================================
 // 📄 立会「資料作成済」フラグ (taikyo_shiryo_ready) — 見積アプリ(v1.4.539)がpush
@@ -9445,6 +9507,16 @@ function openGasSettings(){
       else if(typeof injectWeatherHeaders_==='function') injectWeatherHeaders_();                // OFFは即消す
     };
   }
+  // 🟢 プレゼンス(在席オンライン)トグル(この端末のみ・即時反映)v1.30.289
+  const __pz = document.getElementById("opt-presence");
+  if(__pz){
+    __pz.checked = (typeof presenceEnabled_==='function') ? presenceEnabled_() : true;
+    __pz.onchange = ()=>{
+      if(typeof setPresenceEnabled_==='function') setPresenceEnabled_(__pz.checked);
+      if(__pz.checked){ if(typeof heartbeatPresence_==='function') heartbeatPresence_().catch(()=>{}); }   // ONで即ハートビート
+      else { if(typeof heartbeatPresence_==='function') heartbeatPresence_({leave:true}).catch(()=>{}); if(typeof applyPresenceDots_==='function') applyPresenceDots_(); }   // OFFで自分を消す+ドット消去
+    };
+  }
   gasSettingsModal.classList.add("show");
 }
 function closeGasSettings(){ gasSettingsModal.classList.remove("show"); }
@@ -10976,7 +11048,7 @@ function renderLeaveBand(){
       const _tpA = staffTaskProgress_(l.staff);
       const __msgA = (typeof staffHasUnackMsg_==='function' && staffHasUnackMsg_(l.staff)) ? `<span class="msg-alert" title="💬 業務連絡(未確認) — リアクションで確認済みに">🔔</span>` : "";
       const taskA = `<span class="lb-task${__msgA?' has-msg-alert':''}" data-task-staff="${escapeHtml(l.staff)}" title="📋 事務タスク${_tpA.has?' ('+_tpA.dn+'/'+_tpA.tt+')':''}">📋${__msgA}</span>`;
-      return `<span class="leave-badge" style="background:${bg};color:${fg};opacity:.72" title="${escapeHtml(display)} 日祝(自動休)"><span class="lb-staff">${escapeHtml(display)}</span><span class="lb-type">日祝</span>${taskA}</span>`;
+      return `<span class="leave-badge" data-staff="${escapeHtml(l.staff)}" style="background:${bg};color:${fg};opacity:.72" title="${escapeHtml(display)} 日祝(自動休)"><span class="lb-staff">${escapeHtml(display)}</span><span class="lb-type">日祝</span>${taskA}</span>`;
     }
     const range = l.start===l.end ? l.start.slice(5) : `${l.start.slice(5)}〜${l.end.slice(5)}`;
     const typeLabel = leaveDispLabel_(l);
@@ -10985,7 +11057,7 @@ function renderLeaveBand(){
     const _tp = staffTaskProgress_(l.staff);
     const __lbMsgAlert = (typeof staffHasUnackMsg_==='function' && staffHasUnackMsg_(l.staff)) ? `<span class="msg-alert" title="💬 業務連絡(未確認) — リアクションで確認済みに">🔔</span>` : "";
     const taskBadge = `<span class="lb-task${__lbMsgAlert?' has-msg-alert':''}" data-task-staff="${escapeHtml(l.staff)}" title="📋 事務タスク${_tp.has?' ('+_tp.dn+'/'+_tp.tt+')':''}">📋${__lbMsgAlert}</span>`;
-    return `<span class="leave-badge" data-leave-id="${l.id}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}"><span class="lb-staff">${escapeHtml(display)}</span><span class="lb-type">${escapeHtml(typeLabel)}</span>${rangeHtml}${taskBadge}</span>`;
+    return `<span class="leave-badge" data-leave-id="${l.id}" data-staff="${escapeHtml(l.staff)}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}"><span class="lb-staff">${escapeHtml(display)}</span><span class="lb-type">${escapeHtml(typeLabel)}</span>${rangeHtml}${taskBadge}</span>`;
   };
 
   // 休暇スタッフチップ (出社チップと同じく選択可能に)
@@ -10999,7 +11071,7 @@ function renderLeaveBand(){
     const _tp = staffTaskProgress_(l.staff);
     const __lbMsgAlert = (typeof staffHasUnackMsg_==='function' && staffHasUnackMsg_(l.staff)) ? `<span class="msg-alert" title="💬 業務連絡(未確認) — リアクションで確認済みに">🔔</span>` : "";
     const taskBadge = `<span class="lb-task${__lbMsgAlert?' has-msg-alert':''}" data-task-staff="${escapeHtml(l.staff)}" title="📋 事務タスク${_tp.has?' ('+_tp.dn+'/'+_tp.tt+')':''}">📋${__lbMsgAlert}</span>`;
-    return `<span class="leave-badge" data-leave-id="${l.id}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}"><span class="lb-staff">${escapeHtml(display)}</span><span class="lb-type">${escapeHtml(typeLabel)}</span>${taskBadge}</span>`;
+    return `<span class="leave-badge" data-leave-id="${l.id}" data-staff="${escapeHtml(l.staff)}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}"><span class="lb-staff">${escapeHtml(display)}</span><span class="lb-type">${escapeHtml(typeLabel)}</span>${taskBadge}</span>`;
   };
 
   const filterHint = hasFilter
@@ -11047,6 +11119,7 @@ function renderLeaveBand(){
       if(lv) openLeaveModal(lv);
     };
   });
+  if(typeof applyPresenceDots_==='function') applyPresenceDots_();   // 🟢 オンライン表示(プレゼンス)v1.30.289
 }
 
 // 時間列の左固定: CSS position:sticky で実現 (v1.30.6〜)。
@@ -19405,6 +19478,14 @@ setTimeout(()=>{
       try{ if(typeof captureLocalJimuTaskComments_==='function') captureLocalJimuTaskComments_(); }catch(_){}  // 先にローカルev.taskCommentsを共有mapへ退避
       fetchJimuTaskComments_({silent:true, push:true}).catch(()=>{});
       setInterval(()=>fetchJimuTaskComments_({silent:true}).catch(()=>{}), 5*60*1000);
+    }
+    // 🟢 プレゼンス(誰が今開いているか) 起動時+60秒ごとにハートビート、タブ復帰時も即。ON/OFFは⚙設定(v1.30.289)
+    if(typeof heartbeatPresence_==='function'){
+      heartbeatPresence_().catch(()=>{});
+      setInterval(()=>heartbeatPresence_().catch(()=>{}), PRESENCE_BEAT_MS);
+      setInterval(()=>{ if(typeof applyPresenceDots_==='function') applyPresenceDots_(); }, 30*1000);   // 表示のage-out(オフラインになった人のドットを消す)
+      document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && typeof heartbeatPresence_==='function') heartbeatPresence_().catch(()=>{}); });
+      window.addEventListener('pagehide', ()=>{ try{ heartbeatPresence_({leave:true}); }catch(_){} });   // 離脱時は自分を消す(ベストエフォート)
     }
     // 🕐 立会 上書き(担当・日時/全員共有) 取得・初回はローカル分をpush(移行)・以後5分ごと
     if(typeof fetchTaikyoOverrides_==='function'){
