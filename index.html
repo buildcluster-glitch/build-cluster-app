@@ -2503,7 +2503,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.290</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.291</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4345,8 +4345,8 @@ const SNAP_SLOTS = [9, 13, 18];
 // v1.30.152: スナップショットを「予定/事務タスク/休暇」だけの軽量形式に変更(1個数十KB)。
 //   原状回復/物件マスタ/立会/修繕/最終確認はクラウド/Driveから再取得できるのでバックアップに含めない。
 //   軽くなったので保持期間・件数を元に戻す(2週間×3枠ぶん)。
-const SNAP_KEEP_DAYS = 14;
-const SNAP_MAX_COUNT = 24;   // v1.30.156: 軽量1個≒40KB。24個で約1MB(本体1.3MB+でも余裕)
+const SNAP_KEEP_DAYS = 7;    // v1.30.291: 14→7(予定が増え1個≒86KBに肥大→枠を絞る)
+const SNAP_MAX_COUNT = 10;   // v1.30.291: 24→10。1個≒86KB(予定増で40→86KBに)×24=約2MBが容量圧迫の主因だった→10個(約0.9MB)に。⏪復元は直近10世代+☁サーバーバックアップ14世代で足りる
 // 🪶 軽量バックアップの中身: ローカル編集で失うと困るデータだけ(events に事務タスクも含まれる)
 function buildLightSnap_(){
   return JSON.stringify({
@@ -4523,6 +4523,7 @@ function cleanupLegacySnapshots_(){
 }
 // 起動15秒後(クラウド同期が落ち着いてから)＋以後5分おきに枠チェック
 setTimeout(cleanupLegacySnapshots_, 8000);   // 軽量化前の重いバックアップを掃除
+setTimeout(()=>{ try{ pruneSnapshots_(); }catch(_){} }, 5000);   // v1.30.291: 起動時に新しい上限(10個)まで即間引き=溜まったsnapで容量圧迫→すぐ軽く
 setTimeout(takeSnapshotIfDue_, 15000);
 setInterval(takeSnapshotIfDue_, 5*60*1000);
 
@@ -4539,7 +4540,7 @@ function checkCapacityReminder_(){
     const prev = parseInt(localStorage.getItem(FLAG)||'0', 10);
     if(me && me.indexOf('山田')>=0 && kb >= prev+500){   // 山田だけに・500KB増えるごとに再通知
       localStorage.setItem(FLAG, String(kb));
-      try{ alert('📦 データが増えてきました（約'+(kb/1024).toFixed(1)+'MB / 上限5MB）。\n\n動作が重くなったりタスクが保存しづらくなる前に、\nClaude に「古い予定の自動アーカイブを入れて」と頼んでください。\n(他の人には出ません。山田さん向けの通知です)'); }catch(_){}
+      try{ alert('📦 データが増えてきました（約'+(kb/1024).toFixed(1)+'MB / 上限5MB）。\n\n古いバックアップ(⏪)は自動で整理していますが、それでも大きい場合は、\nClaude に「容量の内訳を見て軽くして」と頼んでください。\n(他の人には出ません。山田さん向けの通知です)'); }catch(_){}
     }
   }catch(_){}
 }
