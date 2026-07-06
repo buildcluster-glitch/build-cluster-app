@@ -2510,7 +2510,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.300</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.301</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -11981,7 +11981,9 @@ function renderCalendar(){
           : (taskInfo
               ? `<span class="ct-text" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${compactTaskHtml}</span>`
               : `<span style="display:inline-flex;min-width:0;flex:0 1 auto;align-items:baseline"><span class="ct-text" style="min-width:0;${__wrapName ? 'white-space:normal;display:-webkit-box;-webkit-line-clamp:'+__nameLines+';-webkit-box-orient:vertical;overflow:hidden;word-break:break-word' : 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap'}">${escapeHtml(__nameMain)}</span>${__roomTail ? `<span class="ct-room" style="flex-shrink:0;font-weight:600">${escapeHtml(__roomTail)}</span>` : ""}</span>`);
-        const timeBox = (isAnytime || ev.source==="direct-morning") ? "" : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;   // 🚗直行マーカーは時刻(09:00)を出さない(v1.30.241)
+        const timeBox = (ev.source==="direct-morning") ? ""   // 🚗直行マーカーは時刻(09:00)を出さない(v1.30.241)
+          : isAnytime ? `<span class="chip-time" style="opacity:.7">未定</span>`   // 🕔時間未定=「未定」表示(v1.30.301・鈴木要望)
+          : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;
         // 参加者バッジ/見積行は title 外(チップ直下)に独立行として配置。工事ボリュームは号室の隣(__volBadge)。
         // ※複数行タイトル時は staffBadges を __titleInner 内に入れ込み済みなので外側では出さない(v1.30.170)
         el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${__skipBadge}${isMulti ? '' : staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${__alertHtml}`;
@@ -12710,6 +12712,7 @@ function showTimeStepperPopup(ev, anchorEl, target /* "start"|"end" */){
     <button class="ts-btn" data-d="-15">−15</button>
     <span class="ts-time"></span>
     <button class="ts-btn" data-d="15">+15</button>
+    <button class="ts-undecided" title="時間未定にする(時刻を出さない・後で決める)" style="margin-left:6px;border:1px solid var(--border-strong);background:#fff;color:#475569;border-radius:6px;padding:3px 8px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">🕔 時間未定</button>
   `;
   document.body.appendChild(popup);
   // 位置調整（チップの下、はみ出る場合は上）
@@ -12765,6 +12768,21 @@ function showTimeStepperPopup(ev, anchorEl, target /* "start"|"end" */){
   };
   const onOutside = (e)=>{ if(!popup.contains(e.target)) close(); };
   const onKey = (e)=>{ if(e.key==="Escape") close(); };
+  // 🕔 時間未定(anytime) — 時刻を出さず「未定」表示に(鈴木要望・v1.30.301)
+  const undecidedBtn = popup.querySelector('.ts-undecided');
+  if(undecidedBtn) undecidedBtn.onclick = (e)=>{
+    e.stopPropagation();
+    const target_ev = state.events.find(x=>x.id===ev.id);
+    if(!target_ev) return;
+    if(typeof pushHistory==='function') pushHistory();
+    target_ev.timeMode = 'anytime';
+    target_ev.allday = false;
+    target_ev.updatedAt = new Date().toISOString();
+    saveState();
+    if(typeof cloudQueueEventChange === 'function') cloudQueueEventChange(target_ev, 'upsert');
+    render();
+    close();
+  };
   setTimeout(()=>{
     document.addEventListener('pointerdown', onOutside, true);
     document.addEventListener('keydown', onKey);
