@@ -2565,7 +2565,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.329</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.330</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -8345,49 +8345,21 @@ const TASK_PRIO_ORDER = ["", "🔴", "🔵"];                 // 普→高→低
 const TASK_PRIO_RANK  = { "🔴":0, "":1, "🟡":1, "🔵":2 }; // 並び順(高→普→低・旧中🟡は普扱い)
 const TASK_PRIO_LABEL = { "🔴":"高", "🟡":"中", "🔵":"低", "":"普" };
 const TASK_PRIO_COLOR = { "🔴":"#dc2626", "🟡":"#eab308", "🔵":"#3b82f6", "":"#94a3b8" };
-// 🆔 タスク行の安定ID(v1.30.329・大村報告「タイトル変えると2つに増える/コメント消える」の根治)。
-//   bullet直後(先頭)に置く隠しトークン ⟦t:xxx⟧。表示・キーからは必ず除去。リネームしてもIDは不変=
-//   マージ/コメントをIDで紐づけて「同一行」と認識でき、旧テキスト行の復活(2重化)とコメント喪失を防ぐ。
-//   先頭配置により 完了トグル/ゴミ箱/アーカイブ(行頭印・末尾完了ログ)は無改修で共存(metaの$アンカー不干渉)。
-const TASK_ID_RE = /^⟦t:([0-9a-z]+)⟧\s*/;   // m[4](bullet後)の先頭で一致
-let __taskIdSeq = 0;
-function newTaskId_(){ __taskIdSeq = (__taskIdSeq + 1) % 1296; return 't' + Date.now().toString(36).slice(-5) + Math.floor(Math.random()*1296).toString(36).padStart(2,'0') + __taskIdSeq.toString(36); }
-function stripTaskId_(s){ return String(s||"").replace(TASK_ID_RE, ""); }        // 先頭のIDトークンを除去
-function getTaskId_(s){ const m = String(s||"").match(TASK_ID_RE); return m ? m[1] : ""; }
-function taskIdTok_(id){ return id ? `⟦t:${id}⟧ ` : ""; }
-// 行頭(印/完了マーク/bullet/空白)までを g1、その後(=本文=m[4]相当)を g2 に分離
-const TASK_LINEHEAD_RE = /^(\s*(?:🗑|📦)?\s*(?:✅|☑|✓|🔄)?\s*[・\-●▪◦*]\s*)([\s\S]*)$/;
-// 決定的ハッシュ(全端末で同値)。移行時のID採番に使う=同一テキストの既存タスクは全端末で同じIDになりマージ整合。
-function hashStr_(s){ let h=0; s=String(s||""); for(let i=0;i<s.length;i++){ h=(h*31 + s.charCodeAt(i))|0; } return (h>>>0).toString(36); }
-// タスク本文(bullet後)の正規化キー(prio/meta/id除去)。コメント/マージのテキストキー・移行IDの素材。
+// ⚠ v1.30.330: v329で導入したタスク行IDトークン(⟦t:xxx⟧)が「表示に漏れる＋重複を招く」回帰を出したため撤去＋掃除。
+//   あらゆる括弧種( ⟦⟧ 〖〗 【】 [] )に囲まれた t:xxx を検出・除去。metaの〔M/D 名前〕は t: を含まないので巻き込まない。
+const TASK_ID_ANY_G = /[⟦〖【\[]\s*t:[0-9a-z]+\s*[⟧〗】\]]\s*/g;
+function stripTaskId_(s){ return String(s||"").replace(TASK_ID_ANY_G, ""); }        // 位置/括弧種を問わず全IDトークンを除去
+// タスク本文(bullet後)の正規化キー(id/prio/meta除去)。マージ/コメントのテキストキー素材。
 function taskBodyKey_(body){ return stripTaskId_(String(body||"")).replace(TASK_META_RE,"").replace(TASK_PRIO_RE,"").trim().normalize("NFKC").replace(/\s|　/g,"").toLowerCase(); }
-// 🆔 既存タスク行(ID無し)に「内容から決定的に」IDを付与。全端末で同じIDになる=移行後のマージで同一行と認識。
-//   足すだけ(消さない)＝タスク消失は起きない。返り値 {title, changed, moved:[{oldTextKey,id}]}(コメント移行用)。
-function ensureTaskIds_(title){
-  const lines = String(title||"").split(/\r?\n/);
-  let changed = false; const moved = [];
-  const out = lines.map(ln=>{
-    const m = ln.match(TASK_LINEHEAD_RE);
-    if(!m) return ln;                                   // 非タスク行(見出し等)
-    const rest = m[2]||"";
-    if(TASK_ID_RE.test(rest)) return ln;                // 既にID有り
-    const key = taskBodyKey_(rest);
-    if(!key) return ln;                                 // 空本文はスキップ
-    const id = 'm' + hashStr_(key);
-    changed = true; moved.push({ oldTextKey: key, id });
-    return m[1] + taskIdTok_(id) + rest;
-  });
-  return { title: changed ? out.join("\n") : title, changed, moved };
-}
-// 🆔 事務タスク(複数行)の既存行に決定的IDを付与して保存＋共有(全端末で同一ID→マージがID基準で整合し2重化を止める)。
-//   対象=category==='事務' の複数行イベント(＝マージ対象と同じ範囲)。足すだけ＝タスク消失なし。idempotent(再実行で無変化)。
+// 🧹 事務タスク(複数行)からIDトークンを除去＋重複行を統合して保存＋共有(v329の漏れ/重複を全端末で復旧)。idempotent。
 function migrateJimuTaskIds_(){
   let changed = false;
   (state.events||[]).forEach(ev=>{
     if(!ev || ev.category!=='事務' || !ev.title || ev.title.indexOf("\n")<0) return;
-    const r = ensureTaskIds_(ev.title);
-    if(r.changed){
-      ev.title = r.title; ev.updatedAt = new Date().toISOString();
+    let t = ev.title.replace(TASK_ID_ANY_G, "");                        // IDトークンを全除去
+    if(typeof dedupeTaskLines_==='function') t = dedupeTaskLines_(t);    // 重複行を1つに統合
+    if(t !== ev.title){
+      ev.title = t; ev.updatedAt = new Date().toISOString();
       if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(ev,'upsert'); }catch(_){} }
       changed = true;
     }
@@ -8406,9 +8378,7 @@ function parseTasks_(title){
               : isArchive  ? ln.replace(/^(\s*)📦\s?/, "$1") : ln;
     const m = work.match(TASK_BULLET_RE);
     if(m){
-      let text = (m[4]||"").trim(); let meta = ""; let prio = ""; let id = "";
-      const im = text.match(TASK_ID_RE);                                     // 🆔 先頭のIDトークンを抜く(表示テキストからは除去)
-      if(im){ id = im[1]; text = text.slice(im[0].length).trim(); }
+      let text = stripTaskId_((m[4]||"").trim()); let meta = ""; let prio = "";   // 🧹 v330: 万一残るIDトークンは表示から除去
       const mm = text.match(TASK_META_RE);
       if(mm){ meta = (mm[1]||"").trim(); text = text.replace(TASK_META_RE, "").trim(); }
       const pm = text.match(TASK_PRIO_RE);
@@ -8416,9 +8386,9 @@ function parseTasks_(title){
       const done = /^(✅|☑|✓)$/.test(m[2]||"");      // ✅系=完了
       const inProgress = (m[2]==="🔄");               // 🔄=進行中
       const status = done ? "完了" : (inProgress ? "進行中" : "未着手");
-      items.push({ index:i, text, done, inProgress, status, meta, prio, id, isTask:(!isTrash && !isArchive), isTrash, isArchive });
+      items.push({ index:i, text, done, inProgress, status, meta, prio, isTask:(!isTrash && !isArchive), isTrash, isArchive });
     }else{
-      items.push({ index:i, text:work.trim(), done:false, meta:"", prio:"", id:"", isTask:false, isTrash:false, isArchive:false }); // 見出し/通常行
+      items.push({ index:i, text:work.trim(), done:false, meta:"", prio:"", isTask:false, isTrash:false, isArchive:false }); // 見出し/通常行
     }
   });
   return items;
@@ -8496,7 +8466,7 @@ function addTaskLine_(title, text, by){
   const base = String(title||"");
   const sep = (base==="" || base.endsWith("\n")) ? "" : "\n";
   const tag = by ? ` 〔+${String(by).trim()}〕` : "";
-  return base + sep + "・" + taskIdTok_(newTaskId_()) + text + tag;   // 🆔 新規行にID付与
+  return base + sep + "・" + text + tag;
 }
 // タスク行をゴミ箱へ(🗑 付与・完了マークは外す)= 復元可能な削除
 function deleteTaskLine_(title, lineIndex){
@@ -8579,14 +8549,13 @@ function editTaskLine_(title, lineIndex, newText){
   const work = isTrash ? raw.replace(/^(\s*)🗑\s?/, "$1") : raw;
   const m = work.match(TASK_BULLET_RE);
   const t = String(newText||"").trim();
-  let meta = "", prio = "", idTok = "";
+  let meta = "", prio = "";
   if(m){
-    let old = (m[4]||"");
-    const im = old.match(TASK_ID_RE); if(im){ idTok = taskIdTok_(im[1]); old = old.slice(im[0].length); }   // 🆔 リネームしてもIDを保持
+    let old = stripTaskId_(m[4]||"");   // 🧹 v330: 残存IDトークンは落とす
     const mm = old.match(TASK_META_RE); if(mm){ meta = " 〔"+(mm[1]||"").trim()+"〕"; old = old.replace(TASK_META_RE,""); }
     const pm = old.match(TASK_PRIO_RE); if(pm) prio = pm[1]+" ";
   }
-  let out = m ? `${m[1]||""}${m[2]?m[2]+" ":""}${m[3]} ${idTok}${prio}${t}${meta}` : "・" + taskIdTok_(newTaskId_()) + t;
+  let out = m ? `${m[1]||""}${m[2]?m[2]+" ":""}${m[3]} ${prio}${t}${meta}` : "・" + t;
   if(isTrash) out = out.replace(/^(\s*)/, "$1🗑 ");
   lines[lineIndex] = out;
   return lines.join("\n");
@@ -8600,12 +8569,11 @@ function setTaskPriority_(title, lineIndex, prio){
   const work = isTrash ? raw.replace(/^(\s*)🗑\s?/, "$1") : raw;
   const m = work.match(TASK_BULLET_RE);
   if(!m) return title;
-  let text = (m[4]||""); let meta = ""; let idTok = "";
-  const im = text.match(TASK_ID_RE); if(im){ idTok = taskIdTok_(im[1]); text = text.slice(im[0].length); }   // 🆔 先頭IDを保持(prio除去より前に抜く)
+  let text = stripTaskId_(m[4]||""); let meta = "";   // 🧹 v330: 残存IDトークンは落とす
   const mm = text.match(TASK_META_RE); if(mm){ meta = " 〔"+(mm[1]||"").trim()+"〕"; text = text.replace(TASK_META_RE,""); }
   text = text.replace(TASK_PRIO_RE, "").trim();   // 既存の優先度マーカー除去
   const pre = prio ? prio+" " : "";
-  let out = `${m[1]||""}${m[2]?m[2]+" ":""}${m[3]} ${idTok}${pre}${text}${meta}`;
+  let out = `${m[1]||""}${m[2]?m[2]+" ":""}${m[3]} ${pre}${text}${meta}`;
   if(isTrash) out = out.replace(/^(\s*)/, "$1🗑 ");
   lines[lineIndex] = out;
   return lines.join("\n");
@@ -16065,9 +16033,7 @@ function taskTextKey_(ln){
   let w = String(ln||"").replace(/^\s*(🗑|📦)\s*/, "");   // ゴミ箱/アーカイブ印を除去
   const m = w.match(TASK_BULLET_RE);
   if(!m) return "";                                       // 箇条書きでない行(見出し等)は対象外
-  const id = getTaskId_(m[4]||"");
-  if(id) return "id:" + id;                               // 🆔 ID有り=IDで識別(リネームしても不変=旧テキスト行を復活させない/2重化しない)v1.30.329
-  return taskBodyKey_(m[4]||"");                          // ID無し(未移行)=従来どおりテキストキー(後方互換)
+  return taskBodyKey_(m[4]||"");                          // 🧹 v330: テキストキー(IDトークンは taskBodyKey_ 内 stripTaskId_ で除去)
 }
 function mergeJimuTitle_(winnerTitle, loserTitle){
   // loser行を key→行 で索引(同keyは先頭優先)
