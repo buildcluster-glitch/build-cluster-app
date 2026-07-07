@@ -1701,14 +1701,15 @@
   .rd-filter-bar .clear{margin-left:auto;background:rgba(255,255,255,.15);color:#fff;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;border:none}
   .rd-scroll{flex:1;overflow-y:auto;padding-bottom:80px}
   .rd-group{margin-bottom:8px}
-  /* 🏭外注工事 / 🔨自社工事 を色テーマで一目区別(v1.30.317・山田要望) */
-  .rd-group-out{border-left:4px solid #6366f1;border-radius:0 10px 10px 0;padding:2px 2px 4px 8px;margin-bottom:12px;background:linear-gradient(90deg,#eef2ff 0%,rgba(238,242,255,0) 55%)}
-  .rd-group-out > .rd-group-head{background:#e0e7ff;color:#3730a3;padding:5px 10px;border-radius:7px;margin-bottom:5px}
-  .rd-group-in{border-left:4px solid #f59e0b;border-radius:0 10px 10px 0;padding:2px 2px 4px 8px;margin-bottom:12px;background:linear-gradient(90deg,#fffbeb 0%,rgba(255,251,235,0) 55%)}
-  .rd-group-in > .rd-group-head{background:#fef3c7;color:#92400e;padding:5px 10px;border-radius:7px;margin-bottom:5px}
-  .rd-group-badge{font-size:10px;font-weight:800;padding:1px 7px;border-radius:6px;letter-spacing:.5px}
-  .rd-group-out .rd-group-badge{background:#6366f1;color:#fff}
-  .rd-group-in .rd-group-badge{background:#f59e0b;color:#fff}
+  /* 🏭外注工事 / 🔨自社工事 を色テーマで強く区別(v1.30.318・山田「もっとつよく」) */
+  .rd-group-out{border:2px solid #6366f1;border-left-width:7px;border-radius:10px;padding:0 6px 6px;margin-bottom:16px;background:#eef2ff}
+  .rd-group-out > .rd-group-head{background:#4f46e5;color:#fff;padding:7px 12px;border-radius:0 0 8px 8px;margin:0 -6px 6px;font-size:13.5px;box-shadow:0 2px 5px rgba(79,70,229,.3)}
+  .rd-group-in{border:2px solid #f59e0b;border-left-width:7px;border-radius:10px;padding:0 6px 6px;margin-bottom:16px;background:#fffbeb}
+  .rd-group-in > .rd-group-head{background:#d97706;color:#fff;padding:7px 12px;border-radius:0 0 8px 8px;margin:0 -6px 6px;font-size:13.5px;box-shadow:0 2px 5px rgba(217,119,6,.3)}
+  .rd-group-out > .rd-group-head .rd-group-sum, .rd-group-in > .rd-group-head .rd-group-sum{color:rgba(255,255,255,.9)}
+  .rd-group-badge{font-size:11px;font-weight:800;padding:2px 9px;border-radius:6px;letter-spacing:1px}
+  .rd-group-out .rd-group-badge{background:#fff;color:#4f46e5}
+  .rd-group-in .rd-group-badge{background:#fff;color:#b45309}
   /* ✂️減工事・📋提案 = やらない工事。グレーアウトで一目で区別(v1.30.121) */
   .rd-group-muted{filter:grayscale(.85);opacity:.62;background:#f1f5f9;border-radius:8px;padding:4px 6px}
   .rd-group-muted .rd-group-head{color:#64748b}
@@ -2546,7 +2547,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.317</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.318</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
