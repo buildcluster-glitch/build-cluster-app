@@ -2565,7 +2565,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.340</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.341</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -18286,12 +18286,16 @@ function restoIsGaichuTrade(t){ return RESTO_GAICHU_TRADE_RE.test(String(t?.name
 //   ※t.category(保存値)自体は変えない(合計(外注)は保存値ベースのまま=未割当工種で外注額を膨らませない)。
 function restoEffCategory(t){
   if(!t) return "";
-  if(t.category!=="inhouse") return t.category;
-  // 🔧 v1.30.220(山田): 「提案・要手配」は外注語より優先で自社工事に(クロス洗浄"提案"等が業者未設定で外注に落ちないように)。減工事(reduced)だけが「やらない工事」。
-  if(restoIsProposal(t)) return "inhouse";
-  // 工事名が外注定番工種(クロス貼替/床全面 等)=外注。業者未設定でも自社進捗に混ぜない(大村まどか報告対応は維持・判定は工事名のみ)。
-  if(restoIsGaichuTrade(t)) return "outsource";
-  return "inhouse";
+  // inhouse/outsource 以外(reduced=やらない/proposal=提案/その他)はそのまま
+  if(t.category && t.category!=="inhouse" && t.category!=="outsource") return t.category;
+  // 「提案・要手配」は自社(v1.30.220・山田)
+  if(t.category==="inhouse" && typeof restoIsProposal==="function" && restoIsProposal(t)) return "inhouse";
+  // 🔧 v1.30.341(山田): 「業者未設定は自社工事」。工事名が外注定番(クロス/床/塗装等)でも or 明示outsourceでも、
+  //   ★業者が割り当てられていなければ自社工事扱い★。業者が付いているものだけ外注。
+  //   (旧: 外注定番工種は業者未設定でも外注に固定=大村まどか対応。山田判断で「未設定=自社」に変更)
+  const couldBeOutsource = (t.category==="outsource") || (typeof restoIsGaichuTrade==="function" && restoIsGaichuTrade(t));
+  if(!couldBeOutsource) return "inhouse";
+  return String(t.contractor||"").trim() ? "outsource" : "inhouse";
 }
 
 function restoActiveTasks(p){ return (p.tasks||[]).filter(t=>{ const ec=restoEffCategory(t); return ec!=="reduced" && ec!=="proposal" && !isExcludedRestoTask(t); }); }
