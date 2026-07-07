@@ -2565,7 +2565,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.330</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.331</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7211,6 +7211,60 @@ async function mutateJimuTaskCommentsRemote_(staff, taskKey, mutator){
   return map;
 }
 
+// 🪦 タスク行のリネーム/削除の「墓標」(全員共有・shared-config 'jimu_task_tombstones') v1.30.331
+//   value = JSON { tombstones:{ [staff]:{ [taskKey]: at(ISO) } }, updatedAt }
+//   リネーム X→Y / 完全削除 で key(X) を登録 → マージ/統合で「旧行Xの復活」を抑止=2重化しない。★本文には一切触らない★
+//   ⚠安全設計: 効かなくても(空/未取得/旧版端末は無視)従来どおり=悪化しない。TTL=30日で失効(誤抑制回避)。
+//   ⚠タスク消失防止は維持: 墓標に載った“明示的に消したkey”しか抑制しない=別端末の本当の新規追加は必ず残る。
+const JIMU_TS_CACHE_KEY = "buildcluster_jimu_task_tombstones_cache";
+const JIMU_TS_TTL_MS = 30*24*3600*1000;
+function loadJimuTsMap_(){ try{ const o=JSON.parse(localStorage.getItem(JIMU_TS_CACHE_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
+function saveJimuTsMap_(m){ try{ localStorage.setItem(JIMU_TS_CACHE_KEY, JSON.stringify(m||{})); }catch(e){} }
+function isTaskTombstoned_(staff, key){
+  if(!staff || !key) return false;
+  const by = loadJimuTsMap_()[staff]; if(!by) return false;
+  const at = by[key]; if(!at) return false;
+  const t = Date.parse(at); if(isNaN(t)) return false;
+  return (Date.now() - t) < JIMU_TS_TTL_MS;   // TTL内のみ有効(古すぎる墓標は誤抑制回避で無効)
+}
+async function fetchJimuTombstones_(opts={}){
+  const s=loadGasSettings();
+  if(!s.url||!s.token) return loadJimuTsMap_();
+  const url=`${s.url}?action=get-shared-config&key=jimu_task_tombstones&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+  try{
+    const res=await fetch(url,{method:'GET',redirect:'follow'}); if(!res.ok) throw new Error('HTTP '+res.status);
+    const data=await res.json(); let raw=data.value;
+    if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(_){ raw=null; } }
+    const remote=(raw&&raw.tombstones&&typeof raw.tombstones==='object')?raw.tombstones:{};
+    saveJimuTsMap_(remote);
+    return remote;
+  }catch(err){ if(!opts.silent) console.warn('[jimu_task_tombstones] fetch失敗:',err.message); return loadJimuTsMap_(); }
+}
+// 最新remote取得→(staff,key)にon/off適用→保存→push(多著者で消えない)。updates=[{key,on}]
+async function mutateJimuTombstones_(staff, updates){
+  if(!staff || !Array.isArray(updates) || !updates.filter(u=>u&&u.key).length) return;
+  const s=loadGasSettings(); let map=loadJimuTsMap_();
+  if(s.url&&s.token){
+    try{
+      const url=`${s.url}?action=get-shared-config&key=jimu_task_tombstones&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+      const res=await fetch(url,{method:'GET',redirect:'follow'});
+      if(res.ok){ const d=await res.json(); let raw=d.value; if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(_){ raw=null; } } if(raw&&raw.tombstones&&typeof raw.tombstones==='object') map=raw.tombstones; }
+    }catch(_){}
+  }
+  const by=(map[staff]&&typeof map[staff]==='object')?map[staff]:{};
+  const now=new Date().toISOString();
+  updates.forEach(u=>{ if(!u||!u.key) return; if(u.on) by[u.key]=now; else delete by[u.key]; });
+  Object.keys(by).forEach(k=>{ const t=Date.parse(by[k]); if(!isNaN(t) && (Date.now()-t)>=JIMU_TS_TTL_MS) delete by[k]; });   // TTL失効を掃除
+  if(Object.keys(by).length) map[staff]=by; else delete map[staff];
+  saveJimuTsMap_(map);
+  if(s.url&&s.token){
+    const payload={tombstones:map,updatedAt:now};
+    try{ await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'jimu_task_tombstones',value:JSON.stringify(payload),token:s.token,savedBy:'calendar-app'})}); }
+    catch(e){ console.warn('[jimu_task_tombstones] push失敗:',e.message); }
+  }
+  return map;
+}
+
 // 🟢 プレゼンス(誰が今開いているか・全員共有 shared-config 'calendar_presence') v1.30.289
 //   value = JSON { presence:{ [staff]: lastSeenISO }, updatedAt }。表示中の端末が60秒ごとにハートビート、直近2分以内=オンライン。
 //   ⚠ 真のリアルタイム同期(即時プッシュ)はGASでは不可。これはポーリング型の「在席表示」。ON/OFFは⚙設定(この端末のみ)。
@@ -8703,7 +8757,10 @@ function consolidateAllJimu_(){
         // 本文のタスク行を canonical にユニオン(相手にしか無い行を救出・共有行はランクが高い方を採用)
         String(ev.title||'').split(/\r?\n/).forEach(ln=>{
           const k=taskTextKey_(ln); if(!k) return;
-          if(!idxByKey.has(k)){ idxByKey.set(k, canonLines.length); canonLines.push(ln); }
+          if(!idxByKey.has(k)){
+            if(isTaskTombstoned_(staff, k)) return;   // 🪦 リネーム/削除で消された旧行は復活させない(2重化防止)v1.30.331
+            idxByKey.set(k, canonLines.length); canonLines.push(ln);
+          }
           else { const i=idxByKey.get(k); if(isPlainTaskLine_(canonLines[i]) && isPlainTaskLine_(ln) && taskLineRank_(ln) > taskLineRank_(canonLines[i])) canonLines[i]=ln; }
         });
         // 💬 業務連絡(messages)も統合
@@ -8723,6 +8780,7 @@ function consolidateAllJimu_(){
 // 📌 指定スタッフの事務タスクリストへ1行追加(無ければ新規作成)。by=追加した人。追加先イベントを返す
 function addTaskToStaff_(staff, text, by){
   text = String(text||"").trim(); if(!staff || !text) return null;
+  { const k=taskBodyKey_(text); if(k && typeof mutateJimuTombstones_==='function'){ try{ mutateJimuTombstones_(staff, [{key:k, on:false}]); }catch(_){} } }   // 🪦 追加=墓標解除(v1.30.331)
   let tev = (typeof getOrConsolidateJimuEvent_==='function') ? getOrConsolidateJimuEvent_(staff) : null;
   if(typeof pushHistory==='function') pushHistory();
   if(!tev){
@@ -8905,7 +8963,16 @@ function showTaskChecklistPopup(el, ev){
     sp.replaceWith(inp); inp.focus(); inp.select();
     let fin=false;
     const commit=()=>{ if(fin)return; fin=true; const nv=inp.value.trim();
-      if(nv && nv!==cur0){ migrateTaskCmts_(cur0, nv); mutate(t=>editTaskLine_(t, li, nv)); } else { renderInner(); } };   // 💬コメントを新キーへ引き継ぐ(v1.30.328)
+      if(nv && nv!==cur0){
+        migrateTaskCmts_(cur0, nv);   // 💬コメントを新キーへ引き継ぐ(v1.30.328)
+        // 🪦 旧テキストに墓標(復活抑止)＋新テキストの墓標は解除(再利用時に生かす)v1.30.331
+        const __staff = ((state.events||[]).find(e=>e.id===ev.id)||{}).staff;
+        const __ok = taskBodyKey_(cur0), __nk = taskBodyKey_(nv);
+        if(__staff && __ok && __ok!==__nk && typeof mutateJimuTombstones_==='function'){
+          try{ mutateJimuTombstones_(__staff, [{key:__ok, on:true}, {key:__nk, on:false}]); }catch(_){}
+        }
+        mutate(t=>editTaskLine_(t, li, nv));
+      } else { renderInner(); } };
     inp.onkeydown=e=>{ if(e.key==='Enter' && !e.isComposing && e.keyCode!==229){e.preventDefault();commit();} else if(e.key==='Escape'){fin=true;renderInner();} };
     inp.onblur=commit;
   };
@@ -9044,7 +9111,15 @@ function showTaskChecklistPopup(el, ev){
       b.onclick = ()=> mutate(t=>unarchiveTaskLine_(t, parseInt(b.dataset.line,10)));
     });
     pop.querySelectorAll('.tp-purge').forEach(b=>{
-      b.onclick = ()=>{ if(confirm('完全に削除しますか？(復元できません)')) mutate(t=>purgeTaskLine_(t, parseInt(b.dataset.line,10))); };
+      b.onclick = ()=>{
+        if(!confirm('完全に削除しますか？(復元できません)')) return;
+        const li = parseInt(b.dataset.line,10);
+        // 🪦 完全削除した行に墓標(他端末から復活=2重化させない)v1.30.331
+        const cev = (state.events||[]).find(e=>e.id===ev.id);
+        const it = cev ? parseTasks_(cev.title).find(x=>x.index===li) : null;
+        if(cev && cev.staff && it && it.text){ const k=taskBodyKey_(it.text); if(k && typeof mutateJimuTombstones_==='function'){ try{ mutateJimuTombstones_(cev.staff, [{key:k, on:true}]); }catch(_){} } }
+        mutate(t=>purgeTaskLine_(t, li));
+      };
     });
     pop.querySelectorAll('.tp-text[data-line]').forEach(sp=>{
       sp.onclick = ()=> startEdit_(sp, parseInt(sp.dataset.line,10));
@@ -9073,7 +9148,10 @@ function showTaskChecklistPopup(el, ev){
         if(typeof showAutoSyncToast==='function') showAutoSyncToast(`✅ ${target}さんのタスクに追加しました`);
         return;
       }
-      focusAdd=true; mutate(t=>addTaskLine_(t, v, by));
+      focusAdd=true;
+      // 🪦 追加=そのテキストの墓標を解除(過去にリネーム/削除で墓標が立っていても再追加を生かす)v1.30.331
+      { const k=taskBodyKey_(v); if(cur.staff && k && typeof mutateJimuTombstones_==='function'){ try{ mutateJimuTombstones_(cur.staff, [{key:k, on:false}]); }catch(_){} } }
+      mutate(t=>addTaskLine_(t, v, by));
     };
     pop.querySelector('.tp-add-btn').onclick = doAdd;
     // Enter で追加。日本語IMEの変換確定Enter(isComposing/keyCode229)は除外しないと「変換確定の瞬間に空で発火→何も追加されない」(v1.30.133)
@@ -16035,7 +16113,7 @@ function taskTextKey_(ln){
   if(!m) return "";                                       // 箇条書きでない行(見出し等)は対象外
   return taskBodyKey_(m[4]||"");                          // 🧹 v330: テキストキー(IDトークンは taskBodyKey_ 内 stripTaskId_ で除去)
 }
-function mergeJimuTitle_(winnerTitle, loserTitle){
+function mergeJimuTitle_(winnerTitle, loserTitle, staff){
   // loser行を key→行 で索引(同keyは先頭優先)
   const loserByKey = new Map();
   String(loserTitle||"").split(/\r?\n/).forEach(ln=>{ const k=taskTextKey_(ln); if(k && !loserByKey.has(k)) loserByKey.set(k, ln); });
@@ -16049,9 +16127,9 @@ function mergeJimuTitle_(winnerTitle, loserTitle){
     if(lln && isPlainTaskLine_(ln) && isPlainTaskLine_(lln) && taskLineRank_(lln) > taskLineRank_(ln)) return lln;
     return ln;
   });
-  // loserにしか無いタスク行を末尾に救出
+  // loserにしか無いタスク行を末尾に救出。ただし墓標(リネーム/削除で消したkey)は復活させない(2重化防止)v1.30.331
   const extra = [];
-  loserByKey.forEach((ln,k)=>{ if(!seen.has(k)) extra.push(ln); });
+  loserByKey.forEach((ln,k)=>{ if(!seen.has(k) && !isTaskTombstoned_(staff, k)) extra.push(ln); });
   return extra.length ? out.concat(extra).join("\n") : out.join("\n");
 }
 // 💬 業務連絡(messages)を id基準でユニオン。両端末のメッセージを消さない(タスク行ユニオンと同じ思想)v1.30.195
@@ -16092,7 +16170,7 @@ function cloudMergeById_(localArr, serverArr, pendingIds){
         if(isJimuTask){
           const winner = localIsNewer ? oldLocal : newServer;
           const loser  = localIsNewer ? newServer : oldLocal;
-          const mergedTitle = mergeJimuTitle_(winner.title, loser.title);
+          const mergedTitle = mergeJimuTitle_(winner.title, loser.title, winner.staff || loser.staff);   // 🪦 墓標参照用にstaffを渡す(v1.30.331)
           const result = localIsNewer ? oldLocal : newServer;
           if(localIsNewer){
             for(const k in newServer){ if(result[k] === undefined) result[k] = newServer[k]; }
@@ -19991,6 +20069,11 @@ setTimeout(()=>{
       try{ if(typeof captureLocalJimuTaskComments_==='function') captureLocalJimuTaskComments_(); }catch(_){}  // 先にローカルev.taskCommentsを共有mapへ退避
       fetchJimuTaskComments_({silent:true, push:true}).catch(()=>{});
       setInterval(()=>fetchJimuTaskComments_({silent:true}).catch(()=>{}), 5*60*1000);
+    }
+    // 🪦 タスク行の墓標(リネーム/削除の復活抑止) 取得・以後5分ごと(v1.30.331)。マージ前に手元へ反映しておく。
+    if(typeof fetchJimuTombstones_==='function'){
+      fetchJimuTombstones_({silent:true}).catch(()=>{});
+      setInterval(()=>fetchJimuTombstones_({silent:true}).catch(()=>{}), 5*60*1000);
     }
     // 🟢 プレゼンス(誰が今開いているか) 起動時+60秒ごとにハートビート、タブ復帰時も即。ON/OFFは⚙設定(v1.30.289)
     if(typeof heartbeatPresence_==='function'){
