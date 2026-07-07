@@ -2565,7 +2565,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.336</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.337</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2589,6 +2589,7 @@
   <button class="nav-btn icon-only" id="searchBtn" title="🔍 予定・立会・修繕・最終確認・休暇を横断検索 (/)">🔍</button>
   <button class="nav-btn icon-only" id="yearStatsBtn" title="📊 休日管理 (有給・休日年間集計)">📊</button>
   <button class="nav-btn icon-only" id="bugReportBtn" title="🐞 バグ・要望の報告 (全員共有・見積アプリの報告と同様)">🐞<span id="bugReportBadge" class="al-count" style="display:none"></span></button>
+  <button class="nav-btn icon-only" id="changelogBtn" title="📜 変更の記録 — 誰がいつ 立会/修繕/タスク/予定 を変えた・消したか(全員共有)">📜</button>
   <button class="nav-btn" id="cloudSyncBtn" title="☁ 全同期 — クラウド(予定/休暇) + Drive(最終確認・立会・事前など) をまとめて今すぐ同期。設定は⚙"><span id="cloudSyncIcon">☁</span><span id="cloudSyncBadge" class="hidden"></span></button>
   <button class="nav-btn icon-only" id="gasSettingsBtnHeader" title="⚙ 設定 (GAS URL/Token)">⚙</button>
   <!-- 🚫 リセット(⟳ 全データ消去)ボタンは誤爆事故防止で撤去(山田 v1.30.222)。データ消去が必要なら Console で localStorage.removeItem("buildcluster_schedule_v1") -->
@@ -6111,9 +6112,30 @@ async function mutateTaikyoOverrideRemote_(taikyoId, patch){
                  at: new Date().toISOString(), by: (typeof getMyself==='function'?getMyself():'')||'' };
   map[taikyoId] = next;
   saveTaikyoOverrides_(map);
+  // 📜 変更の記録(v337): 誰がいつ立会の担当/日時/直行/取消を変えたか
+  try{ if(typeof logChange_==='function' && patch && typeof patch==='object'){
+    const parts=[];
+    if(patch.staff!==undefined)   parts.push('担当='+(patch.staff||'空'));
+    if(patch.date!==undefined)    parts.push('日付='+(patch.date||'未定'));
+    if(patch.time!==undefined)    parts.push('時刻='+(patch.time||'未定'));
+    if(patch.commute!==undefined) parts.push('直行直帰='+(patch.commute||'なし'));
+    const isDel = patch.dismissed===true;
+    if(patch.dismissed!==undefined && !isDel) parts.push('取消解除');
+    const label = (typeof taikyoLabelForLog_==='function' && taikyoLabelForLog_(taikyoId)) || ('立会 '+String(taikyoId).replace(/^sid:/,'').slice(0,28));
+    logChange_('立会', isDel?'取消':'変更', label, parts.join(' / '));
+  } }catch(_){}
   if(typeof render==='function') render();
   await pushTaikyoOverridesMap_(map);
   return map;
+}
+// 📜 立会の読みやすいラベルをidから解決(見つからなければ空)。現在のstate.eventsの立会仮想/最終確認から拾う。
+function taikyoLabelForLog_(taikyoId){
+  try{
+    const rid = String(taikyoId||'').replace(/^sid:/,'');
+    const hit = (state.events||[]).find(e=> e && (e._taikyoRawId===rid || e._taikyoRawId===taikyoId || e.id===taikyoId));
+    if(hit && hit.title) return String(hit.title).split('\n')[0];
+  }catch(_){}
+  return '';
 }
 // 担当上書き(従来API維持・同期push対応)。staff="" で担当のみ解除
 function setTaikyoStaffOverride_(taikyoId, staff){
@@ -6245,6 +6267,10 @@ async function setRepairWorkerOverride_(repairId, worker){
   let map = loadRepairOverrides_();
   map[repairId] = stamp();                 // 楽観的にローカル即更新
   saveRepairOverrides_(map);
+  // 📜 変更の記録(v337): 誰がいつ修繕の作業担当を変えたか
+  try{ if(typeof logChange_==='function'){ const __r=(state.repairs||[]).find(x=>x&&x.id===repairId);
+    const __lbl=(__r && (__r.name||__r.bukken)) ? `${__r.name||__r.bukken}${__r.room?' '+__r.room:''}` : ('修繕 '+String(repairId).slice(0,24));
+    logChange_('修繕','変更', __lbl, '担当='+((worker||'').trim()||'空')); } }catch(_){}
   const s = loadGasSettings();
   if(s.url && s.token){
     try{
@@ -7266,6 +7292,114 @@ async function mutateJimuTombstones_(staff, updates){
     catch(e){ console.warn('[jimu_task_tombstones] push失敗:',e.message); }
   }
   return map;
+}
+
+// 📜 変更の記録(全員共有・shared-config 'calendar_changelog') v1.30.337(山田・不安対策#2)
+//   誰がいつ 立会/修繕/タスク/予定 を 変更/削除/追加/完了 したかの履歴。append-only・直近CHLOG_MAX件。
+//   記録は「ローカル即追加＋2.5秒デバウンスで共有push(id union=多著者で消えない)」。同期ロジック本体には触らない。
+const CHLOG_CACHE_KEY = "buildcluster_calendar_changelog_cache";
+const CHLOG_MAX = 300;
+function loadChlog_(){ try{ const o=JSON.parse(localStorage.getItem(CHLOG_CACHE_KEY)||"[]"); return Array.isArray(o)?o:[]; }catch(e){ return []; } }
+function saveChlog_(a){ try{ localStorage.setItem(CHLOG_CACHE_KEY, JSON.stringify(a||[])); }catch(e){} }
+let __chlogPushT = null, __chlogPending = [];
+function logChange_(kind, action, label, detail){
+  try{
+    const by = (typeof getMyself==='function' ? getMyself() : '') || '';
+    const e = { id:(typeof uid==='function'?uid():String(Date.now())+Math.random().toString(36).slice(2)),
+      at:new Date().toISOString(), by, kind:String(kind||''), action:String(action||''),
+      label:String(label||'').slice(0,80), detail:String(detail||'').slice(0,140) };
+    let a = loadChlog_(); a.push(e); if(a.length>CHLOG_MAX) a=a.slice(-CHLOG_MAX); saveChlog_(a);
+    __chlogPending.push(e);
+    if(document.getElementById('changelogModal') && document.getElementById('changelogModal').classList.contains('show')) renderChangelog_();
+    if(__chlogPushT) clearTimeout(__chlogPushT);
+    __chlogPushT = setTimeout(()=>{ pushChlog_().catch(()=>{}); }, 2500);
+  }catch(_){}
+}
+async function pushChlog_(){
+  const s = (typeof loadGasSettings==='function') ? loadGasSettings() : {};
+  const pend = __chlogPending.slice(); __chlogPending = [];
+  if(!s.url || !s.token || !pend.length) return;
+  try{
+    let remote = [];
+    try{ const r=await fetch(`${s.url}?action=get-shared-config&key=calendar_changelog&token=${encodeURIComponent(s.token)}&t=${Date.now()}`,{redirect:'follow'});
+      if(r.ok){ const d=await r.json(); let raw=d.value; if(typeof raw==='string'){try{raw=JSON.parse(raw);}catch(_){raw=null;}} if(raw&&Array.isArray(raw.entries)) remote=raw.entries; } }catch(_){}
+    const seen=new Set(remote.map(x=>x&&x.id));
+    pend.forEach(e=>{ if(e&&e.id&&!seen.has(e.id)){ remote.push(e); seen.add(e.id); } });
+    remote.sort((a,b)=>String(a.at||'').localeCompare(String(b.at||'')));
+    if(remote.length>CHLOG_MAX) remote=remote.slice(-CHLOG_MAX);
+    saveChlog_(remote);
+    await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'calendar_changelog',value:JSON.stringify({entries:remote,updatedAt:new Date().toISOString()}),token:s.token,savedBy:'calendar-app'})});
+  }catch(e){ console.warn('[changelog] push失敗:', e.message); }
+}
+async function fetchChlog_(opts={}){
+  const s = (typeof loadGasSettings==='function') ? loadGasSettings() : {};
+  if(!s.url || !s.token) return loadChlog_();
+  try{
+    const r=await fetch(`${s.url}?action=get-shared-config&key=calendar_changelog&token=${encodeURIComponent(s.token)}&t=${Date.now()}`,{redirect:'follow'});
+    const d=await r.json(); let raw=d.value; if(typeof raw==='string'){try{raw=JSON.parse(raw);}catch(_){raw=null;}}
+    if(raw&&Array.isArray(raw.entries)){
+      const byId=new Map(raw.entries.filter(x=>x&&x.id).map(x=>[x.id,x]));
+      loadChlog_().forEach(x=>{ if(x&&x.id&&!byId.has(x.id)) byId.set(x.id,x); });   // 自分の未pushぶんを保持
+      let merged=[...byId.values()].sort((a,b)=>String(a.at||'').localeCompare(String(b.at||'')));
+      if(merged.length>CHLOG_MAX) merged=merged.slice(-CHLOG_MAX);
+      saveChlog_(merged);
+      if(document.getElementById('changelogModal') && document.getElementById('changelogModal').classList.contains('show')) renderChangelog_();
+    }
+  }catch(e){ if(!opts.silent) console.warn('[changelog] fetch失敗:', e.message); }
+  return loadChlog_();
+}
+
+// 📜 変更履歴ビューア
+function ensureChangelogModal_(){
+  if(document.getElementById('changelogModal')) return;
+  const ov=document.createElement('div'); ov.className='modal-overlay'; ov.id='changelogModal';
+  ov.innerHTML = `
+    <div class="modal" style="max-width:640px;width:96vw">
+      <div class="modal-header">📜 変更の記録 <span style="font-weight:400;font-size:11px;color:var(--muted)">誰がいつ 変えた/消した か(全員共有)</span></div>
+      <div class="modal-body" style="max-height:74vh;overflow:auto">
+        <div id="chlog-filter" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px"></div>
+        <div id="chlog-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="chlog-refresh">🔄 最新に</button>
+        <button class="btn" id="chlog-close">閉じる</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.onclick=e=>{ if(e.target===ov) ov.classList.remove('show'); };
+  ov.querySelector('#chlog-close').onclick=()=>ov.classList.remove('show');
+  ov.querySelector('#chlog-refresh').onclick=()=>{ fetchChlog_({silent:true}).then(()=>renderChangelog_()); };
+}
+let __chlogFilter = 'all';
+function renderChangelog_(){
+  const list=document.getElementById('chlog-list'); if(!list) return;
+  const fbox=document.getElementById('chlog-filter');
+  const KINDS=[['all','すべて'],['立会','立会'],['修繕','修繕'],['タスク','タスク'],['予定','予定']];
+  if(fbox){ fbox.innerHTML=KINDS.map(([v,l])=>`<button class="btn" data-chf="${v}" style="font-size:11px;padding:3px 9px;${__chlogFilter===v?'background:var(--accent);color:#fff':''}">${l}</button>`).join('');
+    fbox.querySelectorAll('[data-chf]').forEach(b=>b.onclick=()=>{ __chlogFilter=b.dataset.chf; renderChangelog_(); }); }
+  let items=loadChlog_().slice().reverse();   // 新しい順
+  if(__chlogFilter!=='all') items=items.filter(x=>x&&x.kind===__chlogFilter);
+  if(!items.length){ list.innerHTML='<div style="text-align:center;padding:24px;color:var(--muted)">記録はまだありません</div>'; return; }
+  const ACT_COLOR={'削除':'#dc2626','変更':'#d97706','追加':'#16a34a','完了':'#2563eb'};
+  list.innerHTML=items.slice(0,200).map(e=>{
+    const d=new Date(e.at); const dstr=isNaN(d)?'':`${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    const ac=ACT_COLOR[e.action]||'#64748b';
+    return `<div style="border:1px solid var(--border);border-radius:8px;padding:6px 9px;margin-bottom:6px;font-size:12px">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <span style="background:#eef2ff;color:#3730a3;font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px">${escapeHtml(e.kind||'')}</span>
+        <span style="background:${ac};color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px">${escapeHtml(e.action||'')}</span>
+        <span style="font-size:10px;color:var(--muted);margin-left:auto">${escapeHtml(e.by||'?')} ・ ${dstr}</span>
+      </div>
+      <div style="margin-top:3px;font-weight:600;word-break:break-word">${escapeHtml(e.label||'')}</div>
+      ${e.detail?`<div style="margin-top:1px;color:var(--muted);font-size:11px;word-break:break-word">${escapeHtml(e.detail)}</div>`:''}
+    </div>`;
+  }).join('');
+}
+function openChangelog_(){
+  ensureChangelogModal_();
+  document.getElementById('changelogModal').classList.add('show');
+  renderChangelog_();
+  fetchChlog_({silent:true}).then(()=>renderChangelog_()).catch(()=>{});
 }
 
 // 🟢 プレゼンス(誰が今開いているか・全員共有 shared-config 'calendar_presence') v1.30.289
@@ -8974,6 +9108,7 @@ function showTaskChecklistPopup(el, ev){
         if(__staff && __ok && __ok!==__nk && typeof mutateJimuTombstones_==='function'){
           try{ mutateJimuTombstones_(__staff, [{key:__ok, on:true}, {key:__nk, on:false}]); }catch(_){}
         }
+        try{ if(typeof logChange_==='function') logChange_('タスク','変更', cur0, `→ ${nv}${__staff?' ('+__staff+'さん)':''}`); }catch(_){}   // 📜v337
         mutate(t=>editTaskLine_(t, li, nv));
       } else { renderInner(); } };
     inp.onkeydown=e=>{ if(e.key==='Enter' && !e.isComposing && e.keyCode!==229){e.preventDefault();commit();} else if(e.key==='Escape'){fin=true;renderInner();} };
@@ -9121,6 +9256,7 @@ function showTaskChecklistPopup(el, ev){
         const cev = (state.events||[]).find(e=>e.id===ev.id);
         const it = cev ? parseTasks_(cev.title).find(x=>x.index===li) : null;
         if(cev && cev.staff && it && it.text){ const k=taskBodyKey_(it.text); if(k && typeof mutateJimuTombstones_==='function'){ try{ mutateJimuTombstones_(cev.staff, [{key:k, on:true}]); }catch(_){} } }
+        try{ if(typeof logChange_==='function' && it && it.text) logChange_('タスク','削除', it.text, (cev&&cev.staff?cev.staff+'さんのタスク':'')); }catch(_){}   // 📜v337
         mutate(t=>purgeTaskLine_(t, li));
       };
     });
@@ -14478,6 +14614,7 @@ function deleteSelectedEvents_(){
   targets.forEach(ev=>{
     state.events=(state.events||[]).filter(x=>x.id!==ev.id);
     if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(ev,'delete'); }catch(_){} }
+    try{ if(typeof logChange_==='function') logChange_('予定','削除', String(ev.title||'').split('\n')[0]||'(無題)', `${ev.date||''}${ev.staff?' / '+ev.staff:''}`); }catch(_){}   // 📜v337
   });
   saveState();
   clearEventSelection_();
@@ -17251,6 +17388,7 @@ function renderBugReportModal_(){
   });
 }
 document.getElementById("bugReportBtn").onclick = openBugReportModal_;
+{ const __clb=document.getElementById("changelogBtn"); if(__clb) __clb.onclick = ()=>{ try{ openChangelog_(); }catch(_){} }; }   // 📜変更の記録(v1.30.337)
 
 // ===== 📚 過去アーカイブ閲覧 (年ごと・読取専用・Excel(CSV)保存) v1.30.202 =====
 //   普段の修繕/原状回復ビューは3ヶ月で軽いまま、ここだけ年を指定して台帳から広く取得して見る。
@@ -20145,6 +20283,11 @@ setTimeout(()=>{
     if(typeof fetchJimuTombstones_==='function'){
       fetchJimuTombstones_({silent:true}).catch(()=>{});
       setInterval(()=>fetchJimuTombstones_({silent:true}).catch(()=>{}), 5*60*1000);
+    }
+    // 📜 変更の記録(全員共有) 取得・以後5分ごと(v1.30.337)
+    if(typeof fetchChlog_==='function'){
+      fetchChlog_({silent:true}).catch(()=>{});
+      setInterval(()=>fetchChlog_({silent:true}).catch(()=>{}), 5*60*1000);
     }
     // 🟢 プレゼンス(誰が今開いているか) 起動時+60秒ごとにハートビート、タブ復帰時も即。ON/OFFは⚙設定(v1.30.289)
     if(typeof heartbeatPresence_==='function'){
