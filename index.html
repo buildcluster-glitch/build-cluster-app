@@ -2538,7 +2538,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.315</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.316</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2794,7 +2794,7 @@
       <div class="rd-group">
         <div class="rd-group-head">💬 現場メモ</div>
         <div class="rd-comment-add">
-          <textarea id="rdCommentInput" rows="2" placeholder="現場メモを追加..."></textarea>
+          <textarea id="rdCommentInput" rows="2" placeholder="現場メモを追加…（Enterで改行OK・「追加」で確定）" style="resize:vertical;min-height:44px"></textarea>
           <input type="file" accept="image/*" id="rdCommentPhoto" style="display:none">
           <img class="photo-preview" id="rdCommentPhotoPreview" style="display:none" src="">
           <div style="display:flex;gap:6px;margin-top:4px">
@@ -18552,7 +18552,7 @@ function restoAddComment(){
     c.photo = photo;
     p.comments = p.comments || [];
     p.comments.push(c);
-    ta.value = "";
+    ta.value = ""; ta.style.height='';   // 自動伸長をリセット
     if(preview){ preview.style.display="none"; preview.src=""; delete preview.dataset.compressed; }
     restoSave(); renderRestoDetail();
   })();
@@ -18668,6 +18668,8 @@ document.getElementById("restoDialog").onclick = (e)=>{ if(e.target.id==="restoD
 document.addEventListener("keydown",(e)=>{ if(e.key==="Escape" && restoDetailAsModal) closeRestoDialog(); });
 document.getElementById("rdArchiveBtn").onclick = restoToggleArchive;
 document.getElementById("rdCommentAdd").onclick = restoAddComment;
+// 現場メモ入力を内容に合わせて自動で伸ばす(改行が見えるように)v1.30.316・山田
+(function(){ const ta=document.getElementById("rdCommentInput"); if(ta){ const grow=()=>{ ta.style.height='auto'; ta.style.height=Math.min(200, Math.max(44, ta.scrollHeight))+'px'; }; ta.addEventListener('input', grow); } })();
 document.getElementById("rdTrashToggle").onclick = ()=>{
   const t = document.getElementById("rdListTrash");
   const btn = document.getElementById("rdTrashToggle");
