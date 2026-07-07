@@ -2565,7 +2565,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.326</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.327</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -12309,6 +12309,7 @@ function renderCalendar(){
               ? `<span class="ct-text" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${compactTaskHtml}</span>`
               : `<span style="display:inline-flex;min-width:0;flex:0 1 auto;align-items:baseline"><span class="ct-text" style="min-width:0;${__wrapName ? 'white-space:normal;display:-webkit-box;-webkit-line-clamp:'+__nameLines+';-webkit-box-orient:vertical;overflow:hidden;word-break:break-word' : 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap'}">${escapeHtml(__nameMain)}</span>${__roomTail ? `<span class="ct-room" style="flex-shrink:0;font-weight:600">${escapeHtml(__roomTail)}</span>` : ""}</span>`);
         const timeBox = (ev.source==="direct-morning") ? ""   // 🚗直行マーカーは時刻(09:00)を出さない(v1.30.241)
+          : (typeof isJizenEvent_==='function' && isJizenEvent_(ev)) ? ""   // 📌事前は時間バッジ(09:00等)を出さない=時間未定/時刻あり両方(v1.30.327・山田)
           : (ev.undecidedBadge === true) ? `<span class="chip-time" style="opacity:.7">未定</span>`   // 🕔 v1.30.311: 予定単位の未定フラグ(担当ポップの🕔未定にボタンで付与)
           : isAnytime ? ""   // anytime単独ではバッジ非表示 (時刻無しで判別可)
           : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;
@@ -12331,7 +12332,7 @@ function renderCalendar(){
           : (taskInfo
               ? `<span class="ct-text" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${compactTaskHtml}</span>`
               : `<span style="display:inline-flex;min-width:0;flex:0 1 auto;align-items:baseline"><span class="ct-text" style="min-width:0;${__wrapName ? 'white-space:normal;display:-webkit-box;-webkit-line-clamp:'+__nameLines+';-webkit-box-orient:vertical;overflow:hidden;word-break:break-word' : 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap'}">${escapeHtml(__nameMain)}</span>${__roomTail ? `<span class="ct-room" style="flex-shrink:0;font-weight:600">${escapeHtml(__roomTail)}</span>` : ""}</span>`);
-        const timeBox = isAnytime ? "" : `<span class="chip-time">終日</span>`;
+        const timeBox = isJizen ? "" : (isAnytime ? "" : `<span class="chip-time">終日</span>`);   // 事前は時間バッジ無し(v1.30.327・山田)
         el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${__skipBadge}${isMulti ? '' : staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${__alertHtml}`;
         // 担当色がある(1名でも)ならチップ全面を着色(v1.30.124: 単独担当で半分しか色が付かない問題)。色無し+複数バッジは薄グレー地
         if(__willCard){ el.classList.add('chip-has-staffs'); el.style.setProperty('--card-bg', chipBg); }
@@ -12347,7 +12348,9 @@ function renderCalendar(){
         const commuteInline = ev.commute ? ` <span class="chip-commute" style="font-size:9px;padding:0 3px;white-space:nowrap">${commuteLabel_(ev.commute)}</span>` : "";
         el.innerHTML = isShort
           ? `<div class="title">${inlineCatPrefix}${taskInfo?compactTaskHtml:escapeHtml(titleFirstLine)}${commuteInline}${showStaff&&staffList.length?` <span style="opacity:.8">/${multi?staffList.length+"名":escapeHtml(staffList[0].slice(0,2))}</span>`:""}${progIcon}${__progStaffBadge}${__linkInfoHtml}</div>`
-          : `<div class="time">${window.innerWidth<=700 ? ev.start : `${ev.start}〜${ev.end}`}${commuteInline}</div>
+          : `${(typeof isJizenEvent_==='function' && isJizenEvent_(ev))
+                ? (commuteInline ? `<div class="time">${commuteInline}</div>` : '')   /* 📌事前は時刻を出さない(v1.30.327・山田)・直帰等があれば残す */
+                : `<div class="time">${window.innerWidth<=700 ? ev.start : `${ev.start}〜${ev.end}`}${commuteInline}</div>`}
              <div class="title">${inlineCatPrefix}${titleHtmlMulti}${progIcon}${__progStaffBadge}${shiryoBadge}${taikyoCmtBadge}${__linkInfoHtml}${__jizenKojiHtml}</div>
              ${showStaff ? (multi ? participantsHtml : (ev.staff ? `<div class="staff">${staffShortLabel}</div>`:"")) : ""}`;
         el.title = fullTooltip;
