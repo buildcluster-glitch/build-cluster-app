@@ -2565,7 +2565,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.321</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.322</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -20586,8 +20586,11 @@ function renderStocktake(){
   $('#inv-st-rows').innerHTML = rows;
   $('#inv-st-commit').disabled = (match+diff)===0;
 
-  // 実施者ピッカー(名前ボタン・v1.30.321木村)。既定=前回選択 or ログイン中ユーザー
-  const actor = state.ui.stocktakeMember || state.currentUser || '';
+  // 実施者ピッカー(名前ボタン・v1.30.321木村)。
+  // 既定=明示タップ > 在庫の👤マイ > カレンダー全体の「自分」(getMyself・v1.30.322山田)。
+  // → カレンダーで自分を設定済みの人は棚卸でもタップ不要で自分が選択済みになる。
+  const actor = state.ui.stocktakeMember || state.currentUser
+    || (typeof getMyself==='function' ? getMyself() : '') || '';
   const memBox = $('#inv-st-member');
   if(memBox){
     memBox.innerHTML = state.members.length
@@ -21891,8 +21894,9 @@ function commitStocktake(){
   const entries = Object.entries(inputs).filter(([id,v])=> v!=='' && !isNaN(Number(v)));
   if(!entries.length) return;
 
-  // 実施者: 名前ボタンでの選択を優先(v1.30.321木村)。未選択ならログイン中ユーザー。それも無ければ選択を促す。
-  let member = state.ui.stocktakeMember || state.currentUser;
+  // 実施者: 明示タップ > 在庫の👤マイ > カレンダー全体の「自分」(getMyself・v1.30.322山田)。それも無ければ選択を促す。
+  let member = state.ui.stocktakeMember || state.currentUser
+    || (typeof getMyself==='function' ? getMyself() : '');
   if(!member){
     alert('実施者を選んでください（下の名前ボタンをタップ）');
     return;
