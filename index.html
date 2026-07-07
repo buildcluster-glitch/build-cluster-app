@@ -1701,6 +1701,14 @@
   .rd-filter-bar .clear{margin-left:auto;background:rgba(255,255,255,.15);color:#fff;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;border:none}
   .rd-scroll{flex:1;overflow-y:auto;padding-bottom:80px}
   .rd-group{margin-bottom:8px}
+  /* 🏭外注工事 / 🔨自社工事 を色テーマで一目区別(v1.30.317・山田要望) */
+  .rd-group-out{border-left:4px solid #6366f1;border-radius:0 10px 10px 0;padding:2px 2px 4px 8px;margin-bottom:12px;background:linear-gradient(90deg,#eef2ff 0%,rgba(238,242,255,0) 55%)}
+  .rd-group-out > .rd-group-head{background:#e0e7ff;color:#3730a3;padding:5px 10px;border-radius:7px;margin-bottom:5px}
+  .rd-group-in{border-left:4px solid #f59e0b;border-radius:0 10px 10px 0;padding:2px 2px 4px 8px;margin-bottom:12px;background:linear-gradient(90deg,#fffbeb 0%,rgba(255,251,235,0) 55%)}
+  .rd-group-in > .rd-group-head{background:#fef3c7;color:#92400e;padding:5px 10px;border-radius:7px;margin-bottom:5px}
+  .rd-group-badge{font-size:10px;font-weight:800;padding:1px 7px;border-radius:6px;letter-spacing:.5px}
+  .rd-group-out .rd-group-badge{background:#6366f1;color:#fff}
+  .rd-group-in .rd-group-badge{background:#f59e0b;color:#fff}
   /* ✂️減工事・📋提案 = やらない工事。グレーアウトで一目で区別(v1.30.121) */
   .rd-group-muted{filter:grayscale(.85);opacity:.62;background:#f1f5f9;border-radius:8px;padding:4px 6px}
   .rd-group-muted .rd-group-head{color:#64748b}
@@ -2538,7 +2546,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.316</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.317</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2771,12 +2779,12 @@
     <div class="rd-summary" id="rdSummary"></div>
     <div class="rd-filter-bar hide" id="rdFilterBar"></div>
     <div class="rd-scroll">
-      <div class="rd-group">
-        <div class="rd-group-head">🏭 外注工事 <span class="rd-group-sum" id="rdSumOut"></span></div>
+      <div class="rd-group rd-group-out">
+        <div class="rd-group-head">🏭 外注工事 <span class="rd-group-badge">外注</span> <span class="rd-group-sum" id="rdSumOut"></span></div>
         <div id="rdListOut"></div>
       </div>
-      <div class="rd-group">
-        <div class="rd-group-head">🔨 自社工事 <span class="rd-group-sum" id="rdSumIn"></span></div>
+      <div class="rd-group rd-group-in">
+        <div class="rd-group-head">🔨 自社工事 <span class="rd-group-badge">自社</span> <span class="rd-group-sum" id="rdSumIn"></span></div>
         <div id="rdListIn"></div>
       </div>
       <div class="rd-group rd-group-muted">
