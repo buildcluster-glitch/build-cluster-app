@@ -2538,7 +2538,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.312</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.313</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9042,7 +9042,10 @@ function showTaskChecklistPopup(el, ev){
     document.addEventListener("pointerup", onUp);
   });
   const closeOnOutside = (e2)=>{
-    if(!pop.contains(e2.target)){ pop.remove(); document.removeEventListener("pointerdown", closeOnOutside, true); }
+    if(pop.contains(e2.target)) return;
+    // 💬コメント欄・リアクションピッカーは別ポップ(bodyの兄弟)なので「外」扱いで親が閉じてた→除外(v1.30.313・大村報告)
+    if(e2.target && e2.target.closest && e2.target.closest('.task-cmt-pop, .reaction-picker, .reaction-picker-pop')) return;
+    pop.remove(); document.removeEventListener("pointerdown", closeOnOutside, true);
   };
   setTimeout(()=>document.addEventListener("pointerdown", closeOnOutside, true), 50);
 }
