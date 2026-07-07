@@ -2565,7 +2565,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.342</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.343</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -16195,20 +16195,31 @@ async function runCloudOpenSync(opts={}){
   if(cloudSyncInFlight) return;
   cloudSyncInFlight = true;
   setCloudSyncIcon('syncing');
+  // ⏱ v1.30.343(山田「☁がずっと回りっぱなし」): fetchにタイムアウトが無くGAS無応答で await が返らず
+  //   cloudSyncInFlight が立ちっぱなし→アイコン回り続け・以後の同期も停止。25秒でabort＋打ち切りして必ず finally に到達させる。
+  const __ac = (typeof AbortController!=='undefined') ? new AbortController() : null;
+  let __to = null;
   try{
-    if((state.cloudPending||[]).length) await cloudSyncPush();
-    await cloudSyncPull({ replace:false });
+    await Promise.race([
+      (async()=>{
+        if((state.cloudPending||[]).length) await cloudSyncPush();
+        await cloudSyncPull({ replace:false, signal: __ac && __ac.signal });
+      })(),
+      new Promise((_,rej)=>{ __to = setTimeout(()=>{ try{ __ac && __ac.abort(); }catch(_){} rej(new Error('sync timeout(25s)')); }, 25000); })
+    ]);
     render();
     setCloudSyncIcon('ok');
-    __syncFailed = false;                                  // 🔎 同期成功(v1.30.336)
+    __syncFailed = false;
     if(typeof updateSyncFreshness_==='function') updateSyncFreshness_();
     setTimeout(()=>{ if(!cloudSyncInFlight) setCloudSyncIcon(''); }, 2000);
   }catch(err){
-    console.warn('[cloud-sync] open-sync failed:', err.message);
+    console.warn('[cloud-sync] open-sync failed:', err && err.message);
     setCloudSyncIcon('err');
-    __syncFailed = true;                                   // 🔎 同期失敗→警告表示(v1.30.336)
+    __syncFailed = true;
     if(typeof updateSyncFreshness_==='function') updateSyncFreshness_();
+    setTimeout(()=>{ if(!cloudSyncInFlight) setCloudSyncIcon(''); }, 2500);   // 赤も自動で消す(次のポーリングで再試行)
   }finally{
+    if(__to) clearTimeout(__to);
     cloudSyncInFlight = false;
   }
 }
@@ -16235,9 +16246,9 @@ async function cloudSyncTest(){
   return data;
 }
 
-async function cloudSyncPull({ replace=false }={}){
+async function cloudSyncPull({ replace=false, signal=null }={}){
   if(!cloudSync.url) throw new Error('URL未設定');
-  const res = await fetch(cloudSync.url, { cache:'no-store' });
+  const res = await fetch(cloudSync.url, { cache:'no-store', signal });   // signal=ハング打ち切り用(v1.30.343)
   if(!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   if(data.error) throw new Error(data.error);
