@@ -2565,7 +2565,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.327</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.328</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -8779,6 +8779,26 @@ function showTaskChecklistPopup(el, ev){
   // 💬 タスク個別コメント(cur.taskComments[正規化テキスト] に保存)
   const taskCKey_ = (text)=> String(text||'').replace(/^(🔴|🔵|🟡)\s*/,'').replace(/\s*〔[^〕]*〕\s*$/,'').trim();
   const getTaskCmts_ = (key)=>{ const cev=(state.events||[]).find(e=>e.id===ev.id)||ev; return (cev.taskComments && cev.taskComments[key]) || []; };
+  // 💬 タスク文言を変えた時、コメントを旧キー→新キーへ移動(タイトル変更でコメントが消えない・v1.30.328・大村報告)
+  //   コメントは taskCKey_(テキスト) をキーに保存されるため、テキストを変えると旧キーに取り残されて消えて見える。
+  //   リネーム時に旧キーのコメントを新キーへ移し、共有map(全端末)も追従させる(旧キーは空に=復活防止)。
+  const migrateTaskCmts_ = (oldText, newText)=>{
+    const oldKey = taskCKey_(oldText), newKey = taskCKey_(newText);
+    if(!oldKey || oldKey===newKey) return;
+    const cev = (state.events||[]).find(e=>e.id===ev.id); if(!cev) return;
+    const oldArr = (cev.taskComments && Array.isArray(cev.taskComments[oldKey])) ? cev.taskComments[oldKey].slice() : [];
+    if(!oldArr.length) return;   // コメントが無ければ何もしない
+    if(!cev.taskComments) cev.taskComments = {};
+    const newArr = Array.isArray(cev.taskComments[newKey]) ? cev.taskComments[newKey] : [];
+    const ids = new Set(newArr.map(c=>c&&c.id).filter(Boolean));
+    cev.taskComments[newKey] = newArr.concat(oldArr.filter(c=>c&&(!c.id||!ids.has(c.id))));   // idユニオンで重複回避
+    delete cev.taskComments[oldKey];
+    const staff = cev.staff;
+    if(staff && typeof mutateJimuTaskCommentsRemote_==='function'){
+      mutateJimuTaskCommentsRemote_(staff, newKey, list=>{ const s=new Set((list||[]).map(c=>c&&c.id).filter(Boolean)); return (list||[]).concat(oldArr.filter(c=>c&&(!c.id||!s.has(c.id)))); });
+      mutateJimuTaskCommentsRemote_(staff, oldKey, ()=>[]);   // 旧キーを空に=他端末で復活しない
+    }
+  };
   const showTaskCommentPopup_ = (key, taskText, anchorEl)=>{
     document.querySelectorAll('.quick-pop.task-cmt-pop').forEach(p=>p.remove());
     const me = (typeof getMyself==='function')?getMyself():"";
@@ -8863,7 +8883,7 @@ function showTaskChecklistPopup(el, ev){
     sp.replaceWith(inp); inp.focus(); inp.select();
     let fin=false;
     const commit=()=>{ if(fin)return; fin=true; const nv=inp.value.trim();
-      if(nv && nv!==cur0){ mutate(t=>editTaskLine_(t, li, nv)); } else { renderInner(); } };
+      if(nv && nv!==cur0){ migrateTaskCmts_(cur0, nv); mutate(t=>editTaskLine_(t, li, nv)); } else { renderInner(); } };   // 💬コメントを新キーへ引き継ぐ(v1.30.328)
     inp.onkeydown=e=>{ if(e.key==='Enter' && !e.isComposing && e.keyCode!==229){e.preventDefault();commit();} else if(e.key==='Escape'){fin=true;renderInner();} };
     inp.onblur=commit;
   };
