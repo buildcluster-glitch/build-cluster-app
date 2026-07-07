@@ -2547,7 +2547,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.319</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.320</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9382,7 +9382,8 @@ function restoTaskToHatchuRow_(t, contractorOverride){
     qty: (t.qty!=null?t.qty:""), unit: t.unit||"",
     amount: (t.amount!=null && t.amount!=="") ? (+t.amount) : null,
     remark: t.note||"",
-    checkWork: !!t.checkWork, checkWorkBy: t.checkWorkBy||""   // 施工完了+担当を発注書に反映(v1.30.319)
+    checkWork: !!t.checkWork, checkWorkBy: t.checkWorkBy||"",   // 施工完了+担当を発注書に反映(v1.30.319)
+    status: t.status||"", statusBy: t.statusBy||""              // 自社工事の完了(status==='done')も反映(v1.30.320)
   };
 }
 // 外注タスク行 (業者初出順 → 業者内工期順)
@@ -9437,11 +9438,20 @@ function openHatchushoPrint_(rec){
   const gai   = rows.filter(r=>!isJisha(r));
   const jisha = rows.filter(r=> isJisha(r));
   const gaiTotal = gai.reduce((s,r)=> s + (+r.amount||0), 0);
-  // 🚧 進捗(施工完了+担当)を発注書に反映(v1.30.319・山田)。hatchusho_data由来でも現在の原状回復案件のタスクから room+工事名 で突合
-  const __progByKey = {};
+  // 🚧 進捗(施工完了+担当)を発注書に反映(v1.30.319/320・山田)。hatchusho_data由来でも現在の原状回復案件のタスクから突合。
+  //   施工完了=checkWork または status==='done'。突合は「室名+工事名」→無ければ「工事名だけ」で緩く一致。表記ゆれ吸収(NFKC/空白除去)。
+  const __nz = s => String(s||'').normalize('NFKC').replace(/[\s　]/g,'').trim();
+  const __progByKey = {}, __progByName = {};
   if(typeof restoDetailId!=='undefined' && restoDetailId){
     const __p = (state.restorations||[]).find(x=>x.id===restoDetailId);
-    if(__p) (__p.tasks||[]).forEach(t=>{ if(t && t.checkWork){ __progByKey[`${String(t.room||'').trim()}|${String(t.name||'').trim()}`] = { by: t.checkWorkBy||"" }; } });
+    if(__p) (__p.tasks||[]).forEach(t=>{
+      if(!t) return;
+      const done = t.checkWork || t.status==='done';
+      if(!done) return;
+      const by = t.checkWorkBy || t.statusBy || "";
+      __progByKey[`${__nz(t.room)}|${__nz(t.name)}`] = { by };
+      __progByName[__nz(t.name)] = { by };
+    });
   }
   // 行HTML (見積アプリ rowHtml と同一: 自社行は工事店名/施工面を空欄・備考列=金額)
   const rowHtml = r=>{
@@ -9449,10 +9459,10 @@ function openHatchushoPrint_(rec){
     const amt = (+r.amount||0);
     const amtStr = amt>0 ? `¥${amt.toLocaleString()}` : "";
     const spec = [r.spec, r.remark].filter(Boolean).join(" ");
-    // 施工完了判定: 行に付いた checkWork か、案件タスクからの突合
-    const __pk = __progByKey[`${String(r.room||'').trim()}|${String(r.workName||'').trim()}`];
-    const __done = !!(r.checkWork || __pk);
-    const __by = r.checkWorkBy || (__pk ? __pk.by : "");
+    // 施工完了判定: 行に付いた checkWork/status か、案件タスクからの突合(室名+工事名→工事名だけ)
+    const __pk = __progByKey[`${__nz(r.room)}|${__nz(r.workName)}`] || __progByName[__nz(r.workName)];
+    const __done = !!(r.checkWork || r.status==='done' || __pk);
+    const __by = r.checkWorkBy || r.statusBy || (__pk ? __pk.by : "");
     const __doneStyle = __done ? ' style="text-decoration:line-through;color:#64748b"' : '';   // 施工済=取り消し線(斜線)
     const __byTag = __done ? ` <span style="text-decoration:none;color:#15803d;font-weight:700;white-space:nowrap">✔${__by?escapeHtml(__by):"施工済"}</span>` : "";
     return `<tr${__done?' class="hp-done"':''}>
