@@ -2565,7 +2565,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.332</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.333</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9597,12 +9597,17 @@ function restoInhouseRows_(p){
   const tasks = (p.tasks||[]).filter(t=> (typeof restoEffCategory==='function'?restoEffCategory(t):t.category)==="inhouse" && (typeof isExcludedRestoTask!=='function' || !isExcludedRestoTask(t)));
   return tasks.map(t=>restoTaskToHatchuRow_(t, "自社工事(ビルドクラスタ)"));
 }
+// ✂️減工事(やらない工事)行 — reduced:true 付き・金額は載せない。発注書に「減工事」として明示(v1.30.333・山田)
+function restoReducedRows_(p){
+  const tasks = (p.tasks||[]).filter(t=> (typeof restoEffCategory==='function'?restoEffCategory(t):t.category)==="reduced" && (typeof isExcludedRestoTask!=='function' || !isExcludedRestoTask(t)));
+  return tasks.map(t=>{ const r=restoTaskToHatchuRow_(t); r.reduced=true; r.amount=null; return r; });
+}
 // カレンダー手持ちの原状回復データから発注書recを生成 (外注+自社工事)
 //   見積アプリの hatchusho_data が無い案件でも発注書を出せるフォールバック。
 //   見積アプリ専用ヘッダ項目(電話番号/駐車場/玄関鍵/エントランス/水道電気/除菌日)は空欄。
 function buildHatchushoFromResto_(p){
   if(!p) return null;
-  const rows = restoOutsourceRows_(p).concat(restoInhouseRows_(p));
+  const rows = restoOutsourceRows_(p).concat(restoInhouseRows_(p)).concat(restoReducedRows_(p));   // ✂️減工事も含める(v1.30.333)
   if(!rows.length) return null;
   return {
     id: p.id, issueDate: p.orderDate||"", updatedAt: "", _localGen: true,
@@ -9649,22 +9654,23 @@ function openHatchushoPrint_(rec){
   // 行HTML (見積アプリ rowHtml と同一: 自社行は工事店名/施工面を空欄・備考列=金額)
   const rowHtml = r=>{
     const ji = isJisha(r);
+    const red = !!r.reduced;                                  // ✂️減工事(やらない工事)=見積アプリ印刷と同じく載せる(金額空・グレー)v1.30.333
     const amt = (+r.amount||0);
-    const amtStr = amt>0 ? `¥${amt.toLocaleString()}` : "";
+    const amtStr = red ? "" : (amt>0 ? `¥${amt.toLocaleString()}` : "");
     const spec = [r.spec, r.remark].filter(Boolean).join(" ");
-    // 施工完了判定: 行に付いた checkWork/status か、案件タスクからの突合(室名+工事名→工事名だけ)
+    // 施工完了判定: 行に付いた checkWork/status か、案件タスクからの突合(室名+工事名→工事名だけ)。減工事は対象外。
     const __pk = __progByKey[`${__nz(r.room)}|${__nz(r.workName)}`] || __progByName[__nz(r.workName)];
-    const __done = !!(r.checkWork || r.status==='done' || __pk);
+    const __done = !red && !!(r.checkWork || r.status==='done' || __pk);
     const __by = r.checkWorkBy || r.statusBy || (__pk ? __pk.by : "");
     const __doneStyle = __done ? ' style="text-decoration:line-through;color:#64748b"' : '';   // 施工済=取り消し線(斜線)
     const __byTag = __done ? ` <span style="text-decoration:none;color:#15803d;font-weight:700;white-space:nowrap">✔${__by?escapeHtml(__by):"施工済"}</span>` : "";
-    return `<tr${__done?' class="hp-done"':''}>
-      <td${__doneStyle}>${ji?"":escapeHtml(r.contractor||"")}</td>
+    return `<tr${red?' class="h-reduced"':(__done?' class="hp-done"':'')}>
+      <td${__doneStyle}>${red?'減工事':(ji?"":escapeHtml(r.contractor||""))}</td>
       <td class="c"${__doneStyle}>${escapeHtml(period(r))}</td>
       <td${__doneStyle}>${escapeHtml(r.room||"")}</td>
       <td>${__done?`<span style="text-decoration:line-through;color:#64748b">${escapeHtml(r.workName||"")}</span>`:escapeHtml(r.workName||"")}${__byTag}</td>
-      <td${__doneStyle}>${ji?"":escapeHtml(r.surface||"")}</td>
-      <td${__doneStyle}>${escapeHtml(spec)}${_naisoThumbImg_(spec)}</td>
+      <td${__doneStyle}>${(ji||red)?"":escapeHtml(r.surface||"")}</td>
+      <td${__doneStyle}>${escapeHtml(spec)}${red?' <b style="color:#666;">減工事</b>':_naisoThumbImg_(spec)}</td>
       <td class="num"${__doneStyle}>${(r.qty!=null&&r.qty!=="")?escapeHtml(String(r.qty)):""}</td>
       <td class="c"${__doneStyle}>${escapeHtml(r.unit||"")}</td>
       <td class="num"${__doneStyle}>${amtStr}</td>
@@ -9788,6 +9794,7 @@ function ensureHatchushoStyle_(){
     #hatchushoOverlay .hatchu-print .hp-t tr.hp-subtotal td{background:#f3f4f6;-webkit-print-color-adjust:exact;font-size:8pt;font-style:italic}
     #hatchushoOverlay .hatchu-print .hp-t tr.hp-section td{-webkit-print-color-adjust:exact;print-color-adjust:exact;font-weight:bold;padding:1mm 2mm;font-size:9pt;border-top:1.5px solid #000 !important}
     #hatchushoOverlay .hatchu-print .hp-t tr.hp-section-jisha td{background:#dbeafe !important;color:#1e40af}
+    #hatchushoOverlay .hatchu-print .hp-t tr.h-reduced td{background:#f3f0fa !important;color:#8b7bb0;-webkit-print-color-adjust:exact;print-color-adjust:exact}   /* ✂️減工事=やらない工事(グレー紫)v1.30.333 */
     #hatchushoOverlay .hatchu-print .note{font-size:7pt;color:#94a3b8;margin-top:3mm}
     @media print{
       body.hatchusho-open > *:not(#hatchushoOverlay){display:none !important}
@@ -9824,6 +9831,11 @@ function updateHatchushoBtn_(){
       const inh = restoInhouseRows_(p);
       if(inh.length && !(rec.rows||[]).some(r=>/自社工事|ビルドクラスタ/.test(r.contractor||""))){
         rec = {...rec, rows:(rec.rows||[]).concat(inh)};
+      }
+      // ✂️減工事もJSONに無ければカレンダーから補完(見積アプリ側pushが減工事を含めるまでの間もこれで出る)v1.30.333
+      const red = restoReducedRows_(p);
+      if(red.length && !(rec.rows||[]).some(r=>r&&r.reduced)){
+        rec = {...rec, rows:(rec.rows||[]).concat(red)};
       }
     } else {
       // 2) JSONが無ければカレンダー手持ちデータで生成(外注+自社)
