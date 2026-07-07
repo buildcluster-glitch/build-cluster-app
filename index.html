@@ -2565,7 +2565,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.325</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.326</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9185,6 +9185,15 @@ function dedupeJizenEvents_(){
   return removeIds.size;
 }
 
+// 再生成(baseline)事前イベントの updatedAt。ユーザー編集(=実時刻now)より必ず古く、かつ全端末で同値になる安定値を返す。
+//   v1.30.326(山田報告): これが `new Date()`(now)だと、別端末の再生成が毎回「最新」になり、少し前の
+//   ユーザー編集(担当割当/日付移動)を dedup で追い越して消してしまう(担当なしの日付移動でも発生)。
+//   発注確定日(全端末で同じ・編集より前)を基準にすれば、どの端末の再生成も編集に負ける=編集が守られる。
+function _jizenBaselineUpdatedAt_(r){
+  const cand = r && (r.confirmedAt || r.updatedAt);
+  if(cand){ const d = new Date(cand); if(!isNaN(d)) return d.toISOString(); }
+  return "2000-01-01T00:00:00.000Z";   // レコードに安定日時が無ければ固定の古い値(必ず編集より古い)
+}
 function applyJizenRecords_(records){
   const seen = loadJizenSeenIds_();
   const currentIds = new Set(records.map(r=>r.id));
@@ -9240,7 +9249,7 @@ function applyJizenRecords_(records){
       color: "",
       memo: memoLines.join("\n"),
       importance: [],
-      updatedAt: new Date().toISOString(),
+      updatedAt: _jizenBaselineUpdatedAt_(r),   // v1.30.326: now でなく安定した過去値=ユーザー編集が常に勝つ
     };
     state.events.push(newEv);
     // クラウド同期にも push
