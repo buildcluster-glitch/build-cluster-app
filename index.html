@@ -2565,7 +2565,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.333</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.334</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9635,7 +9635,8 @@ function openHatchushoPrint_(rec){
   const isJisha = r => /自社工事|ビルドクラスタ/.test(r.contractor||"");
   const gai   = rows.filter(r=>!isJisha(r));
   const jisha = rows.filter(r=> isJisha(r));
-  const gaiTotal = gai.reduce((s,r)=> s + (+r.amount||0), 0);
+  const gaiTotal   = gai.reduce((s,r)=> s + (r.reduced?0:(+r.amount||0)), 0);     // 減工事は小計に含めない
+  const jishaTotal = jisha.reduce((s,r)=> s + (r.reduced?0:(+r.amount||0)), 0);   // 🏠自社工事の受注金額(v1.30.334・山田)
   // 🚧 進捗(施工完了+担当)を発注書に反映(v1.30.319/320・山田)。hatchusho_data由来でも現在の原状回復案件のタスクから突合。
   //   施工完了=checkWork または status==='done'。突合は「室名+工事名」→無ければ「工事名だけ」で緩く一致。表記ゆれ吸収(NFKC/空白除去)。
   const __nz = s => String(s||'').normalize('NFKC').replace(/[\s　]/g,'').trim();
@@ -9681,7 +9682,8 @@ function openHatchushoPrint_(rec){
     ${gai.map(rowHtml).join("")}
     ${gai.length?`<tr class="hp-subtotal"><td colspan="8" style="text-align:right;">工事店 小計</td><td class="num">¥${gaiTotal.toLocaleString()}</td></tr>`:""}
     ${jisha.length?`<tr class="hp-section hp-section-jisha"><td colspan="9">🏠 自社工事(ビルドクラスタ)</td></tr>`:""}
-    ${jisha.map(rowHtml).join("")}`;
+    ${jisha.map(rowHtml).join("")}
+    ${jisha.length?`<tr class="hp-subtotal"><td colspan="8" style="text-align:right;">🏠 自社工事 小計(受注)</td><td class="num">¥${jishaTotal.toLocaleString()}</td></tr>`:""}`;
   // 発行元: JSONにissuer指定があれば優先。なければ元請で自動判定(山一/みどり/光和→光和工業)
   const issuer = h.issuerName
     ? {name:h.issuerName, lines:[h.issuerAddr, h.issuerTel, h.issuerFax].filter(Boolean), logo:h.issuerLogo||""}
