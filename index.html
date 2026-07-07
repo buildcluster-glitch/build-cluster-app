@@ -2565,7 +2565,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.324</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.325</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9142,16 +9142,23 @@ function dedupeJizenEvents_(){
     if(!groups.has(key)) groups.set(key, []);
     groups.get(key).push(e);
   });
-  // 各グループ 1件に集約。残す=updatedAt新しい(ユーザー移動済)を最優先。sidはkeepへ移植。
+  // 各グループ 1件に集約。残す=①担当割当済 ②updatedAt新しい ③id(決定的)。sidはkeepへ移植。
   const removeIds = new Set();
   groups.forEach(list=>{
     if(list.length <= 1) return;
     list.sort((a,b)=>{
-      // 🛡 v1.30.234: ユーザー移動(updatedAt新しい)を最優先で残す。
-      //   旧=「sid持ち優先」だと、日付を編集した孤児(クラウド送信でsidが落ちた複製)より
-      //   古い日付のsid持ちが生き残り「事前の日時変更が元に戻る」バグになっていた。
-      //   sidは下でkeepへ移植するので順位判定には使わない。
-      return (new Date(b.updatedAt||0)) - (new Date(a.updatedAt||0));
+      // 🛡 v1.30.325(山田報告: 事前の担当色/日付が「登録日・担当空」に戻る)。
+      //   真因: 別端末の新規insert(staff空・元日付・updatedAt=now)が、ユーザー編集済(担当割当/日付移動・
+      //   updatedAtは少し前)を updatedAt比較だけで追い越して生き残り、編集が消えていた。
+      //   → ①担当割当済(staff有り=色が付いている=ユーザーが触った)を最優先で残す。
+      const sa = (a.staff && String(a.staff).trim()) ? 1 : 0;
+      const sb = (b.staff && String(b.staff).trim()) ? 1 : 0;
+      if(sa!==sb) return sb - sa;
+      // ② v1.30.234: 同条件は updatedAt 新しい(ユーザー移動)を優先。
+      const ua = +new Date(a.updatedAt||0), ub = +new Date(b.updatedAt||0);
+      if(ua!==ub) return ub - ua;
+      // ③ 決定的タイブレーク(端末間で生存idを一致させ相互tombstone ping-pongを防ぐ)。
+      return String(a.id||'').localeCompare(String(b.id||''));
     });
     const keep = list[0]; let mergedC = false;
     // sidをkeepへ移植(keepが孤児でもグループ内のsidを引き継ぎ=見積連携/発注確定取消検出を維持)v1.30.234
