@@ -2565,7 +2565,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.337</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.338</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7295,12 +7295,22 @@ async function mutateJimuTombstones_(staff, updates){
 }
 
 // 📜 変更の記録(全員共有・shared-config 'calendar_changelog') v1.30.337(山田・不安対策#2)
-//   誰がいつ 立会/修繕/タスク/予定 を 変更/削除/追加/完了 したかの履歴。append-only・直近CHLOG_MAX件。
+//   誰がいつ 立会/修繕/タスク/予定 を 変更/削除/追加/完了 したかの履歴。保持=約45日＋セル上限44KBで頭打ち(pruneChlog_)。
 //   記録は「ローカル即追加＋2.5秒デバウンスで共有push(id union=多著者で消えない)」。同期ロジック本体には触らない。
 const CHLOG_CACHE_KEY = "buildcluster_calendar_changelog_cache";
-const CHLOG_MAX = 300;
+const CHLOG_KEEP_DAYS = 45;      // 時間基準の保持(約1ヶ月+)。これより古い記録は落とす。v1.30.338
+const CHLOG_SHARE_MAX = 44000;   // ⚠共有ストア=Sheetセル(上限≈50000字)。超えると値ごと壊れる→安全マージンで44KB上限
 function loadChlog_(){ try{ const o=JSON.parse(localStorage.getItem(CHLOG_CACHE_KEY)||"[]"); return Array.isArray(o)?o:[]; }catch(e){ return []; } }
 function saveChlog_(a){ try{ localStorage.setItem(CHLOG_CACHE_KEY, JSON.stringify(a||[])); }catch(e){} }
+// 📏 保持ポリシー: ①45日より古いを落とす ②それでもセル上限(44KB)を超えるなら古い順に落とす(壊れ防止)。返り値=新しい順維持のため昇順。
+function pruneChlog_(arr){
+  let a = (Array.isArray(arr)?arr:[]).filter(e=>e&&e.id);
+  a.sort((x,y)=>String(x.at||'').localeCompare(String(y.at||'')));   // 昇順(古→新)
+  const cutoff = Date.now() - CHLOG_KEEP_DAYS*86400000;
+  a = a.filter(e=>{ const t=Date.parse(e.at); return isNaN(t) || t>=cutoff; });   // 45日より古いを除去
+  while(a.length>1 && JSON.stringify({entries:a}).length > CHLOG_SHARE_MAX) a.shift();   // セル上限を超えないよう古い順に間引く
+  return a;
+}
 let __chlogPushT = null, __chlogPending = [];
 function logChange_(kind, action, label, detail){
   try{
@@ -7308,7 +7318,7 @@ function logChange_(kind, action, label, detail){
     const e = { id:(typeof uid==='function'?uid():String(Date.now())+Math.random().toString(36).slice(2)),
       at:new Date().toISOString(), by, kind:String(kind||''), action:String(action||''),
       label:String(label||'').slice(0,80), detail:String(detail||'').slice(0,140) };
-    let a = loadChlog_(); a.push(e); if(a.length>CHLOG_MAX) a=a.slice(-CHLOG_MAX); saveChlog_(a);
+    let a = loadChlog_(); a.push(e); a = pruneChlog_(a); saveChlog_(a);
     __chlogPending.push(e);
     if(document.getElementById('changelogModal') && document.getElementById('changelogModal').classList.contains('show')) renderChangelog_();
     if(__chlogPushT) clearTimeout(__chlogPushT);
@@ -7325,8 +7335,7 @@ async function pushChlog_(){
       if(r.ok){ const d=await r.json(); let raw=d.value; if(typeof raw==='string'){try{raw=JSON.parse(raw);}catch(_){raw=null;}} if(raw&&Array.isArray(raw.entries)) remote=raw.entries; } }catch(_){}
     const seen=new Set(remote.map(x=>x&&x.id));
     pend.forEach(e=>{ if(e&&e.id&&!seen.has(e.id)){ remote.push(e); seen.add(e.id); } });
-    remote.sort((a,b)=>String(a.at||'').localeCompare(String(b.at||'')));
-    if(remote.length>CHLOG_MAX) remote=remote.slice(-CHLOG_MAX);
+    remote = pruneChlog_(remote);   // 45日＋44KB上限(セル破壊防止)
     saveChlog_(remote);
     await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'calendar_changelog',value:JSON.stringify({entries:remote,updatedAt:new Date().toISOString()}),token:s.token,savedBy:'calendar-app'})});
   }catch(e){ console.warn('[changelog] push失敗:', e.message); }
@@ -7340,8 +7349,7 @@ async function fetchChlog_(opts={}){
     if(raw&&Array.isArray(raw.entries)){
       const byId=new Map(raw.entries.filter(x=>x&&x.id).map(x=>[x.id,x]));
       loadChlog_().forEach(x=>{ if(x&&x.id&&!byId.has(x.id)) byId.set(x.id,x); });   // 自分の未pushぶんを保持
-      let merged=[...byId.values()].sort((a,b)=>String(a.at||'').localeCompare(String(b.at||'')));
-      if(merged.length>CHLOG_MAX) merged=merged.slice(-CHLOG_MAX);
+      let merged=pruneChlog_([...byId.values()]);   // 45日＋44KB上限
       saveChlog_(merged);
       if(document.getElementById('changelogModal') && document.getElementById('changelogModal').classList.contains('show')) renderChangelog_();
     }
