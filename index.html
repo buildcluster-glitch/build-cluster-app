@@ -2538,7 +2538,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.314</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.315</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4625,9 +4625,19 @@ function pushHistory(){
 function undo(){
   if(history.length === 0) return;
   const prev = JSON.parse(history.pop());
+  const curIds = new Set((state.events||[]).map(e=>e && e.id));   // Undo前に存在した予定id
   state.events = prev.events;
   state.leaves = prev.leaves;
   state.checks = prev.checks;
+  // 🔄 削除の取り消し=復活した予定(prevにあり現状に無かった)は tombstone解除+更新時刻を今に+再登録
+  //   →ローカルだけでなく全端末で復活し、次の同期でも消えない(v1.30.315・山田)
+  (state.events||[]).forEach(e=>{
+    if(e && e.id && !curIds.has(e.id)){
+      if(typeof removeEventDeletion_==='function') removeEventDeletion_(e.id);
+      e.updatedAt = new Date().toISOString();
+      if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(e,'upsert'); }catch(_){} }
+    }
+  });
   saveState();
   updateUndoBtn();
   render();
@@ -6744,6 +6754,35 @@ function addEventDeletion_(eventId){
       }
     }catch(_){}
     pushEventDeletionsMap_(loadEventDeletions_()).catch(()=>{});   // remote取得失敗時は従来どおり(最低限自分の削除は届ける)
+  })();
+}
+// ↩ 削除の取り消し(Undo)用: tombstoneを解除して全端末で復活させる(v1.30.315)
+function removeEventDeletion_(eventId){
+  if(!eventId) return;
+  const map = loadEventDeletions_();
+  if(!(eventId in map)) return;   // そもそも削除印が無ければ何もしない
+  delete map[eventId];
+  saveEventDeletions_(map);
+  applyEventDeletionsToState_();
+  (async ()=>{
+    try{
+      const s = loadGasSettings();
+      if(s.url && s.token){
+        const url = `${s.url}?action=get-shared-config&key=event_deletions&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+        const res = await fetch(url, {method:'GET', redirect:'follow'});
+        if(res.ok){
+          const d = await res.json(); let raw = d.value;
+          if(typeof raw === 'string'){ try{ raw = JSON.parse(raw); }catch(_){ raw = null; } }
+          const remote = (raw && raw.deletions && typeof raw.deletions==='object') ? raw.deletions : {};
+          const merged = pruneEventDeletions_(mergeEventDeletions_(remote, loadEventDeletions_()));
+          delete merged[eventId];   // マージでremoteの削除印が戻ってきても、復活を優先して消す
+          saveEventDeletions_(merged);
+          await pushEventDeletionsMap_(merged);
+          return;
+        }
+      }
+    }catch(_){}
+    pushEventDeletionsMap_(loadEventDeletions_()).catch(()=>{});
   })();
 }
 // 復活防止: サーバー由来の予定で、tombstone(削除時刻)が予定のupdatedAtより新しいものは取り込まない
