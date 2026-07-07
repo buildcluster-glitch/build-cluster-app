@@ -2565,7 +2565,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.339</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.340</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7148,6 +7148,23 @@ function saveJimuTcMap_(map){ try{ localStorage.setItem(JIMU_TC_CACHE_KEY, JSON.
 function tcSig_(c){ return c ? (c.id ? 'id:'+c.id : `${c.author||''}|${c.text||''}|${c.at||''}`) : ''; }
 function ensureTcId_(c){ if(c && !c.id){ try{ c.id = uid(); }catch(_){ c.id = (c.at||'')+'|'+(c.text||''); } } return c; }
 function tcByKeyCopy_(byKey){ const o={}; Object.keys(byKey||{}).forEach(k=>{ if(Array.isArray(byKey[k])) o[k]=byKey[k].slice().sort((x,y)=>String(x.at||'').localeCompare(String(y.at||''))); }); return o; }
+// 🧩 タスクコメントmapを和集合(union)でマージ。staff→taskKey→[] を id/署名で重複排除しつつ両方残す。
+//   ⚠これが無いと「取得したリモートで上書き」→他端末が一瞬欠けたmapをpushした瞬間にコメントが消え→次取得で戻る=チラつく(v1.30.340・山田)
+function mergeTcMaps_(a, b){
+  const out={};
+  new Set([...Object.keys(a||{}), ...Object.keys(b||{})]).forEach(staff=>{
+    const A=(a&&a[staff])||{}, B=(b&&b[staff])||{};
+    const bykey={};
+    new Set([...Object.keys(A), ...Object.keys(B)]).forEach(k=>{
+      const seen=new Set(), merged=[];
+      (Array.isArray(A[k])?A[k]:[]).concat(Array.isArray(B[k])?B[k]:[]).forEach(c=>{ const sg=tcSig_(c); if(c&&!seen.has(sg)){ seen.add(sg); merged.push(c); } });
+      merged.sort((x,y)=>String(x.at||'').localeCompare(String(y.at||'')));
+      if(merged.length) bykey[k]=merged;
+    });
+    if(Object.keys(bykey).length) out[staff]=bykey;
+  });
+  return out;
+}
 // 共有map(staff→taskKey→[]) を state.events(事務).taskComments に反映
 function applyJimuTaskCommentsToState_(){
   const m=loadJimuTcMap_();
@@ -7208,7 +7225,8 @@ async function fetchJimuTaskComments_(opts={}){
         try{ await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'jimu_task_comments',value:JSON.stringify(payload),token:s.token,savedBy:'calendar-app'})}); }catch(e){}
       }
     }
-    saveJimuTcMap_(remote); applyJimuTaskCommentsToState_();
+    const __merged = mergeTcMaps_(remote, loadJimuTcMap_());   // 🧩 リモート∪ローカル=コメントを消さない(チラつき防止)v1.30.340
+    saveJimuTcMap_(__merged); applyJimuTaskCommentsToState_();
     if(typeof __refreshOpenTaskCmtUI_==='function') __refreshOpenTaskCmtUI_();
     if(!opts.silent && typeof render==='function') render();
     return remote;
@@ -7225,6 +7243,7 @@ async function mutateJimuTaskCommentsRemote_(staff, taskKey, mutator){
       if(res.ok){ const d=await res.json(); let raw=d.value; if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(_){ raw=null; } } if(raw&&raw.comments&&typeof raw.comments==='object') map=raw.comments; }
     }catch(_){}
   }
+  map = mergeTcMaps_(map, loadJimuTcMap_());   // 🧩 リモート∪ローカル=他キーのコメントを取りこぼさない(チラつき/消失防止)v1.30.340
   const byKey=(map[staff]&&typeof map[staff]==='object')?map[staff]:{};
   const list=Array.isArray(byKey[taskKey])?byKey[taskKey].slice():[];
   const next=mutator(list)||[];
