@@ -2272,8 +2272,11 @@
   #inventoryView .inv-card .effective{font-size:10px;color:var(--inv-mute);margin-top:1px}
   #inventoryView .inv-card .effective b{font-size:12px;color:var(--inv-accent);font-weight:700}
 
-  /* ===== 🖥 PC版レイアウト: 画面が広い時はコンテナを広げてカードを多段グリッドに(v1.30.140) ===== */
-  @media (min-width: 769px){
+  /* ===== 🖥 PC版レイアウト: 画面が広い時はコンテナを広げてカードを多段グリッドに(v1.30.140) =====
+     ⚠ (hover:hover)必須(v1.30.321・木村報告): これが無いと、横向きにしたスマホ(幅>769px)まで
+        この多段グリッドPCレイアウトが発動し「横画面表示に切り替わった」ように見える。
+        マウス機のみに限定して、タッチ端末は向きに関わらず縦1列レイアウトを維持する。 */
+  @media (min-width: 769px) and (hover: hover){
     #inventoryView .inv-app{max-width:1180px}
     /* 一覧・発注中・棚卸・ログ をカード多段グリッド(自動列数) */
     #inventoryView #inv-item-list,
@@ -2340,6 +2343,21 @@
   #inventoryView .inv-st-footer .cancel{background:#f1f5f9;color:var(--inv-mute)}
   #inventoryView .inv-st-footer .commit{background:var(--inv-accent);color:#fff}
   #inventoryView .inv-st-footer .commit:disabled{opacity:.4}
+  /* 実数を入力済(在庫と一致)= チェック済みを緑で見える化(v1.30.321・木村) */
+  #inventoryView .inv-st-row.done{border-color:#86efac;background:#f0fdf4}
+  #inventoryView .inv-st-row.done input{border-color:#22c55e}
+  /* 「OK」ワンタップ = 在庫数をそのまま実数へ(v1.30.321・木村) */
+  #inventoryView .inv-st-row .st-ok{flex-shrink:0;padding:8px 9px;border:2px solid var(--inv-ok);
+    color:var(--inv-ok);background:#f0fdf4;border-radius:8px;font-weight:800;font-size:13px;cursor:pointer;line-height:1}
+  #inventoryView .inv-st-row.done .st-ok{background:#dcfce7}
+  /* 実施者ピッカー: 名前ボタンでワンタップ(v1.30.321・木村) */
+  #inventoryView .inv-st-actor{padding:14px 14px 0}
+  #inventoryView .inv-st-actor .lbl{font-size:12px;font-weight:700;color:var(--inv-mute);margin-bottom:6px}
+  #inventoryView #inv-st-member{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  #inventoryView #inv-st-member button{padding:12px 4px;border:2px solid var(--inv-line);background:#fff;
+    border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;color:var(--inv-ink)}
+  #inventoryView #inv-st-member button.on{border-color:var(--inv-accent);color:var(--inv-accent);background:#eff6ff}
+  #inventoryView #inv-st-member .none{grid-column:1/-1;font-size:12px;color:var(--inv-mute)}
 
   /* ---------- logs ---------- */
   #inventoryView .inv-log-filter{padding:10px 14px;display:flex;gap:8px;background:var(--inv-bg)}
@@ -2547,7 +2565,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.320</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.321</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2876,6 +2894,10 @@
           </div>
         </div>
         <div id="inv-st-rows"></div>
+        <div class="inv-st-actor">
+          <div class="lbl">実施者（タップで選択）</div>
+          <div class="inv-picker members" id="inv-st-member"></div>
+        </div>
         <div class="inv-st-footer">
           <button class="cancel" id="inv-st-reset">リセット</button>
           <button class="commit" id="inv-st-commit" disabled>記録して在庫修正</button>
@@ -20523,7 +20545,8 @@ function renderStocktake(){
     const real = hasVal ? Number(v) : null;
     const d = real===null ? null : (real - i.stock);
     if(hasVal){ if(d===0) match++; else diff++; }
-    const cls = d!==null && d!==0 ? 'diff' : '';
+    // 差分あり=diff(黄) / 一致でも入力済み=done(緑・チェック済みを一目で・v1.30.321木村)
+    const cls = (d!==null && d!==0) ? 'diff' : (hasVal ? 'done' : '');
     const badge = d===null ? '' :
       (d===0 ? '' :
       (d>0 ? `<span class="inv-st-diffbadge plus">+${d}</span>` :
@@ -20550,6 +20573,7 @@ function renderStocktake(){
           </div>
           <div class="syss">記録<br><b>${i.stock}</b></div>
           <input type="number" inputmode="numeric" min="0" placeholder="実数" value="${hasVal?v:''}" data-stk="${i.id}">
+          <button type="button" class="st-ok" data-stkok="${i.id}" title="在庫数(${i.stock})をそのまま実数に入れる">OK</button>
           ${badge}
         </div>
         ${reasonRow}
@@ -20560,6 +20584,72 @@ function renderStocktake(){
   $('#inv-st-match').textContent = match;
   $('#inv-st-diff').textContent = diff;
   $('#inv-st-rows').innerHTML = rows;
+  $('#inv-st-commit').disabled = (match+diff)===0;
+
+  // 実施者ピッカー(名前ボタン・v1.30.321木村)。既定=前回選択 or ログイン中ユーザー
+  const actor = state.ui.stocktakeMember || state.currentUser || '';
+  const memBox = $('#inv-st-member');
+  if(memBox){
+    memBox.innerHTML = state.members.length
+      ? state.members.map(m=>`<button type="button" class="${actor===m?'on':''}" data-stkm="${esc(m)}">${esc(m)}</button>`).join('')
+      : `<div class="none">メンバー未登録（設定タブで追加）</div>`;
+  }
+}
+
+// 1行だけ差分更新(全体再描画しない=入力中フォーカス/スクロール位置を保つ・v1.30.321木村)
+function updateStRow(inp){
+  const id = inp.dataset.stk;
+  const item = state.items.find(i=>i.id===id);
+  if(!item) return;
+  const v = inp.value;
+  const hasVal = v!=='' && !isNaN(Number(v));
+  const real = hasVal ? Number(v) : null;
+  const d = real===null ? null : real - item.stock;
+  const wrap = inp.closest('.st-wrap');
+  const row = inp.closest('.inv-st-row');
+  if(!row) return;
+  row.classList.toggle('diff', d!==null && d!==0);
+  row.classList.toggle('done', hasVal && d===0);
+  // 差分バッジ
+  let badge = row.querySelector('.inv-st-diffbadge');
+  if(d===null || d===0){ if(badge) badge.remove(); }
+  else {
+    if(!badge){ badge = document.createElement('span'); row.appendChild(badge); }
+    badge.className = 'inv-st-diffbadge ' + (d>0?'plus':'minus');
+    badge.textContent = (d>0?'+':'') + d;
+  }
+  // 理由セレクタ(差分ありのときだけ)
+  if(wrap){
+    let reason = wrap.querySelector('.inv-st-reason');
+    if(d!==null && d!==0){
+      if(!reason){
+        const rv = (state.ui.stocktakeReasons||{})[id] || '';
+        const opts = ['<option value="">理由を選択…</option>']
+          .concat(STOCKTAKE_REASONS.map(r=>`<option value="${esc(r)}" ${r===rv?'selected':''}>${esc(r)}</option>`));
+        reason = document.createElement('div');
+        reason.className = 'inv-st-reason';
+        reason.innerHTML = `<select data-stkr="${id}">${opts.join('')}</select>`;
+        wrap.appendChild(reason);
+      }
+    } else if(reason){
+      reason.remove();
+      if(state.ui.stocktakeReasons) delete state.ui.stocktakeReasons[id];
+    }
+  }
+}
+
+// 上部の一致/差分カウンタと記録ボタンの活性を、再描画せず更新(v1.30.321)
+function refreshStocktakeSummary(){
+  let match=0, diff=0;
+  $$('#inv-st-rows [data-stk]').forEach(inp=>{
+    const v = inp.value;
+    if(v==='' || isNaN(Number(v))) return;
+    const item = state.items.find(i=>i.id===inp.dataset.stk);
+    if(!item) return;
+    if(Number(v)===item.stock) match++; else diff++;
+  });
+  $('#inv-st-match').textContent = match;
+  $('#inv-st-diff').textContent = diff;
   $('#inv-st-commit').disabled = (match+diff)===0;
 }
 
@@ -21801,11 +21891,11 @@ function commitStocktake(){
   const entries = Object.entries(inputs).filter(([id,v])=> v!=='' && !isNaN(Number(v)));
   if(!entries.length) return;
 
-  // 実施者: currentUser優先、なければプロンプト
-  let member = state.currentUser;
+  // 実施者: 名前ボタンでの選択を優先(v1.30.321木村)。未選択ならログイン中ユーザー。それも無ければ選択を促す。
+  let member = state.ui.stocktakeMember || state.currentUser;
   if(!member){
-    member = prompt('実施者を選んでください\n('+state.members.join(' / ')+')', state.members[0]||'');
-    if(!member) return;
+    alert('実施者を選んでください（下の名前ボタンをタップ）');
+    return;
   }
 
   // 差分あり&理由未選択の件を警告
@@ -22068,17 +22158,32 @@ function bindEvents(){
     state.ui.stocktakeLocFilter = b.dataset.stkloc;
     renderStocktake();
   };
-  // stocktake
+  // stocktake — 全体再描画せず該当行だけ更新(画面の上飛び・2桁でカーソル外れを解消・v1.30.321木村)
   $('#inv-st-rows').oninput = e=>{
     const inp = e.target.closest('[data-stk]');
     if(!inp) return;
     state.ui.stocktakeInputs[inp.dataset.stk] = inp.value;
-    renderStocktake();
-    // keep focus on the input
-    setTimeout(()=>{
-      const nextInp = $('#st-rows [data-stk="'+inp.dataset.stk+'"]');
-      if(nextInp){ nextInp.focus(); nextInp.setSelectionRange(nextInp.value.length,nextInp.value.length); }
-    },0);
+    updateStRow(inp);
+    refreshStocktakeSummary();
+  };
+  // 「OK」= 在庫数をそのまま実数に入れるワンタップ(v1.30.321木村)
+  $('#inv-st-rows').onclick = e=>{
+    const ok = e.target.closest('[data-stkok]');
+    if(!ok) return;
+    const id = ok.dataset.stkok;
+    const item = state.items.find(i=>i.id===id);
+    if(!item) return;
+    const inp = $('#inv-st-rows [data-stk="'+id+'"]');
+    state.ui.stocktakeInputs[id] = String(item.stock);
+    if(inp){ inp.value = String(item.stock); updateStRow(inp); }
+    refreshStocktakeSummary();
+  };
+  // 実施者を名前ボタンで選択(v1.30.321木村)
+  $('#inv-st-member').onclick = e=>{
+    const b = e.target.closest('[data-stkm]');
+    if(!b) return;
+    state.ui.stocktakeMember = b.dataset.stkm;
+    $$('#inv-st-member button').forEach(x=>x.classList.toggle('on', x===b));
   };
   $('#inv-st-rows').onchange = e=>{
     const sel = e.target.closest('[data-stkr]');
