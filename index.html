@@ -2565,7 +2565,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.338</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.339</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -7337,6 +7337,8 @@ async function pushChlog_(){
     pend.forEach(e=>{ if(e&&e.id&&!seen.has(e.id)){ remote.push(e); seen.add(e.id); } });
     remote = pruneChlog_(remote);   // 45日＋44KB上限(セル破壊防止)
     saveChlog_(remote);
+    // 🚨#4 変更ログがセル上限に接近→一度だけ注意(自動間引きで壊れはしないが気づけるように)v1.30.339
+    try{ if(!window.__chlogNearCapWarned && JSON.stringify({entries:remote}).length > 40000){ window.__chlogNearCapWarned=true; if(typeof showAutoSyncToast==='function') showAutoSyncToast('📜 変更の記録が上限に近づき、古い分から自動削除しています(直近は保持)'); } }catch(_){}
     await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'calendar_changelog',value:JSON.stringify({entries:remote,updatedAt:new Date().toISOString()}),token:s.token,savedBy:'calendar-app'})});
   }catch(e){ console.warn('[changelog] push失敗:', e.message); }
 }
@@ -16566,6 +16568,55 @@ function updateSyncFreshness_(){
   }catch(_){}
 }
 
+// 🚨 危険アラート(v1.30.339・山田): 今日痛かった失敗モードを先回りで警告。上部に目立つバナー。
+//   ①容量が危険(全員に) ②データ急減(クロバー/破損の早期検知) ③同期が長時間ダメ ④変更ログがセル上限接近(別途toast)
+let __dangerDismiss = {};     // id -> 再表示抑止until(ms)
+let __evtHist = [];           // {n,t} 60秒ごとの予定件数サンプル(急減検知用)
+function ensureDangerBanner_(){
+  let b=document.getElementById('dangerBanner'); if(b) return b;
+  b=document.createElement('div'); b.id='dangerBanner';
+  b.style.cssText='display:none;position:fixed;left:50%;transform:translateX(-50%);top:8px;z-index:9999;max-width:94vw;'
+    +'color:#fff;padding:9px 38px 9px 14px;border-radius:10px;font-size:13px;font-weight:600;line-height:1.45;box-shadow:0 4px 16px rgba(0,0,0,.3)';
+  const x=document.createElement('button'); x.textContent='✕';
+  x.style.cssText='position:absolute;right:7px;top:5px;background:transparent;border:0;color:#fff;font-size:15px;cursor:pointer;line-height:1';
+  x.onclick=()=>{ if(b.dataset.did){ __dangerDismiss[b.dataset.did]=Date.now()+15*60000; } b.style.display='none'; };
+  const span=document.createElement('span'); span.id='dangerBannerMsg';
+  b.appendChild(span); b.appendChild(x);
+  document.body.appendChild(b); return b;
+}
+function renderDanger_(dangers){
+  const b=ensureDangerBanner_();
+  const active=(dangers||[]).filter(d=> !(__dangerDismiss[d.id] && Date.now()<__dangerDismiss[d.id])).sort((a,c)=>c.sev-a.sev);
+  if(!active.length){ b.style.display='none'; b.dataset.did=''; return; }
+  const top=active[0]; b.dataset.did=top.id;
+  document.getElementById('dangerBannerMsg').innerHTML = top.html + (active.length>1?` <span style="opacity:.85;font-weight:400">(他 ${active.length-1}件)</span>`:'');
+  b.style.background = top.sev>=3 ? '#dc2626' : '#d97706';
+  b.style.display='block';
+}
+function dangerCheck_(){
+  try{
+    const dangers=[];
+    // ① 容量(全員)
+    let bytes=0; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); bytes += (k.length + (localStorage.getItem(k)||"").length); }
+    const kb=Math.round(bytes/1024);
+    if(kb>4300){ dangers.push({id:'capacity',sev:3,html:`⚠ このPCの保存容量が残り少です（約${(kb/1024).toFixed(1)}MB / 上限約5MB）。ブラウザのサイト容量を空けるか、一度アプリを<b>再読込</b>してください。<b>クラウド同期は有効なので予定は守られます</b>。`}); }
+    // ② データ急減(約10分前比で4割超減)
+    const cur=(state.events||[]).length;
+    __evtHist.push({n:cur,t:Date.now()});
+    __evtHist=__evtHist.filter(x=> Date.now()-x.t < 22*60000);
+    const past=__evtHist.find(x=> Date.now()-x.t >= 9*60000);
+    if(past && past.n>=15 && cur < past.n*0.6){ dangers.push({id:'datadrop',sev:3,html:`⚠ 予定が急に減っています（約10分前 ${past.n}件 → 今 ${cur}件）。同期の不具合かも。まず<b>☁全同期</b>、戻らなければ<b>⚙設定→バックアップ復元</b>で戻せます。`}); }
+    // ③ 同期が長時間ダメ(15分)
+    if(cloudSync.url){
+      const offline=(typeof navigator!=='undefined' && navigator.onLine===false);
+      const lastMs=cloudSync.lastSyncAt?Date.parse(cloudSync.lastSyncAt):0;
+      const minAgo=lastMs?Math.floor((Date.now()-lastMs)/60000):999;
+      if(offline || __syncFailed || minAgo>=15){ dangers.push({id:'sync',sev:2,html:`⚠ ${offline?'オフラインで':'同期に失敗して'}最新を取れていません（最終同期 ${lastMs?minAgo+'分前':'なし'}）。表示が古い可能性。復帰で自動的に最新に。<b>⚙からバックアップ復元</b>も可能。`}); }
+    }
+    renderDanger_(dangers);
+  }catch(_){}
+}
+
 // ===== クラウド同期: 設定モーダル =====
 const cloudSyncModal = document.getElementById('cloudSyncModal');
 function openCloudSyncModal(){
@@ -16955,6 +17006,9 @@ if(cloudSync.url && cloudSync.autoSync){
 // 🔎 同期の見える化ピル: 起動時＋30秒ごとに更新。オフライン↔復帰も即反映(復帰時は即全同期)v1.30.336
 try{ updateSyncFreshness_(); }catch(_){}
 setInterval(()=>{ try{ updateSyncFreshness_(); }catch(_){} }, 30*1000);
+// 🚨 危険チェック: 起動20秒後＋60秒ごと(容量/データ急減/同期長時間ダメ)v1.30.339
+setTimeout(()=>{ try{ dangerCheck_(); }catch(_){} }, 20*1000);
+setInterval(()=>{ try{ dangerCheck_(); }catch(_){} }, 60*1000);
 if(typeof window!=='undefined' && window.addEventListener){
   window.addEventListener('online',  ()=>{ __syncFailed=false; try{ updateSyncFreshness_(); }catch(_){} if(cloudSync.url && cloudSync.autoSync){ try{ runCloudOpenSync({manual:true}); }catch(_){} } });
   window.addEventListener('offline', ()=>{ try{ updateSyncFreshness_(); }catch(_){} });
