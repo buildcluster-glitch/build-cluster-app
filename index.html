@@ -2565,7 +2565,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.323</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.324</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9329,6 +9329,38 @@ async function fetchHatchushoData(opts={}){
   })();
   return __hatchushoInFlight;
 }
+// 📷 頻出内装品番のサムネ画像ライブラリ(見積アプリ→shared-config 'naiso_hinban_thumbs')。v1.30.324・山田①
+//   発注明細書の「特記事項/品番」に品番(例HM-12027)が含まれる行へサンプル画像を出す(見積アプリPDFと同じ見た目に寄せる)。
+//   見積アプリが高さ56pxのJPEGに圧縮+上限付きでpushしたものを取得。品番(小文字)→{d:dataUrl,l:label}。
+let __naisoThumbs = {};
+const NAISO_THUMBS_CACHE_KEY = "buildcluster_naiso_thumbs_cache";
+try{ const c = JSON.parse(localStorage.getItem(NAISO_THUMBS_CACHE_KEY)||"{}"); if(c && typeof c==='object') __naisoThumbs = c; }catch(_){}
+async function fetchNaisoThumbs_(opts={}){
+  const s = (typeof loadGasSettings==='function') ? loadGasSettings() : {};
+  if(!s.url || !s.token) return __naisoThumbs;
+  try{
+    const url = `${s.url}?action=get-shared-config&key=naiso_hinban_thumbs&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res = await fetch(url, {cache:'no-store'});
+    const data = await res.json();
+    let raw = data && data.value;
+    if(typeof raw === 'string'){ try{ raw = JSON.parse(raw); }catch(_){ raw=null; } }
+    const map = (raw && raw.thumbs && typeof raw.thumbs==='object') ? raw.thumbs : null;
+    if(map){ __naisoThumbs = map; try{ localStorage.setItem(NAISO_THUMBS_CACHE_KEY, JSON.stringify(map)); }catch(_){} }
+  }catch(e){ if(!opts.silent) console.warn('[naiso_hinban_thumbs] fetch失敗:', e.message); }
+  return __naisoThumbs;
+}
+// spec文字列に品番が含まれれば対応サムネの<img>を返す(見積アプリ _naisoPrintThumb と同じ突合)。無ければ空。
+function _naisoThumbImg_(specText){
+  const s = String(specText||"").toLowerCase();
+  if(!s || !__naisoThumbs) return "";
+  for(const hb in __naisoThumbs){
+    if(hb && s.includes(hb)){
+      const o = __naisoThumbs[hb] || {};
+      if(o.d) return `<div style="margin-top:2px"><img src="${o.d}" alt="${escapeHtml(o.l||'')}" style="height:44px;max-width:96px;object-fit:contain;border:1px solid #ccc;border-radius:2px"></div>`;
+    }
+  }
+  return "";
+}
 // 進捗ダイアログの resto レコード p に対応する発注書を探す
 //   id一致(extDriveFileId/extEstimateId/p.id/「resto-」除去) → 物件名+号室一致 の順
 function findHatchushoForResto_(p){
@@ -9493,7 +9525,7 @@ function openHatchushoPrint_(rec){
       <td${__doneStyle}>${escapeHtml(r.room||"")}</td>
       <td>${__done?`<span style="text-decoration:line-through;color:#64748b">${escapeHtml(r.workName||"")}</span>`:escapeHtml(r.workName||"")}${__byTag}</td>
       <td${__doneStyle}>${ji?"":escapeHtml(r.surface||"")}</td>
-      <td${__doneStyle}>${escapeHtml(spec)}</td>
+      <td${__doneStyle}>${escapeHtml(spec)}${_naisoThumbImg_(spec)}</td>
       <td class="num"${__doneStyle}>${(r.qty!=null&&r.qty!=="")?escapeHtml(String(r.qty)):""}</td>
       <td class="c"${__doneStyle}>${escapeHtml(r.unit||"")}</td>
       <td class="num"${__doneStyle}>${amtStr}</td>
@@ -19992,6 +20024,11 @@ setTimeout(()=>{
     // 📄 発注書データ (見積アプリ「発注確定」→shared-config) 取得・以後5分ごと
     fetchHatchushoData({silent:true});
     setInterval(()=>fetchHatchushoData({silent:true}).catch(()=>{}), 5*60*1000);
+    // 📷 品番サムネ画像ライブラリ (見積アプリ→shared-config) 取得・以後30分ごと(更新頻度低いので長め)v1.30.324
+    if(typeof fetchNaisoThumbs_==='function'){
+      fetchNaisoThumbs_({silent:true});
+      setInterval(()=>fetchNaisoThumbs_({silent:true}).catch(()=>{}), 30*60*1000);
+    }
   }
   // 🗂 完了タスクの自動アーカイブ(7日経過)を起動時+1時間ごとに掃除
   try{ if(typeof sweepTaskArchive_==='function' && sweepTaskArchive_() && typeof render==='function') render(); }catch(e){}
