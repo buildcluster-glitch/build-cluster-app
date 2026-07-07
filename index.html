@@ -2565,7 +2565,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.335</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.336</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -4514,8 +4514,9 @@ function snapLabel_(key){
 //   ローカルsnapの弱点=各端末のブラウザ内のみ→サーバー(shared-config・Drive退避)にも軽量形式で自動退避。
 //   枠を過ぎて最初に動いた端末が1回だけ保存(重複防止=indexの日付+端末ローカルマーカー)。GAS変更不要(汎用KV)。
 function srvBackupSlotKey_(d){
-  const slot = d.getHours() >= 15 ? "15" : "00";
-  return `calendar_backup_${d.getDay()}_${slot}`;   // 例: calendar_backup_4_15 (木曜15時枠)
+  // v1.30.336(山田・不安対策): 1時間ごと(h00〜h23の24枠・毎日上書き=直近24時間を1時間刻みで復元可)。
+  //   ★Drive側なのでローカル容量を食わない=容量圧迫→タスク消失(今日の一件)の再発を招かない★
+  return `calendar_backup_h${String(d.getHours()).padStart(2,"0")}`;   // 例: calendar_backup_h15
 }
 async function maybeServerBackup_(){
   try{
@@ -4543,6 +4544,8 @@ async function maybeServerBackup_(){
     if(!d2 || d2.ok !== true) throw new Error((d2 && d2.error) || 'save失敗');
     // index更新(復元一覧・重複防止用)
     index[key] = { at: new Date().toISOString(), by: (typeof getMyself==='function' && getMyself()) || '', kb: Math.round(json.length/1024) };
+    // v1.30.336: 3日より古いindexエントリは掃除(旧2枠/日の残骸も含め復元一覧を直近だけに)
+    { const cutoff = Date.now() - 3*24*3600*1000; Object.keys(index).forEach(k=>{ const t=Date.parse(index[k]&&index[k].at); if(!isNaN(t) && t<cutoff) delete index[k]; }); }
     await fetch(s.url, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
       body: JSON.stringify({ action:'save-shared-config', key:'calendar_backup_index', value: JSON.stringify({entries:index, updatedAt:new Date().toISOString()}), token: s.token, savedBy:'calendar-app' }) });
     try{ localStorage.setItem("bc_srv_backup_done", marker); }catch(_){}
@@ -16031,10 +16034,14 @@ async function runCloudOpenSync(opts={}){
     await cloudSyncPull({ replace:false });
     render();
     setCloudSyncIcon('ok');
+    __syncFailed = false;                                  // 🔎 同期成功(v1.30.336)
+    if(typeof updateSyncFreshness_==='function') updateSyncFreshness_();
     setTimeout(()=>{ if(!cloudSyncInFlight) setCloudSyncIcon(''); }, 2000);
   }catch(err){
     console.warn('[cloud-sync] open-sync failed:', err.message);
     setCloudSyncIcon('err');
+    __syncFailed = true;                                   // 🔎 同期失敗→警告表示(v1.30.336)
+    if(typeof updateSyncFreshness_==='function') updateSyncFreshness_();
   }finally{
     cloudSyncInFlight = false;
   }
@@ -16378,6 +16385,42 @@ function updateCloudSyncBadge(){
   if(pInfo) pInfo.textContent = n;
 }
 
+// 🔎 同期の見える化＋未同期警告(v1.30.336・山田/不安対策)。「今見えてるのが最新か」を常時表示。
+//   最終同期からの経過・オフライン・失敗を右下ピルで表示。古い/失敗/オフライン時は赤くしてタップで即全同期。
+let __syncFailed = false;
+const SYNC_STALE_MIN = 6;   // 最終同期から6分以上=古い可能性(自動ポーリングは30秒間隔なので余裕を見て6分)
+function ensureSyncPill_(){
+  let p = document.getElementById('syncFreshPill');
+  if(p) return p;
+  p = document.createElement('div');
+  p.id = 'syncFreshPill';
+  p.style.cssText = 'position:fixed;right:10px;bottom:10px;z-index:9998;padding:5px 11px;border-radius:14px;'
+    + 'font-size:11px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.18);user-select:none;white-space:nowrap;transition:background .2s';
+  p.title = 'タップで今すぐ全同期';
+  p.onclick = ()=>{ try{ runCloudOpenSync({manual:true}); }catch(_){} updateSyncFreshness_(); };
+  document.body.appendChild(p);
+  return p;
+}
+function updateSyncFreshness_(){
+  try{
+    const p = ensureSyncPill_();
+    if(!cloudSync.url){ p.style.display='none'; return; }        // 同期未設定なら出さない
+    p.style.display='block';
+    const offline = (typeof navigator!=='undefined' && navigator.onLine===false);
+    const lastMs = cloudSync.lastSyncAt ? Date.parse(cloudSync.lastSyncAt) : 0;
+    const minAgo = lastMs ? Math.floor((Date.now()-lastMs)/60000) : -1;
+    let txt, warn=true;
+    if(offline){ txt = '⚠ オフライン · タップ再試行'; }
+    else if(__syncFailed){ txt = '⚠ 同期失敗 · タップ再同期'; }
+    else if(minAgo < 0){ txt = '⏳ 未同期 · タップ同期'; }
+    else if(minAgo >= SYNC_STALE_MIN){ txt = `⚠ 未同期 ${minAgo}分前 · タップ同期`; }
+    else { txt = `☁ 同期OK · ${minAgo}分前`; warn=false; }
+    p.textContent = txt;
+    if(warn){ p.style.background='#fecaca'; p.style.color='#991b1b'; p.style.opacity='1'; }
+    else { p.style.background='#dcfce7'; p.style.color='#166534'; p.style.opacity='.8'; }
+  }catch(_){}
+}
+
 // ===== クラウド同期: 設定モーダル =====
 const cloudSyncModal = document.getElementById('cloudSyncModal');
 function openCloudSyncModal(){
@@ -16545,14 +16588,14 @@ document.getElementById('all-settings-cancel').onclick = closeAllSettings;
 // 🗄 バックアップ復元
 document.getElementById('all-snap-restore').onclick = ()=>{
   const key = document.getElementById('all-snap-select').value;
-  if(!key){ alert("まだバックアップがありません。\n9時/13時/18時にアプリを開いていると自動保存されます。"); return; }
+  if(!key){ alert("まだバックアップがありません。\n変更があると数分ごとに自動保存されます(この端末内・最大10世代)。"); return; }
   restoreSnapshot_(key);
 };
 // ☁ サーバーバックアップ復元 v1.30.261
 document.getElementById('all-srv-snap-restore').onclick = ()=>{
   const sel = document.getElementById('all-srv-snap-select');
   const key = sel && sel.value;
-  if(!key){ alert("サーバーバックアップがまだありません。\n毎日0時/15時を過ぎて誰かのアプリが動くと自動保存されます。"); return; }
+  if(!key){ alert("サーバーバックアップがまだありません。\n1時間ごとに誰かのアプリが動くと自動保存されます(直近24時間・全員共有)。"); return; }
   restoreServerBackup_(key, sel.options[sel.selectedIndex].textContent);
 };
 
@@ -16763,6 +16806,13 @@ updateCloudSyncBadge();
 if(cloudSync.url && cloudSync.autoSync){
   setTimeout(runCloudOpenSync, 300);
   startCloudPolling();
+}
+// 🔎 同期の見える化ピル: 起動時＋30秒ごとに更新。オフライン↔復帰も即反映(復帰時は即全同期)v1.30.336
+try{ updateSyncFreshness_(); }catch(_){}
+setInterval(()=>{ try{ updateSyncFreshness_(); }catch(_){} }, 30*1000);
+if(typeof window!=='undefined' && window.addEventListener){
+  window.addEventListener('online',  ()=>{ __syncFailed=false; try{ updateSyncFreshness_(); }catch(_){} if(cloudSync.url && cloudSync.autoSync){ try{ runCloudOpenSync({manual:true}); }catch(_){} } });
+  window.addEventListener('offline', ()=>{ try{ updateSyncFreshness_(); }catch(_){} });
 }
 
 // ===== ワンタイム マイグレーション: 松尾をユーザー対象から除外したため、関連データを削除 =====
