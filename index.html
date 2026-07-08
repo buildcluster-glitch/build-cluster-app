@@ -2565,7 +2565,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.343</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.344</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -5297,6 +5297,7 @@ function showCheckStaffPicker(el, ck){
           const on = __cklist.includes(s);
           return `<button data-staff="${escapeHtml(s)}" class="${on?"on":""}" style="background:${sc};color:${textColorFor(sc)}"><span class="qp-dot" style="background:${textColorFor(sc)==='#ffffff'?'rgba(255,255,255,.6)':'rgba(0,0,0,.3)'}"></span>${escapeHtml(s)}</button>`;
         }).join("")}
+        ${(function(){ const sc=VENDOR_WORKER_COLOR; const on=__cklist.includes(VENDOR_WORKER); return `<button data-staff="${escapeHtml(VENDOR_WORKER)}" class="${on?"on":""}" style="background:${sc};color:${textColorFor(sc)}" title="最確に行かず業者さんに撮影を依頼した場合など"><span class="qp-dot" style="background:${textColorFor(sc)==='#ffffff'?'rgba(255,255,255,.6)':'rgba(0,0,0,.3)'}"></span>🛠${escapeHtml(VENDOR_WORKER)}</button>`; })()}
       </div>
     </div>
     <div class="qp-sec">
