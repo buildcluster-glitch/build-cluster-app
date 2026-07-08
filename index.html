@@ -2573,7 +2573,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.353</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.354</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2594,6 +2594,7 @@
   </div>
   <div class="spacer"></div>
   <button class="nav-btn icon-only" id="undoBtn" title="直前の変更を取り消し (Ctrl+Z)" disabled>↶</button>
+  <button class="nav-btn icon-only" id="redoBtn" title="取り消した変更をやり直す (Ctrl+Y / Ctrl+Shift+Z)" disabled>↷</button>
   <button class="nav-btn icon-only" id="searchBtn" title="🔍 予定・立会・修繕・最終確認・休暇を横断検索 (/)">🔍</button>
   <button class="nav-btn icon-only" id="yearStatsBtn" title="📊 休日管理 (有給・休日年間集計)">📊</button>
   <button class="nav-btn icon-only" id="bugReportBtn" title="🐞 バグ・要望の報告 (全員共有・見積アプリの報告と同様)">🐞<span id="bugReportBadge" class="al-count" style="display:none"></span></button>
@@ -4669,26 +4670,21 @@ let taskFilterAssignee = null;     // null=初期(自分), "全員" or staff nam
 let taskSortMode = "priority";     // priority/due/status/assignee/title/manual
 let taskShowTrash = false;
 
-// ===== Undo履歴 =====
+// ===== Undo/Redo履歴 =====
 const MAX_HISTORY = 30;
 let history = [];
+let redoStack = [];   // ↷ 進む(南部要望・v1.30.354)
 function snapshotState(){
   return JSON.stringify({events:state.events, leaves:state.leaves, checks:state.checks});
 }
 function pushHistory(){
   history.push(snapshotState());
   if(history.length > MAX_HISTORY) history.shift();
+  redoStack = [];   // 新しい変更が入ったら「進む」先は破棄(標準的なUndo/Redoの挙動)
   updateUndoBtn();
 }
-function undo(){
-  if(history.length === 0) return;
-  const prev = JSON.parse(history.pop());
-  const curIds = new Set((state.events||[]).map(e=>e && e.id));   // Undo前に存在した予定id
-  state.events = prev.events;
-  state.leaves = prev.leaves;
-  state.checks = prev.checks;
-  // 🔄 削除の取り消し=復活した予定(prevにあり現状に無かった)は tombstone解除+更新時刻を今に+再登録
-  //   →ローカルだけでなく全端末で復活し、次の同期でも消えない(v1.30.315・山田)
+// 🔄 予定の復活(undo/redoどちらでも)をローカルだけでなく全端末に反映する共通処理(v1.30.315のロジックを共用)
+function __applyEventRestoreSideEffects_(curIds){
   (state.events||[]).forEach(e=>{
     if(e && e.id && !curIds.has(e.id)){
       if(typeof removeEventDeletion_==='function') removeEventDeletion_(e.id);
@@ -4696,6 +4692,32 @@ function undo(){
       if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(e,'upsert'); }catch(_){} }
     }
   });
+}
+function undo(){
+  if(history.length === 0) return;
+  redoStack.push(snapshotState());   // 今の状態を「進む」用に退避
+  if(redoStack.length > MAX_HISTORY) redoStack.shift();
+  const prev = JSON.parse(history.pop());
+  const curIds = new Set((state.events||[]).map(e=>e && e.id));   // Undo前に存在した予定id
+  state.events = prev.events;
+  state.leaves = prev.leaves;
+  state.checks = prev.checks;
+  __applyEventRestoreSideEffects_(curIds);
+  saveState();
+  updateUndoBtn();
+  render();
+}
+// ↷ 進む(Redo): undoを取り消して1手先に戻す(南部要望・v1.30.354)
+function redo(){
+  if(redoStack.length === 0) return;
+  history.push(snapshotState());   // 今の状態を「戻す」用に退避
+  if(history.length > MAX_HISTORY) history.shift();
+  const next = JSON.parse(redoStack.pop());
+  const curIds = new Set((state.events||[]).map(e=>e && e.id));
+  state.events = next.events;
+  state.leaves = next.leaves;
+  state.checks = next.checks;
+  __applyEventRestoreSideEffects_(curIds);
   saveState();
   updateUndoBtn();
   render();
@@ -4703,6 +4725,8 @@ function undo(){
 function updateUndoBtn(){
   const btn = document.getElementById("undoBtn");
   if(btn) btn.disabled = history.length === 0;
+  const rbtn = document.getElementById("redoBtn");
+  if(rbtn) rbtn.disabled = redoStack.length === 0;
 }
 
 // スマホ判定で初期viewを切替 → 3day がコンパクトなのでそのまま
@@ -15727,6 +15751,7 @@ function openQuickOrFullEvent_(defaults){
 }
 document.getElementById("addBtn").onclick = ()=>openQuickOrFullEvent_();
 document.getElementById("undoBtn").onclick = ()=>undo();
+document.getElementById("redoBtn").onclick = ()=>redo();
 document.getElementById("yearStatsBtn").onclick = ()=>openYearStats();
 document.getElementById("gasSettingsBtnHeader").onclick = ()=>openAllSettings('drive');
 
@@ -20196,6 +20221,13 @@ document.addEventListener("keydown", e=>{
     if(tag==="input" || tag==="textarea") return;
     e.preventDefault();
     undo();
+  }
+  // ↷ Ctrl/Cmd+Shift+Z または Ctrl+Y で Redo(南部要望「進むボタンも欲しい」v1.30.354)
+  if((e.ctrlKey||e.metaKey) && ((e.key.toLowerCase()==="z" && e.shiftKey) || e.key.toLowerCase()==="y")){
+    const tag = (e.target.tagName||"").toLowerCase();
+    if(tag==="input" || tag==="textarea") return;
+    e.preventDefault();
+    redo();
   }
 });
 
