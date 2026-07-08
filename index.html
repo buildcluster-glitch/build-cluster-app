@@ -2573,7 +2573,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.351</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.352</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2743,6 +2743,9 @@
           </select>
         </div>
         <div class="field"><label>詳細(自由記入)</label><input id="rs-resp-reason-free" type="text" placeholder="任意"></div>
+      </div>
+      <div class="field-row">
+        <button type="button" id="rs-dotakyan" style="padding:5px 10px;border:1px solid #cbd5e1;background:#f1f5f9;color:#475569;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer" title="今入っている対応予定日時をグレーの跡として残してから、上で新しい日時に変更してください">🔄 日時変更(この日に変更跡を残す)</button>
       </div>
       <div class="field-row">
         <div class="field"><label>お客様</label><input id="rs-cust" readonly></div>
@@ -18166,6 +18169,8 @@ function openRepairSheet(id){
   document.getElementById("rs-respdate").value = r.responseDate || "";
   // 🔄 変更理由欄はr側に保持しない一時入力なので毎回クリア(v1.30.351)
   { const rr=document.getElementById("rs-resp-reason"); if(rr) rr.value=""; const rf=document.getElementById("rs-resp-reason-free"); if(rf) rf.value=""; }
+  // 🔄 日時変更跡ボタンも毎回リセット(v1.30.352)
+  { const db=document.getElementById("rs-dotakyan"); if(db){ db.textContent='🔄 日時変更(この日に変更跡を残す)'; db.disabled=false; } }
   // 対応予定時間プルダウン (現在値が候補外の自由テキストでも選択肢に含めて保持)
   populateRespTimeSelect_(r.responseTime || "");
   document.getElementById("rs-cust").value     = r.customerName || "";
@@ -18297,6 +18302,22 @@ function openActionList(){
   document.getElementById('actionListModal').classList.add('show');
 }
 function closeActionList(){ const m=document.getElementById('actionListModal'); if(m) m.classList.remove('show'); }
+// 🔄 修繕案件シート(詳細編集)の「日時変更(この日に変更跡を残す)」— クイックポップと同じ機能をここにも(山田要望)v1.30.352
+//   今フォームに入っている(まだ保存前の)対応予定日時をグレー跡として残す。その後フォームの日時を新しい日に変えて「保存」を押す運用。
+function repairDetailDotakyan_(){
+  const r = state.repairs.find(x=>x.id===editingRepairId);
+  if(!r) return;
+  const d = document.getElementById("rs-respdate").value;
+  const t = document.getElementById("rs-resptime").value.trim();
+  const picked = (document.getElementById("rs-resp-reason")||{}).value || "";
+  const free = ((document.getElementById("rs-resp-reason-free")||{}).value || "").trim();
+  const reason = (picked && free) ? `${picked}：${free}` : (picked || free);
+  if(!d){ alert('元のアポ日付が空です'); return; }
+  if(!confirm(`${d}${t?(" "+t):""} に「日時変更」跡(グレー)を残しますか？\nこの後、日付を新しい日に変えて「保存」を押してください。`)) return;
+  createDotakyanGhost_(`${r.name}${r.room?" "+r.room:""}`, d, t, reason);
+  const btn = document.getElementById("rs-dotakyan");
+  if(btn){ btn.textContent = '✓ 日時変更跡を残しました'; btn.disabled = true; }
+}
 // ✅ 修繕「✓完了にする」ワンクリック: 最終確認(原状回復)の✓完了ボタンと同じく、ステータス=完了+完了日=今日を
 //   1タップで確定して即座に台帳へ書戻す(南部/大村要望・7値ピッカーから完了を選んで別途保存する2手間を1手間に)v1.30.349
 async function repairToggleComplete_(id){
@@ -18396,6 +18417,7 @@ async function saveRepairSheet(){
 document.getElementById("rs-cancel").onclick = closeRepairSheet;
 document.getElementById("rs-save").onclick = saveRepairSheet;
 document.getElementById("rs-complete").onclick = ()=> repairToggleComplete_(editingRepairId);
+document.getElementById("rs-dotakyan").onclick = repairDetailDotakyan_;
 repairSheet.onclick = e=>{ if(e.target===repairSheet) closeRepairSheet(); };
 
 // ===========================================================
