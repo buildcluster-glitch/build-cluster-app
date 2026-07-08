@@ -821,6 +821,10 @@
   .quick-pop.task-pop .tp-sep{border-top:1px dashed #d1d5db;margin:4px 2px} /* 優先度グループ区切り */
   .quick-pop.task-pop .tp-count{background:var(--accent);color:#fff;border-radius:10px;padding:1px 8px;font-size:12px}
   .quick-pop.task-pop .tp-count.done{background:#16a34a}
+  /* ✅ 全項目まとめて完了(未完了が2件以上のとき出す)。ぽちぽち回避・南部要望 v1.30.346 */
+  .quick-pop.task-pop .tp-complete-all{margin-left:auto;border:0;background:#16a34a;color:#fff;border-radius:9px;font-size:11px;font-weight:800;padding:3px 11px;cursor:pointer;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+  .quick-pop.task-pop .tp-complete-all:hover{background:#15803d}
+  .quick-pop.task-pop .tp-complete-all:active{transform:translateY(1px)}
   .quick-pop.task-pop .tp-bar{height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden;margin:8px 0 4px}
   .quick-pop.task-pop .tp-bar i{display:block;height:100%;transition:width .25s}
   .quick-pop.task-pop .tp-list{display:flex;flex-direction:column;gap:2px;margin-top:4px;max-height:50vh;overflow-y:auto}
@@ -2565,7 +2569,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.345</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.346</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -9216,7 +9220,7 @@ function showTaskChecklistPopup(el, ev){
     }).join('') : '<div style="font-size:11px;color:#94a3b8;text-align:center;padding:3px">まだ業務連絡はありません</div>';
     const msgSectionHtml = (cur.category==='事務') ? `<div class="tp-msg" style="border-top:1px solid #eef2f7;margin-top:8px;padding-top:8px"><div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:5px">💬 業務連絡 <span style="font-weight:400;color:#94a3b8;font-size:10px">(${escapeHtml(cur.staff||'')}さんへ・出社時に確認)</span></div><div class="tp-msg-list" style="max-height:170px;overflow:auto;display:flex;flex-direction:column;gap:4px">${msgsHtml}</div><div style="display:flex;gap:4px;margin-top:6px"><textarea class="tp-msg-input" rows="1" placeholder="業務連絡を書く (Enter送信 / Shift+Enter改行)" style="flex:1;font-size:12px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;resize:vertical;min-height:30px"></textarea><button class="tp-msg-send btn primary" style="font-size:12px;padding:5px 12px">送信</button></div></div>` : '';
     pop.innerHTML = `
-      <div class="qp-title">📋 ${head}タスク <span class="tp-count ${allDone?'done':''}">${allDone?'✓ ':''}${ti.done}/${ti.total}</span></div>
+      <div class="qp-title">📋 ${head}タスク <span class="tp-count ${allDone?'done':''}">${allDone?'✓ ':''}${ti.done}/${ti.total}</span>${pending.length>=2?`<button class="tp-complete-all" title="未完了${pending.length}件をまとめて完了にする">✅ 全部完了</button>`:''}</div>
       <div class="tp-bar"><i style="width:${pct}%;background:${allDone?'#16a34a':'#3b82f6'}"></i></div>
       <div class="tp-list">
         ${pendingHtml || (
@@ -9254,6 +9258,20 @@ function showTaskChecklistPopup(el, ev){
     pop.querySelectorAll('.tp-done-quick').forEach(b=>{   // 一発完了
       b.onclick = ()=> mutate(t=>setTaskStatus_(t, parseInt(b.dataset.line,10), '完了', (typeof getMyself==='function'?getMyself():"")));
     });
+    // ✅ 全項目まとめて完了(ぽちぽち回避・南部要望 v1.30.346)。未完了(進行中含む)を一括で完了に
+    const __caBtn = pop.querySelector('.tp-complete-all');
+    if(__caBtn){
+      __caBtn.onclick = ()=>{
+        const n = pending.length;
+        if(!confirm(`未完了 ${n}件をすべて完了にしますか？`)) return;
+        const who = (typeof getMyself==='function'?getMyself():"");
+        mutate(t=>{
+          parseTasks_(t).filter(x=>x.isTask && !x.done).forEach(x=>{ t = setTaskStatus_(t, x.index, '完了', who); });
+          return t;
+        });
+        if(typeof showAutoSyncToast==='function') showAutoSyncToast('✅ 全項目を完了にしました');
+      };
+    }
     pop.querySelectorAll('.tp-comment-btn').forEach(b=>{   // 💬 タスク個別コメント
       b.onclick = (e)=>{
         e.stopPropagation();
