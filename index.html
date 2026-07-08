@@ -2573,7 +2573,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.352</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.353</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2739,7 +2739,6 @@
         <div class="field"><label>日時変更理由 <span style="color:var(--mute);font-weight:400;font-size:11px">(任意・対応予定日時を変えた時だけ💬に記録)</span></label>
           <select id="rs-resp-reason" style="width:100%;box-sizing:border-box">
             <option value="">選択…</option>
-            ${REPAIR_RESCHEDULE_REASONS.map(x=>`<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join("")}
           </select>
         </div>
         <div class="field"><label>詳細(自由記入)</label><input id="rs-resp-reason-free" type="text" placeholder="任意"></div>
@@ -18168,7 +18167,10 @@ function openRepairSheet(id){
   document.getElementById("rs-reqdate").value  = r.requestDate || "";
   document.getElementById("rs-respdate").value = r.responseDate || "";
   // 🔄 変更理由欄はr側に保持しない一時入力なので毎回クリア(v1.30.351)
-  { const rr=document.getElementById("rs-resp-reason"); if(rr) rr.value=""; const rf=document.getElementById("rs-resp-reason-free"); if(rf) rf.value=""; }
+  //   ⚠ このシートは静的HTML(script外)なのでテンプレート内${}は評価されない→選択肢はJSで組み立てる(v1.30.353修正)
+  { const rr=document.getElementById("rs-resp-reason");
+    if(rr){ rr.innerHTML = '<option value="">選択…</option>' + REPAIR_RESCHEDULE_REASONS.map(x=>`<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join(""); rr.value=""; }
+    const rf=document.getElementById("rs-resp-reason-free"); if(rf) rf.value=""; }
   // 🔄 日時変更跡ボタンも毎回リセット(v1.30.352)
   { const db=document.getElementById("rs-dotakyan"); if(db){ db.textContent='🔄 日時変更(この日に変更跡を残す)'; db.disabled=false; } }
   // 対応予定時間プルダウン (現在値が候補外の自由テキストでも選択肢に含めて保持)
