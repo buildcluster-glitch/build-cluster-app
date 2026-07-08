@@ -1714,6 +1714,10 @@
   .rd-group-badge{font-size:11px;font-weight:800;padding:2px 9px;border-radius:6px;letter-spacing:1px}
   .rd-group-out .rd-group-badge{background:#fff;color:#4f46e5}
   .rd-group-in .rd-group-badge{background:#fff;color:#b45309}
+  /* ✅ 自社工事まとめて完了(南部要望・0/15をぽちぽちせず1タップ)v1.30.347 */
+  .rd-group-in > .rd-group-head .rd-complete-all-in{margin-left:auto;border:0;background:#fff;color:#b45309;font-size:11.5px;font-weight:800;padding:3px 11px;border-radius:7px;cursor:pointer;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+  .rd-group-in > .rd-group-head .rd-complete-all-in:hover{background:#fffbeb}
+  .rd-group-in > .rd-group-head .rd-complete-all-in:active{transform:translateY(1px)}
   /* ✂️減工事・📋提案 = やらない工事。グレーアウトで一目で区別(v1.30.121) */
   .rd-group-muted{filter:grayscale(.85);opacity:.62;background:#f1f5f9;border-radius:8px;padding:4px 6px}
   .rd-group-muted .rd-group-head{color:#64748b}
@@ -2569,7 +2573,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.346</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.347</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2808,7 +2812,7 @@
         <div id="rdListOut"></div>
       </div>
       <div class="rd-group rd-group-in">
-        <div class="rd-group-head">🔨 自社工事 <span class="rd-group-badge">自社</span> <span class="rd-group-sum" id="rdSumIn"></span></div>
+        <div class="rd-group-head">🔨 自社工事 <span class="rd-group-badge">自社</span> <span class="rd-group-sum" id="rdSumIn"></span> <button class="rd-complete-all-in" id="rdCompleteAllIn" style="display:none">✅ 全部完了</button></div>
         <div id="rdListIn"></div>
       </div>
       <div class="rd-group rd-group-muted">
@@ -18774,6 +18778,21 @@ function renderRestoDetail(){
   // タスクグループ
   renderRestoTaskGroup(p, "outsource", "rdListOut", "rdSumOut");
   renderRestoTaskGroup(p, "inhouse", "rdListIn", "rdSumIn");
+  // ✅ 自社工事「全部完了」ボタン: 未完了が2件以上&未アーカイブのとき表示(南部要望)v1.30.347
+  {
+    const __inPending = (p.tasks||[]).filter(t=>restoEffCategory(t)==="inhouse" && !isExcludedRestoTask(t) && t.status!=="done");
+    const __caIn = document.getElementById("rdCompleteAllIn");
+    if(__caIn){
+      if(__inPending.length>=2 && !restoIsArchived(p)){
+        __caIn.style.display = "";
+        __caIn.textContent = `✅ 全部完了 (${__inPending.length})`;
+        __caIn.onclick = e=>{ e.stopPropagation(); restoCompleteAllInhouse(); };
+      }else{
+        __caIn.style.display = "none";
+        __caIn.onclick = null;
+      }
+    }
+  }
   renderRestoTaskGroup(p, "proposal", "rdListProp", "rdSumProp"); // v1.30.91: 提案・要手配(自社工事対象外)
   renderRestoTaskGroup(p, "reduced", "rdListRed", "rdSumRed");
   renderRestoTrash(p);
@@ -19058,6 +19077,17 @@ function restoBulkToggle(contractor, field){
     if(t[key]){ t[byField]=user; t[atField]=now; } else { t[byField]=""; t[atField]=null; }
   });
   restoSave(); renderRestoDetail();
+}
+// ✅ 自社工事の未完了タスクをまとめて完了に(南部要望・0/15をぽちぽち回避)v1.30.347
+function restoCompleteAllInhouse(){
+  const p = state.restorations.find(x=>x.id===restoDetailId);
+  if(!p) return;
+  const targets = (p.tasks||[]).filter(t=>restoEffCategory(t)==="inhouse" && !isExcludedRestoTask(t) && t.status!=="done");
+  if(!targets.length) return;
+  if(!confirm(`自社工事の未完了 ${targets.length}件をすべて完了にしますか？`)) return;
+  targets.forEach(t=>restoApplyStatusChange(t, "done"));
+  restoSave(); renderRestoDetail();
+  if(typeof showAutoSyncToast==='function') showAutoSyncToast(`✅ 自社工事 ${targets.length}件を完了にしました`);
 }
 function restoEditTaskNote(taskId){
   const p = state.restorations.find(x=>x.id===restoDetailId);
