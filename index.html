@@ -2573,7 +2573,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.349</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.350</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -11077,6 +11077,8 @@ document.getElementById("ck-save").onclick = async ()=>{
 // 修繕アポ情報を GAS に書き戻し (v1.4.251 task-update-appointment)
 // fields: {responseDate?, responseTime?, workflowStatus?} — 渡したキーのみ更新
 const WORKFLOW_STATUSES = ["アポ・手配 未","待機","アポ・手配 済","長期連絡なし","-"];
+// 🔄 アポ日時 変更理由(任意選択)。何回もずれる修繕で「なぜずれたか」を後から追えるように(山田要望)v1.30.350
+const REPAIR_RESCHEDULE_REASONS = ["ドタキャン(お客様都合)","追加対応が必要","業者都合","天候不良","日程調整","その他"];
 async function pushAppointmentToGAS(driveFileId, fields){
   const s = loadGasSettings();
   if(!s.url || !s.token) throw new Error("GAS URL/Token 未設定");
@@ -13708,19 +13710,20 @@ function __quickPopKey(e){
 }
 // 🚫 ドタキャン跡: 古い日付にグレーのマーカー予定を1件作る(普通の予定=全PC同期・削除可)v1.30.129
 //   本体(立会/修繕)は別途新しい日付へ変更する運用。マーカーは「🚫ドタキャン 物件名」グレーチップ。
-function createDotakyanGhost_(label, date, time){
+function createDotakyanGhost_(label, date, time, reason){
   if(!date){ alert('元の日付が取得できませんでした'); return null; }
   const m = String(time||"").match(/^(\d{1,2})[:：](\d{2})/);
+  const __reasonTag = reason ? `（${reason}）` : "";
   const ev = {
     id: uid(),
-    title: `🔄日時変更 ${label}${time?(" "+time):""}`.trim(),
+    title: `🔄日時変更 ${label}${time?(" "+time):""}${__reasonTag}`.trim(),
     category:"", contractor:"", staff:"", participants:[],
     date: date,
     start: m ? `${String(m[1]).padStart(2,'0')}:${m[2]}` : "09:00",
     end:   m ? `${String(Math.min(+m[1]+1,18)).padStart(2,'0')}:${m[2]}` : "10:00",
     allday:false, timeMode: m ? "timed" : "anytime",
     color:"#cbd5e1",   // グレー=日時変更跡(旧:ドタキャン跡)
-    memo:`日時変更(元の予定)\n元の予定: ${date}${time?(" "+time):""}`,
+    memo:`日時変更(元の予定)\n元の予定: ${date}${time?(" "+time):""}${reason?`\n理由: ${reason}`:""}`,
     importance:[], updatedAt:new Date().toISOString(),
   };
   if(typeof pushHistory==='function') pushHistory();
@@ -13900,6 +13903,10 @@ function showRepairQuickPop(r, anchorEl){
         <input type="text" id="qp-resp-time" value="${escapeHtml(r.responseTime||'')}" placeholder="10:00" style="width:70px;padding:5px 6px;font-size:12px;border:1px solid var(--border);border-radius:6px">
         <button id="qp-resp-apply" class="qp-detail" style="padding:5px 10px;flex-shrink:0">変更</button>
       </div>
+      <select id="qp-resp-reason" style="margin-top:6px;width:100%;box-sizing:border-box;padding:5px 6px;font-size:11px;border:1px solid var(--border);border-radius:6px;color:#475569;background:#fff" title="日時を変更する理由(任意・変更履歴として💬コメントに自動で残ります)">
+        <option value="">変更理由(任意)…</option>
+        ${REPAIR_RESCHEDULE_REASONS.map(x=>`<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join("")}
+      </select>
       <button id="qp-dotakyan" style="margin-top:6px;padding:5px 10px;border:1px solid #cbd5e1;background:#f1f5f9;color:#475569;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">🔄 日時変更(この日に変更跡を残す)</button>
     </div>
     <div class="qp-sec">
@@ -13957,22 +13964,32 @@ function showRepairQuickPop(r, anchorEl){
 
   // 📅 アポ日時変更 (saveRepairSheet と同じ作法: 楽観更新→Drive書き戻し→失敗ならロールバック)
   // 🚫 ドタキャン: 現在のアポ日(入力欄の値)をグレー跡として残す→そのあと日付を新しい日に変更して「変更」
+  // 🔄 変更理由(任意)は💬進捗チャット(全員共有repair_comments)に自動投稿→「何回もずれた」経緯が後から追える(v1.30.350)
+  const __md_ = s=>{ const d=parseDate(s); return (d&&!isNaN(d))?`${d.getMonth()+1}/${d.getDate()}`:(s||"(未定)"); };
   const __dotaBtn = pop.querySelector('#qp-dotakyan');
   if(__dotaBtn){ __dotaBtn.onclick = ()=>{
     const d = pop.querySelector('#qp-resp-date').value;
     const t = pop.querySelector('#qp-resp-time').value.trim();
+    const reason = (pop.querySelector('#qp-resp-reason')||{}).value || "";
     if(!d){ alert('元のアポ日付が空です'); return; }
     if(!confirm(`${d}${t?(" "+t):""} に「日時変更」跡(グレー)を残しますか？\nこの後、日付を新しい日に変えて「変更」を押してください。`)) return;
-    createDotakyanGhost_(`${r.name}${r.room?" "+r.room:""}`, d, t);
+    createDotakyanGhost_(`${r.name}${r.room?" "+r.room:""}`, d, t, reason);
     __dotaBtn.textContent = '✓ 日時変更跡を残しました'; __dotaBtn.disabled = true;
   }; }
   pop.querySelector('#qp-resp-apply').onclick = async ()=>{
     const btn = pop.querySelector('#qp-resp-apply');
     const nd = pop.querySelector('#qp-resp-date').value;
     const nt = pop.querySelector('#qp-resp-time').value.trim();
+    const reason = (pop.querySelector('#qp-resp-reason')||{}).value || "";
     if(!nd){ alert('日付を選択してください'); return; }
     const prev = { responseDate: r.responseDate, responseTime: r.responseTime };
     if(nd === __rdIso && nt === (prev.responseTime||'')){ btn.textContent = '変更なし'; setTimeout(()=>{ btn.textContent='変更'; }, 1200); return; }
+    // 🔄 変更履歴を💬コメントへ自動記録(理由は任意・空でも「いつ誰が変えたか」は残る)v1.30.350
+    if(typeof addRepairComment_==='function'){
+      const oldLabel = `${__md_(prev.responseDate)}${prev.responseTime?(" "+prev.responseTime):""}`;
+      const newLabel = `${__md_(nd)}${nt?(" "+nt):""}`;
+      addRepairComment_(r.id, `🔄 アポ日時変更: ${oldLabel} → ${newLabel}${reason?`（理由: ${reason}）`:""}`, me);
+    }
     r.responseDate = nd;
     r.responseTime = nt;
     saveState();
@@ -18313,6 +18330,14 @@ async function saveRepairSheet(){
   const newCompleteDate = (newSt === "完了")
     ? (r.completeDate || fmtDate(new Date()))                    // 完了に→今日(既に完了日があれば維持)
     : (prevSt === "完了" && newSt !== "完了") ? "" : r.completeDate;  // 完了から他へ戻す→クリア。それ以外は現状維持
+  // 🔄 対応予定日時が変わったら💬進捗チャットに自動記録(理由選択はクイックポップ側のみ・ここは経緯だけ残す)v1.30.350
+  //   何度もずれる修繕で「いつ・誰が・何日→何日に変えたか」を後から追えるように。
+  if((newRespDate !== r.responseDate || newRespTime !== r.responseTime) && typeof addRepairComment_==='function'){
+    const __md2_ = s=>{ const d=parseDate(s); return (d&&!isNaN(d))?`${d.getMonth()+1}/${d.getDate()}`:(s||"(未定)"); };
+    const oldLabel = `${__md2_(r.responseDate)}${r.responseTime?(" "+r.responseTime):""}`;
+    const newLabel = `${__md2_(newRespDate)}${newRespTime?(" "+newRespTime):""}`;
+    addRepairComment_(r.id, `🔄 アポ日時変更: ${oldLabel} → ${newLabel}`, (typeof getMyself==='function'?getMyself():""));
+  }
   // 楽観的更新
   const prev = {status:r.status, workflowStatus:r.workflowStatus, responseDate:r.responseDate, responseTime:r.responseTime, worker:r.worker, completeDate:r.completeDate};
   r.status = newSt;
