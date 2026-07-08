@@ -2573,7 +2573,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.347</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.348</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -10392,6 +10392,7 @@ function extractRepairs(properties){
       salesRep: p.atenaTantou || "",
       contactPerson: p.salesPerson || "",          // 連絡者(自社担当)
       amountExTax: (p.tmRepair && p.tmRepair.amountExTax) || p.amountExTax || 0,
+      completeDate: normalizeDate(p.completeDate) || prev?.completeDate || "",   // 🏁 完了日(v1.30.348・台帳と同期)
       extDriveFileId: p.driveFileId || "",
       extEstimateId: p.estimateId || "",
       updatedAt: p.updatedAt || "",
@@ -18257,12 +18258,19 @@ async function saveRepairSheet(){
   const newRespDate = document.getElementById("rs-respdate").value;
   const newRespTime = document.getElementById("rs-resptime").value.trim();
   // 📝 進捗メモはチャット(💬全員共有 repair_comments)に置き換えたので保存対象から除外(v1.30.184)
+  // 🏁 営業ステータス→完了 は完了日(completeDate)も一緒に台帳へ書く(原状回復の✓完了と同じ仕組み)。
+  //   これまでstatus="完了"の文字だけ送っていて台帳のcompleteDateセルが空のまま→台帳側で完了扱いにならなかった(南部/大村報告 v1.30.348)
+  const prevSt = r.status;
+  const newCompleteDate = (newSt === "完了")
+    ? (r.completeDate || fmtDate(new Date()))                    // 完了に→今日(既に完了日があれば維持)
+    : (prevSt === "完了" && newSt !== "完了") ? "" : r.completeDate;  // 完了から他へ戻す→クリア。それ以外は現状維持
   // 楽観的更新
-  const prev = {status:r.status, workflowStatus:r.workflowStatus, responseDate:r.responseDate, responseTime:r.responseTime, worker:r.worker};
+  const prev = {status:r.status, workflowStatus:r.workflowStatus, responseDate:r.responseDate, responseTime:r.responseTime, worker:r.worker, completeDate:r.completeDate};
   r.status = newSt;
   r.workflowStatus = newWf;
   r.responseDate = newRespDate;
   r.responseTime = newRespTime;
+  r.completeDate = newCompleteDate;
   // 作業担当者(r.worker)は詳細シートでは触らない(v1.30.128・ピッカー廃止)。クイックポップ/overlayが管理。
   saveState();
   // Drive書戻し (差分があるフィールドだけ送る)
@@ -18272,6 +18280,7 @@ async function saveRepairSheet(){
     if(newWf !== prev.workflowStatus) fields.workflowStatus = newWf;
     if(newRespDate !== prev.responseDate) fields.responseDate = newRespDate;
     if(newRespTime !== prev.responseTime) fields.responseTime = newRespTime;
+    if(newCompleteDate !== prev.completeDate) fields.completeDate = newCompleteDate;   // 🏁 完了日(v1.30.348)
     if(Object.keys(fields).length){
       try{
         await pushAppointmentToGAS(r.extDriveFileId, fields);
