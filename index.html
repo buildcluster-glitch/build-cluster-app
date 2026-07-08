@@ -2573,7 +2573,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.348</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.349</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2766,6 +2766,10 @@
       </div>
       <div class="field" style="font-size:11px;color:var(--muted)">
         ⚠ Drive同期由来の物件は <strong>営業ステータス・進行ステータス・対応予定日時・メモ</strong> のみ書戻し可能。他項目は表示のみ。
+      </div>
+      <!-- ✅ 最終確認の✓完了ボタンと同じ: 1クリックで完了+完了日を記録して台帳へ即書戻し(南部/大村要望)v1.30.349 -->
+      <div class="rd-archive-section">
+        <button id="rs-complete" class="rd-archive-btn" type="button" title="ステータス=完了・完了日=今日 を1クリックで記録し即座に台帳へ書戻します">✓ 完了にする</button>
       </div>
     </div>
     <div class="modal-footer">
@@ -18175,6 +18179,13 @@ function openRepairSheet(id){
       b.classList.add("on");
     };
   });
+  // ✅ 完了ボタンの表示更新(完了済なら「取消」表示・v1.30.349)
+  const completeBtn = document.getElementById("rs-complete");
+  if(completeBtn){
+    const isDone = curSt === "完了";
+    completeBtn.textContent = isDone ? "↩ 完了を取消" : "✓ 完了にする";
+    completeBtn.classList.toggle("archived", isDone);
+  }
   repairSheet.classList.add("show");
 }
 function closeRepairSheet(){ repairSheet.classList.remove("show"); editingRepairId = null; __refreshOpenRepairCommentUI_ = null; }
@@ -18250,6 +18261,44 @@ function openActionList(){
   document.getElementById('actionListModal').classList.add('show');
 }
 function closeActionList(){ const m=document.getElementById('actionListModal'); if(m) m.classList.remove('show'); }
+// ✅ 修繕「✓完了にする」ワンクリック: 最終確認(原状回復)の✓完了ボタンと同じく、ステータス=完了+完了日=今日を
+//   1タップで確定して即座に台帳へ書戻す(南部/大村要望・7値ピッカーから完了を選んで別途保存する2手間を1手間に)v1.30.349
+async function repairToggleComplete_(id){
+  const r = state.repairs.find(x=>x.id===id);
+  if(!r) return;
+  const isDone = r.status === "完了";
+  const prev = { status:r.status, completeDate:r.completeDate, _statusBeforeComplete:r._statusBeforeComplete };
+  let fields;
+  if(isDone){
+    if(!confirm(`「${r.name}${r.room?" "+r.room:""}」の完了を取り消して元のステータスに戻しますか？\n\n・見積アプリの台帳も元のステータス・完了日に戻ります`)) return;
+    const prevStatus = (r._statusBeforeComplete !== undefined && r._statusBeforeComplete !== "") ? r._statusBeforeComplete : "受注（工事指示有）";
+    r.status = prevStatus;
+    r.completeDate = "";
+    delete r._statusBeforeComplete;
+    fields = { status:prevStatus, completeDate:"" };
+  }else{
+    if(!confirm(`「${r.name}${r.room?" "+r.room:""}」を完了にしますか？\n\n・完了日を今日の日付で記録\n・見積アプリの台帳も完了になります`)) return;
+    if(r._statusBeforeComplete === undefined) r._statusBeforeComplete = r.status || "";
+    r.status = "完了";
+    r.completeDate = fmtDate(new Date());
+    fields = { status:r.status, completeDate:r.completeDate };
+  }
+  saveState();
+  if(r.extDriveFileId){
+    try{
+      await pushAppointmentToGAS(r.extDriveFileId, fields);
+    }catch(err){
+      Object.assign(r, prev);
+      saveState();
+      alert("Drive書き戻しに失敗:\n" + err.message);
+      renderRepairView();
+      return;
+    }
+  }
+  closeRepairSheet();
+  renderRepairView();
+  render();
+}
 async function saveRepairSheet(){
   const r = state.repairs.find(x=>x.id===editingRepairId);
   if(!r) return;
@@ -18299,6 +18348,7 @@ async function saveRepairSheet(){
 }
 document.getElementById("rs-cancel").onclick = closeRepairSheet;
 document.getElementById("rs-save").onclick = saveRepairSheet;
+document.getElementById("rs-complete").onclick = ()=> repairToggleComplete_(editingRepairId);
 repairSheet.onclick = e=>{ if(e.target===repairSheet) closeRepairSheet(); };
 
 // ===========================================================
