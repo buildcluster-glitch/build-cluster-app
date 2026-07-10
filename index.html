@@ -2599,7 +2599,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.373</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.374</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -4067,7 +4067,7 @@
   if (window._gcBatchInstalled) return; window._gcBatchInstalled = true;
   var _origFetch = window.fetch.bind(window);
   // ⚠ hatchusho_data(発注書・149KB)はバッチから除外(v1.30.212): バッチ1回が149KB込みで重くなり、軽いキーまで待たされるため。発注書は別途(単発/必要時)取得。
-  var GC_KEYS = ['staffMaster','staffAvailability','taikyo_tachiai_schedule','taikyo_overrides','taikyo_comments','taikyo_shiryo_ready','repair_overrides','repair_comments','repair_pos','check_workers','phone_duty','toban_done','alerts','skip_visit','staff_leaves','event_deletions','jimu_messages','jizen_schedule'];
+  var GC_KEYS = ['staffMaster','staffAvailability','taikyo_tachiai_schedule','taikyo_overrides','taikyo_comments','taikyo_shiryo_ready','repair_overrides','repair_comments','repair_pos','check_workers','phone_duty','toban_done','alerts','skip_visit','staff_leaves','event_deletions','jimu_messages','jizen_schedule','calendar_reminders'];
   var TTL = 45000; // 起動バーストを束ねる窓(45秒)
   var _cache = null, _cacheAt = 0, _inflight = null, _unsupported = false;
   // 🔄 手動全同期で「今すぐ最新」を取るため、45秒キャッシュを外から無効化できるようにする(v1.30.224)
@@ -7038,6 +7038,54 @@ function deleteTaikyoComment_(taikyoId, commentId){
 // 開いている立会ポップのコメント欄を再描画するフック(showTaikyoStaffPickerが差し替える)
 let __refreshOpenTaikyoCommentUI_ = null;
 
+// ⏰ リマインド全端末共有(shared-config 'calendar_reminders')v1.30.374・山田。
+//   value = JSON { reminders:{ [rkey]:{on,by,at} }, updatedAt }。rkey=予定'ev:<id>' / 事務タスク'tk:<id>::<taskKey>'。
+//   ev.reminder / ev.taskReminders は applyRemindersToState_ で常にこのmapから復元(=同期でイベントが差し替わっても消えない)。
+const REMINDERS_CACHE_KEY = "buildcluster_reminders_cache";
+function loadRemindersMap_(){ try{ const o=JSON.parse(localStorage.getItem(REMINDERS_CACHE_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
+function saveRemindersMap_(m){ try{ localStorage.setItem(REMINDERS_CACHE_KEY, JSON.stringify(m||{})); }catch(e){} }
+function evReminderKey_(evId){ return 'ev:'+evId; }
+function tkReminderKey_(evId, taskKey){ return 'tk:'+evId+'::'+taskKey; }
+// 共有map → state.events[].reminder / .taskReminders に反映(イベントが同期で差し替わっても再付与)
+function applyRemindersToState_(){
+  const m = loadRemindersMap_();
+  (state.events||[]).forEach(e=>{ if(e){ if(e.reminder) delete e.reminder; if(e.taskReminders) e.taskReminders={}; } });
+  Object.keys(m).forEach(k=>{
+    const v=m[k]; if(!v||!v.on) return;
+    if(k.indexOf('ev:')===0){ const id=k.slice(3); const e=(state.events||[]).find(x=>x.id===id); if(e) e.reminder={on:v.on,by:v.by||''}; }
+    else if(k.indexOf('tk:')===0){ const rest=k.slice(3); const sep=rest.indexOf('::'); if(sep<0) return; const id=rest.slice(0,sep); const tk=rest.slice(sep+2); const e=(state.events||[]).find(x=>x.id===id); if(e){ if(!e.taskReminders) e.taskReminders={}; e.taskReminders[tk]={on:v.on,by:v.by||''}; } }
+  });
+}
+async function fetchReminders_(opts={}){
+  const s=(typeof loadGasSettings==='function')?loadGasSettings():{};
+  if(!s.url||!s.token){ applyRemindersToState_(); return loadRemindersMap_(); }
+  try{
+    const url=`${s.url}?action=get-shared-config&key=calendar_reminders&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res=await fetch(url,{method:'GET',redirect:'follow'}); if(!res.ok) throw new Error('HTTP '+res.status);
+    const d=await res.json(); let raw=d.value; if(raw===''||raw==null) raw={reminders:{}}; else if(typeof raw==='string'){ try{raw=JSON.parse(raw);}catch(e){raw={reminders:{}};} }
+    const remote=(raw&&raw.reminders&&typeof raw.reminders==='object')?raw.reminders:{};
+    saveRemindersMap_(remote); applyRemindersToState_();
+    if(!opts.silent && typeof render==='function') render();
+    return remote;
+  }catch(err){ if(!opts.silent) console.warn('[calendar_reminders] fetch失敗:',err.message); applyRemindersToState_(); return loadRemindersMap_(); }
+}
+// リマインドを設定/解除(obj={on,by}|null)。楽観的に即反映→最新remoteにこの1件だけ適用してpush(他端末の他キーを消さない)
+async function setReminderShared_(rkey, obj){
+  let map=loadRemindersMap_();
+  const applyToMap=(mp)=>{ if(obj&&obj.on){ mp[rkey]={on:obj.on,by:(obj.by||''),at:new Date().toISOString()}; } else { delete mp[rkey]; } return mp; };
+  applyToMap(map); saveRemindersMap_(map); applyRemindersToState_(); if(typeof render==='function') render();
+  const s=(typeof loadGasSettings==='function')?loadGasSettings():{};
+  if(!s.url||!s.token) return map;
+  try{
+    const url=`${s.url}?action=get-shared-config&key=calendar_reminders&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res=await fetch(url,{method:'GET',redirect:'follow'});
+    if(res.ok){ const d=await res.json(); let raw=d.value; if(typeof raw==='string'){ try{raw=JSON.parse(raw);}catch(_){raw=null;} } if(raw&&raw.reminders&&typeof raw.reminders==='object'){ map=applyToMap(raw.reminders); saveRemindersMap_(map); applyRemindersToState_(); } }
+  }catch(_){ /* オフライン等: ローカルを土台に続行 */ }
+  try{ await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'calendar_reminders',value:JSON.stringify({reminders:map,updatedAt:new Date().toISOString()}),token:s.token,savedBy:'calendar-app'})}); }
+  catch(e){ console.warn('[calendar_reminders] push失敗:',e.message); }
+  return map;
+}
+
 // 💬 修繕 コメント(全員共有・shared-config 'repair_comments') — 立会コメントと同型 v1.30.184
 //   value = JSON { comments:{ [repairId]:[{id,author,text,at,reactions}] }, updatedAt }
 //   修繕進捗メモをチャット化(8人共有)。r.comments は applyRepairCommentsToState_ で常にこのmapと同期。
@@ -8436,12 +8484,9 @@ function showEventStaffPicker(el, ev){
   {
     const __rDate = pop.querySelector('#evRemindDate');
     const __setRemind = (onDate)=>{
-      const real=(state.events||[]).find(x=>x.id===ev.id); if(!real) return;
-      if(onDate){ real.reminder={ on:onDate, by:(typeof getMyself==='function'?getMyself():'') }; }
-      else { delete real.reminder; }
-      real.updatedAt=new Date().toISOString(); saveState();
-      if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(real,'upsert'); }catch(_){} }
-      render();
+      // ⏰全端末共有(calendar_reminders)経由。ev.reminderはapplyRemindersToState_が復元(v1.30.374)
+      const by=(typeof getMyself==='function'?getMyself():'');
+      if(typeof setReminderShared_==='function'){ setReminderShared_(evReminderKey_(ev.id), onDate?{on:onDate,by}:null).catch(()=>{}); }
       if(typeof showAutoSyncToast==='function') showAutoSyncToast(onDate?`⏰ ${onDate} からリマインド`:'⏰ リマインドを消しました');
     };
     pop.querySelectorAll('[data-rb]').forEach(b=>{ b.onclick=()=>{
@@ -8676,13 +8721,9 @@ function reminderTodayStr_(){ return (typeof fmtDate==='function') ? fmtDate(new
 function taskReminderOf_(ev, key){ return (ev && ev.taskReminders && ev.taskReminders[key]) || null; }
 function taskReminderActive_(ev, key){ const r=taskReminderOf_(ev,key); return !!(r && r.on && reminderTodayStr_() >= r.on); }   // 期日到来=点滅対象
 function setTaskReminder_(evId, key, onDate){
-  const ev=(state.events||[]).find(e=>e.id===evId); if(!ev) return;
-  if(!ev.taskReminders) ev.taskReminders={};
-  if(onDate){ ev.taskReminders[key]={ on:onDate, by:(typeof getMyself==='function'?getMyself():'') }; }
-  else { delete ev.taskReminders[key]; }   // 空=確認して消す
-  ev.updatedAt=new Date().toISOString();
-  if(typeof saveState==='function') saveState();
-  if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(ev,'upsert'); }catch(_){} }
+  // ⏰全端末共有(calendar_reminders)経由。ev.taskRemindersはapplyRemindersToState_が復元(v1.30.374)
+  const by=(typeof getMyself==='function'?getMyself():'');
+  if(typeof setReminderShared_==='function'){ setReminderShared_(tkReminderKey_(evId,key), onDate?{on:onDate,by}:null).catch(()=>{}); }
 }
 // そのスタッフの事務タスクに「期日到来の未確認リマインド」があるか(出社/休暇チップの点滅⏰用)
 function staffHasActiveReminder_(staff){
@@ -16517,6 +16558,7 @@ async function cloudSyncPull({ replace=false, signal=null }={}){
     if(typeof consolidateAllJimu_==='function') consolidateAllJimu_();  // 🔁 ID違いで分裂した事務イベントを1人1個に自動統合(v1.30.162)
     if(typeof migrateJimuTaskIds_==='function') migrateJimuTaskIds_();   // 🆔 未移行端末(旧版)から来たタスク行にも決定的IDを付与=マージ整合(v1.30.329)
     if(typeof applyJimuMessagesToState_==='function') applyJimuMessagesToState_();  // 💬 業務連絡(共有map)を事務イベントに反映=event-syncの空messagesで消えないように(v1.30.203)
+    if(typeof applyRemindersToState_==='function') applyRemindersToState_();  // ⏰ リマインド(共有map)をイベントに再付与=同期で差し替わっても消えない(v1.30.374)
     if(!state.cloudProperties) state.cloudProperties = [];
     cloudMergeById_(state.cloudProperties,   (data.properties||[]).map(normalizeCloudProperty_), pendingPropertyIds);
     if(!state.cloudLogs) state.cloudLogs = [];
@@ -20730,6 +20772,11 @@ setTimeout(()=>{
     if(typeof fetchRepairComments_==='function'){
       fetchRepairComments_({silent:true}).catch(()=>{});
       setInterval(()=>fetchRepairComments_({silent:true}).catch(()=>{}), 5*60*1000);
+    }
+    // ⏰ リマインド (全端末共有) 取得・以後5分ごと(v1.30.374)
+    if(typeof fetchReminders_==='function'){
+      fetchReminders_({silent:true}).catch(()=>{});
+      setInterval(()=>fetchReminders_({silent:true}).catch(()=>{}), 5*60*1000);
     }
     // 💬 業務連絡 (全員共有・shared-config jimu_messages) 取得・初回はローカル分をpush(移行)・以後5分ごと(v1.30.203)
     if(typeof fetchJimuMessages_==='function'){
