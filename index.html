@@ -2575,7 +2575,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.355</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.356</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3998,8 +3998,10 @@
         <label>種別</label>
         <select id="lv-type">
           <option value="会社休日">所定休日 (会社の休み・X/8カウント)</option>
-          <option value="有給(AM)">午前休 (0.5日)</option>
-          <option value="有給(PM)">午後休 (0.5日)</option>
+          <option value="有給(AM)">午前休・有給 (0.5日)</option>
+          <option value="有給(PM)">午後休・有給 (0.5日)</option>
+          <option value="所定(AM)">午前休・所定 (0.5日・有給を消費しない)</option>
+          <option value="所定(PM)">午後休・所定 (0.5日・有給を消費しない)</option>
           <option value="年休">年休 (年5日義務分)</option>
           <option value="有給">有給</option>
           <option value="有給（病休）">有給（病休）</option>
@@ -4162,7 +4164,14 @@ const STAFF_QUOTA = {
 // 会社の年間休日カレンダー（月別日数）
 const COMPANY_HOLIDAYS = {1:11, 2:9, 3:8, 4:8, 5:12, 6:8, 7:9, 8:11, 9:10, 10:9, 11:10, 12:10};
 // 休暇種別の表示名(値は会社休日のまま=集計互換、表示だけ所定休日)
-function leaveTypeLabel_(t){ return t==="会社休日" ? "所定休日" : (t||""); }
+function leaveTypeLabel_(t){
+  if(t==="会社休日") return "所定休日";
+  if(t==="有給(AM)") return "午前休(有給)";
+  if(t==="有給(PM)") return "午後休(有給)";
+  if(t==="所定(AM)") return "午前休(所定)";   // 所定半休=有給を消費しない(v1.30.356)
+  if(t==="所定(PM)") return "午後休(所定)";
+  return (t||"");
+}
 // 振休はメモ(振休元の日付)をインライン表示「振休(6/28)」。年休は「年休 N/5」(その年の累積/義務5日)。それ以外は通常ラベル。v1.30.189/191
 function leaveDispLabel_(l){
   if(l && l.type==="振休"){ const ref=(l.memo||"").trim(); return ref ? `振休(${ref})` : "振休"; }
@@ -11619,7 +11628,8 @@ function renderLeaveSummary(){
   // 各自: 今月「実際に取った休み」の日数(レコードのみ集計・自動埋めなし)
   //   対象=有給/年休/半休(0.5)/休暇/別件/体調不良/会社休日(取得) 等。除外=当番/出張/研修(休みではない)
   //   → 誰も取ってなければ 0/会社休日 になる
-  const HALF = new Set(["半休","有給(AM)","有給(PM)"]);
+  const HALF = new Set(["半休","有給(AM)","有給(PM)"]);          // 有給の半休→半休バッジ(0.5)
+  const HALF_SHOTEI = new Set(["所定(AM)","所定(PM)"]);          // 所定の半休→所定休日(base)に0.5(有給を消費しない)v1.30.356
   const NONREST = new Set(["当番","出張","研修","出社"]);   // 「休みではない」種別(出社=日祝に出勤)
   // 📅 日祝(日曜 or 祝日)は基本全員休み → 自動で休みカウント。ただし「出社」レコードがあればその日はカウントしない(v1.30.113)
   const lastDay = new Date(year,month,0).getDate();
@@ -11636,7 +11646,8 @@ function renderLeaveSummary(){
       if(rest){
         const t = rest.type;
         if(t==="年休") nenkyu += 1;
-        else if(HALF.has(t)) hankyu += 0.5;                   // 午前休/午後休/半休 → 半休(所定休日・有給とは別建て)
+        else if(HALF.has(t)) hankyu += 0.5;                   // 有給の午前休/午後休/半休 → 半休(所定休日・有給とは別建て)
+        else if(HALF_SHOTEI.has(t)) base += 0.5;              // 所定の午前休/午後休 → 所定休日に0.5(有給を消費しない)v1.30.356
         else if(t==="有給"||t==="有給（病休）"||t==="有給（忌引）") yukyu += 1;
         else base += 1;                                       // 会社休日/振休/別件/体調不良/休暇 等=所定休日扱い
         continue;
@@ -15956,16 +15967,16 @@ function renderYearStats(year){
   // 5日義務 = 年休カラムが進捗バーで強調表示
   const months = Array.from({length:12},(_,i)=>i+1);
   const monthDays = (y,m)=> new Date(y,m,0).getDate();
-  // 半休として扱う type のセット (有給(AM/PM) も 0.5 として集計)
-  const HALF_DAY_TYPES = new Set(["半休","有給(AM)","有給(PM)"]);
+  // 半休として扱う type のセット (有給(AM/PM)・所定(AM/PM) も 0.5 として集計)v1.30.356
+  const HALF_DAY_TYPES = new Set(["半休","有給(AM)","有給(PM)","所定(AM)","所定(PM)"]);
   function countLeaveDays(staff, year, month, category){
     const mStart = `${year}-${pad(month)}-01`;
     const mEnd   = `${year}-${pad(month)}-${pad(monthDays(year,month))}`;
     // category に応じてどの type を集計対象にするか決める
     const matchType = (t)=>{
-      if(category === "半休") return HALF_DAY_TYPES.has(t);
+      if(category === "半休") return t==="半休" || t==="有給(AM)" || t==="有給(PM)";   // 半休列=有給の半休のみ(所定半休は会社休日へ)v1.30.356
       if(category === "有給") return t==="有給" || t==="有給（病休）" || t==="有給（忌引）"; // 病休/忌引も有給に集計
-      if(category === "会社休日") return t==="会社休日" || t==="振休"; // 振休も「休んだ日」なので所定休日として休日カウントに含める(出勤した日祝は出社=カウント外)v1.30.190
+      if(category === "会社休日") return t==="会社休日" || t==="振休" || t==="所定(AM)" || t==="所定(PM)"; // 振休/所定半休(0.5)も所定休日カウントに含める(出勤した日祝は出社=カウント外)v1.30.190/356
       return t === category;
     };
     let sum = state.leaves.filter(l=>l.staff===staff && matchType(l.type))
