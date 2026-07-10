@@ -2432,6 +2432,12 @@
   #inventoryView .inv-detail-stockbox .s .n{font-size:22px;font-weight:800;line-height:1}
   #inventoryView .inv-detail-stockbox .s .l{font-size:11px;color:var(--inv-mute);margin-top:3px}
   #inventoryView .inv-detail-stockbox .s.low .n{color:var(--inv-danger)}
+  /* ⚠ 注文が必要バナー(不足数≥1で常時表示・木村要望)v1.30.361 */
+  #inventoryView .inv-order-alert{margin:0 14px 4px;padding:10px 12px;background:#fef2f2;border:1.5px solid var(--inv-danger);border-radius:12px;display:flex;align-items:center;gap:10px}
+  #inventoryView .inv-order-alert .oa-msg{flex:1;color:var(--inv-danger);font-weight:800;font-size:13px;line-height:1.35}
+  #inventoryView .inv-order-alert .oa-msg small{display:block;font-weight:600;color:#b91c1c;font-size:11px;margin-top:1px}
+  #inventoryView .inv-order-alert .oa-btn{flex-shrink:0;background:var(--inv-danger);color:#fff;border:0;border-radius:9px;font-weight:800;font-size:13px;padding:9px 14px;cursor:pointer;white-space:nowrap}
+  #inventoryView .inv-order-alert .oa-btn:active{transform:translateY(1px)}
   #inventoryView .inv-detail-actions{padding:10px 14px;display:flex;gap:8px}
   #inventoryView .inv-detail-actions button{flex:1;padding:12px;border-radius:10px;font-weight:700;font-size:14px;border:0;cursor:pointer}
   #inventoryView .inv-detail-actions .act-out{background:#fee2e2;color:var(--inv-danger)}
@@ -2577,7 +2583,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.360</span></div>
+  <div class="app-title">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.361</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -2991,6 +2997,7 @@
       </div>
       <div class="inv-detail-hero" id="inv-d-hero"></div>
       <div class="inv-detail-stockbox" id="inv-d-stockbox"></div>
+      <div id="inv-d-orderalert"></div>
       <div class="inv-detail-actions">
         <button class="act-out" data-act="out">− 消費</button>
         <button class="act-in" data-act="in">+ 補充</button>
@@ -21482,6 +21489,20 @@ function renderDetail(){
     <div class="s ${low?'low':''}"><div class="n">${i.stock}</div><div class="l">現在庫</div></div>
     <div class="s"><div class="n">${onOrd||'-'}</div><div class="l">発注中</div></div>
     <div class="s ${low?'low':''}"><div class="n">${i.minStock>0 ? shortage : '-'}</div><div class="l">不足数</div></div>`;
+  // ⚠ 注文が必要バナー: 不足数≥1で常時表示(ダイアログを消しても画面に残る・木村要望)v1.30.361
+  const __oaEl = $('#inv-d-orderalert');
+  if(__oaEl){
+    if(i.minStock>0 && shortage>=1){
+      __oaEl.innerHTML = `<div class="inv-order-alert">
+        <div class="oa-msg">⚠ 注文が必要です<small>不足 ${shortage}個（現在庫 ${i.stock}／最低 ${i.minStock}${onOrd?`／発注中 ${onOrd}`:''}）</small></div>
+        <button class="oa-btn" data-act="order">📦 発注する</button>
+      </div>`;
+      const __oaBtn = __oaEl.querySelector('.oa-btn');   // バナーは.inv-detail-actions外＝委譲対象外なので直接配線
+      if(__oaBtn) __oaBtn.onclick = ()=>{ if(typeof openOrder==='function') openOrder(i.id, null); };
+    }else{
+      __oaEl.innerHTML = '';
+    }
+  }
   // show pending orders for this item
   const myOrders = state.orders.filter(o=>o.itemId===i.id && o.status==='ordered');
   let ordersHtml = '';
