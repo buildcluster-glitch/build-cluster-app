@@ -1025,7 +1025,8 @@
   /* ===== モーダル ===== */
   .modal-overlay{
     position:fixed;inset:0;background:rgba(15,23,42,.45);
-    display:none;align-items:center;justify-content:center;z-index:100;
+    /* z-index:700 = スマホ下部ナビ(z600)より上。100だとナビがモーダルに突き抜けて下部ボタンに被った(大村報告・スマホ)v1.30.358 */
+    display:none;align-items:center;justify-content:center;z-index:700;
     padding:16px;
   }
   .modal-overlay.show{display:flex}
@@ -2575,7 +2576,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.357</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.358</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -17457,7 +17458,8 @@ function ensureBugReportModal_(){
     if(!f || !/^image\//.test(f.type||"")) return false;
     __brNote.textContent = "圧縮中…";
     try{
-      const dataUrl = await restoCompressImage(f, 40000);
+      // 🐞バグ報告の画像は共有セル(≈45KB予算)に載せるため小さめに圧縮(幅1100px/目標≈24KB)=全端末に画像が届く(v1.30.358)
+      const dataUrl = await restoCompressImage(f, 18000, 1100);
       __brPrev.src = dataUrl; __brPrev.style.display = ""; __brPrev.dataset.photo = dataUrl;
       __brNote.textContent = "添付済(画像クリックで取消)";
       return true;
@@ -19359,16 +19361,16 @@ function restoToggleArchive(){
   renderRestoView();
 }
 
-// 画像圧縮 (TM compressImage 相当)
-function restoCompressImage(file, maxBytes){
+// 画像圧縮 (TM compressImage 相当)。maxDim=最大辺px(省略時1600)。バグ報告はセル共有=小さめを渡す(v1.30.358)
+function restoCompressImage(file, maxBytes, maxDim){
   return new Promise(resolve=>{
     maxBytes = maxBytes || 30000;
+    maxDim = maxDim || 1600;
     const reader = new FileReader();
     reader.onload = e=>{
       const img = new Image();
       img.onload = ()=>{
         const canvas = document.createElement("canvas");
-        const maxDim = 1600;
         let w = img.width, h = img.height;
         if(w>h){ if(w>maxDim){ h=h*maxDim/w; w=maxDim; } } else { if(h>maxDim){ w=w*maxDim/h; h=maxDim; } }
         canvas.width=w; canvas.height=h;
