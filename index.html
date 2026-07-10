@@ -909,6 +909,8 @@
   .reaction-picker button:hover{background:#f3f4f6}
   /* チップ上の💬バッジ */
   .chip-comment-badge{display:inline-flex;align-items:center;gap:1px;background:rgba(255,255,255,.85);color:#0f172a;border-radius:8px;padding:0 4px;font-size:9px;font-weight:700;margin-left:3px;line-height:1.3}
+  /* ⏰ 予定チップのリマインド点滅バッジ(期日到来)v1.30.372 */
+  .chip-remind{display:inline-block;margin-left:2px;font-size:11px;animation:remindBlink 1s steps(1,end) infinite}
   /* 📄 立会資料 作成済/未 バッジ */
   .chip-shiryo{display:inline-block;font-size:9px;font-weight:700;padding:0 4px;border-radius:6px;margin-left:3px;line-height:1.4;white-space:nowrap;background:#e5e7eb;color:#6b7280}
   .chip-shiryo.ready{background:#16a34a;color:#fff}
@@ -2597,7 +2599,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.371</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.372</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -8252,6 +8254,17 @@ function showEventStaffPicker(el, ev){
       </div>
     </div>
     <div class="qp-sec">
+      <div class="qp-label">⏰ リマインド <span style="font-weight:400;color:#94a3b8;font-size:10px">(この日から⏰が点滅で知らせる)</span></div>
+      <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
+        <input type="date" id="evRemindDate" value="${escapeHtml((ev.reminder&&ev.reminder.on)||'')}" style="flex:1;min-width:0;padding:5px 6px;font-size:12px;border:1px solid var(--border-strong);border-radius:6px">
+        <button class="qp-detail" data-rb="3" style="padding:5px 8px;font-size:11px;background:#f1f5f9">3日前</button>
+        <button class="qp-detail" data-rb="7" style="padding:5px 8px;font-size:11px;background:#f1f5f9">1週前</button>
+        <button class="qp-detail" data-rb="1" style="padding:5px 8px;font-size:11px;background:#f1f5f9">前日</button>
+        <button id="evRemindSet" class="qp-detail" style="padding:5px 10px;font-size:11px;background:#e0e7ff;color:#3730a3">設定</button>
+        ${(ev.reminder&&ev.reminder.on)?'<button id="evRemindClear" class="qp-detail" style="padding:5px 8px;font-size:11px;background:#fee2e2;color:#dc2626">消す</button>':''}
+      </div>
+    </div>
+    <div class="qp-sec">
       <div class="qp-label">🚗 勤怠 <span style="font-weight:400;color:#94a3b8;font-size:10px">(直行/直帰)</span></div>
       <div class="qp-worker-pick" id="evCommutePick">
         <button data-c="go" class="${selCommute.go?"on":""}" style="background:#dbeafe">🚗 直行</button>
@@ -8418,6 +8431,26 @@ function showEventStaffPicker(el, ev){
       setTimeout(()=>{ try{ __evDtMitei.textContent='🕔 未定に'; }catch(_){} }, 1200);
       if(typeof showAutoSyncToast==='function') showAutoSyncToast(on ? '🕔 未定バッジを付与' : '🕔 未定バッジを解除');
     };
+  }
+  // ⏰ リマインド(v1.30.372): この予定に「この日から⏰点滅で知らせる」を設定。3日前/1週前/前日はイベント日基準。
+  {
+    const __rDate = pop.querySelector('#evRemindDate');
+    const __setRemind = (onDate)=>{
+      const real=(state.events||[]).find(x=>x.id===ev.id); if(!real) return;
+      if(onDate){ real.reminder={ on:onDate, by:(typeof getMyself==='function'?getMyself():'') }; }
+      else { delete real.reminder; }
+      real.updatedAt=new Date().toISOString(); saveState();
+      if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(real,'upsert'); }catch(_){} }
+      render();
+      if(typeof showAutoSyncToast==='function') showAutoSyncToast(onDate?`⏰ ${onDate} からリマインド`:'⏰ リマインドを消しました');
+    };
+    pop.querySelectorAll('[data-rb]').forEach(b=>{ b.onclick=()=>{
+      const n=parseInt(b.dataset.rb,10)||0; const base=parseDate(ev.date); if(!base||isNaN(base)){ alert('この予定に日付がありません'); return; }
+      const d=new Date(base); d.setDate(d.getDate()-n); const v=fmtDate(d);
+      if(__rDate) __rDate.value=v;
+    }; });
+    const __rSet=pop.querySelector('#evRemindSet'); if(__rSet) __rSet.onclick=()=>{ const v=__rDate?__rDate.value:''; if(!v){ alert('日付を選ぶか、3日前/1週前/前日を押してください'); return; } __setRemind(v); pop.remove(); };
+    const __rClr=pop.querySelector('#evRemindClear'); if(__rClr) __rClr.onclick=()=>{ __setRemind(''); pop.remove(); };
   }
   // ✏️編集: 簡易シートで編集(さらに細かい設定はシート内の✏️詳細から従来フォーム) v1.30.67
   pop.querySelector('[data-role="open-modal"]').onclick = ()=>{ pop.remove(); showQuickAddSheet_({}, ev); };
@@ -12722,6 +12755,9 @@ function renderCalendar(){
       const commentCount = (ev.comments && ev.comments.length) || 0;
       const commentBadge = commentCount > 0
         ? `<span class="chip-comment-badge" title="💬 コメント ${commentCount}件">💬${commentCount}</span>` : "";
+      // ⏰ リマインド期日到来=点滅バッジ(v1.30.372)。予定単位ev.reminder。
+      const __remindBadge = (typeof eventReminderActive_==='function' && eventReminderActive_(ev))
+        ? `<span class="chip-remind" title="⏰ リマインド(${escapeHtml((ev.reminder&&ev.reminder.on)||'')})">⏰</span>` : "";
       // 📄 立会資料 作成済/未 バッジ (見積アプリ taikyo_shiryo_ready)
       const shiryoBadge = (ev.source === "taikyo-shared")
         ? (ev._shiryoReady
@@ -12791,7 +12827,7 @@ function renderCalendar(){
           : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;
         // 参加者バッジ/見積行は title 外(チップ直下)に独立行として配置。工事ボリュームは号室の隣(__volBadge)。
         // ※複数行タイトル時は staffBadges を __titleInner 内に入れ込み済みなので外側では出さない(v1.30.170)
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${__skipBadge}${isMulti ? '' : staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${__alertHtml}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${__skipBadge}${isMulti ? '' : staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${__remindBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${__alertHtml}`;
         // 担当色がある(1名でも)ならチップ全面を着色(v1.30.124: 単独担当で半分しか色が付かない問題)。色無し+複数バッジは薄グレー地
         if(__willCard){ el.classList.add('chip-has-staffs'); el.style.setProperty('--card-bg', chipBg); }
         if(__jizenSkip) el.classList.add('chip-skip-visit');
@@ -12809,7 +12845,7 @@ function renderCalendar(){
               ? `<span class="ct-text" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${compactTaskHtml}</span>`
               : `<span style="display:inline-flex;min-width:0;flex:0 1 auto;align-items:baseline"><span class="ct-text" style="min-width:0;${__wrapName ? 'white-space:normal;display:-webkit-box;-webkit-line-clamp:'+__nameLines+';-webkit-box-orient:vertical;overflow:hidden;word-break:break-word' : 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap'}">${escapeHtml(__nameMain)}</span>${__roomTail ? `<span class="ct-room" style="flex-shrink:0;font-weight:600">${escapeHtml(__roomTail)}</span>` : ""}</span>`);
         const timeBox = isJizen ? "" : (isAnytime ? "" : `<span class="chip-time">終日</span>`);   // 事前は時間バッジ無し(v1.30.327・山田)
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${__skipBadge}${isMulti ? '' : staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${__alertHtml}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${__skipBadge}${isMulti ? '' : staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${__remindBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${__alertHtml}`;
         // 担当色がある(1名でも)ならチップ全面を着色(v1.30.124: 単独担当で半分しか色が付かない問題)。色無し+複数バッジは薄グレー地
         if(__willCard){ el.classList.add('chip-has-staffs'); el.style.setProperty('--card-bg', chipBg); }
         if(__jizenSkip) el.classList.add('chip-skip-visit');
