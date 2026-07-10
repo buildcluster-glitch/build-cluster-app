@@ -2589,7 +2589,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.368</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.369</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -16764,13 +16764,8 @@ function dangerCheck_(){
     __evtHist=__evtHist.filter(x=> Date.now()-x.t < 22*60000);
     const past=__evtHist.find(x=> Date.now()-x.t >= 9*60000);
     if(past && past.n>=15 && cur < past.n*0.6){ dangers.push({id:'datadrop',sev:3,html:`⚠ 予定が急に減っています（約10分前 ${past.n}件 → 今 ${cur}件）。同期の不具合かも。まず<b>☁全同期</b>、戻らなければ<b>⚙設定→バックアップ復元</b>で戻せます。`}); }
-    // ③ 同期が長時間ダメ(15分)
-    if(cloudSync.url){
-      const offline=(typeof navigator!=='undefined' && navigator.onLine===false);
-      const lastMs=cloudSync.lastSyncAt?Date.parse(cloudSync.lastSyncAt):0;
-      const minAgo=lastMs?Math.floor((Date.now()-lastMs)/60000):999;
-      if(offline || minAgo>=15){ dangers.push({id:'sync',sev:2,html:`⚠ ${offline?'オフラインで':''}15分以上 最新を取れていません（最終同期 ${lastMs?minAgo+'分前':'なし'}）。表示が古い可能性。復帰で自動的に最新に。<b>⚙からバックアップ復元</b>も可能。`}); }   // v1.30.342: 単発の失敗では出さない(最後の成功から15分/オフラインのみ)
-    }
+    // ③ 同期が長時間ダメ(15分)のバナーは撤去(v1.30.369・山田「右下の同期ピルがあれば十分」)。
+    //   同期状態は右下の同期見える化ピル(緑=OK/赤=未同期・タップで全同期)が担う。容量①/データ急減②の危険バナーは継続。
     renderDanger_(dangers);
   }catch(_){}
 }
