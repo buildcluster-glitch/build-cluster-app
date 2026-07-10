@@ -435,8 +435,8 @@
     border-left:3px solid rgba(0,0,0,.2);
     z-index:5;
   }
-  /* ホバー中のチップを白+濃色の二重リング+浮き影で明示(どのチップにカーソルがあるか分かりにくい対策・山田報告)v1.30.359 */
-  .event:hover{filter:brightness(1.04);z-index:30;box-shadow:0 0 0 2px #fff,0 0 0 3.5px #1e293b,0 5px 12px rgba(0,0,0,.28)}
+  /* ホバー中のチップを内側二重リング(inset)で明示。外側の影は親(.hour-cell/.day-col=overflow:hidden)にクリップされ欠けて見えた→内側リングは絶対クリップされない(山田報告・v1.30.366) */
+  .event:hover{filter:brightness(1.07);z-index:30;box-shadow:inset 0 0 0 1.5px #fff,inset 0 0 0 3px #0f172a}
   .event .time{font-size:10px;opacity:.9}
   .event .title{font-weight:600;word-break:break-word;white-space:pre-wrap}
   .event .staff{font-size:10px;opacity:.85;word-break:break-word}
@@ -919,12 +919,12 @@
     width:15px;height:15px;font-size:9px;line-height:15px;padding:0;border-radius:50%;
     text-align:center;font-weight:700;flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.6);
   }
-  .repair-appt-chip:hover{filter:brightness(1.04);position:relative;z-index:30;box-shadow:0 0 0 2px #fff,0 0 0 3.5px #1e293b,0 5px 12px rgba(0,0,0,.28)}
+  .repair-appt-chip:hover{filter:brightness(1.07);position:relative;z-index:30;box-shadow:inset 0 0 0 1.5px #fff,inset 0 0 0 3px #0f172a}
   /* 時間グリッド配置の修繕アポチップ — 通常イベントチップに似せた装飾 */
   .repair-appt-grid{
     cursor:pointer;border-left:3px solid rgba(0,0,0,.18) !important;
   }
-  .repair-appt-grid:hover{filter:brightness(1.04);z-index:30;box-shadow:0 0 0 2px #fff,0 0 0 3.5px #1e293b,0 5px 12px rgba(0,0,0,.28)}
+  .repair-appt-grid:hover{filter:brightness(1.07);z-index:30;box-shadow:inset 0 0 0 1.5px #fff,inset 0 0 0 3px #0f172a}
   /* ✅ 完了済の修繕チップ: 取消線/グレーは廃止し「✓完了」カラーバッジのみで表現(チップは通常色のまま) v1.30.180 */
   /* 🔆 アポ日/位置を変更した直後、移動先のチップを光らせて「ここに移った」を明示(v1.30.163) */
   @keyframes repairFlash{0%,100%{box-shadow:none;outline-color:transparent}15%,70%{box-shadow:0 0 12px 2px rgba(37,99,235,.6);outline-color:#2563eb}}
@@ -1449,7 +1449,7 @@
     color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
     border-left:3px solid rgba(0,0,0,.2);cursor:pointer;
   }
-  .month-event:hover{filter:brightness(1.04);position:relative;z-index:30;box-shadow:0 0 0 2px #fff,0 0 0 3.5px #1e293b,0 5px 12px rgba(0,0,0,.28)}
+  .month-event:hover{filter:brightness(1.07);position:relative;z-index:30;box-shadow:inset 0 0 0 1.5px #fff,inset 0 0 0 3px #0f172a}
   .month-leave{
     font-size:11px;background:var(--leave-bg);color:var(--leave-text);
     padding:2px 5px;border-radius:3px;
@@ -2584,7 +2584,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.365</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.366</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
