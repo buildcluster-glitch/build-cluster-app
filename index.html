@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>ビルドクラスタ 工事管理</title>
+<title>ビルドクラスタ工事管理</title>
 
 <!-- ============ PWA: ホーム画面追加でアプリ風に ============ -->
 <link rel="manifest" href="./manifest.json">
@@ -2583,7 +2583,9 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.363</span></div>
+  <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.364</span></div>
+  <script>try{document.title='ビルドクラスタ工事管理 '+((document.querySelector('.app-title span')||{}).textContent||'').trim();}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
