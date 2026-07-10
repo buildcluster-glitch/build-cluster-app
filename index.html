@@ -848,6 +848,14 @@
   .quick-pop.task-pop .tp-row .tp-comment-btn{flex:0 0 auto;border:1px solid var(--border);background:#fff;color:#64748b;font-size:10px;font-weight:700;line-height:1;cursor:pointer;padding:2px 5px;border-radius:5px}
   .quick-pop.task-pop .tp-row .tp-comment-btn.has{background:#dbeafe;color:#1d4ed8;border-color:#bfdbfe}
   .quick-pop.task-pop .tp-row .tp-comment-btn:hover{border-color:#94a3b8}
+  /* ⏰ リマインド(v1.30.371): 未設定=薄グレー / 設定済(期日前)=青 / 期日到来=琥珀で点滅 */
+  .quick-pop.task-pop .tp-row .tp-remind{flex:0 0 auto;border:1px solid var(--border);background:#fff;color:#cbd5e1;font-size:11px;line-height:1;cursor:pointer;padding:2px 5px;border-radius:5px}
+  .quick-pop.task-pop .tp-row .tp-remind.set{color:#2563eb;border-color:#bfdbfe;background:#eff6ff}
+  .quick-pop.task-pop .tp-row .tp-remind.due{color:#b45309;border-color:#fcd34d;background:#fffbeb;animation:remindBlink 1s steps(1,end) infinite}
+  .quick-pop.task-pop .tp-row .tp-remind:hover{border-color:#94a3b8}
+  @keyframes remindBlink{0%,49%{opacity:1;box-shadow:0 0 0 2px rgba(245,158,11,.55)}50%,100%{opacity:.35;box-shadow:0 0 0 0 rgba(245,158,11,0)}}
+  /* ⏰ 出社/休暇チップの点滅リマインド(開かなくても気づける・バッジとは別アイコン) */
+  .staff-chip .sc-remind,.leave-badge .lb-remind{display:inline-block;font-size:11px;margin-left:2px;animation:remindBlink 1s steps(1,end) infinite;cursor:default}
   /* 💬 タスクコメント常時表示(v1.30.265) */
   .quick-pop.task-pop .tp-cmt-inline{margin:1px 0 5px 30px;display:flex;flex-direction:column;gap:2px}
   .quick-pop.task-pop .tp-cmt-line{font-size:11px;line-height:1.35;color:#334155;background:#f1f5f9;border-radius:6px;padding:2px 7px;display:flex;gap:5px;align-items:baseline;flex-wrap:wrap}
@@ -2589,7 +2597,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.370</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.371</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -8629,6 +8637,31 @@ function staffHasUnackMsg_(staff){
     e.messages.some(m=> m && m.author!==staff && msgIsUnacked_(m))
   );
 }
+// ⏰ リマインド(v1.30.371・山田): 事務タスク項目/予定イベントに「この日から知らせて」を設定→期日で⏰点滅→クリックで確認して消える。
+//   保存はイベントオブジェクトに: 事務タスク=ev.taskReminders[taskKey]={on}, 予定=ev.reminder={on}。event-syncでLWW同期。
+function reminderTodayStr_(){ return (typeof fmtDate==='function') ? fmtDate(new Date()) : new Date().toISOString().slice(0,10); }
+function taskReminderOf_(ev, key){ return (ev && ev.taskReminders && ev.taskReminders[key]) || null; }
+function taskReminderActive_(ev, key){ const r=taskReminderOf_(ev,key); return !!(r && r.on && reminderTodayStr_() >= r.on); }   // 期日到来=点滅対象
+function setTaskReminder_(evId, key, onDate){
+  const ev=(state.events||[]).find(e=>e.id===evId); if(!ev) return;
+  if(!ev.taskReminders) ev.taskReminders={};
+  if(onDate){ ev.taskReminders[key]={ on:onDate, by:(typeof getMyself==='function'?getMyself():'') }; }
+  else { delete ev.taskReminders[key]; }   // 空=確認して消す
+  ev.updatedAt=new Date().toISOString();
+  if(typeof saveState==='function') saveState();
+  if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(ev,'upsert'); }catch(_){} }
+}
+// そのスタッフの事務タスクに「期日到来の未確認リマインド」があるか(出社/休暇チップの点滅⏰用)
+function staffHasActiveReminder_(staff){
+  const today=reminderTodayStr_();
+  return (state.events||[]).some(e=>{
+    if(!e || e.category!=='事務' || !e.taskReminders) return false;
+    if(!(e.staff===staff || (e.participants||[]).includes(staff))) return false;
+    return Object.values(e.taskReminders).some(r=> r && r.on && today >= r.on);
+  });
+}
+// 予定イベント自身のリマインド(ev.reminder={on})
+function eventReminderActive_(ev){ return !!(ev && ev.reminder && ev.reminder.on && reminderTodayStr_() >= ev.reminder.on); }
 
 // ===== 📋 簡易タスクマネージャー: 箇条書きイベントをチェックリスト化 =====
 // ev.title の各行を解析。先頭が ・- ● ▪ ◦ * などの行=タスク。先頭に ✅☑✓ があれば完了。
@@ -9252,6 +9285,7 @@ function showTaskChecklistPopup(el, ev){
           return (t.done && meta) ? `<span class="tp-meta" title="完了ログ">${escapeHtml(meta)}</span>` : "";
         })()}
         ${(()=>{ const n=getTaskCmts_(taskCKey_(t.text)).length; return `<button class="tp-comment-btn ${n?'has':''}" data-line="${t.index}" title="このタスクのコメント">💬${n||''}</button>`; })()}
+        ${(()=>{ const rk=taskCKey_(t.text); const r=taskReminderOf_(cur,rk); const due=taskReminderActive_(cur,rk); const cls=due?'due':(r&&r.on?'set':''); const tip=r&&r.on?`⏰ リマインド ${r.on}${due?'(期日到来・クリックで確認して消す)':'(クリックで変更)'}`:'⏰ リマインドを設定(この日から知らせる)'; return `<button class="tp-remind ${cls}" data-remind-line="${t.index}" title="${escapeHtml(tip)}">⏰</button>`; })()}
         ${!t.done ? `<button class="tp-done-quick" data-line="${t.index}" title="一発で完了にする">✓</button>` : ""}
         <button class="tp-del" data-line="${t.index}" title="ゴミ箱へ">×</button>
       </div>${__cmtBlock}`;
@@ -9327,6 +9361,43 @@ function showTaskChecklistPopup(el, ev){
     });
     pop.querySelectorAll('.tp-done-quick').forEach(b=>{   // 一発完了
       b.onclick = ()=> mutate(t=>setTaskStatus_(t, parseInt(b.dataset.line,10), '完了', (typeof getMyself==='function'?getMyself():"")));
+    });
+    // ⏰ リマインド設定/確認(v1.30.371)。期日到来(点滅)ならクリックで確認して消す。未設定/設定済ならミニカレンダーで日付設定。
+    pop.querySelectorAll('.tp-remind').forEach(b=>{
+      b.onclick = (e)=>{
+        e.stopPropagation();
+        const li = parseInt(b.dataset.remindLine,10);
+        const tk = (ti.tasks||[]).concat(ti.trash||[],ti.archive||[]).find(x=>x.index===li);
+        if(!tk) return;
+        const rk = taskCKey_(tk.text);
+        const cev = (state.events||[]).find(x=>x.id===ev.id) || ev;
+        if(taskReminderActive_(cev, rk)){   // 期日到来=クリックで確認して消す
+          setTaskReminder_(ev.id, rk, "");
+          if(typeof showAutoSyncToast==='function') showAutoSyncToast('⏰ リマインドを確認済みにしました');
+          ({ cur, ti } = build()); renderInner(); if(typeof render==='function') render();
+          return;
+        }
+        // 未設定/期日前 → ミニ日付入力ポップ
+        document.querySelectorAll('.quick-pop.remind-pop').forEach(p=>p.remove());
+        const cur0 = taskReminderOf_(cev, rk);
+        const rp = document.createElement('div'); rp.className='quick-pop remind-pop';
+        rp.innerHTML = `<div class="qp-title">⏰ リマインド <span style="font-weight:400;font-size:11px;color:var(--muted)">この日から知らせる</span></div>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <input type="date" class="rp-date" value="${cur0&&cur0.on?cur0.on:''}" style="font-size:13px;padding:5px 6px;border:1px solid var(--border-strong);border-radius:6px">
+            <button class="btn primary rp-set" style="font-size:12px;padding:5px 12px">設定</button>
+            ${cur0&&cur0.on?'<button class="btn rp-clear" style="font-size:12px;padding:5px 10px;color:#dc2626">消す</button>':''}
+          </div>
+          <div class="qp-actions"><button class="qp-close" data-role="close">閉じる</button></div>`;
+        document.body.appendChild(rp);
+        const br=b.getBoundingClientRect();
+        rp.style.left=Math.max(8,Math.min(br.left,window.innerWidth-260))+'px';
+        rp.style.top=Math.min(br.bottom+4,window.innerHeight-160)+'px';
+        const close=()=>rp.remove();
+        rp.querySelector('.rp-set').onclick=()=>{ const v=rp.querySelector('.rp-date').value; if(!v){ alert('日付を選んでください'); return; } setTaskReminder_(ev.id, rk, v); close(); ({ cur, ti } = build()); renderInner(); if(typeof render==='function') render(); };
+        const clr=rp.querySelector('.rp-clear'); if(clr) clr.onclick=()=>{ setTaskReminder_(ev.id, rk, ""); close(); ({ cur, ti } = build()); renderInner(); if(typeof render==='function') render(); };
+        rp.querySelector('[data-role="close"]').onclick=close;
+        setTimeout(()=>{ const oc=(e2)=>{ if(!rp.contains(e2.target)&&e2.target!==b){ close(); document.removeEventListener('pointerdown',oc,true); } }; document.addEventListener('pointerdown',oc,true); },60);
+      };
     });
     // ✅ 全項目まとめて完了(ぽちぽち回避・南部要望 v1.30.346)。未完了(進行中含む)を一括で完了に
     const __caBtn = pop.querySelector('.tp-complete-all');
@@ -11834,7 +11905,8 @@ function renderLeaveBand(){
     const tooltip = hasFilter
       ? `${display} ${isSelected?"(選択中・クリックで解除)":"(クリックで追加)"}\n今日の予定 ${total}件\n${fmtBreakdownFull(counts)}`
       : `${display} (クリックで絞り込み)\n今日の予定 ${total}件\n${fmtBreakdownFull(counts)}`;
-    return `<span class="${cls.join(' ')}" data-staff-filter="${escapeHtml(s)}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}">${escapeHtml(display)}${fracBadge_(s,'sc-frac')}${subHtml}</span>`;
+    const __remind = (typeof staffHasActiveReminder_==='function' && staffHasActiveReminder_(s)) ? `<span class="sc-remind" title="⏰ 期日が来たリマインドあり(タスクを開いて確認)">⏰</span>` : "";
+    return `<span class="${cls.join(' ')}" data-staff-filter="${escapeHtml(s)}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}">${escapeHtml(display)}${fracBadge_(s,'sc-frac')}${subHtml}${__remind}</span>`;
   };
   // コンパクト休暇バッジ: 担当色背景 + フルネーム + 種別
   const leaveChip = (l, withRange)=>{
@@ -11855,7 +11927,8 @@ function renderLeaveBand(){
     const _tp = staffTaskProgress_(l.staff);
     const __lbMsgAlert = (typeof staffHasUnackMsg_==='function' && staffHasUnackMsg_(l.staff)) ? `<span class="msg-alert" title="💬 業務連絡(未確認) — リアクションで確認済みに">🔔</span>` : "";
     const taskBadge = `<span class="lb-task${__lbMsgAlert?' has-msg-alert':''}" data-task-staff="${escapeHtml(l.staff)}" title="📋 事務タスク${_tp.has?' ('+_tp.dn+'/'+_tp.tt+')':''}">📋${__lbMsgAlert}</span>`;
-    return `<span class="leave-badge" data-leave-id="${l.id}" data-staff="${escapeHtml(l.staff)}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}"><span class="lb-staff">${escapeHtml(display)}</span><span class="lb-type">${escapeHtml(typeLabel)}</span>${rangeHtml}${fracBadge_(l.staff,'lb-frac')}${taskBadge}</span>`;
+    const __lbRemind = (typeof staffHasActiveReminder_==='function' && staffHasActiveReminder_(l.staff)) ? `<span class="lb-remind" title="⏰ 期日が来たリマインドあり">⏰</span>` : "";
+    return `<span class="leave-badge" data-leave-id="${l.id}" data-staff="${escapeHtml(l.staff)}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}"><span class="lb-staff">${escapeHtml(display)}</span><span class="lb-type">${escapeHtml(typeLabel)}</span>${rangeHtml}${fracBadge_(l.staff,'lb-frac')}${taskBadge}${__lbRemind}</span>`;
   };
 
   // 休暇スタッフチップ (出社チップと同じく選択可能に)
