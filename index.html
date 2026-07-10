@@ -2583,7 +2583,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.361</span></div>
+  <div class="app-title">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.362</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -21751,10 +21751,9 @@ function submitRecord(){
     const shortage = Math.max(0, item.minStock - effectiveStock(item));
     if(shortage >= 1){
       setTimeout(()=>{
-        if(confirm(`⚠ 「${item.name}」の不足数が ${shortage}個 になりました。注文が必要です。\n\n今すぐ発注しますか？`)){
-          if(typeof openOrder==='function') openOrder(item.id, null);
-        }
-      }, 80);   // renderAllの描画を先に反映させてから確認ダイアログを出す
+        // 知らせるだけ(発注はバナーの📦発注するから)。「今すぐ発注しますか？」の問いかけは不要(山田 v1.30.362)
+        alert(`⚠ 「${item.name}」の不足数が ${shortage}個 になりました。注文が必要です。`);
+      }, 80);   // renderAllの描画を先に反映させてから通知を出す
     }
   }
 }
