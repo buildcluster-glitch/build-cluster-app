@@ -2584,7 +2584,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.366</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.367</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -14667,8 +14667,17 @@ function drawActiveSlot_(){
     const sc = [...document.querySelectorAll('.sub-col')].find(s=>s.dataset.colKey===activeSlot.colKey);
     if(sc && typeof HOUR_PX==='number'){
       const m=document.createElement('div'); m.className='active-slot-marker';
-      const top=((activeSlot.startMin - HOUR_START*60)/60)*HOUR_PX;
-      m.style.top=Math.max(0,top)+'px'; m.style.height=(HOUR_PX * SLOT_MIN/60)+'px'; // 15分ぶん=1時間の1/4(v1.30.60)
+      // 🔧 1時間の"実際の"高さで位置決め。hour-cellが156px等でHOUR_PX(150)と食い違い、
+      //   下の時間ほど青マーカーが上へズレる不具合の修正(山田報告「選択と全然違う所が青い」)v1.30.367
+      let __pxPerHour = HOUR_PX;
+      try{
+        const __z=(typeof calGridZoom_==='function')?(calGridZoom_()||1):1;
+        const __cell=document.querySelector('.day-col .hour-cell[data-col-key="'+activeSlot.colKey+'"]');
+        const __h=__cell?__cell.getBoundingClientRect().height/__z:0;
+        if(__h>0) __pxPerHour=__h;
+      }catch(_){}
+      const top=((activeSlot.startMin - HOUR_START*60)/60)*__pxPerHour;
+      m.style.top=Math.max(0,top)+'px'; m.style.height=(__pxPerHour * SLOT_MIN/60)+'px'; // 15分ぶん=1時間の1/4(v1.30.60)
       sc.appendChild(m);
     }
   }
