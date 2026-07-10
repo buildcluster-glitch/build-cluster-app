@@ -2614,7 +2614,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.380</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.381</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -2639,6 +2639,7 @@
   <button class="nav-btn icon-only" id="redoBtn" title="取り消した変更をやり直す (Ctrl+Y / Ctrl+Shift+Z)" disabled>↷</button>
   <button class="nav-btn icon-only" id="searchBtn" title="🔍 予定・立会・修繕・最終確認・休暇を横断検索 (/)">🔍</button>
   <button class="nav-btn icon-only" id="yearStatsBtn" title="📊 休日管理 (有給・休日年間集計)">📊</button>
+  <button class="nav-btn icon-only" id="tankaBtn" title="💴 単価表 — スマホ単価表と同じ内容(検索・元請切替)をアプリ内で開く">💴</button>
   <button class="nav-btn icon-only" id="bugReportBtn" title="🐞 バグ・要望の報告 (全員共有・見積アプリの報告と同様)">🐞<span id="bugReportBadge" class="al-count" style="display:none"></span></button>
   <button class="nav-btn icon-only" id="changelogBtn" title="📜 変更の記録 — 誰がいつ 立会/修繕/タスク/予定 を変えた・消したか(全員共有)">📜</button>
   <button class="nav-btn" id="cloudSyncBtn" title="☁ 全同期 — クラウド(予定/休暇) + Drive(最終確認・立会・事前など) をまとめて今すぐ同期。設定は⚙"><span id="cloudSyncIcon">☁</span><span id="cloudSyncBadge" class="hidden"></span></button>
@@ -2679,6 +2680,7 @@
   <button data-mnav="repair">🔧<span>修繕</span></button>
   <button data-mnav="resto">🏠<span>原状回復</span></button>
   <button data-mnav="inventory">📦<span>在庫</span></button>
+  <button data-mnav="tanka">💴<span>単価</span></button>
 </nav>
 
 <div class="calendar-wrap" id="calendarWrap">
@@ -15891,10 +15893,39 @@ function swipeNavigate_(dir){
     swipeNavigate_(dx < 0 ? 1 : -1);  // 左フリック=次へ
   }, true);
 })();
+// 💴 単価表(スマホ単価表 tanka ページ)をアプリ内モーダルで表示 v1.30.381
+//   本番はカレンダーとtankaが同一オリジン(buildcluster-glitch.github.io)=localStorage共有なので、
+//   カレンダーの同期設定をtankaのキーへコピーしてから開く→スタッフは⚙設定入力なしで使える。
+//   (ローカル起動時は別オリジンでコピー無効=tanka側で一度設定が必要なだけ・実害なし)
+const TANKA_PAGE_URL = 'https://buildcluster-glitch.github.io/tanka/';
+function openTankaModal_(){
+  try{ const s=loadGasSettings(); if(s && s.url && s.token){ localStorage.setItem('tanka_gas_url', s.url); localStorage.setItem('tanka_gas_token', s.token); } }catch(_){}
+  let ov = document.getElementById('tankaModal');
+  if(!ov){
+    ov = document.createElement('div'); ov.id='tankaModal';
+    ov.style.cssText = 'display:none;position:fixed;inset:0;z-index:900;background:#f1f5f9;flex-direction:column';
+    ov.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#7c3aed;color:#fff;flex-shrink:0;padding-top:max(8px,env(safe-area-inset-top,0))">
+        <b style="flex:1;font-size:15px">💴 単価表</b>
+        <a href="${TANKA_PAGE_URL}" target="_blank" rel="noopener" style="color:#fff;font-size:12px;background:rgba(255,255,255,.2);padding:6px 10px;border-radius:6px;text-decoration:none;white-space:nowrap">↗ 別タブ</a>
+        <button id="tankaModalClose" style="background:rgba(255,255,255,.25);border:0;color:#fff;font-size:13px;font-weight:700;padding:6px 14px;border-radius:6px;cursor:pointer;white-space:nowrap">✕ 閉じる</button>
+      </div>
+      <iframe id="tankaFrame" style="flex:1;border:0;width:100%"></iframe>`;
+    document.body.appendChild(ov);
+    document.getElementById('tankaModalClose').onclick = ()=>{ ov.style.display='none'; };
+  }
+  const fr = ov.querySelector('#tankaFrame');
+  if(!fr.src) fr.src = TANKA_PAGE_URL;   // 初回だけロード(以降は検索状態などを保持したまま再表示)
+  ov.style.display = 'flex';
+}
+const __tankaBtn = document.getElementById('tankaBtn');
+if(__tankaBtn) __tankaBtn.onclick = openTankaModal_;
+
 // 📱 下部ナビ (スマホのみ表示。クリックでビュー切替)
 document.querySelectorAll('#mobileNav button').forEach(b=>{
   b.onclick = ()=>{
     const k = b.dataset.mnav;
+    if(k === 'tanka'){ openTankaModal_(); return; }   // 💴 単価表はビュー切替でなくモーダル
     currentView = (k === 'cal') ? 'month' : k;
     render();
   };
