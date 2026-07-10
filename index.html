@@ -2577,7 +2577,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.359</span></div>
+  <div class="app-title">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.360</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -21725,6 +21725,17 @@ function submitRecord(){
   closeSheet('sheet-record');
   renderAll();
   if(state.ui.view==='detail') renderDetail();
+  // 🔔 消費で不足数(=最低在庫-実効在庫)が1以上になったら「注文が必要」アラート→そのまま発注へ誘導(木村要望 v1.30.360)
+  if(recMode==='out' && item.minStock>0){
+    const shortage = Math.max(0, item.minStock - effectiveStock(item));
+    if(shortage >= 1){
+      setTimeout(()=>{
+        if(confirm(`⚠ 「${item.name}」の不足数が ${shortage}個 になりました。注文が必要です。\n\n今すぐ発注しますか？`)){
+          if(typeof openOrder==='function') openOrder(item.id, null);
+        }
+      }, 80);   // renderAllの描画を先に反映させてから確認ダイアログを出す
+    }
+  }
 }
 
 // ---------- report ----------
