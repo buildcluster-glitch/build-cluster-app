@@ -2589,7 +2589,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.369</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.370</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -12332,7 +12332,11 @@ function renderCalendar(){
       if(!hit){ const kNorm = m.key.replace(/\s+/g,""); hit = kNorm && tNorm.includes(kNorm); }
       if(!hit) continue;
       const rRoom = normRoom_(m.resto.room);
-      if(tRoom && rRoom && tRoom !== rRoom) continue;   // 🔒 号室ガード
+      if(tRoom && rRoom && tRoom !== rRoom) continue;   // 🔒 号室ガード(号室が明示され食い違う→スキップ)
+      // 🔒 号室を持つrestoは、タイトルにその号室が含まれない時は紐づけない(v1.30.370)。
+      //   「グランフェリーチェ泉中央階段再現調」(号室なし・共用部)が物件名だけのキーで偶然201に誤マッチするのを防ぐ。
+      //   号室なしの単独物件(rRoom空)は従来どおりマッチ。号室が2桁以上でタイトルに含まれていればOK(号室が末尾でない書式も許容)。
+      if(rRoom && !tRoom && !(rRoom.length>=2 && tNorm.includes(rRoom))) continue;
       found = m.resto; break;
     }
     __restoMatchCache.set(t, found);
