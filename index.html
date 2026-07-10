@@ -2614,7 +2614,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.382</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.383</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -2631,6 +2631,7 @@
     <button data-view="repair">🔧 修繕</button>
     <button data-view="resto">🏠 原状回復</button>
     <button data-view="inventory">📦 在庫管理</button>
+    <button data-view="__tanka__" id="tankaBtn" title="💴 単価表 — スマホ単価表と同じ内容(検索・元請切替)をアプリ内で開く">💴 単価表</button>
   </div>
   <button class="nav-btn" id="myEventsBtn" title="👤 自分の設定・フィルタON/OFF">👤 マイ</button>
   </div>
@@ -2639,7 +2640,6 @@
   <button class="nav-btn icon-only" id="redoBtn" title="取り消した変更をやり直す (Ctrl+Y / Ctrl+Shift+Z)" disabled>↷</button>
   <button class="nav-btn icon-only" id="searchBtn" title="🔍 予定・立会・修繕・最終確認・休暇を横断検索 (/)">🔍</button>
   <button class="nav-btn icon-only" id="yearStatsBtn" title="📊 休日管理 (有給・休日年間集計)">📊</button>
-  <button class="nav-btn icon-only" id="tankaBtn" title="💴 単価表 — スマホ単価表と同じ内容(検索・元請切替)をアプリ内で開く">💴</button>
   <button class="nav-btn icon-only" id="bugReportBtn" title="🐞 バグ・要望の報告 (全員共有・見積アプリの報告と同様)">🐞<span id="bugReportBadge" class="al-count" style="display:none"></span></button>
   <button class="nav-btn icon-only" id="changelogBtn" title="📜 変更の記録 — 誰がいつ 立会/修繕/タスク/予定 を変えた・消したか(全員共有)">📜</button>
   <button class="nav-btn" id="cloudSyncBtn" title="☁ 全同期 — クラウド(予定/休暇) + Drive(最終確認・立会・事前など) をまとめて今すぐ同期。設定は⚙"><span id="cloudSyncIcon">☁</span><span id="cloudSyncBadge" class="hidden"></span></button>
@@ -15907,8 +15907,7 @@ function openTankaModal_(){
   if(!fr.src) fr.src = TANKA_PAGE_URL;   // 初回だけロード(以降は検索状態などを保持したまま再表示)
   ov.style.display = 'flex';
 }
-const __tankaBtn = document.getElementById('tankaBtn');
-if(__tankaBtn) __tankaBtn.onclick = openTankaModal_;
+// PCの💴単価表ボタンは view-switch 内に置き、その配線(下の.view-switch forEach)でモーダルを開く。
 
 // 📱 下部ナビ (スマホのみ表示。クリックでビュー切替)
 document.querySelectorAll('#mobileNav button').forEach(b=>{
@@ -15920,7 +15919,10 @@ document.querySelectorAll('#mobileNav button').forEach(b=>{
   };
 });
 document.querySelectorAll(".view-switch button").forEach(b=>{
-  b.onclick = ()=>{ currentView = b.dataset.view; render(); };
+  b.onclick = ()=>{
+    if(b.dataset.view==='__tanka__'){ openTankaModal_(); return; }   // 💴 単価表はモーダル(ビュー切替でない)
+    currentView = b.dataset.view; render();
+  };
 });
 // 📱 予定クイック追加シート (v1.30.19): スマホはフルモーダルだと大変なので最低限(タイトル/日付/時刻/担当)だけで登録。
 //   「✏️詳細」で従来モーダルへ引き継ぎ。PCは従来通りフルモーダル
