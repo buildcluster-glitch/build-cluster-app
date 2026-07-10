@@ -194,6 +194,11 @@
   .staff-chip .sc-count.sc-task:hover{background:#eff6ff}
   .staff-chip .sc-count.sc-empty.sc-task{color:#2563eb;background:#fff;font-weight:800}
   .staff-chip .sc-count.sc-task.sc-done{color:#16a34a;box-shadow:0 0 0 1.5px rgba(22,163,74,.55) inset}
+  /* 🏖 月間取得fracバッジ(出社/休暇チップ内・旧休みサマリ行の統合)v1.30.368 */
+  .staff-chip .sc-frac,.leave-badge .lb-frac{font-size:9.5px;font-weight:800;background:rgba(255,255,255,.78);color:#94a3b8;border-radius:7px;padding:0 4px;line-height:1.5;white-space:nowrap}
+  .staff-chip .sc-frac.taken,.leave-badge .lb-frac.taken{color:#15803d}
+  .band-hol-pill{display:inline-flex;align-items:center;font-size:11px;font-weight:700;background:#e0f2fe;color:#075985;border-radius:9px;padding:2px 8px;white-space:nowrap;cursor:help}
+  @media (max-width:700px){ .sc-frac,.lb-frac,.sec-monthly{display:none !important} }  /* スマホは旧サマリ行も非表示だった=従来どおり出さない */
   /* フィルタ解除ボタン (出社セクション右端) */
   .clear-staff-filter{
     flex-shrink:0;background:#0f172a;color:#fff;border:0;
@@ -2584,7 +2589,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.367</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.368</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -2620,7 +2625,7 @@
 </header>
 
 <div class="announce-bar" id="announceBar" style="display:none"></div>
-<div class="leave-summary" id="leaveSummary"></div>
+<!-- 🏖 休みサマリ独立行は v1.30.368 で出社バー(leaveBand)に統合(各チップにfracバッジ+行末に月休みピル) -->
 
 <div class="leave-band" id="leaveBand">
   <span class="title">📌 在席/有給/当番</span>
@@ -11613,13 +11618,9 @@ function renderHeader(){
 }
 
 // 📊 カレンダー上部サマリ: 今月の会社休み + 各自の今月の休み消化(X/会社休日)
-function renderLeaveSummary(){
-  const el = document.getElementById("leaveSummary");
-  if(!el) return;
-  const dateViews = ["week","day","3day","month","staff"];
-  if(!dateViews.includes(currentView)){ el.style.display = "none"; return; }
-  el.style.display = "";
-  const d = currentDate;
+// 🏖 月間休暇集計(会社休みの分母 + スタッフ別取得)。v1.30.368: 休みサマリ行(#leaveSummary)を出社バーに
+//   統合したため計算部を関数化。出社/休暇チップのfracバッジと🏖月休みピル(renderLeaveBand)が使う。
+function monthlyLeaveStats_(d){
   const year = d.getFullYear(), month = d.getMonth()+1;
   const mStart = `${year}-${pad(month)}-01`;
   const mEnd   = `${year}-${pad(month)}-${pad(new Date(year,month,0).getDate())}`;
@@ -11638,15 +11639,13 @@ function renderLeaveSummary(){
   const num = v => (Math.round(v*10)/10).toString().replace(/\.0$/,"");
   // 各自: 今月「実際に取った休み」の日数(レコードのみ集計・自動埋めなし)
   //   対象=有給/年休/半休(0.5)/休暇/別件/体調不良/会社休日(取得) 等。除外=当番/出張/研修(休みではない)
-  //   → 誰も取ってなければ 0/会社休日 になる
-  const HALF = new Set(["半休","有給(AM)","有給(PM)"]);          // 有給の半休→半休バッジ(0.5)
+  const HALF = new Set(["半休","有給(AM)","有給(PM)"]);          // 有給の半休→半休(0.5)
   const HALF_SHOTEI = new Set(["所定(AM)","所定(PM)"]);          // 所定の半休→所定休日(base)に0.5(有給を消費しない)v1.30.356
   const NONREST = new Set(["当番","出張","研修","出社"]);   // 「休みではない」種別(出社=日祝に出勤)
-  // 📅 日祝(日曜 or 祝日)は基本全員休み → 自動で休みカウント。ただし「出社」レコードがあればその日はカウントしない(v1.30.113)
   const lastDay = new Date(year,month,0).getDate();
   const isNichiShuku_ = (ds)=>{ const dt=parseDate(ds); return !!(dt && !isNaN(dt) && (dt.getDay()===0 || (typeof isHoliday==='function' && isHoliday(dt)))); };
-  const staffHtml = STAFF.filter(s=> s!=="山田裕貴").map(s=>{   // 社長(山田)は休みカウント対象外
-    // 所定休日(base=会社休日/振休/日祝/別件等)は X/holN。年休・有給・半休(午前休/午後休)はそれぞれ別建て表示(v1.30.193)
+  const perStaff = (s)=>{
+    if(s === "山田裕貴") return null;   // 社長(山田)は休みカウント対象外(従来仕様)
     let base = 0, nenkyu = 0, yukyu = 0, hankyu = 0;
     const myLeaves = (state.leaves||[]).filter(l=> l.staff===s);
     for(let dd=1; dd<=lastDay; dd++){
@@ -11665,22 +11664,16 @@ function renderLeaveSummary(){
       }
       if(isNichiShuku_(ds)) base += 1;                        // 日祝は自動で全員休み(所定)
     }
-    const fracParts = [`${num(base)}/${num(holN)}`];
-    if(nenkyu>0) fracParts.push(`<span style="color:#b45309;font-weight:700">+年休${num(nenkyu)}</span>`);
-    if(yukyu>0)  fracParts.push(`<span style="color:#475569;font-weight:700">+有給${num(yukyu)}</span>`);
-    if(hankyu>0) fracParts.push(`<span style="color:#0369a1;font-weight:700">+半休${num(hankyu)}</span>`);
-    const frac = fracParts.join(' ');
     const taken = (base+nenkyu+yukyu+hankyu) > 0;
-    const bg = (typeof STAFF_COLORS!=='undefined' && STAFF_COLORS[s]) ? STAFF_COLORS[s] : "#9ca3af";
-    return `<span class="ls-staff ${taken?'taken':''}" title="${escapeHtml(s)} ${month}月: 所定休日 ${num(base)}/${num(holN)}${nenkyu?` ・年休${num(nenkyu)}`:''}${yukyu?` ・有給${num(yukyu)}`:''}${hankyu?` ・半休${num(hankyu)}`:''} (日祝/会社休日/振休=所定休日。年休/有給/半休は別建て。当番/出張/研修/出社は休みに数えない)"><span class="ls-dot" style="background:${bg}"></span>${escapeHtml(s)} <span class="frac">${frac}</span></span>`;
-  }).join("");
-  // 🔑 確定立会件数は カテゴリ「山一」バッジ内に統合表示(renderCategoryFilter)に移動
-
-  el.innerHTML =
-    `<span class="ls-holiday" title="${year}年${month}月の会社休日(全員共通)">🏖 ${month}月の休み ${holLabel}</span>`
-    + `<span class="ls-label">各自の取得</span>`
-    + staffHtml;
+    const extras = (nenkyu>0?1:0)+(yukyu>0?1:0)+(hankyu>0?1:0);
+    const fracShort = `${num(base)}/${num(holN)}${extras?'+':''}`;   // バッジは超コンパクト(+は年休/有給/半休あり・詳細はtooltip)
+    const tipLine = `${month}月の休み: 所定 ${num(base)}/${num(holN)}${nenkyu?` ・年休${num(nenkyu)}`:''}${yukyu?` ・有給${num(yukyu)}`:''}${hankyu?` ・半休${num(hankyu)}`:''}`;
+    return { base, nenkyu, yukyu, hankyu, taken, fracShort, tipLine };
+  };
+  return { year, month, holN, holLabel, num, perStaff };
 }
+// 旧: 休みサマリ独立行。v1.30.368で出社バー(renderLeaveBand)に統合済み。呼び出し互換のため残置。
+function renderLeaveSummary(){}
 
 // 🔄📞 当番・電話番をヘッダー(要対応の隣)に表示(v1.30.199・旧leaveBandから移設)
 function renderHeaderDuty_(){
@@ -11794,6 +11787,13 @@ function renderLeaveBand(){
   };
 
   const hasFilter = selectedStaffFilter.size > 0;
+  // 🏖 月間休暇集計(表示中の月)→各チップにfracバッジで埋め込み(旧#leaveSummary行の統合・v1.30.368)
+  const __mls = (typeof monthlyLeaveStats_==='function') ? monthlyLeaveStats_(currentDate || new Date()) : null;
+  const fracBadge_ = (s, cls)=>{
+    const st = __mls && __mls.perStaff(s);
+    if(!st) return "";   // 山田(集計対象外)や集計不可は非表示
+    return `<span class="${cls}${st.taken?' taken':''}" title="${escapeHtml(st.tipLine)} (日祝/会社休日/振休=所定。当番/出張/研修/出社は休みに数えない)">${st.fracShort}</span>`;
+  };
   // その人の今日の事務タスク進捗(全チェックリストイベント合算)
   const staffTaskProgress_ = (staff)=>{
     // 📋 事務タスクは日付非依存(担当者ごとの常設リスト)。日付スコープにすると日替わりで消える
@@ -11834,7 +11834,7 @@ function renderLeaveBand(){
     const tooltip = hasFilter
       ? `${display} ${isSelected?"(選択中・クリックで解除)":"(クリックで追加)"}\n今日の予定 ${total}件\n${fmtBreakdownFull(counts)}`
       : `${display} (クリックで絞り込み)\n今日の予定 ${total}件\n${fmtBreakdownFull(counts)}`;
-    return `<span class="${cls.join(' ')}" data-staff-filter="${escapeHtml(s)}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}">${escapeHtml(display)}${subHtml}</span>`;
+    return `<span class="${cls.join(' ')}" data-staff-filter="${escapeHtml(s)}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}">${escapeHtml(display)}${fracBadge_(s,'sc-frac')}${subHtml}</span>`;
   };
   // コンパクト休暇バッジ: 担当色背景 + フルネーム + 種別
   const leaveChip = (l, withRange)=>{
@@ -11846,7 +11846,7 @@ function renderLeaveBand(){
       const _tpA = staffTaskProgress_(l.staff);
       const __msgA = (typeof staffHasUnackMsg_==='function' && staffHasUnackMsg_(l.staff)) ? `<span class="msg-alert" title="💬 業務連絡(未確認) — リアクションで確認済みに">🔔</span>` : "";
       const taskA = `<span class="lb-task${__msgA?' has-msg-alert':''}" data-task-staff="${escapeHtml(l.staff)}" title="📋 事務タスク${_tpA.has?' ('+_tpA.dn+'/'+_tpA.tt+')':''}">📋${__msgA}</span>`;
-      return `<span class="leave-badge" data-staff="${escapeHtml(l.staff)}" style="background:${bg};color:${fg};opacity:.72" title="${escapeHtml(display)} 日祝(自動休)"><span class="lb-staff">${escapeHtml(display)}</span><span class="lb-type">日祝</span>${taskA}</span>`;
+      return `<span class="leave-badge" data-staff="${escapeHtml(l.staff)}" style="background:${bg};color:${fg};opacity:.72" title="${escapeHtml(display)} 日祝(自動休)"><span class="lb-staff">${escapeHtml(display)}</span><span class="lb-type">日祝</span>${fracBadge_(l.staff,'lb-frac')}${taskA}</span>`;
     }
     const range = l.start===l.end ? l.start.slice(5) : `${l.start.slice(5)}〜${l.end.slice(5)}`;
     const typeLabel = leaveDispLabel_(l);
@@ -11855,7 +11855,7 @@ function renderLeaveBand(){
     const _tp = staffTaskProgress_(l.staff);
     const __lbMsgAlert = (typeof staffHasUnackMsg_==='function' && staffHasUnackMsg_(l.staff)) ? `<span class="msg-alert" title="💬 業務連絡(未確認) — リアクションで確認済みに">🔔</span>` : "";
     const taskBadge = `<span class="lb-task${__lbMsgAlert?' has-msg-alert':''}" data-task-staff="${escapeHtml(l.staff)}" title="📋 事務タスク${_tp.has?' ('+_tp.dn+'/'+_tp.tt+')':''}">📋${__lbMsgAlert}</span>`;
-    return `<span class="leave-badge" data-leave-id="${l.id}" data-staff="${escapeHtml(l.staff)}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}"><span class="lb-staff">${escapeHtml(display)}</span><span class="lb-type">${escapeHtml(typeLabel)}</span>${rangeHtml}${taskBadge}</span>`;
+    return `<span class="leave-badge" data-leave-id="${l.id}" data-staff="${escapeHtml(l.staff)}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}"><span class="lb-staff">${escapeHtml(display)}</span><span class="lb-type">${escapeHtml(typeLabel)}</span>${rangeHtml}${fracBadge_(l.staff,'lb-frac')}${taskBadge}</span>`;
   };
 
   // 休暇スタッフチップ (出社チップと同じく選択可能に)
@@ -11889,6 +11889,7 @@ function renderLeaveBand(){
         <button class="add-leave-inline" id="addLeaveInline" title="有給/休暇/別件を追加">＋</button>
         ${todayOffAll.length===0 ? '<span class="leave-empty">休み無し</span>' : todayOffAll.map(l=>leaveChip(l,false)).join('')}
       </span>
+      ${__mls ? `<span class="sec-divider"></span><span class="sec sec-monthly"><span class="band-hol-pill" title="${__mls.year}年${__mls.month}月の会社休日(全員共通)。各自の取得はチップ内の数字=所定休日/会社休日(+は年休・有給・半休あり、ホバーで内訳)">🏖 ${__mls.month}月の休み ${escapeHtml(__mls.holLabel)}</span></span>` : ''}
     </div>
   `;
   document.getElementById("addLeaveInline").onclick = ()=>openLeaveModal(null, {type:"会社休日"});
