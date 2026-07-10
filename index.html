@@ -2613,7 +2613,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.376</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.377</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -7086,7 +7086,8 @@ async function fetchReminders_(opts={}){
 // リマインドを設定/解除(obj={on,by}|null)。楽観的に即反映→最新remoteにこの1件だけ適用してpush(他端末の他キーを消さない)
 async function setReminderShared_(rkey, obj){
   let map=loadRemindersMap_();
-  const applyToMap=(mp)=>{ if(obj&&obj.on){ mp[rkey]={on:obj.on,by:(obj.by||''),at:new Date().toISOString()}; } else { delete mp[rkey]; } return mp; };
+  // v1.30.377: title/staff/kind も保存(修繕/立会は仮想でstateから引けないため一覧はこの値を使う)
+  const applyToMap=(mp)=>{ if(obj&&obj.on){ mp[rkey]={on:obj.on,by:(obj.by||''),at:new Date().toISOString(),title:(obj.title||''),staff:(obj.staff||''),kind:(obj.kind||'')}; } else { delete mp[rkey]; } return mp; };
   applyToMap(map); saveRemindersMap_(map); applyRemindersToState_(); if(typeof render==='function') render();
   const s=(typeof loadGasSettings==='function')?loadGasSettings():{};
   if(!s.url||!s.token) return map;
@@ -8055,6 +8056,16 @@ function showTaikyoStaffPicker(el, ev){
       <div class="tk-dt-hint" style="font-size:10px;color:var(--muted);margin-top:4px"></div>
     </div>
     <div class="qp-sec">
+      <div class="qp-label">⏰ リマインド <span style="font-weight:400;color:#94a3b8;font-size:10px">(この日から担当の⏰に出す)</span></div>
+      <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
+        <input type="date" id="tk-remind-date" value="${escapeHtml((reminderGet_('tv:'+cid)||{}).on||'')}" style="flex:1;min-width:0;padding:5px 6px;font-size:12px;border:1px solid var(--border);border-radius:6px">
+        <button class="qp-detail" data-trb="3" style="padding:5px 8px;font-size:11px;background:#f1f5f9">3日前</button>
+        <button class="qp-detail" data-trb="1" style="padding:5px 8px;font-size:11px;background:#f1f5f9">前日</button>
+        <button id="tk-remind-set" class="qp-detail" style="padding:5px 10px;font-size:11px;background:#e0e7ff;color:#3730a3">設定</button>
+        ${(reminderGet_('tv:'+cid))?'<button id="tk-remind-clear" class="qp-detail" style="padding:5px 8px;font-size:11px;background:#fee2e2;color:#dc2626">消す</button>':''}
+      </div>
+    </div>
+    <div class="qp-sec">
       <div class="qp-label">🚗 勤怠 <span style="font-weight:400;color:#94a3b8;font-size:10px">(直行/直帰・全員で共有)</span></div>
       <div class="qp-worker-pick" id="tkCommutePick">
         <button data-c="go" class="${(ev.commute||'').includes('直行')?'on':''}" style="background:#dbeafe">🚗 直行</button>
@@ -8146,6 +8157,16 @@ function showTaikyoStaffPicker(el, ev){
     createDotakyanGhost_(`立会 ${lbl}`, d, t);
     __tkDota.textContent = '✓ 日時変更跡を残しました'; __tkDota.disabled = true;
   }; }
+  // ⏰ リマインド(立会・v1.30.377)。3日前/前日は立会日基準。担当=ev.staff。保存キー=tv:<cid>
+  {
+    const __trd=pop.querySelector('#tk-remind-date');
+    const __tkey='tv:'+cid;
+    const __tlabel=(`${ev._bukken||''} ${ev._room||''}`).trim() || String(ev.title||'').split(/\r?\n/)[0] || '立会';
+    const __tsave=(on)=>{ if(typeof setReminderShared_==='function') setReminderShared_(__tkey, on?{on,by:(typeof getMyself==='function'?getMyself():''),title:'立会 '+__tlabel,staff:(ev.staff||''),kind:'立会'}:null).catch(()=>{}); if(typeof showAutoSyncToast==='function') showAutoSyncToast(on?`⏰ ${on} からリマインド`:'⏰ リマインドを消しました'); };
+    pop.querySelectorAll('[data-trb]').forEach(b=>{ b.onclick=()=>{ const n=parseInt(b.dataset.trb,10)||0; const base=parseDate((pop.querySelector('.tk-dt-date')||{}).value||ev.date); if(!base||isNaN(base)){ alert('立会日を先に入れてください'); return; } const d=new Date(base); d.setDate(d.getDate()-n); if(__trd) __trd.value=fmtDate(d); }; });
+    const __ts=pop.querySelector('#tk-remind-set'); if(__ts) __ts.onclick=()=>{ const v=__trd?__trd.value:''; if(!v){ alert('日付を選ぶか3日前/前日を押してください'); return; } __tsave(v); pop.remove(); };
+    const __tc=pop.querySelector('#tk-remind-clear'); if(__tc) __tc.onclick=()=>{ __tsave(''); pop.remove(); };
+  }
   // 🕐 日時変更 (全員共有)
   const dateEl = pop.querySelector('.tk-dt-date');
   const timeEl = pop.querySelector('.tk-dt-time');
@@ -8750,18 +8771,24 @@ function staffHasActiveReminder_(staff){
 }
 // 予定イベント自身のリマインド(ev.reminder={on})
 function eventReminderActive_(ev){ return !!(ev && ev.reminder && ev.reminder.on && reminderTodayStr_() >= ev.reminder.on); }
+// 任意キーのリマインド取得/期限到来判定(修繕rp:/立会tv: 等・共有mapから)v1.30.377
+function reminderGet_(rkey){ const m=(typeof loadRemindersMap_==='function')?loadRemindersMap_():{}; return m[rkey]||null; }
+function reminderActiveKey_(rkey){ const r=reminderGet_(rkey); return !!(r && r.on && reminderTodayStr_() >= r.on); }
 // ⏰ そのスタッフのリマインド一覧(予定+事務タスク・共有mapから収集)v1.30.375。担当=イベントのstaff or participants。
 function remindersForStaff_(staff){
   const map = (typeof loadRemindersMap_==='function') ? loadRemindersMap_() : {};
   const today = reminderTodayStr_();
   const out = [];
+  const __hasStaff=(s)=> s && (s===staff || (typeof parseWorkers_==='function' ? parseWorkers_(s).includes(staff) : String(s).split(/[,、]/).map(x=>x.trim()).includes(staff)));
   Object.keys(map).forEach(k=>{
     const v=map[k]; if(!v||!v.on) return;
-    let ev=null, title='', kind='';
-    if(k.indexOf('ev:')===0){ const id=k.slice(3); ev=(state.events||[]).find(x=>x.id===id); if(!ev) return; title=String(ev.title||'').split(/\r?\n/)[0]||'(予定)'; kind='予定'; }
-    else if(k.indexOf('tk:')===0){ const rest=k.slice(3); const sep=rest.indexOf('::'); if(sep<0) return; const id=rest.slice(0,sep); ev=(state.events||[]).find(x=>x.id===id); if(!ev) return; title=rest.slice(sep+2); kind='タスク'; }
+    let title='', kind='', involved=false;
+    if(k.indexOf('ev:')===0){ const id=k.slice(3); const ev=(state.events||[]).find(x=>x.id===id); if(!ev) return; title=String(ev.title||'').split(/\r?\n/)[0]||'(予定)'; kind='予定'; involved=(ev.staff===staff || (ev.participants||[]).includes(staff)); }
+    else if(k.indexOf('tk:')===0){ const rest=k.slice(3); const sep=rest.indexOf('::'); if(sep<0) return; const id=rest.slice(0,sep); const ev=(state.events||[]).find(x=>x.id===id); if(!ev) return; title=rest.slice(sep+2); kind='タスク'; involved=(ev.staff===staff || (ev.participants||[]).includes(staff)); }
+    else if(k.indexOf('rp:')===0){ const id=k.slice(3); const r=(state.repairs||[]).find(x=>x.id===id); if(r){ title=(r.name||'')+(r.room?' '+r.room:''); involved=__hasStaff(r.worker); } else { title=v.title||'修繕'; involved=__hasStaff(v.staff); } kind='修繕'; }
+    else if(k.indexOf('tv:')===0){ title=v.title||'立会'; kind='立会'; involved=__hasStaff(v.staff); }   // 立会は仮想=保存値で判定
     else return;
-    if(!(ev.staff===staff || (ev.participants||[]).includes(staff))) return;
+    if(!involved) return;
     out.push({ rkey:k, title, on:v.on, kind, due: today >= v.on });
   });
   out.sort((a,b)=> (a.due?0:1)-(b.due?0:1) || String(a.on).localeCompare(String(b.on)));   // 期限到来を上・以降は日付順
@@ -14193,6 +14220,16 @@ function showRepairQuickPop(r, anchorEl){
       <button id="qp-dotakyan" style="margin-top:6px;padding:5px 10px;border:1px solid #cbd5e1;background:#f1f5f9;color:#475569;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">🔄 日時変更(この日に変更跡を残す)</button>
     </div>
     <div class="qp-sec">
+      <div class="qp-label">⏰ リマインド <span style="font-weight:400;color:#94a3b8;font-size:10px">(この日から担当の⏰に出す)</span></div>
+      <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
+        <input type="date" id="qp-remind-date" value="${escapeHtml((reminderGet_('rp:'+r.id)||{}).on||'')}" style="flex:1;min-width:0;padding:5px 6px;font-size:12px;border:1px solid var(--border);border-radius:6px">
+        <button class="qp-detail" data-rrb="3" style="padding:5px 8px;font-size:11px;background:#f1f5f9">3日前</button>
+        <button class="qp-detail" data-rrb="1" style="padding:5px 8px;font-size:11px;background:#f1f5f9">前日</button>
+        <button id="qp-remind-set" class="qp-detail" style="padding:5px 10px;font-size:11px;background:#e0e7ff;color:#3730a3">設定</button>
+        ${(reminderGet_('rp:'+r.id))?'<button id="qp-remind-clear" class="qp-detail" style="padding:5px 8px;font-size:11px;background:#fee2e2;color:#dc2626">消す</button>':''}
+      </div>
+    </div>
+    <div class="qp-sec">
       <div class="qp-label">🔨 作業担当者</div>
       <div class="qp-worker-pick">${workerBtns}</div>
     </div>
@@ -14266,6 +14303,15 @@ function showRepairQuickPop(r, anchorEl){
     createDotakyanGhost_(`${r.name}${r.room?" "+r.room:""}`, d, t, reason);
     __dotaBtn.textContent = '✓ 日時変更跡を残しました'; __dotaBtn.disabled = true;
   }; }
+  // ⏰ リマインド(修繕・v1.30.377)。3日前/前日はアポ日基準。担当=r.worker。
+  {
+    const __rd=pop.querySelector('#qp-remind-date');
+    const __rkey='rp:'+r.id;
+    const __save=(on)=>{ if(typeof setReminderShared_==='function') setReminderShared_(__rkey, on?{on,by:(typeof getMyself==='function'?getMyself():''),title:(r.name||'')+(r.room?' '+r.room:''),staff:(r.worker||''),kind:'修繕'}:null).catch(()=>{}); if(typeof showAutoSyncToast==='function') showAutoSyncToast(on?`⏰ ${on} からリマインド`:'⏰ リマインドを消しました'); };
+    pop.querySelectorAll('[data-rrb]').forEach(b=>{ b.onclick=()=>{ const n=parseInt(b.dataset.rrb,10)||0; const base=parseDate(pop.querySelector('#qp-resp-date').value||r.responseDate); if(!base||isNaN(base)){ alert('アポ日を先に入れてください'); return; } const d=new Date(base); d.setDate(d.getDate()-n); if(__rd) __rd.value=fmtDate(d); }; });
+    const __rs=pop.querySelector('#qp-remind-set'); if(__rs) __rs.onclick=()=>{ const v=__rd?__rd.value:''; if(!v){ alert('日付を選ぶか3日前/前日を押してください'); return; } __save(v); pop.remove(); };
+    const __rc=pop.querySelector('#qp-remind-clear'); if(__rc) __rc.onclick=()=>{ __save(''); pop.remove(); };
+  }
   pop.querySelector('#qp-resp-apply').onclick = async ()=>{
     const btn = pop.querySelector('#qp-resp-apply');
     const nd = pop.querySelector('#qp-resp-date').value;
