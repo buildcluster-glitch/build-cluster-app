@@ -976,6 +976,8 @@
   .al-item .al-room{color:#475569;font-weight:600;font-size:12px}
   .al-item .al-wf{color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;flex-shrink:0;white-space:nowrap}
   .al-item .al-cont{font-size:10px;color:#64748b;flex-shrink:0}
+  /* 📞 アポ者(連絡者・自社) v1.30.355 */
+  .al-item .al-apo{font-size:10px;font-weight:700;padding:1px 7px;border-radius:9px;flex-shrink:0;white-space:nowrap;background:#e2e8f0;color:#475569}
   .al-item .al-desc{flex-basis:100%;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .al-empty{text-align:center;padding:44px 20px;color:var(--muted);font-size:14px}
   .al-group-head{font-size:11px;font-weight:700;color:#64748b;margin:6px 2px 0}
@@ -2573,7 +2575,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.354</span></div>
+  <div class="app-title">📅 スケジュール <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.355</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -18314,11 +18316,21 @@ function openActionList(){
       const wfBar = (window.wfBgMap && window.wfBgMap[r.workflowStatus||"アポ・手配 未"]) || "#ec4899";
       const desc = (r.requestDesc || r.requestDescFull || "").trim();
       const descShort = desc ? (desc.length>46 ? desc.slice(0,46)+"…" : desc) : "";
+      // 📞 アポ者(連絡者・自社)。スタッフ名ならスタッフ色で色分け(v1.30.355・山田)
+      const apo = (r.contactPerson||'').trim();
+      let apoHtml = '';
+      if(apo){
+        const sc = (typeof staffColor_==='function') ? staffColor_(apo) : '';
+        const isStaff = (typeof isRealStaffName_==='function') ? isRealStaffName_(apo) : false;
+        const styleAttr = (isStaff && sc) ? ` style="background:${sc};color:${textColorFor(sc)}"` : '';
+        apoHtml = `<span class="al-apo"${styleAttr} title="アポ者(連絡者・自社)">📞${escapeHtml(apo)}</span>`;
+      }
       return `<div class="al-item" data-repair-id="${escapeHtml(r.id)}">`
         + `<span class="al-tag" style="background:${tagBg};color:${textColorFor(tagBg)}" title="${escapeHtml(r.contractor||'')}">修繕</span>`
         + `<span class="al-name">${escapeHtml(r.name||'(物件名なし)')}${r.room?` <span class="al-room">${escapeHtml(r.room)}</span>`:''}</span>`
         + `<span class="al-wf" style="background:${wfBar}">📞要日程</span>`
         + (r.contractor?`<span class="al-cont">${escapeHtml(shortenCompany(r.contractor))}</span>`:'')
+        + apoHtml
         + (descShort?`<span class="al-desc">${escapeHtml(descShort)}</span>`:'')
         + `</div>`;
     }).join("");
