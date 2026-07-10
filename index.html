@@ -2583,7 +2583,7 @@
 <body>
 
 <header class="app-header">
-  <div class="app-title">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.362</span></div>
+  <div class="app-title">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.363</span></div>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -21493,8 +21493,12 @@ function renderDetail(){
   const __oaEl = $('#inv-d-orderalert');
   if(__oaEl){
     if(i.minStock>0 && shortage>=1){
+      // 🧑 発注担当=この品目を最後に消費した人(減らした人が注文するルール・木村)。ログのmemberから導出(同期済)v1.30.363
+      const __lastOut = (state.logs||[]).filter(l=>l.itemId===i.id && l.type==='out' && l.member)
+        .sort((a,b)=>String(b.datetime||'').localeCompare(String(a.datetime||'')))[0];
+      const __byWho = __lastOut ? __lastOut.member : '';
       __oaEl.innerHTML = `<div class="inv-order-alert">
-        <div class="oa-msg">⚠ 注文が必要です<small>不足 ${shortage}個（現在庫 ${i.stock}／最低 ${i.minStock}${onOrd?`／発注中 ${onOrd}`:''}）</small></div>
+        <div class="oa-msg">⚠ 注文が必要です<small>不足 ${shortage}個（現在庫 ${i.stock}／最低 ${i.minStock}${onOrd?`／発注中 ${onOrd}`:''}）${__byWho?`<br>🧑 発注担当: <b>${esc(__byWho)}</b>（最後に消費した人）`:''}</small></div>
         <button class="oa-btn" data-act="order">📦 発注する</button>
       </div>`;
       const __oaBtn = __oaEl.querySelector('.oa-btn');   // バナーは.inv-detail-actions外＝委譲対象外なので直接配線
@@ -21751,8 +21755,8 @@ function submitRecord(){
     const shortage = Math.max(0, item.minStock - effectiveStock(item));
     if(shortage >= 1){
       setTimeout(()=>{
-        // 知らせるだけ(発注はバナーの📦発注するから)。「今すぐ発注しますか？」の問いかけは不要(山田 v1.30.362)
-        alert(`⚠ 「${item.name}」の不足数が ${shortage}個 になりました。注文が必要です。`);
+        // 知らせるだけ(発注はバナーの📦発注するから)。減らした人=発注担当を明記(山田 v1.30.363)
+        alert(`⚠ 「${item.name}」の不足数が ${shortage}個 になりました。注文が必要です。\n発注担当: ${member}（減らした人）`);
       }, 80);   // renderAllの描画を先に反映させてから通知を出す
     }
   }
