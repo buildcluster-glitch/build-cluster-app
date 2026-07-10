@@ -2614,7 +2614,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.381</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.382</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -9420,9 +9420,9 @@ function showTaskChecklistPopup(el, ev){
     const head = ti.headerText ? escapeHtml(ti.headerText)+" " : "";
     const pct = ti.total ? Math.round(ti.done/ti.total*100) : 0;
     const allDone = ti.total>0 && ti.done>=ti.total;
-    // 未完了は優先度順(高🔴→中🟡→無→低🔵)、同位は元順
+    // 未完了は【進行中を上にまとめる】→その中で優先度順(高🔴→中🟡→無→低🔵)、同位は元順(v1.30.382)
     const pending = ti.tasks.filter(t=>!t.done).slice()
-      .sort((a,b)=> ((TASK_PRIO_RANK[a.prio]??2)-(TASK_PRIO_RANK[b.prio]??2)) || a.index-b.index);
+      .sort((a,b)=> ((b.inProgress?1:0)-(a.inProgress?1:0)) || ((TASK_PRIO_RANK[a.prio]??2)-(TASK_PRIO_RANK[b.prio]??2)) || a.index-b.index);
     const doneTasks = ti.tasks.filter(t=>t.done);
     const trash = ti.trash || [];
     const __fmtCmtT_ = (at)=>{ if(!at) return ''; const d=new Date(at); if(isNaN(d)) return ''; const p=n=>String(n).padStart(2,'0'); const td=new Date(); td.setHours(0,0,0,0); return d>=td?`${p(d.getHours())}:${p(d.getMinutes())}`:`${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`; };
@@ -9456,11 +9456,13 @@ function showTaskChecklistPopup(el, ev){
       </div>${__cmtBlock}`;
     };
     // 未完了を優先度グループごとに区切り線で分割
-    let __prevRank = null;
+    let __prevRank = null, __prevIP = null;
     const pendingHtml = pending.map(t=>{
       const rank = (TASK_PRIO_RANK[t.prio] ?? 1);
-      const sep = (__prevRank!==null && rank!==__prevRank) ? '<div class="tp-sep"></div>' : '';
-      __prevRank = rank;
+      const ip = !!t.inProgress;
+      // 進行中→未着手の境目、または優先度グループの変わり目で区切り線
+      const sep = (__prevIP!==null && (ip!==__prevIP || rank!==__prevRank)) ? '<div class="tp-sep"></div>' : '';
+      __prevRank = rank; __prevIP = ip;
       return sep + rowHtml(t);
     }).join("");
     const archive = ti.archive || [];
@@ -9489,7 +9491,7 @@ function showTaskChecklistPopup(el, ev){
     }).join('') : '<div style="font-size:11px;color:#94a3b8;text-align:center;padding:3px">まだ業務連絡はありません</div>';
     const msgSectionHtml = (cur.category==='事務') ? `<div class="tp-msg" style="border-top:1px solid #eef2f7;margin-top:8px;padding-top:8px"><div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:5px">💬 業務連絡 <span style="font-weight:400;color:#94a3b8;font-size:10px">(${escapeHtml(cur.staff||'')}さんへ・出社時に確認)</span></div><div class="tp-msg-list" style="max-height:170px;overflow:auto;display:flex;flex-direction:column;gap:4px">${msgsHtml}</div><div style="display:flex;gap:4px;margin-top:6px"><textarea class="tp-msg-input" rows="1" placeholder="業務連絡を書く (Enter送信 / Shift+Enter改行)" style="flex:1;font-size:12px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;resize:vertical;min-height:30px"></textarea><button class="tp-msg-send btn primary" style="font-size:12px;padding:5px 12px">送信</button></div></div>` : '';
     pop.innerHTML = `
-      <div class="qp-title">📋 ${head}タスク <span class="tp-count ${allDone?'done':''}">${allDone?'✓ ':''}${ti.done}/${ti.total}</span>${pending.length>=2?`<button class="tp-complete-all" title="未完了${pending.length}件をまとめて完了にする">✅ 全部完了</button>`:''}</div>
+      <div class="qp-title">📋 ${head}タスク <span class="tp-count ${allDone?'done':''}">${allDone?'✓ ':''}${ti.done}/${ti.total}</span></div>
       <div class="tp-bar"><i style="width:${pct}%;background:${allDone?'#16a34a':'#3b82f6'}"></i></div>
       <div class="tp-list">
         ${pendingHtml || (
@@ -9564,20 +9566,7 @@ function showTaskChecklistPopup(el, ev){
         setTimeout(()=>{ const oc=(e2)=>{ if(!rp.contains(e2.target)&&e2.target!==b){ close(); document.removeEventListener('pointerdown',oc,true); } }; document.addEventListener('pointerdown',oc,true); },60);
       };
     });
-    // ✅ 全項目まとめて完了(ぽちぽち回避・南部要望 v1.30.346)。未完了(進行中含む)を一括で完了に
-    const __caBtn = pop.querySelector('.tp-complete-all');
-    if(__caBtn){
-      __caBtn.onclick = ()=>{
-        const n = pending.length;
-        if(!confirm(`未完了 ${n}件をすべて完了にしますか？`)) return;
-        const who = (typeof getMyself==='function'?getMyself():"");
-        mutate(t=>{
-          parseTasks_(t).filter(x=>x.isTask && !x.done).forEach(x=>{ t = setTaskStatus_(t, x.index, '完了', who); });
-          return t;
-        });
-        if(typeof showAutoSyncToast==='function') showAutoSyncToast('✅ 全項目を完了にしました');
-      };
-    }
+    // (✅全部完了ボタンは撤去 v1.30.382・山田「ぜんぶ完了ボタンいらない」。1件ずつの✓/ステータスで完了する)
     pop.querySelectorAll('.tp-comment-btn').forEach(b=>{   // 💬 タスク個別コメント
       b.onclick = (e)=>{
         e.stopPropagation();
