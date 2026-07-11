@@ -2614,7 +2614,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.385</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.386</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -13282,16 +13282,26 @@ function renderCalendar(){
       });
     }
   });
-  // 🔧 事前帯: 1セル最大3件まで表示、残りはセル内スクロール(v1.30.135)
+  // 🔧 事前帯: 既定は全件表示で伸ばす。多い日(>6件)だけ上限高さ+スクロールにし、隠れ件数を「+N ▾」で明示。
+  //   旧: 3件超で即スクロール→4件目以降が小さい枠に隠れて「消えた」と誤解された(最上報告 v1.30.386)
   if(jizenBand){
+    const JIZEN_MAX = 6;
     jizenBand.querySelectorAll(".jizen-cell").forEach(cell=>{
-      const kids = cell.children;
-      if(kids.length > 3){
-        // 先頭3件の下端までを最大高さに(可変高さチップでも常に3件ぶん見える)
-        const h = kids[2].offsetTop + kids[2].offsetHeight - kids[0].offsetTop;
+      const kids = [...cell.children].filter(k=>!k.classList.contains('jizen-more'));
+      if(kids.length > JIZEN_MAX){
+        // 先頭JIZEN_MAX件の下端までを最大高さに(可変高さチップでも常にその件数ぶん見える)
+        const h = kids[JIZEN_MAX-1].offsetTop + kids[JIZEN_MAX-1].offsetHeight - kids[0].offsetTop;
         cell.style.maxHeight = (h + 6) + "px";   // 下paddingぶん少し余裕
         cell.style.overflowY = "auto";
         cell.classList.add("jizen-cell-scroll");
+        // 🔻 隠れ件数バッジ(スクロールで全部見える・クリックで最下部へ)=silentに消えない
+        const more = document.createElement('div');
+        more.className = 'jizen-more';
+        more.textContent = `+${kids.length-JIZEN_MAX}件 ▾`;
+        more.title = 'この日はまだ事前予定があります。スクロール（クリックで最下部へ）';
+        more.style.cssText = 'position:sticky;bottom:0;align-self:center;font-size:9px;font-weight:700;color:#6b21a8;background:#ede9fe;border-radius:8px;padding:1px 7px;margin-top:1px;cursor:pointer;flex:0 0 auto';
+        more.onclick = ()=>{ cell.scrollTop = cell.scrollHeight; };
+        cell.appendChild(more);
       }
     });
   }
@@ -17874,6 +17884,7 @@ function openBugReportModal_(){
     }
   }).catch(()=>{});
 }
+let __brEditId = null;   // 編集中のバグ報告id(v1.30.386)
 function renderBugReportModal_(){
   const list = document.getElementById("br-list"); if(!list) return;
   const items = Object.values(loadCalReports_()).filter(r=>r && !r.deleted)
@@ -17909,13 +17920,16 @@ function renderBugReportModal_(){
         ${typeBadge}
         <span style="font-size:10px;color:var(--muted);margin-left:auto">${escapeHtml(r.by||"?")} ・ ${dStr}${r.appVer?` ・ ${escapeHtml(r.appVer)}`:""}</span>
       </div>
-      <div style="font-size:13px;margin-top:5px;white-space:pre-wrap;word-break:break-word">${escapeHtml(r.text||"")}</div>
+      ${(r.id===__brEditId)
+        ? `<div style="margin-top:5px"><textarea class="br-edit-in" data-eid="${r.id}" rows="3" style="width:100%;box-sizing:border-box;font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;resize:vertical;min-height:60px;line-height:1.4">${escapeHtml(r.text||"")}</textarea><div style="display:flex;gap:6px;margin-top:4px"><button data-br-esave="${r.id}" class="btn primary" style="font-size:11px;padding:3px 12px">保存</button><button data-br-ecancel="${r.id}" class="btn" style="font-size:11px;padding:3px 12px">取消</button></div><div style="font-size:9px;color:var(--muted);margin-top:2px">Ctrl+Enterで保存 / Escで取消</div></div>`
+        : `<div style="font-size:13px;margin-top:5px;white-space:pre-wrap;word-break:break-word">${escapeHtml(r.text||"")}${r.editedAt?` <span style="font-size:9px;color:var(--muted)">(編集済)</span>`:""}</div>`}
       ${(r.photo && /^data:image\//.test(r.photo))
         ? `<img data-br-zoom="${r.id}" src="${r.photo}" style="margin-top:5px;max-height:130px;max-width:100%;border-radius:6px;border:1px solid var(--border);cursor:zoom-in" title="クリックで拡大">`
         : (r.hadPhoto ? `<div style="margin-top:5px;font-size:10px;color:var(--muted)">📷 画像あり（サイズ上限のため投稿した端末でのみ表示）</div>` : "")}
       ${cmts}
       <div style="display:flex;gap:6px;margin-top:5px">
         <button data-br-cmt="${r.id}" class="btn" style="font-size:10px;padding:2px 8px">💬 コメント${(r.comments||[]).length?` (${(r.comments||[]).length})`:""}</button>
+        ${(r.by===me||!r.by) && r.id!==__brEditId ? `<button data-br-edit="${r.id}" class="btn" style="font-size:10px;padding:2px 8px">✏️ 編集</button>` : ""}
         ${(r.by===me||!r.by) ? `<button data-br-del="${r.id}" class="btn" style="font-size:10px;padding:2px 8px;color:#dc2626">🗑 削除</button>` : ""}
       </div>
     </div>`;
@@ -17945,6 +17959,22 @@ function renderBugReportModal_(){
       mutateCalReport_(b.dataset.brDel, { deleted:true });
     };
   });
+  // ✏️ 報告本文の編集(投稿者本人のみ・全端末共有)v1.30.386
+  list.querySelectorAll("[data-br-edit]").forEach(b=>{
+    b.onclick = ()=>{ __brEditId = b.dataset.brEdit; renderBugReportModal_(); const ta=list.querySelector('.br-edit-in'); if(ta){ ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } };
+  });
+  list.querySelectorAll("[data-br-ecancel]").forEach(b=>{ b.onclick = ()=>{ __brEditId=null; renderBugReportModal_(); }; });
+  list.querySelectorAll("[data-br-esave]").forEach(b=>{
+    b.onclick = ()=>{
+      const id=b.dataset.brEsave;
+      const ta=list.querySelector(`.br-edit-in[data-eid="${id}"]`)||list.querySelector('.br-edit-in');
+      const v=ta?ta.value.trim():"";
+      if(!v){ alert('本文が空です'); return; }
+      __brEditId=null;
+      mutateCalReport_(id, { text:v, editedAt:new Date().toISOString() });
+    };
+  });
+  list.querySelectorAll(".br-edit-in").forEach(ta=>{ ta.onkeydown=e=>{ if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)&&!e.isComposing&&e.keyCode!==229){ e.preventDefault(); const sv=list.querySelector(`[data-br-esave="${ta.dataset.eid}"]`); if(sv) sv.click(); } else if(e.key==='Escape'){ e.preventDefault(); __brEditId=null; renderBugReportModal_(); } }; });
 }
 document.getElementById("bugReportBtn").onclick = openBugReportModal_;
 { const __clb=document.getElementById("changelogBtn"); if(__clb) __clb.onclick = ()=>{ try{ openChangelog_(); }catch(_){} }; }   // 📜変更の記録(v1.30.337)
