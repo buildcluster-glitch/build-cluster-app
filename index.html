@@ -2614,7 +2614,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.386</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.387</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -5801,6 +5801,14 @@ function renderCheckCard(ck, today){
     (ck.extEstimateId  && r.extEstimateId  === ck.extEstimateId)
   );
   if(linkedResto){
+    // 🛠 自社工事進捗 自社N/M(％) — 事前チップと同じバッジを最終確認カードにも(山田要望 v1.30.387)。諸経費系は除外
+    const __inhouse = (linkedResto.tasks||[]).filter(t2=>(typeof restoEffCategory==="function"?restoEffCategory(t2):t2.category)==="inhouse" && !(typeof isExcludedRestoTask==="function" && isExcludedRestoTask(t2)));
+    if(__inhouse.length){
+      const __doneN = __inhouse.filter(t2=>t2.status==="done").length;
+      const __pct = Math.round(__doneN/__inhouse.length*100);
+      const __pctBg = __pct===100 ? "#16a34a" : __pct>=50 ? "#3b82f6" : "#94a3b8";
+      extrasHtml += `<span class="badge-sm" title="自社工事の進捗(完了 ${__doneN}/${__inhouse.length})" style="background:${__pctBg};color:#fff;font-weight:700">自社${__doneN}/${__inhouse.length}(${__pct}%)</span>`;
+    }
     // 🔑 鍵交換日 (業者名は出さず日付のみ)
     if(linkedResto.keyChangeDate){
       const d = parseDate(linkedResto.keyChangeDate);
