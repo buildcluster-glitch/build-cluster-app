@@ -2614,7 +2614,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.384</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.385</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -4215,10 +4215,20 @@ function leaveTypeLabel_(t){
   if(t==="所定(PM)") return "午後休(所定)";
   return (t||"");
 }
+// 日祝(日曜/祝日)判定(日付文字列)v1.30.385
+function isNichiShukuDate_(ds){ const dt=(typeof parseDate==='function')?parseDate(ds):new Date(ds); return !!(dt && !isNaN(dt) && (dt.getDay()===0 || (typeof isHoliday==='function' && isHoliday(dt)))); }
+const HALF_AM_TYPES_ = new Set(["所定(AM)","有給(AM)"]);   // 午前休
+const HALF_PM_TYPES_ = new Set(["所定(PM)","有給(PM)"]);   // 午後休
 // 振休はメモ(振休元の日付)をインライン表示「振休(6/28)」。年休は「年休 N/5」(その年の累積/義務5日)。それ以外は通常ラベル。v1.30.189/191
 function leaveDispLabel_(l){
   if(l && l.type==="振休"){ const ref=(l.memo||"").trim(); return ref ? `振休(${ref})` : "振休"; }
   if(l && l.type==="年休"){ const seq=nenkyuSeq_(l); return (seq!=null) ? `年休 ${seq}/5` : "年休"; }
+  // 🗓 日祝に半休=もう一方の半日は出社した扱い→「出社 午前休/午後休」で出社と統一(鈴木提案 v1.30.385)。平日の半休は従来ラベルのまま
+  if(l && isNichiShukuDate_(l.start)){
+    if(HALF_AM_TYPES_.has(l.type)) return "出社 午前休";
+    if(HALF_PM_TYPES_.has(l.type)) return "出社 午後休";
+    if(l.type==="半休") return "出社 半休";
+  }
   return leaveTypeLabel_(l && l.type);
 }
 // 年休: その年(l.start基準)に取得した年休が「何日目か(このlを含む累積日数)」。義務5日の進捗表示用。v1.30.191
