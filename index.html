@@ -2614,7 +2614,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.399</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.400</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -4445,6 +4445,9 @@ try{ bootstrapIdb_(); }catch(_){ __idbReady=true; if(__idbReadyResolve) __idbRea
 //   8px以上動いたら(ドラッグ/スクロール)キャンセル。発火後800msはclickを抑止(ピッカーの上に
 //   シングルクリック由来のダイアログが被ったり、指離しでピッカーのボタンを誤タップするのを防ぐ)
 let __lpSuppressUntil = 0;
+// 📱 直近の入力がタッチか(スマホ判定)。タッチ時はチップのホバー吹き出しを出さない=出っぱなし/消えない対策(山田報告 v1.30.400)
+let __lastInputWasTouch = false;
+document.addEventListener('pointerdown', e=>{ __lastInputWasTouch = (e.pointerType==='touch'); }, true);
 (function setupLongPressAsDblclick_(){
   let timer = null, sx = 0, sy = 0, tgt = null;
   const cancel = ()=>{ if(timer){ clearTimeout(timer); timer = null; } tgt = null; };
@@ -13894,9 +13897,10 @@ function ensureChipTip(){
 }
 function cancelHideChipTip(){ if(__chipTipHideTimer){ clearTimeout(__chipTipHideTimer); __chipTipHideTimer=null; } }
 function scheduleHideChipTip(){ cancelHideChipTip(); __chipTipHideTimer = setTimeout(()=>hideChipTip(), 300); }
-function hideChipTip(){
-  // ✍️ 吹き出し内の入力欄で入力中(フォーカスあり)は消さない=打ってる途中で消える対策(まどか報告 v1.30.389)
-  if(__chipTipEl && __chipTipEl.contains(document.activeElement)){ return; }
+function hideChipTip(force){
+  // ✍️ 吹き出し内の入力欄で入力中(フォーカスあり)は自動では消さない=打ってる途中で消える対策(まどか報告 v1.30.389)。
+  //   ただし force=true(タップ/ドラッグ等の明示操作)は必ず閉じる=スマホで消えない対策(山田報告 v1.30.400)
+  if(!force && __chipTipEl && __chipTipEl.contains(document.activeElement)){ return; }
   if(__chipTipTimer){ clearTimeout(__chipTipTimer); __chipTipTimer = null; }
   cancelHideChipTip();
   __tipReactIdx = -1;
@@ -14719,10 +14723,10 @@ function attachRepairChipHover(el, r){
   el.removeAttribute("title");
   el.querySelectorAll(".chip-title").forEach(c=>c.removeAttribute("title"));
   let lastX=0, lastY=0;
-  el.addEventListener("mouseenter",(e)=>{ lastX=e.clientX; lastY=e.clientY; cancelHideChipTip(); if(__chipTipTimer) clearTimeout(__chipTipTimer); __chipTipTimer=setTimeout(()=>{ showRepairTip(r, lastX, lastY); }, 350); });
+  el.addEventListener("mouseenter",(e)=>{ if(__lastInputWasTouch) return; lastX=e.clientX; lastY=e.clientY; cancelHideChipTip(); if(__chipTipTimer) clearTimeout(__chipTipTimer); __chipTipTimer=setTimeout(()=>{ showRepairTip(r, lastX, lastY); }, 350); });   // 📱タッチ時はホバー吹き出しを出さない v1.30.400
   el.addEventListener("mousemove",(e)=>{ lastX=e.clientX; lastY=e.clientY; });
   el.addEventListener("mouseleave",()=>{ scheduleHideChipTip(); });
-  el.addEventListener("pointerdown",()=>{ hideChipTip(); });
+  el.addEventListener("pointerdown",()=>{ hideChipTip(true); });
 }
 
 function attachChipHover(el, ev){
@@ -14731,6 +14735,7 @@ function attachChipHover(el, ev){
   el.querySelectorAll(".chip-title").forEach(c=>c.removeAttribute("title"));
   let lastX = 0, lastY = 0;
   el.addEventListener("mouseenter", (e)=>{
+    if(__lastInputWasTouch) return;   // 📱 タッチ時はホバー吹き出しを出さない(スマホはタップでダイアログが開く)v1.30.400
     lastX = e.clientX; lastY = e.clientY;
     cancelHideChipTip();   // 別チップへ移動時の遅延hideを取消
     if(__chipTipTimer) clearTimeout(__chipTipTimer);
@@ -14740,8 +14745,8 @@ function attachChipHover(el, ev){
     lastX = e.clientX; lastY = e.clientY;
   });
   el.addEventListener("mouseleave", ()=>{ scheduleHideChipTip(); });   // 遅延hide=ツールチップへ移動できる(v1.30.74)
-  // ドラッグ開始時は隠す
-  el.addEventListener("pointerdown", ()=>{ hideChipTip(); });
+  // ドラッグ開始時は隠す(明示操作=強制で閉じる)
+  el.addEventListener("pointerdown", ()=>{ hideChipTip(true); });
 }
 
 // 🔒 ドラッグで動かせないチップ(立会/修繕アポ)用の案内トースト
