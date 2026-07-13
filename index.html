@@ -2614,7 +2614,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.396</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.397</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -4352,6 +4352,13 @@ function idbOpen_(){
 }
 function idbGet_(key){ return idbOpen_().then(db=>new Promise((res,rej)=>{ const tx=db.transaction(IDB_STORE,'readonly'); const r=tx.objectStore(IDB_STORE).get(key); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); })); }
 function idbSet_(key,val){ return idbOpen_().then(db=>new Promise((res,rej)=>{ const tx=db.transaction(IDB_STORE,'readwrite'); tx.objectStore(IDB_STORE).put(val,key); tx.oncomplete=()=>res(true); tx.onerror=()=>rej(tx.error); })); }
+// 🖼 初回描画を1回だけ(2度描き/チラつき防止 v1.30.397): IDBロード後(通常~15ms)にここが呼ばれる。IDBが遅い/失敗時は起動側の150ms保険で先に描く。
+let __bootRendered=false;
+function bootRenderOnce_(){
+  if(__bootRendered) return; __bootRendered=true;
+  try{ if(typeof render==='function') render(); }catch(_){}
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{ try{ if(typeof scrollToTodayRobust==='function') scrollToTodayRobust(); }catch(_){} }));
+}
 async function bootstrapIdb_(){
   try{
     await idbOpen_(); __idbActive=true;
@@ -4367,13 +4374,13 @@ async function bootstrapIdb_(){
     }
     __idbReady=true;
     try{ saveState(); }catch(_){}   // localStorageを軽量化(IDB管理分を除去して保存)
-    if(typeof render==='function') render();
-    if(typeof restoDetailId!=='undefined' && restoDetailId && typeof renderRestoDetail==='function'){ try{ renderRestoDetail(); }catch(_){} }
     console.log('[idb] '+IDB_KEYS.join('/')+' をIndexedDBで管理(localStorage軽量化済)');
   }catch(e){
     console.warn('[idb] 使用不可→従来のlocalStorage運用を継続:', e && e.message);
     __idbActive=false; __idbReady=true;   // フォールバック
   }
+  if(typeof bootRenderOnce_==='function') bootRenderOnce_();   // 🖼 IDBロード後に初回描画を1回だけ
+  if(typeof restoDetailId!=='undefined' && restoDetailId && typeof renderRestoDetail==='function'){ try{ renderRestoDetail(); }catch(_){} }
   if(__idbReadyResolve) __idbReadyResolve();
 }
 // 🩹 v1.11.1 migration: 過去 PULL で混入した "1899-12-30T10:00" 等の汚染時刻を一掃
@@ -21143,16 +21150,9 @@ if(_shouldAutoSeed && state.events.length===0 && state.leaves.length===0){
   saveState();
 }
 
-render();
-console.log("[init] after render, scheduling scrollToTodayRobust");
-// 初回表示時は今日の位置に自動スクロール (render後のレイアウトが安定するまで複数回試行)
-requestAnimationFrame(()=>{
-  console.log("[init] rAF1 fired");
-  requestAnimationFrame(()=>{
-    console.log("[init] rAF2 fired, calling scrollToTodayRobust");
-    scrollToTodayRobust();
-  });
-});
+// 🖼 初回描画は IDB(重いデータ)ロード後に1回だけ(2度描き/チラつき防止 v1.30.397)。
+//   通常は bootstrapIdb_ が~15msで bootRenderOnce_ を呼ぶ。IDBが遅い/失敗しても150msの保険でここが先に描く。
+setTimeout(()=>{ if(typeof bootRenderOnce_==='function') bootRenderOnce_(); }, 150);
 // 自動同期セットアップ（focus / visibility / 5分ポーリング）
 setupAutoSync();
 // 起動時に1回サイレント同期(設定済みなら)
