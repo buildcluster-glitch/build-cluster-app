@@ -2614,7 +2614,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.397</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.398</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -17983,8 +17983,8 @@ function ensureBugReportModal_(){
     if(!f || !/^image\//.test(f.type||"")) return false;
     __brNote.textContent = "圧縮中…";
     try{
-      // 🐞バグ報告の画像は共有セル(≈45KB予算)に載せるため小さめに圧縮(幅1100px/目標≈24KB)=全端末に画像が届く(v1.30.358)
-      const dataUrl = await restoCompressImage(f, 18000, 1100);
+      // 🐞バグ報告の画像は送信時にDriveへアップ→URL共有(v1.30.398)。読める画質に(幅1280/目標≈60KB)。Drive不可時のみデータURI保持
+      const dataUrl = await restoCompressImage(f, 60000, 1280);
       __brPrev.src = dataUrl; __brPrev.style.display = ""; __brPrev.dataset.photo = dataUrl;
       __brNote.textContent = "添付済(画像クリックで取消)";
       return true;
@@ -18015,11 +18015,21 @@ function ensureBugReportModal_(){
   });
   const __brClearPhoto = ()=>{ __brPrev.style.display = "none"; __brPrev.removeAttribute("src"); delete __brPrev.dataset.photo; __brNote.textContent = ""; };
   __brPrev.onclick = __brClearPhoto;
-  ov.querySelector("#br-post").onclick = ()=>{
+  ov.querySelector("#br-post").onclick = async ()=>{
     const text = ov.querySelector("#br-text").value.trim();
-    const photo = __brPrev.dataset.photo || null;
+    let photo = __brPrev.dataset.photo || null;
     if(!text && !photo){ alert("内容を入力してください"); return; }
     const ver = (document.querySelector(".app-title span")||{}).textContent || "";
+    const __post = ov.querySelector("#br-post");
+    // 📷 画像はDriveへアップ→URLで共有(全端末に届く)。Drive未設定/失敗時のみデータURIのまま(投稿端末のみ表示)v1.30.398
+    if(photo && photo.indexOf('data:image/')===0 && typeof restoUploadToDrive==='function'){
+      const s = (typeof loadGasSettings==='function')?loadGasSettings():{};
+      if(s.url){
+        const __o=__post.textContent; __post.disabled=true; __post.textContent='送信中…';
+        try{ const r=await restoUploadToDrive(photo, 'バグ報告', ver); if(r&&r.ok&&r.url) photo=r.url; }catch(_){}
+        __post.textContent=__o; __post.disabled=false;
+      }
+    }
     mutateCalReport_(uid(), { type: ov.querySelector("#br-type").value, text, status:"open",
       by: getMyself()||"", at: new Date().toISOString(), appVer: ver, comments: [], photo });
     ov.querySelector("#br-text").value = "";
@@ -18080,8 +18090,8 @@ function renderBugReportModal_(){
       ${(r.id===__brEditId)
         ? `<div style="margin-top:5px"><textarea class="br-edit-in" data-eid="${r.id}" rows="3" style="width:100%;box-sizing:border-box;font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;resize:vertical;min-height:60px;line-height:1.4">${escapeHtml(r.text||"")}</textarea><div style="display:flex;gap:6px;margin-top:4px"><button data-br-esave="${r.id}" class="btn primary" style="font-size:11px;padding:3px 12px">保存</button><button data-br-ecancel="${r.id}" class="btn" style="font-size:11px;padding:3px 12px">取消</button></div><div style="font-size:9px;color:var(--muted);margin-top:2px">Ctrl+Enterで保存 / Escで取消</div></div>`
         : `<div style="font-size:13px;margin-top:5px;white-space:pre-wrap;word-break:break-word">${escapeHtml(r.text||"")}${r.editedAt?` <span style="font-size:9px;color:var(--muted)">(編集済)</span>`:""}</div>`}
-      ${(r.photo && /^data:image\//.test(r.photo))
-        ? `<img data-br-zoom="${r.id}" src="${r.photo}" style="margin-top:5px;max-height:130px;max-width:100%;border-radius:6px;border:1px solid var(--border);cursor:zoom-in" title="クリックで拡大">`
+      ${(r.photo && /^(data:image\/|https?:\/\/)/.test(r.photo))
+        ? `<img data-br-zoom="${r.id}" src="${escapeHtml(r.photo)}" style="margin-top:5px;max-height:130px;max-width:100%;border-radius:6px;border:1px solid var(--border);cursor:zoom-in" title="クリックで拡大">`
         : (r.hadPhoto ? `<div style="margin-top:5px;font-size:10px;color:var(--muted)">📷 画像あり（サイズ上限のため投稿した端末でのみ表示）</div>` : "")}
       ${cmts}
       <div style="display:flex;gap:6px;margin-top:5px">
