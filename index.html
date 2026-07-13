@@ -2614,7 +2614,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.387</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.388</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -19599,13 +19599,22 @@ function renderRestoTrash(p){
   });
 }
 
+let __rdEditCid = null;   // 編集中の原状回復メモid(v1.30.388)
 function renderRestoComments(p){
   const cl = document.getElementById("rdCommentList");
   if(!(p.comments||[]).length){ cl.innerHTML='<div class="resto-empty" style="padding:10px;font-size:12px">メモなし</div>'; return; }
   cl.innerHTML = p.comments.slice().reverse().map(c=>{
     const photoHtml = c.photo ? `<img class="rcomment-img" src="${escapeHtml(c.photo)}" data-role="czoom" alt="添付写真">` : "";
+    if(c.id===__rdEditCid){
+      // ✎ インライン編集: prompt()だと改行が入れられない→textareaで複数行編集(鈴木報告 v1.30.388)
+      return `<div class="rcomment" data-cid="${c.id}">
+        <div class="ch"><b>${escapeHtml(c.author||"—")}</b><span>${escapeHtml(c.date||"")}</span></div>
+        <textarea class="rc-edit-in" rows="3" style="width:100%;box-sizing:border-box;font-size:13px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px;font-family:inherit;resize:vertical;min-height:52px;line-height:1.4">${escapeHtml(c.text||"")}</textarea>
+        <div style="display:flex;gap:6px;margin-top:4px;align-items:center"><button class="nav-btn primary" data-role="csave" style="font-size:12px;padding:4px 12px">保存</button><button class="nav-btn" data-role="ccancel" style="font-size:12px;padding:4px 12px">取消</button><span style="font-size:10px;color:var(--muted)">Enterで改行 / Ctrl+Enterで保存</span></div>
+      </div>`;
+    }
     return `<div class="rcomment" data-cid="${c.id}">
-      <div class="ch"><b>${escapeHtml(c.author||"—")}</b><span>${escapeHtml(c.date||"")}</span>
+      <div class="ch"><b>${escapeHtml(c.author||"—")}</b><span>${escapeHtml(c.date||"")}${c.editedAt?' (編集済)':''}</span>
         <span style="margin-left:auto;display:flex;gap:6px">
           <button class="rm" data-role="cedit" style="color:var(--accent)">✎</button>
           <button class="rm" data-role="cdel" style="color:#dc2626">×</button>
@@ -19615,8 +19624,12 @@ function renderRestoComments(p){
   }).join("");
   cl.querySelectorAll(".rcomment").forEach(el=>{
     const cid = el.dataset.cid;
-    el.querySelector('[data-role="cedit"]').onclick = ()=>restoEditComment(cid);
-    el.querySelector('[data-role="cdel"]').onclick = ()=>restoDeleteComment(cid);
+    const editBtn = el.querySelector('[data-role="cedit"]'); if(editBtn) editBtn.onclick = ()=>restoEditComment(cid);
+    const delBtn  = el.querySelector('[data-role="cdel"]');  if(delBtn)  delBtn.onclick  = ()=>restoDeleteComment(cid);
+    const saveBtn = el.querySelector('[data-role="csave"]'); if(saveBtn) saveBtn.onclick = ()=>restoSaveCommentEdit(cid, el.querySelector('.rc-edit-in'));
+    const cancelBtn = el.querySelector('[data-role="ccancel"]'); if(cancelBtn) cancelBtn.onclick = ()=>{ __rdEditCid=null; renderRestoDetail(); };
+    const ta = el.querySelector('.rc-edit-in');
+    if(ta){ ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); ta.onkeydown = e=>{ if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)&&!e.isComposing&&e.keyCode!==229){ e.preventDefault(); restoSaveCommentEdit(cid, ta); } else if(e.key==='Escape'){ e.preventDefault(); __rdEditCid=null; renderRestoDetail(); } }; }
     const img = el.querySelector('[data-role="czoom"]');
     if(img) img.onclick = ()=>restoShowPhotoZoom(img.src);
   });
@@ -19731,12 +19744,18 @@ function restoDeleteComment(cid){
   restoSave(); renderRestoDetail();
 }
 function restoEditComment(cid){
+  // インライン編集モードに入る(prompt廃止=改行が入れられるように・鈴木報告 v1.30.388)
+  __rdEditCid = cid;
+  renderRestoDetail();
+}
+function restoSaveCommentEdit(cid, ta){
   const p = state.restorations.find(x=>x.id===restoDetailId);
-  const c = (p.comments||[]).find(x=>x.id===cid);
-  if(!c) return;
-  const next = prompt("メモを編集", c.text);
-  if(next===null) return;
-  c.text = next.trim();
+  const c = p && (p.comments||[]).find(x=>x.id===cid);
+  if(!c){ __rdEditCid=null; renderRestoDetail(); return; }
+  const v = ta ? ta.value.trim() : "";
+  if(!v){ if(!confirm("本文が空です。このメモを削除しますか？")) return; p.comments=(p.comments||[]).filter(x=>x.id!==cid); __rdEditCid=null; restoSave(); renderRestoDetail(); return; }
+  c.text = v; c.editedAt = Date.now();
+  __rdEditCid = null;
   restoSave(); renderRestoDetail();
 }
 function restoToggleArchive(){
