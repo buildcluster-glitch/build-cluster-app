@@ -2096,9 +2096,9 @@
     /* iOSは100vhがブラウザUI込みで実際の表示域より大きい → dvh(動的ビューポート)優先 */
     .calendar-wrap{height:calc(100vh - 188px);height:calc(100dvh - 188px)}
     .task-view{height:calc(100vh - 158px);height:calc(100dvh - 158px)}
-    /* 最終確認セクションの末尾に下部ナビ分の余白 → 最後のカードまでスクロールで見える */
-    .checks-section{padding-bottom:calc(70px + env(safe-area-inset-bottom,0))}
-    .repair-view, .resto-view{padding-bottom:70px}
+    /* 最終確認セクションの末尾に下部ナビ分の余白 → 最後のカードまでスクロールで見える(v1.30.401: 70→120px。下部フッター(約62px)に最後のカードが見切れる報告・山田) */
+    .checks-section{padding-bottom:calc(120px + env(safe-area-inset-bottom,0))}
+    .repair-view, .resto-view{padding-bottom:calc(110px + env(safe-area-inset-bottom,0))}
     .repair-list{padding-bottom:140px}
     #inventoryView .inv-app{padding-bottom:140px}
     .inv-fab{bottom:72px}
@@ -2614,7 +2614,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.400</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.401</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
