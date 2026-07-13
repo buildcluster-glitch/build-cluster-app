@@ -2614,7 +2614,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.398</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.399</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -17814,7 +17814,7 @@ function saveCalReports_(m){ try{ localStorage.setItem(CAL_REPORTS_KEY, JSON.str
 // 📷 共有ストアはSheetセル(上限≈50000字)。画像1枚(base64)だけで超過し値全体が壊れる→全端末で空表示になる。
 //   対策: 共有に載せる版は安全予算(SHARE_MAX)内に収め、超える分は古い画像から落とす(=画像はローカル保持・hadPhoto印)。
 //   テキスト/コメント/ステータスは必ず共有される。v1.30.270
-const CAL_REPORTS_SHARE_MAX = 45000;
+const CAL_REPORTS_SHARE_MAX = 200000;   // v1.30.399: 45KB→200KB。共有設定はDrive方式で大容量OK(hatchusho_data 195KB実績)＝画像を剥がさず全端末に届く
 function calReportsForShare_(map){
   const out = {};
   Object.keys(map||{}).forEach(id=>{ if(map[id]) out[id] = Object.assign({}, map[id]); });
@@ -17959,7 +17959,7 @@ function ensureBugReportModal_(){
         <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
           <input type="file" id="br-photo-file" accept="image/*" style="display:none">
           <button class="btn" id="br-photo-btn" style="font-size:11px;padding:4px 10px">📷 画像添付</button>
-          <span style="font-size:10px;color:var(--muted)">スクショは Ctrl+V／ドロップでもOK（大きい画像は投稿端末のみ表示・文面は全員共有）</span>
+          <span style="font-size:10px;color:var(--muted)">スクショは Ctrl+V／ドロップでもOK（画像・文面とも全員に共有されます）</span>
           <img id="br-photo-preview" style="display:none;max-height:56px;max-width:110px;border-radius:6px;border:1px solid var(--border);cursor:pointer" title="クリックで添付取消">
           <span id="br-photo-note" style="font-size:10px;color:#16a34a;font-weight:700"></span>
         </div>
@@ -18015,21 +18015,12 @@ function ensureBugReportModal_(){
   });
   const __brClearPhoto = ()=>{ __brPrev.style.display = "none"; __brPrev.removeAttribute("src"); delete __brPrev.dataset.photo; __brNote.textContent = ""; };
   __brPrev.onclick = __brClearPhoto;
-  ov.querySelector("#br-post").onclick = async ()=>{
+  ov.querySelector("#br-post").onclick = ()=>{
     const text = ov.querySelector("#br-text").value.trim();
-    let photo = __brPrev.dataset.photo || null;
+    const photo = __brPrev.dataset.photo || null;
     if(!text && !photo){ alert("内容を入力してください"); return; }
     const ver = (document.querySelector(".app-title span")||{}).textContent || "";
-    const __post = ov.querySelector("#br-post");
-    // 📷 画像はDriveへアップ→URLで共有(全端末に届く)。Drive未設定/失敗時のみデータURIのまま(投稿端末のみ表示)v1.30.398
-    if(photo && photo.indexOf('data:image/')===0 && typeof restoUploadToDrive==='function'){
-      const s = (typeof loadGasSettings==='function')?loadGasSettings():{};
-      if(s.url){
-        const __o=__post.textContent; __post.disabled=true; __post.textContent='送信中…';
-        try{ const r=await restoUploadToDrive(photo, 'バグ報告', ver); if(r&&r.ok&&r.url) photo=r.url; }catch(_){}
-        __post.textContent=__o; __post.disabled=false;
-      }
-    }
+    // 📷 画像は共有設定(calendar_reports)に直接載せて全端末へ(v1.30.399・上限200KBに拡大したので剥がれない)。Drive依存の30秒待ちは廃止。
     mutateCalReport_(uid(), { type: ov.querySelector("#br-type").value, text, status:"open",
       by: getMyself()||"", at: new Date().toISOString(), appVer: ver, comments: [], photo });
     ov.querySelector("#br-text").value = "";
