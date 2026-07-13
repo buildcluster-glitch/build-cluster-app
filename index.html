@@ -2614,7 +2614,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.388</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.389</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -13822,12 +13822,17 @@ function ensureChipTip(){
     // ツールチップに入ったら消さない / 出たら遅延hide(チャット操作のため)
     __chipTipEl.addEventListener("mouseenter", cancelHideChipTip);
     __chipTipEl.addEventListener("mouseleave", scheduleHideChipTip);
+    // ✍️ コメント入力/編集中(吹き出し内にフォーカス)は消さない。フォーカスが外へ出た時だけ遅延hide(まどか報告 v1.30.389)
+    __chipTipEl.addEventListener("focusin", cancelHideChipTip);
+    __chipTipEl.addEventListener("focusout", (e)=>{ if(!__chipTipEl.contains(e.relatedTarget)) scheduleHideChipTip(); });
   }
   return __chipTipEl;
 }
 function cancelHideChipTip(){ if(__chipTipHideTimer){ clearTimeout(__chipTipHideTimer); __chipTipHideTimer=null; } }
 function scheduleHideChipTip(){ cancelHideChipTip(); __chipTipHideTimer = setTimeout(()=>hideChipTip(), 300); }
 function hideChipTip(){
+  // ✍️ 吹き出し内の入力欄で入力中(フォーカスあり)は消さない=打ってる途中で消える対策(まどか報告 v1.30.389)
+  if(__chipTipEl && __chipTipEl.contains(document.activeElement)){ return; }
   if(__chipTipTimer){ clearTimeout(__chipTipTimer); __chipTipTimer = null; }
   cancelHideChipTip();
   __tipReactIdx = -1;
