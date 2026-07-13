@@ -2614,7 +2614,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.391</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.392</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -17176,6 +17176,7 @@ function openStorageDiag_(){
     <div style="margin-top:10px;padding:8px 10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px">📷 写真(データURI)：<b>${b.photoCount}件 / 約${photoMB}MB（全体の${photoPct}%）</b><div style="font-size:11px;color:var(--muted);margin-top:2px">Driveへ退避済みの写真(URL)は容量に含みません。ここが大きければ写真が主因です。</div></div>
     <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
       <button class="btn primary" id="sdReclaim">🧹 再取得できるキャッシュを空ける</button>
+      ${b.photoCount>0?`<button class="btn" id="sdOffload">📷 写真${b.photoCount}件をDriveへ退避（約${photoMB}MB削減）</button>`:''}
       <button class="btn" id="sdClose">閉じる</button>
     </div>
     <div id="sdResult" style="font-size:12px;color:#166534;margin-top:8px"></div>
@@ -17184,6 +17185,28 @@ function openStorageDiag_(){
   overlay.querySelector('#sdClose').onclick=()=>overlay.remove();
   overlay.onclick=e=>{ if(e.target===overlay) overlay.remove(); };
   overlay.querySelector('#sdReclaim').onclick=()=>{ const before=b.total; const freed=reclaimCaches_(); const after=storageBreakdown_().total; overlay.querySelector('#sdResult').textContent=`✅ 約${KB(freed)}KB 空けました（${KB(before)}KB → ${KB(after)}KB）。再読込で最新を取り直します。`; };
+  const off=overlay.querySelector('#sdOffload');
+  if(off) off.onclick=()=>{ off.disabled=true; offloadPhotosToDrive_(overlay.querySelector('#sdResult')).finally(()=>{ off.disabled=false; }); };
+}
+// 📷 本体データ(state)に残っているデータURI写真をDriveへアップ→URLに差し替えて容量を削減(写真は残る)v1.30.392
+async function offloadPhotosToDrive_(statusEl){
+  const set=(t)=>{ if(statusEl) statusEl.textContent=t; };
+  const s=(typeof loadGasSettings==='function')?loadGasSettings():{};
+  if(!s.url){ set('⚠ クラウド同期(GAS)が未設定のためDriveへ退避できません。⚙設定を確認してください。'); return; }
+  const jobs=[];
+  (state.restorations||[]).forEach(p=>{
+    (p.comments||[]).forEach(c=>{ if(c && typeof c.photo==='string' && c.photo.indexOf('data:image/')===0) jobs.push({p,data:c.photo,setter:v=>{c.photo=v;}}); });
+    (p.tasks||[]).forEach(t=>{ (t.logs||[]).forEach(l=>{ if(l && typeof l.photo==='string' && l.photo.indexOf('data:image/')===0) jobs.push({p,data:l.photo,setter:v=>{l.photo=v;}}); }); });
+  });
+  if(!jobs.length){ set('退避対象の写真(データURI)はありません（すでにDrive URL化済み）。'); return; }
+  let ok=0, fail=0;
+  for(let i=0;i<jobs.length;i++){
+    set(`Driveへ退避中… ${i+1}/${jobs.length}`);
+    try{ const r=await restoUploadToDrive(jobs[i].data, jobs[i].p.name, jobs[i].p.room); if(r && r.ok && r.url){ jobs[i].setter(r.url); ok++; } else fail++; }
+    catch(_){ fail++; }
+  }
+  if(ok && typeof restoSave==='function') restoSave();
+  set(`✅ ${ok}件をDriveへ退避しました${fail?`（失敗${fail}件・電波の良い所で再実行を）`:''}。写真は今まで通り見られます。再読込で容量が減ります。`);
 }
 
 // ===== クラウド同期: 設定モーダル =====
