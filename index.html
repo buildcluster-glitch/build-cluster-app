@@ -2614,7 +2614,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.392</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.393</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -19603,12 +19603,10 @@ function wireRestoTaskRows(el){
         const compressed = preview && preview.dataset.compressed ? preview.dataset.compressed : null;
         if(!txt && !compressed) return;
         let photo = compressed;
-        const s = loadGasSettings();
-        if(compressed && s.url && !compressed.startsWith("https://")){
+        if(compressed && !compressed.startsWith("https://")){
           logAdd.textContent = "⏳";
           const prop = state.restorations.find(x=>x.id===restoDetailId);
-          const result = await restoUploadToDrive(compressed, prop?.name, prop?.room);
-          if(result.ok) photo = result.url;
+          photo = await restoPersistPhoto_(compressed, prop);   // 📷 デフォでDrive保存(v1.30.393)
           logAdd.textContent = "追加";
         }
         restoAddLog(id, txt, photo);
@@ -19634,7 +19632,7 @@ function wireRestoTaskRows(el){
         e.stopPropagation();
         const file = photoInput.files[0];
         if(!file) return;
-        const compressed = await restoCompressImage(file, 500000);
+        const compressed = await restoCompressImage(file, 150000, 1280);
         photoPreview.src = compressed;
         photoPreview.style.display = "block";
         photoPreview.dataset.compressed = compressed;
@@ -19802,10 +19800,8 @@ function restoAddComment(){
   const c = {id:uid(), author:getMyself()||"", date:fmtDate(new Date()), text, photo:null};
   (async ()=>{
     let photo = compressed;
-    const s = loadGasSettings();
-    if(compressed && s.url && !compressed.startsWith("https://")){
-      const result = await restoUploadToDrive(compressed, p?.name, p?.room);
-      if(result.ok) photo = result.url;
+    if(compressed && !compressed.startsWith("https://")){
+      photo = await restoPersistPhoto_(compressed, p);   // 📷 デフォでDrive保存・失敗時は小サムネイルで容量節約(v1.30.393)
     }
     c.photo = photo;
     p.comments = p.comments || [];
@@ -19918,6 +19914,37 @@ function restoUploadToDrive(base64Data, propName, roomNo){
     setTimeout(()=>{ if(_restoUploadCallbacks[id]){ resolve({ok:false,error:"タイムアウト(30秒)"}); delete _restoUploadCallbacks[id]; } }, 30000);
   });
 }
+// 📷 データURLを更に縮小(データURLを受け取り再エンコード)。Drive失敗時のローカル保持用サムネイル生成 v1.30.393
+function restoShrinkDataUrl_(dataUrl, maxBytes, maxDim){
+  return new Promise(resolve=>{
+    try{
+      maxBytes=maxBytes||28000; maxDim=maxDim||900;
+      const img=new Image();
+      img.onload=()=>{ try{
+        const canvas=document.createElement('canvas');
+        let w=img.width,h=img.height;
+        if(w>h){ if(w>maxDim){ h=h*maxDim/w; w=maxDim; } } else { if(h>maxDim){ w=w*maxDim/h; h=maxDim; } }
+        canvas.width=w; canvas.height=h; canvas.getContext('2d').drawImage(img,0,0,w,h);
+        let q=0.6, out=canvas.toDataURL('image/jpeg',q);
+        while(out.length>maxBytes*1.37 && q>0.1){ q-=0.1; out=canvas.toDataURL('image/jpeg',q); }
+        resolve(out);
+      }catch(_){ resolve(dataUrl); } };
+      img.onerror=()=>resolve(dataUrl);
+      img.src=dataUrl;
+    }catch(_){ resolve(dataUrl); }
+  });
+}
+// 📷 写真の保存先を決める: デフォでDriveへアップ→URL。GAS未設定/失敗時はlocalStorageを膨らませないよう小サムネイルで保持(写真は残る)v1.30.393・山田「デフォでドライブ保存/縮小」
+async function restoPersistPhoto_(compressed, prop){
+  if(!compressed || compressed.indexOf('https://')===0) return compressed;   // 既にURLなら何もしない
+  const s=(typeof loadGasSettings==='function')?loadGasSettings():{};
+  if(s.url){
+    try{ const r=await restoUploadToDrive(compressed, prop&&prop.name, prop&&prop.room); if(r&&r.ok&&r.url) return r.url; }catch(_){}
+  }
+  // Drive未設定 or 失敗 → 小サムネイルにして保持(容量節約・後で🔍内訳→📷Drive退避も可)
+  try{ const thumb=await restoShrinkDataUrl_(compressed, 28000, 900); if(thumb && thumb.length < compressed.length) return thumb; }catch(_){}
+  return compressed;
+}
 
 // 原状回復 ビュー イベント
 document.getElementById("restoSearch").oninput = (e)=>{ restoSearch=e.target.value; renderRestoList(); };
@@ -19949,7 +19976,7 @@ document.getElementById("rdTrashToggle").onclick = ()=>{
     photoInput.onchange = async ()=>{
       const file = photoInput.files[0];
       if(!file) return;
-      const compressed = await restoCompressImage(file, 500000);
+      const compressed = await restoCompressImage(file, 150000, 1280);
       preview.src = compressed; preview.style.display="block"; preview.dataset.compressed = compressed;
     };
   }
