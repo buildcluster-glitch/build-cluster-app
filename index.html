@@ -2614,7 +2614,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.390</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.391</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -17117,6 +17117,7 @@ function renderDanger_(dangers){
   if(!active.length){ b.style.display='none'; b.dataset.did=''; return; }
   const top=active[0]; b.dataset.did=top.id;
   document.getElementById('dangerBannerMsg').innerHTML = top.html + (active.length>1?` <span style="opacity:.85;font-weight:400">(他 ${active.length-1}件)</span>`:'');
+  const __ddb=document.getElementById('dangerDiagBtn'); if(__ddb) __ddb.onclick=(e)=>{ e.stopPropagation(); if(typeof openStorageDiag_==='function') openStorageDiag_(); };
   b.style.background = top.sev>=3 ? '#dc2626' : '#d97706';
   b.style.display='block';
 }
@@ -17126,7 +17127,7 @@ function dangerCheck_(){
     // ① 容量(全員)
     let bytes=0; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); bytes += (k.length + (localStorage.getItem(k)||"").length); }
     const kb=Math.round(bytes/1024);
-    if(kb>4300){ dangers.push({id:'capacity',sev:3,html:`⚠ このPCの保存容量が残り少です（約${(kb/1024).toFixed(1)}MB / 上限約5MB）。ブラウザのサイト容量を空けるか、一度アプリを<b>再読込</b>してください。<b>クラウド同期は有効なので予定は守られます</b>。`}); }
+    if(kb>4300){ dangers.push({id:'capacity',sev:3,html:`⚠ このPCの保存容量が残り少です（約${(kb/1024).toFixed(1)}MB / 上限約5MB）。<b>クラウド同期は有効なので予定は守られます</b>。<button id="dangerDiagBtn" style="margin-left:6px;background:#fff;color:#991b1b;border:0;border-radius:6px;font-size:11px;font-weight:700;padding:2px 9px;cursor:pointer">🔍 内訳・空ける</button>`}); }
     // ② データ急減(約10分前比で4割超減)
     const cur=(state.events||[]).length;
     __evtHist.push({n:cur,t:Date.now()});
@@ -17137,6 +17138,52 @@ function dangerCheck_(){
     //   同期状態は右下の同期見える化ピル(緑=OK/赤=未同期・タップで全同期)が担う。容量①/データ急減②の危険バナーは継続。
     renderDanger_(dangers);
   }catch(_){}
+}
+// 🔍 保存容量の内訳(v1.30.391): 何が容量を食っているかを可視化＋安全に空ける。写真(データURI)の合計も出す。
+function storageBreakdown_(){
+  const items=[]; let total=0;
+  for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i)||""; const v=localStorage.getItem(k)||""; const b=k.length+v.length; total+=b; items.push({key:k,bytes:b}); }
+  items.sort((a,b)=>b.bytes-a.bytes);
+  let photoBytes=0, photoCount=0;
+  try{ const sj=localStorage.getItem(STORAGE_KEY)||""; const m=sj.match(/data:image\/[A-Za-z0-9+\/;,=._-]+/g)||[]; photoCount=m.length; photoBytes=m.reduce((s,x)=>s+x.length,0); }catch(_){}
+  return { total, items, photoBytes, photoCount };
+}
+// 再取得できるキャッシュ(=クラウド/Driveから再読込できる)だけを消して空ける。予定/原状回復などの実データは触らない。
+function reclaimCaches_(){
+  let freed=0;
+  const safeKeys=[
+    (typeof HATCHUSHO_CACHE_KEY!=='undefined')?HATCHUSHO_CACHE_KEY:null,
+    (typeof WEATHER_CACHE_KEY!=='undefined')?WEATHER_CACHE_KEY:null,
+    (typeof STAFF_MASTER_CACHE_KEY!=='undefined')?STAFF_MASTER_CACHE_KEY:null,
+    (typeof TAIKYO_CACHE_KEY!=='undefined')?TAIKYO_CACHE_KEY:null
+  ].filter(Boolean);
+  safeKeys.forEach(k=>{ try{ const v=localStorage.getItem(k); if(v!=null){ freed+=k.length+v.length; localStorage.removeItem(k); } }catch(_){} });
+  // 古いローカルバックアップは最新3件だけ残す(クラウドにもバックアップあり)
+  try{ if(typeof listSnapshots_==='function'){ const ks=listSnapshots_(); while(ks.length>3){ const old=ks.shift(); const v=localStorage.getItem(old); if(v!=null) freed+=old.length+v.length; localStorage.removeItem(old); } } }catch(_){}
+  return freed;
+}
+function openStorageDiag_(){
+  const KB=n=>Math.round(n/1024*10)/10;
+  const b=storageBreakdown_();
+  const nameOf=k=> (k===STORAGE_KEY)?'📅 本体(予定・原状回復・立会など)': (/snapshot|backup/i.test(k)?('🗂 バックアップ '+k.slice(-14)):k);
+  const top=b.items.slice(0,7).map(it=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:1px 0"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(nameOf(it.key))}</span><b style="white-space:nowrap">${KB(it.bytes)}KB</b></div>`).join('');
+  const photoMB=Math.round(b.photoBytes/1024/1024*100)/100;
+  const photoPct=b.total?Math.round(b.photoBytes/b.total*100):0;
+  const overlay=document.createElement('div'); overlay.className='modal-overlay'; overlay.classList.add('show');
+  overlay.innerHTML=`<div class="modal" style="max-width:470px;width:94vw"><div class="modal-header">🔍 保存容量の内訳</div><div class="modal-body" style="font-size:13px;line-height:1.7;max-height:74vh;overflow:auto">
+    <div>合計 <b>${KB(b.total)}KB</b> / 上限 約5120KB</div>
+    <div style="margin:8px 0 2px;font-weight:700">大きい順</div>${top}
+    <div style="margin-top:10px;padding:8px 10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px">📷 写真(データURI)：<b>${b.photoCount}件 / 約${photoMB}MB（全体の${photoPct}%）</b><div style="font-size:11px;color:var(--muted);margin-top:2px">Driveへ退避済みの写真(URL)は容量に含みません。ここが大きければ写真が主因です。</div></div>
+    <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+      <button class="btn primary" id="sdReclaim">🧹 再取得できるキャッシュを空ける</button>
+      <button class="btn" id="sdClose">閉じる</button>
+    </div>
+    <div id="sdResult" style="font-size:12px;color:#166534;margin-top:8px"></div>
+  </div></div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#sdClose').onclick=()=>overlay.remove();
+  overlay.onclick=e=>{ if(e.target===overlay) overlay.remove(); };
+  overlay.querySelector('#sdReclaim').onclick=()=>{ const before=b.total; const freed=reclaimCaches_(); const after=storageBreakdown_().total; overlay.querySelector('#sdResult').textContent=`✅ 約${KB(freed)}KB 空けました（${KB(before)}KB → ${KB(after)}KB）。再読込で最新を取り直します。`; };
 }
 
 // ===== クラウド同期: 設定モーダル =====
