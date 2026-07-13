@@ -2614,7 +2614,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.394</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.395</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -4330,6 +4330,49 @@ const STORAGE_KEY = "buildcluster_schedule_v1";
 
 // ===== State =====
 let state = loadState();
+// ===== 🗃 IndexedDB移行(容量上限の実質撤廃) v1.30.395 =====
+//   肥大の主因 restorations(原状回復)を localStorage(~5MB)から IndexedDB(数百MB〜GB)へ移す。
+//   events/leaves等の軽いデータは同期読込のまま(起動の安全性優先)。restorationsはIDBから非同期ロード。
+//   ⚠ IDBが使えない/失敗した時は自動で従来のlocalStorage運用にフォールバック(データ喪失しない)。クラウド同期も正本。
+const IDB_NAME='bc-store', IDB_STORE='kv';
+let __idb=null, __idbOpenPromise=null, __idbActive=false, __restoReady=false, __restoReadyResolve=null;
+const __restoReadyPromise=new Promise(r=>{ __restoReadyResolve=r; });
+function idbOpen_(){
+  if(__idb) return Promise.resolve(__idb);
+  if(__idbOpenPromise) return __idbOpenPromise;
+  __idbOpenPromise=new Promise((resolve,reject)=>{ try{
+    if(!window.indexedDB){ reject(new Error('no indexedDB')); return; }
+    const req=indexedDB.open(IDB_NAME,1);
+    req.onupgradeneeded=()=>{ const db=req.result; if(!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE); };
+    req.onsuccess=()=>{ __idb=req.result; resolve(__idb); };
+    req.onerror=()=>reject(req.error);
+  }catch(e){ reject(e); } });
+  return __idbOpenPromise;
+}
+function idbGet_(key){ return idbOpen_().then(db=>new Promise((res,rej)=>{ const tx=db.transaction(IDB_STORE,'readonly'); const r=tx.objectStore(IDB_STORE).get(key); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); })); }
+function idbSet_(key,val){ return idbOpen_().then(db=>new Promise((res,rej)=>{ const tx=db.transaction(IDB_STORE,'readwrite'); tx.objectStore(IDB_STORE).put(val,key); tx.oncomplete=()=>res(true); tx.onerror=()=>rej(tx.error); })); }
+async function bootstrapRestoIdb_(){
+  try{
+    await idbOpen_(); __idbActive=true;
+    const idbR=await idbGet_('restorations');
+    const localArr=Array.isArray(state.restorations)?state.restorations:[];
+    if(Array.isArray(idbR) && idbR.length){
+      if(localArr.length > idbR.length){ await idbSet_('restorations', localArr); }   // 初回移行直後などlocalの方が多い→localをIDBへ
+      else { state.restorations = idbR; }                                              // 通常: IDBが最新
+    } else if(localArr.length){
+      await idbSet_('restorations', localArr);   // 🔁 初回移行: localStorage→IndexedDB
+    }
+    __restoReady=true;
+    try{ saveState(); }catch(_){}   // localStorageを軽量化(restorationsを除去して保存)
+    if(typeof render==='function') render();
+    if(typeof restoDetailId!=='undefined' && restoDetailId && typeof renderRestoDetail==='function'){ try{ renderRestoDetail(); }catch(_){} }
+    console.log('[idb] restorations '+((state.restorations||[]).length)+'件をIndexedDBで管理(localStorage軽量化済)');
+  }catch(e){
+    console.warn('[idb] 使用不可→従来のlocalStorage運用を継続:', e && e.message);
+    __idbActive=false; __restoReady=true;   // フォールバック
+  }
+  if(__restoReadyResolve) __restoReadyResolve();
+}
 // 🩹 v1.11.1 migration: 過去 PULL で混入した "1899-12-30T10:00" 等の汚染時刻を一掃
 // 🩹 v1.11.3 migration: timeMode="anytime" なのに allday=true になってる予定を allday=false に修正
 //   (anytime は時間グリッド内自由配置できるべき)
@@ -4385,6 +4428,8 @@ let state = loadState();
     if(t) console.log("[migrate] 事前イベント 終日→時間未定:", t, "件");
   }
 })();
+// 🗃 restorations を IndexedDB へ移行/ロード(非同期・失敗時はlocalStorage継続) v1.30.395
+try{ bootstrapRestoIdb_(); }catch(_){ __restoReady=true; if(__restoReadyResolve) __restoReadyResolve(); }
 // 📱 タッチ長押し(550ms) = ダブルクリック相当 (v1.30)
 //   スマホではdblclickが事実上使えないため、チップ長押しで担当ピッカー等を開けるようにする。
 //   8px以上動いたら(ドラッグ/スクロール)キャンセル。発火後800msはclickを抑止(ピッカーの上に
@@ -4469,7 +4514,10 @@ function loadState(){
 }
 function saveState(){
   if(typeof bumpTaikyoEpoch_==='function') bumpTaikyoEpoch_();  // 状態変更=立会キャッシュ無効化(v1.30.46)
-  const json = JSON.stringify(state);
+  // 🗃 restorations は IndexedDB へ(使える時)。localStorage には restorations を除いた軽量版を保存(v1.30.395)
+  const idbOn = (__idbActive && __restoReady);
+  if(idbOn){ try{ idbSet_('restorations', state.restorations||[]).catch(e=>console.warn('[idb] restorations保存失敗:', e && e.message)); }catch(_){} }
+  const json = JSON.stringify(idbOn ? Object.assign({}, state, {restorations:[]}) : state);
   try{
     localStorage.setItem(STORAGE_KEY, json);
     return;
@@ -10948,6 +10996,7 @@ function extractRestorations(properties, existing){
 
 async function syncChecksFromGAS(opts){
   opts = opts || {};
+  try{ if(typeof __restoReadyPromise!=='undefined') await __restoReadyPromise; }catch(_){}   // 🗃 restorationsのIDBロード完了を待つ(上書き競合防止)v1.30.395
   const silent = !!opts.silent;        // 静かに同期(失敗無視、成功時は差分があればtoastのみ)
   const fromAuto = !!opts.fromAuto;
   const s = loadGasSettings();
@@ -17145,12 +17194,12 @@ function storageBreakdown_(){
   for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i)||""; const v=localStorage.getItem(k)||""; const b=k.length+v.length; total+=b; items.push({key:k,bytes:b}); }
   items.sort((a,b)=>b.bytes-a.bytes);
   let photoBytes=0, photoCount=0;
-  try{ const sj=localStorage.getItem(STORAGE_KEY)||""; const m=sj.match(/data:image\/[A-Za-z0-9+\/;,=._-]+/g)||[]; photoCount=m.length; photoBytes=m.reduce((s,x)=>s+x.length,0); }catch(_){}
+  try{ const sj=JSON.stringify(state||{}); const m=sj.match(/data:image\/[A-Za-z0-9+\/;,=._-]+/g)||[]; photoCount=m.length; photoBytes=m.reduce((s,x)=>s+x.length,0); }catch(_){}   // 本体はIDB移行後もメモリ上のstateから計測(v1.30.395)
   return { total, items, photoBytes, photoCount };
 }
 // 📅 本体(state)の中身を種類別に計測(何が容量を食っているか=予定/原状回復/立会…)v1.30.394
 function stateBreakdown_(){
-  let st={}; try{ st=JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}")||{}; }catch(_){ st={}; }
+  const st=(typeof state==='object'&&state)?state:{};   // メモリ上のstate(原状回復はIDB管理でもここに存在)v1.30.395
   const LBL={events:'📅 予定',restorations:'🏠 原状回復',checks:'🔧 最終確認/立会',leaves:'🏖 休暇',companyPeriods:'会社休日',bukken:'物件マスタ',repairs:'🔧 修繕',taikyoEvents:'立会(共有)',staffMaster:'スタッフ',cloudPending:'同期待ち'};
   const rows=[];
   Object.keys(st).forEach(k=>{ let bytes=0; try{ bytes=JSON.stringify(st[k]).length; }catch(_){} rows.push({key:k, label:LBL[k]||k, bytes, count:Array.isArray(st[k])?st[k].length:null}); });
@@ -17182,7 +17231,7 @@ function openStorageDiag_(){
   overlay.innerHTML=`<div class="modal" style="max-width:470px;width:94vw"><div class="modal-header">🔍 保存容量の内訳</div><div class="modal-body" style="font-size:13px;line-height:1.7;max-height:74vh;overflow:auto">
     <div>合計 <b>${KB(b.total)}KB</b> / 上限 約5120KB</div>
     <div style="margin:8px 0 2px;font-weight:700">大きい順</div>${top}
-    ${(()=>{ const sr=stateBreakdown_(); const st=sr.slice(0,6).map(r=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:1px 0"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(r.label)}${r.count!=null?`（${r.count}件）`:''}</span><b style="white-space:nowrap">${KB(r.bytes)}KB</b></div>`).join(''); return `<div style="margin:10px 0 2px;font-weight:700">📅 本体の内訳（種類別）</div>${st}`; })()}
+    ${(()=>{ const sr=stateBreakdown_(); const st=sr.slice(0,6).map(r=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:1px 0"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(r.label)}${r.count!=null?`（${r.count}件）`:''}</span><b style="white-space:nowrap">${KB(r.bytes)}KB</b></div>`).join(''); return `<div style="margin:10px 0 2px;font-weight:700">📅 本体の内訳（種類別）</div>${st}<div style="font-size:10px;color:var(--muted);margin-top:2px">🗃 原状回復は IndexedDB で保存＝5MB制限の外（上の合計KBには含みません）。</div>`; })()}
     <div style="margin-top:10px;padding:8px 10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px">📷 写真(データURI)：<b>${b.photoCount}件 / 約${photoMB}MB（全体の${photoPct}%）</b><div style="font-size:11px;color:var(--muted);margin-top:2px">Driveへ退避済みの写真(URL)は容量に含みません。ここが大きければ写真が主因です。</div></div>
     <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
       <button class="btn primary" id="sdReclaim">🧹 再取得できるキャッシュを空ける</button>
