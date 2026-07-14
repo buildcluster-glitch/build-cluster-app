@@ -2614,7 +2614,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.402</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.403</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -5909,8 +5909,10 @@ function renderCheckCard(ck, today){
     : "";
   // ステータス完了系はグレースケール表示
   const __isDoneCk = /完了|完工|完成/.test(ck.status||"") && ck.status !== "清掃完了";
-  return `<div class="check-card ${urgCls}${isClickable?" clickable":""}${__isDoneCk?" done-gray":""}" data-check-id="${ck.id}" ${styleAttr}>
-    <div class="ck-title" style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">${syncMark}${finalCheckBadge}<span class="ck-name">${escapeHtml(ck.title)}</span>${volBadge}${staffBadge?`<span style="display:inline-flex;gap:2px;align-items:center">${staffBadge}</span>`:""}${__ckCommuteBadge}</div>
+  // ✅ 完了は「✓完了」マークだけ付け、グレースケールにはしない=担当者の色を残す(誰が最確したか一目で分かる・木村報告 v1.30.403)
+  const __doneMark = __isDoneCk ? `<span class="badge-sm" style="background:#16a34a;color:#fff;font-weight:700;white-space:nowrap" title="最終確認 完了">✓完了</span>` : "";
+  return `<div class="check-card ${urgCls}${isClickable?" clickable":""}${__isDoneCk?" is-done":""}" data-check-id="${ck.id}" ${styleAttr}>
+    <div class="ck-title" style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">${syncMark}${finalCheckBadge}${__doneMark}<span class="ck-name">${escapeHtml(ck.title)}</span>${volBadge}${staffBadge?`<span style="display:inline-flex;gap:2px;align-items:center">${staffBadge}</span>`:""}${__ckCommuteBadge}</div>
     <div class="row">
       ${__estBadge}
       ${apptBadge}
@@ -5918,7 +5920,7 @@ function renderCheckCard(ck, today){
       ${(()=>{
         const HIDDEN_STATUSES = ["着工","受注","受注（工事指示有）","施工指示あり","工事指示済","清掃完了"];
         const s = ck.status || "";
-        if(!s || HIDDEN_STATUSES.includes(s)) return "";
+        if(!s || HIDDEN_STATUSES.includes(s) || __isDoneCk) return "";   // 完了は✓完了マークで表現(生ステータス重複を出さない)v1.30.403
         return `<span class="status-sm ${statusCls}">${escapeHtml(s)}</span>`;
       })()}
       ${extrasHtml}
