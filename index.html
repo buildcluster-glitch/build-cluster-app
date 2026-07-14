@@ -2614,7 +2614,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.401</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.402</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -13296,9 +13296,11 @@ function renderCalendar(){
       sc.onclick = (e)=>{
         if(e.target!==sc) return;
         clearEventSelection_();
-        const rect = sc.getBoundingClientRect();
-        const minutes = Math.floor(((e.clientY - rect.top) / calGridZoom_()) / HOUR_PX * 60);   // 🔍 縮小補正(v1.30.262)
-        const startMin = HOUR_START*60 + Math.floor(minutes/SLOT_MIN)*SLOT_MIN;
+        // 🧭 hour-cellの実比率で時刻化(v1.30.402)。固定HOUR_PX(150)と実行高(156px)/zoomの食い違いで
+        //   下の時間ほどアクティブセルがズレる不具合の修正(山田報告「下に行くほどカーソル合わない」)。
+        const absMin = (typeof pointToMinInCol_==='function') ? pointToMinInCol_(e.clientX, e.clientY, sc)
+                       : (HOUR_START*60 + Math.floor(((e.clientY - sc.getBoundingClientRect().top)/calGridZoom_())/HOUR_PX*60));
+        const startMin = Math.max(HOUR_START*60, Math.floor(absMin/SLOT_MIN)*SLOT_MIN);
         setActiveSlot_({ kind:'subcol', colKey: sc.dataset.colKey, startMin });
         if(eventClipboard.length){
           setPasteAnchor_(c.contextDate, startMin, c.contextStaff || null);
@@ -15070,17 +15072,31 @@ function drawActiveSlot_(){
     const sc = [...document.querySelectorAll('.sub-col')].find(s=>s.dataset.colKey===activeSlot.colKey);
     if(sc && typeof HOUR_PX==='number'){
       const m=document.createElement('div'); m.className='active-slot-marker';
-      // 🔧 1時間の"実際の"高さで位置決め。hour-cellが156px等でHOUR_PX(150)と食い違い、
-      //   下の時間ほど青マーカーが上へズレる不具合の修正(山田報告「選択と全然違う所が青い」)v1.30.367
-      let __pxPerHour = HOUR_PX;
+      const z = (typeof calGridZoom_==='function')?(calGridZoom_()||1):1;
+      const hour = Math.floor(activeSlot.startMin/60);
+      // 🔧 実際のhour-cellの位置基準でマーカーを置く(v1.30.402)=zoom/可変行高でもクリック位置と一致。
+      //   旧: startMin×1時間分px の線形→下の時間ほどズレていた(山田報告)。
+      let placed=false;
       try{
-        const __z=(typeof calGridZoom_==='function')?(calGridZoom_()||1):1;
-        const __cell=document.querySelector('.day-col .hour-cell[data-col-key="'+activeSlot.colKey+'"]');
-        const __h=__cell?__cell.getBoundingClientRect().height/__z:0;
-        if(__h>0) __pxPerHour=__h;
+        const dayCol=[...document.querySelectorAll('.day-col')].find(d=>d.dataset.colKey===activeSlot.colKey);
+        const cell=dayCol?[...dayCol.querySelectorAll('.hour-cell')].find(c=>+c.dataset.hour===hour):null;
+        if(cell){
+          const scr=sc.getBoundingClientRect(), cr=cell.getBoundingClientRect();
+          const cellTop=(cr.top - scr.top)/z;     // sub-col内でのセル上端(layout px)
+          const cellH=cr.height/z;                 // セルの実高(layout px)
+          const frac=(activeSlot.startMin - hour*60)/60;
+          m.style.top=Math.max(0, cellTop + frac*cellH)+'px';
+          m.style.height=(cellH * SLOT_MIN/60)+'px';
+          placed=true;
+        }
       }catch(_){}
-      const top=((activeSlot.startMin - HOUR_START*60)/60)*__pxPerHour;
-      m.style.top=Math.max(0,top)+'px'; m.style.height=(__pxPerHour * SLOT_MIN/60)+'px'; // 15分ぶん=1時間の1/4(v1.30.60)
+      if(!placed){
+        // フォールバック(従来の線形)
+        const __cell=document.querySelector('.day-col .hour-cell[data-col-key="'+activeSlot.colKey+'"]');
+        let __pxPerHour=HOUR_PX; try{ const __h=__cell?__cell.getBoundingClientRect().height/z:0; if(__h>0)__pxPerHour=__h; }catch(_){}
+        m.style.top=Math.max(0,((activeSlot.startMin - HOUR_START*60)/60)*__pxPerHour)+'px';
+        m.style.height=(__pxPerHour * SLOT_MIN/60)+'px';
+      }
       sc.appendChild(m);
     }
   }
