@@ -2614,7 +2614,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.404</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.405</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -8419,6 +8419,17 @@ function showEventStaffPicker(el, ev){
   pop.innerHTML = `
     <div class="qp-title">🚗 担当を選択 <span style="font-size:11px;color:#64748b;font-weight:400">${escapeHtml(titleLine)}</span></div>
     <div class="qp-sec">
+      <div class="qp-label">📝 予定 <span style="font-weight:400;color:#94a3b8;font-size:10px">(フォーカスを外すと保存 / Ctrl+Enterでも)</span></div>
+      <textarea id="evTitleEdit" rows="1" style="width:100%;box-sizing:border-box;padding:6px 8px;font-size:13px;border:1px solid var(--border-strong);border-radius:6px;resize:vertical;min-height:32px;line-height:1.4">${escapeHtml(ev.title||"")}</textarea>
+    </div>
+    <div class="qp-sec">
+      <div class="qp-label">🏷 カテゴリ</div>
+      <div class="qp-worker-pick" id="evCatPick">
+        <button data-cat="" class="${!ev.category?"on":""}" style="background:#f3f4f6;color:#334155"><span class="qp-dot" style="background:#cbd5e1"></span>未分類</button>
+        ${CATEGORIES.filter(c=>c.name!=="立会(未定)").map(c=>`<button data-cat="${escapeHtml(c.name)}" class="${ev.category===c.name?"on":""}" style="background:${c.color};color:${textColorFor(c.color)}"><span class="qp-dot" style="background:${textColorFor(c.color)==='#ffffff'?'rgba(255,255,255,.6)':'rgba(0,0,0,.3)'}"></span>${escapeHtml(c.name)}</button>`).join("")}
+      </div>
+    </div>
+    <div class="qp-sec">
       <div class="qp-label">スタッフ <span style="font-weight:400;color:#94a3b8;font-size:10px">(複数選択可・先頭=色/リーダー★)</span></div>
       <div class="qp-worker-pick" id="evStaffPickerList">
         <button data-staff="" class="${selStaff.length===0?"on":""}" style="background:#f3f4f6;color:#64748b"><span class="qp-dot" style="background:#cbd5e1"></span>未指定</button>
@@ -8525,6 +8536,38 @@ function showEventStaffPicker(el, ev){
         render();
       }
       repaintEvStaff();   // 複数選択を続けられるよう閉じない
+    };
+  });
+  // 📝 予定(タイトル)編集: フォーカス外れ/Ctrl+Enterで保存(編集ボタンを押さずここで変えられる・山田要望 v1.30.405)
+  const __evTitleEl = pop.querySelector('#evTitleEdit');
+  if(__evTitleEl){
+    const __saveEvTitle = ()=>{
+      const v = __evTitleEl.value.trim();
+      const target = (state.events||[]).find(e=>e.id===ev.id);
+      if(target && v && v!==target.title){
+        pushHistory();
+        target.title = v; target.updatedAt = new Date().toISOString();
+        saveState();
+        if(typeof cloudQueueEventChange==='function') cloudQueueEventChange(target,'upsert');
+        render();
+      }
+    };
+    __evTitleEl.onkeydown = e=>{ if(e.key==='Enter' && (e.ctrlKey||e.metaKey) && !e.isComposing && e.keyCode!==229){ e.preventDefault(); __saveEvTitle(); __evTitleEl.blur(); } };
+    __evTitleEl.onblur = __saveEvTitle;
+  }
+  // 🏷 カテゴリ変更: クリックで即保存(閉じない)v1.30.405
+  pop.querySelectorAll('#evCatPick [data-cat]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const cat = btn.dataset.cat;
+      const target = (state.events||[]).find(e=>e.id===ev.id);
+      if(target){
+        pushHistory();
+        target.category = cat; target.updatedAt = new Date().toISOString();
+        saveState();
+        if(typeof cloudQueueEventChange==='function') cloudQueueEventChange(target,'upsert');
+        render();
+      }
+      pop.querySelectorAll('#evCatPick [data-cat]').forEach(x=>x.classList.toggle('on', x.dataset.cat===cat));
     };
   });
   // 🚗 直行/直帰 トグル(両方on=直行直帰)。即保存・閉じない
