@@ -2614,7 +2614,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.403</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.404</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -4167,6 +4167,7 @@ const CATEGORIES = [
   { name:"事前",       color:"#7c3aed" }, // 紫(山一色) = 事前補修(内装業者前のビルドクラスタ社内補修・山一工事)
   { name:"見積",       color:"#3b82f6" }, // 青
   { name:"商談",       color:"#f97316" }, // オレンジ
+  { name:"打合せ",     color:"#14b8a6" }, // ティール(v1.30.404・山田)
   { name:"事務",       color:"#6b7280" }, // グレー
 ];
 // カテゴリ名のエイリアス(略称/別名 → 正規名)。テキスト自動判定用
@@ -4175,6 +4176,8 @@ const CATEGORY_ALIASES = {
   "事前修繕": "事前",
   "下処理": "事前",
   "下地補修": "事前",
+  "打ち合わせ": "打合せ",
+  "ミーティング": "打合せ",
 };
 function catInfo(name){
   if(!name) return undefined;
@@ -4190,6 +4193,7 @@ function guessCategoryFromText(text){
   if(/修繕/.test(t)) return "修繕";
   if(/見積/.test(t)) return "見積";
   if(/商談/.test(t)) return "商談";
+  if(/打合せ|打ち合わせ|ミーティング/.test(t)) return "打合せ";
   return "";
 }
 
