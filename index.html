@@ -2627,7 +2627,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.418</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.419</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -2979,6 +2979,47 @@
     <div class="modal-footer">
       <button class="nav-btn" id="xw-cancel">キャンセル</button>
       <button class="nav-btn primary" id="xw-save">台帳に登録</button>
+    </div>
+  </div>
+</div>
+
+<!-- ⚡ 修繕の簡易見積モーダル: 現場で金額即答→LINE送信 (v1.30.419・project_kani_mitsumori_calendar)
+     台帳 meta.kaniLines/kaniMitsu へ task-set-kani-mitsu で保存(後勝ち・サーバ合計再計算)。修繕のみ。 -->
+<div class="modal-overlay" id="kaniModal" style="z-index:710">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">⚡ 簡易見積 <span id="kani-prop" style="font-weight:400;font-size:11px;color:var(--muted)"></span></div>
+    <div class="modal-body" style="gap:8px">
+      <div id="kani-warn" style="display:none;background:#fef3c7;color:#92400e;font-size:11.5px;padding:6px 9px;border-radius:6px;font-weight:600"></div>
+      <div id="kani-meta" style="display:none;font-size:11px;color:var(--muted)"></div>
+      <div style="display:grid;grid-template-columns:1fr 46px 44px 62px 72px;gap:0 5px;font-size:10px;color:var(--muted);font-weight:600;padding:0 2px">
+        <div>品目</div><div style="text-align:right">数量</div><div>単位</div><div style="text-align:right">単価</div><div style="text-align:right">金額(税別)</div>
+      </div>
+      <div id="kani-rows" style="display:grid;grid-template-columns:1fr 46px 44px 62px 72px;gap:5px"></div>
+      <datalist id="kani-cal-items"></datalist>
+      <datalist id="kani-cal-units"></datalist>
+      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;color:#374151">
+        <span style="color:var(--muted)">🚗 出張費</span>
+        <label style="display:inline-flex;gap:3px;align-items:center;cursor:pointer"><input type="radio" name="kani-cal-travel" value="3000" style="width:auto">山一・みどり <b>3,000</b></label>
+        <label style="display:inline-flex;gap:3px;align-items:center;cursor:pointer"><input type="radio" name="kani-cal-travel" value="4000" style="width:auto">その他 <b>4,000</b></label>
+        <label style="display:inline-flex;gap:3px;align-items:center;cursor:pointer"><input type="radio" name="kani-cal-travel" value="5000" style="width:auto">丸山 <b>5,000</b></label>
+      </div>
+      <div style="padding:7px 10px;background:#f3f0ff;border:1px solid #ddd6fe;border-radius:6px;font-size:13px;text-align:right">
+        見積合計(税別): <b id="kani-total" style="font-size:15px;color:#5b21b6">¥0</b>
+      </div>
+      <div id="kani-copy-wrap" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
+          <span style="font-size:11px;color:var(--muted);font-weight:600">📋 コピペ用テキスト(LINE/メール)</span>
+          <button class="nav-btn" id="kani-copy-btn" style="padding:3px 10px;font-size:11px">📋 コピー</button>
+        </div>
+        <textarea id="kani-copy-text" readonly rows="7" style="width:100%;box-sizing:border-box;font-size:11.5px;font-family:ui-monospace,Consolas,monospace;border:1px solid var(--border-strong);border-radius:6px;padding:6px 8px;background:#f8fafc"></textarea>
+      </div>
+      <div id="kani-error" style="display:none;color:#dc2626;font-size:12px;font-weight:600;white-space:pre-wrap"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="nav-btn" id="kani-clear" style="color:#dc2626" title="全行を空にして保存すると簡易見積を消せます">クリア</button>
+      <span style="flex:1"></span>
+      <button class="nav-btn" id="kani-cancel">閉じる</button>
+      <button class="nav-btn primary" id="kani-save">✓ 台帳に保存</button>
     </div>
   </div>
 </div>
@@ -10899,6 +10940,11 @@ function extractRepairs(properties){
       contactPerson: p.salesPerson || "",          // 連絡者(自社担当)
       amountExTax: (p.tmRepair && p.tmRepair.amountExTax) || p.amountExTax || 0,
       completeDate: normalizeDate(p.completeDate) || prev?.completeDate || "",   // 🏁 完了日(v1.30.348・台帳と同期)
+      // ⚡ 簡易見積(v1.30.419・project_kani_mitsumori_calendar)。kaniMitsu=台帳/売上で明細合計より優先される確定金額
+      kaniMitsu: (p.kaniMitsu != null && p.kaniMitsu !== '') ? (Number(p.kaniMitsu) || 0) : null,
+      kaniLines: (Array.isArray(p.kaniLines) && p.kaniLines.length) ? p.kaniLines : null,
+      kaniUpdatedAt: p.kaniUpdatedAt || "",
+      kaniSetBy: p.kaniSetBy || "",
       extDriveFileId: p.driveFileId || "",
       extEstimateId: p.estimateId || "",
       updatedAt: p.updatedAt || "",
@@ -14597,6 +14643,7 @@ function showRepairQuickPop(r, anchorEl){
       </div>
     </div>
     <div class="qp-actions">
+      ${r.extDriveFileId ? `<button class="qp-detail" id="qp-kani" style="background:#f3f0ff;color:#5b21b6;font-weight:700" title="現場で金額即答→コピペでLINE送信(台帳に保存されます)">⚡ 簡易見積${r.kaniMitsu!=null?` ¥${(+r.kaniMitsu).toLocaleString()}`:''}</button>` : ''}
       <button class="qp-detail" id="qp-open-detail">✎ 詳細編集</button>
       <button class="qp-close" id="qp-close-btn">✓ 保存</button>
     </div>
@@ -14804,6 +14851,8 @@ function showRepairQuickPop(r, anchorEl){
     openRepairSheet(r.id);
   };
   pop.querySelector('#qp-close-btn').onclick = ()=>{ if(typeof flushAlertInput_==='function') flushAlertInput_(pop); closeQuickPop(); };
+  // ⚡ 簡易見積(v1.30.419): ポップを閉じてモーダルを開く(台帳リンクあり修繕のみボタンが出る)
+  { const __kb = pop.querySelector('#qp-kani'); if(__kb) __kb.onclick = ()=>{ closeQuickPop(); openKaniModal_(r.id); }; }
 
   // 開いた直後のclickイベント (capture)で即閉じしないよう少し遅延
   setTimeout(()=>{
@@ -20438,6 +20487,260 @@ async function submitExtraWork_(){
     document.getElementById("xw-price").disabled = !e.target.checked;
     document.getElementById("xw-price-req").style.visibility = e.target.checked ? "visible" : "hidden";
   };
+})();
+
+// ===========================================================
+// ===== ⚡ 修繕の簡易見積 (現場で金額即答→LINE送信) v1.30.419 =====
+//   project_kani_mitsumori_calendar: 台帳 meta.kaniLines/kaniMitsu へ task-set-kani-mitsu で保存。
+//   後勝ち(kaniUpdatedAt=サーバ採番)・合計はサーバ再計算・空配列=削除。修繕のみ(⚡はrepairポップから)。
+//   単価=shared-config price_master(見積アプリが自動push)を自前取得+キャッシュ。元請け→motoCols照合で単価列を選ぶ。
+//   ⚠kaniLinesの合計≠kaniMitsuがありえる(山一の金額修正はkaniMitsuだけ書き換える既存仕様)→合計表示はkaniMitsuが正。
+// ===========================================================
+const KANI_CAL_ROWS = 5;                                // 見積アプリ KANI_ROWS と一致
+const PRICE_MASTER_CACHE_KEY = "bc_price_master_cache"; // {value:{updatedAt,motoCols,items}, fetchedAt}
+function loadPriceMasterCache_(){ try{ const o=JSON.parse(localStorage.getItem(PRICE_MASTER_CACHE_KEY)||"null"); return (o&&o.value)?o:null; }catch(e){ return null; } }
+async function fetchPriceMaster_(opts={}){
+  const s = loadGasSettings();
+  const cached = loadPriceMasterCache_();
+  if(!s.url || !s.token) return cached ? cached.value : null;
+  // 30分以内のキャッシュはそのまま(モーダル開閉のたびに叩かない)
+  if(!opts.force && cached && (Date.now() - (cached.fetchedAt||0)) < 30*60*1000) return cached.value;
+  try{
+    const url = `${s.url}?action=get-shared-config&key=price_master&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res = await fetch(url, {method:'GET', redirect:'follow'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json();
+    let raw = data.value;
+    if(typeof raw === 'string'){ try{ raw = JSON.parse(raw); }catch(e){ raw = null; } }
+    if(raw && Array.isArray(raw.items)){
+      try{ localStorage.setItem(PRICE_MASTER_CACHE_KEY, JSON.stringify({value:raw, fetchedAt:Date.now()})); }catch(e){}
+      return raw;
+    }
+    return cached ? cached.value : null;
+  }catch(e){ console.warn('[kani] price_master取得失敗(キャッシュ/手入力で続行):', e.message); return cached ? cached.value : null; }
+}
+// 元請け表記(「株式会社山一地所」等)→ price_master の単価列(「山一地所」等)を選ぶ
+function kaniPriceColFor_(contractor, pm){
+  const cols = (pm && Array.isArray(pm.motoCols)) ? pm.motoCols : [];
+  const norm = s=>String(s||"").normalize("NFKC").replace(/\s|　|株式会社|\(株\)|（株）/g,"");
+  const c = norm(contractor);
+  if(!c) return "";
+  return cols.find(col=>{ const n=norm(col); return n && (c.includes(n) || n.includes(c)); }) || "";
+}
+let __kaniRepairId = null;   // 開いている修繕レコードid
+let __kaniPm = null;         // price_master(開いた時点)
+let __kaniCol = "";          // 選ばれた単価列
+let __kaniSending = false;
+function __kaniStrW_(s){ let w=0; for(const ch of String(s)){ w += (ch.charCodeAt(0) > 0xFF) ? 2 : 1; } return w; }
+// コピペ用テキスト(見積アプリ _buildKaniCopyText 準拠: ・品目<pad>数量単位 金額円 + 小計/消費税/合計税込)
+function kaniCopyTextCal_(r, lines, sum){
+  const rows = lines.map(l=>{
+    const hasUnitInfo = (l.unitPrice !== '' && l.unitPrice != null) || (l.qty !== '' && l.qty != null);
+    const qu = hasUnitInfo ? `${(l.qty === '' || l.qty == null) ? 1 : l.qty}${l.unit || '式'}` : '';
+    return { name: l.name || '', qu, amount: Number(l.amount) || 0 };
+  });
+  const nameW = Math.max(0, ...rows.map(x=>__kaniStrW_(x.name)));
+  const quW = Math.max(0, ...rows.map(x=>__kaniStrW_(x.qu)));
+  const L = [];
+  L.push(`${r.name||''}${r.room?(' '+r.room):''} 修繕`.trim());
+  rows.forEach(x=>{
+    const namePad = ' '.repeat(Math.max(1, nameW - __kaniStrW_(x.name) + 2));
+    const quCell = x.qu + ' '.repeat(Math.max(0, quW - __kaniStrW_(x.qu)));
+    L.push(`・${x.name}${namePad}${quCell} ${x.amount.toLocaleString()}円`);
+  });
+  const tax = Math.round(sum * 0.1);
+  L.push(`小計　${sum.toLocaleString()}円`);
+  L.push(`消費税　${tax.toLocaleString()}円`);
+  L.push(`合計金額(税込)　${(sum + tax).toLocaleString()}円`);
+  return L.join('\n');
+}
+function __kaniRowsFromInputs_(){
+  // #kani-rows はgrid直下に input が5列×5行で並ぶ(行ラッパー無し)→ 5個ずつ1行として読む
+  const host = document.getElementById('kani-rows');
+  const kids = host ? [...host.children] : [];
+  const rows = [];
+  const num = v => (v===''||v==null) ? '' : (Number(v)||0);
+  for(let i=0; i+4 < kids.length; i+=5){
+    rows.push({ name: kids[i].value.trim(), qty: num(kids[i+1].value), unit: kids[i+2].value.trim(),
+                unitPrice: num(kids[i+3].value), amount: Number(kids[i+4].value)||0 });
+  }
+  return rows;
+}
+function __kaniTotal_(){
+  const sum = __kaniRowsFromInputs_().reduce((s,l)=> s + ((l.name||l.amount) ? (Number(l.amount)||0) : 0), 0);
+  document.getElementById('kani-total').textContent = '¥' + sum.toLocaleString();
+  return sum;
+}
+function __kaniRecalcRow_(row){
+  const q = row.querySelector('.k-qty').value, p = row.querySelector('.k-price').value;
+  if(p !== '' && p != null && Number(p)){   // 単価があれば 数量×単価 を自動計算(見積アプリ_kaniRecalcRowと同じ・単価空なら金額手入力尊重)
+    const qty = (q === '' || q == null) ? 1 : (Number(q)||0);
+    row.querySelector('.k-amt').value = Math.round(qty * Number(p)) || 0;
+  }
+  __kaniTotal_();
+}
+function __kaniRenderRows_(lines){
+  const host = document.getElementById('kani-rows');
+  host.innerHTML = lines.map((l,i)=>`
+    <input type="text" class="kani-row-x k-name" data-i="${i}" list="kani-cal-items" value="${escapeHtml(l.name||'')}" placeholder="${i===KANI_CAL_ROWS-1?'例: 出張費':'品目'}" style="min-width:0;padding:6px 7px;font-size:12px;border:1px solid var(--border-strong);border-radius:6px">
+    <input type="number" class="k-qty" data-i="${i}" inputmode="decimal" value="${l.qty===''||l.qty==null?'':l.qty}" style="min-width:0;padding:6px 4px;font-size:12px;border:1px solid var(--border-strong);border-radius:6px;text-align:right">
+    <input type="text" class="k-unit" data-i="${i}" list="kani-cal-units" value="${escapeHtml(l.unit||'')}" style="min-width:0;padding:6px 4px;font-size:12px;border:1px solid var(--border-strong);border-radius:6px">
+    <input type="number" class="k-price" data-i="${i}" inputmode="numeric" value="${l.unitPrice===''||l.unitPrice==null?'':l.unitPrice}" style="min-width:0;padding:6px 4px;font-size:12px;border:1px solid var(--border-strong);border-radius:6px;text-align:right">
+    <input type="number" class="k-amt" data-i="${i}" inputmode="numeric" value="${Number(l.amount)||0}" style="min-width:0;padding:6px 4px;font-size:12px;border:1px solid var(--border-strong);border-radius:6px;text-align:right;font-weight:700">
+  `).join('');
+  // 行を .kani-row として包めないgrid構造のため、行単位アクセス用にrow要素を仮想化
+  // → 実装簡素化: 5列ごとに1行として querySelectorAll で拾う
+  const inputs = [...host.children];
+  for(let i=0;i<lines.length;i++){
+    const row = { querySelector: cls=>inputs[i*5 + {'.k-name':0,'.k-qty':1,'.k-unit':2,'.k-price':3,'.k-amt':4}[cls]] };
+    const nameEl=inputs[i*5], qtyEl=inputs[i*5+1], unitEl=inputs[i*5+2], priceEl=inputs[i*5+3], amtEl=inputs[i*5+4];
+    nameEl.addEventListener('change', ()=>{
+      const it = (__kaniPm && __kaniPm.items || []).find(x=>String(x.item||'').trim()===nameEl.value.trim());
+      if(it){
+        if(!unitEl.value.trim() && it.unit) unitEl.value = it.unit;
+        const pr = __kaniCol && it.prices ? it.prices[__kaniCol] : null;
+        if(pr != null && pr !== '' && !priceEl.value) priceEl.value = Number(pr)||0;
+      }
+      __kaniRecalcRow_(row);
+    });
+    qtyEl.addEventListener('input', ()=>__kaniRecalcRow_(row));
+    priceEl.addEventListener('input', ()=>__kaniRecalcRow_(row));
+    amtEl.addEventListener('input', ()=>{
+      // 最終行(出張費)の金額手入力→ラジオ追従(一致なしなら全解除)
+      if(i===KANI_CAL_ROWS-1){ document.querySelectorAll('input[name="kani-cal-travel"]').forEach(rd=>{ rd.checked = (rd.value===String(Number(amtEl.value)||0)); }); }
+      __kaniTotal_();
+    });
+  }
+  __kaniTotal_();
+}
+async function openKaniModal_(repairId){
+  const r = (state.repairs||[]).find(x=>x.id===repairId);
+  if(!r) return;
+  if(!r.extDriveFileId){ alert('台帳リンクが無い案件のため簡易見積は使えません(Drive同期由来の修繕のみ)'); return; }
+  __kaniRepairId = repairId; __kaniSending = false;
+  document.getElementById('kani-prop').textContent = `${r.name||''} ${r.room||''}`;
+  const err = document.getElementById('kani-error'); err.style.display='none'; err.textContent='';
+  document.getElementById('kani-copy-wrap').style.display = 'none';
+  // 単価マスタ(キャッシュ即・裏で更新)
+  __kaniPm = (loadPriceMasterCache_()||{}).value || null;
+  __kaniCol = kaniPriceColFor_(r.contractor, __kaniPm);
+  fetchPriceMaster_().then(pm=>{ if(pm){ __kaniPm = pm; __kaniCol = kaniPriceColFor_(r.contractor, pm); __kaniFillDatalists_(); } }).catch(()=>{});
+  __kaniFillDatalists_();
+  // 警告/メタ表示
+  const warn = document.getElementById('kani-warn');
+  if((Number(r.amountExTax)||0) > 0 && r.kaniMitsu == null){
+    warn.textContent = `⚠ この案件には明細合計 ¥${(+r.amountExTax).toLocaleString()} があります。簡易見積を保存すると台帳・売上の金額は簡易見積が優先されます`;
+    warn.style.display = '';
+  } else warn.style.display = 'none';
+  const metaEl = document.getElementById('kani-meta');
+  if(r.kaniMitsu != null){
+    const d = r.kaniUpdatedAt ? new Date(r.kaniUpdatedAt) : null;
+    metaEl.textContent = `⚡ 保存済: ¥${(+r.kaniMitsu).toLocaleString()}${r.kaniSetBy?(' ・ '+r.kaniSetBy):''}${(d&&!isNaN(d))?` ・ ${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`:''}`;
+    metaEl.style.display = '';
+  } else metaEl.style.display = 'none';
+  // 行プリフィル: kaniLines優先 → 新規(5行目に出張費3000・見積アプリ_getKaniInitialLinesと同じ)
+  const blank = ()=>({ name:'', qty:'', unit:'', unitPrice:'', amount:0 });
+  let lines;
+  if(Array.isArray(r.kaniLines) && r.kaniLines.length){
+    lines = r.kaniLines.slice(0, KANI_CAL_ROWS).map(l=>({ name:l.name||'', qty:(l.qty===''||l.qty==null)?'':l.qty, unit:l.unit||'', unitPrice:(l.unitPrice===''||l.unitPrice==null)?'':l.unitPrice, amount:Number(l.amount)||0 }));
+    while(lines.length < KANI_CAL_ROWS) lines.push(blank());
+  }else{
+    lines = [blank(), blank(), blank(), blank(), { name:'出張費', qty:'', unit:'式', unitPrice:'', amount:3000 }];
+  }
+  __kaniRenderRows_(lines);
+  // 出張費ラジオを現在値に同期(一致しなければ選択なし=任意額)
+  const amt5 = Number(lines[KANI_CAL_ROWS-1].amount)||0;
+  document.querySelectorAll('input[name="kani-cal-travel"]').forEach(rd=>{ rd.checked = (rd.value===String(amt5)); });
+  document.getElementById('kaniModal').classList.add('show');
+}
+function __kaniFillDatalists_(){
+  const items = (__kaniPm && __kaniPm.items) || [];
+  document.getElementById('kani-cal-items').innerHTML = items.map(x=>`<option value="${escapeHtml(String(x.item||''))}">`).join('');
+  const units = [...new Set(items.map(x=>String(x.unit||'').trim()).filter(Boolean))];
+  document.getElementById('kani-cal-units').innerHTML = (units.length?units:['式','㎡','m','枚','箇所']).map(u=>`<option value="${escapeHtml(u)}">`).join('');
+}
+function closeKaniModal_(){ document.getElementById('kaniModal').classList.remove('show'); __kaniRepairId = null; }
+async function saveKaniModal_(){
+  if(__kaniSending) return;
+  const err = document.getElementById('kani-error');
+  const show = m=>{ err.textContent = m; err.style.display=''; };
+  err.style.display='none';
+  const r = (state.repairs||[]).find(x=>x.id===__kaniRepairId);
+  if(!r || !r.extDriveFileId){ show('台帳リンクが見つかりません'); return; }
+  const s = loadGasSettings();
+  if(!s.url || !s.token){ show('GAS URL/Token 未設定'); return; }
+  // 入力行→送信形(名目も金額も無い行はサーバ側でもスキップされるがローカルでも落とす)
+  const rows = __kaniRowsFromInputs_().filter(l=>l.name || (Number(l.amount)||0));
+  __kaniSending = true;
+  const btn = document.getElementById('kani-save');
+  btn.disabled = true; btn.textContent = '保存中…';
+  try{
+    const res = await fetch(s.url, {
+      method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ action:'task-set-kani-mitsu', token:s.token, driveFileId:r.extDriveFileId,
+        setBy: (typeof getMyself==='function' ? getMyself() : '') || '', kaniLines: rows }),
+    });
+    const data = await res.json().catch(()=>null);
+    if(!data) throw new Error('サーバー応答が不正です');
+    if(data.ok !== true){
+      if(/unknown kind/i.test(data.error||'')) throw new Error('見積アプリ側(master_sync)が未対応です。GASデプロイを確認してください');
+      throw new Error(data.error || 'GAS returned ok:false');
+    }
+    // ローカル反映(合計はサーバ再計算値=kaniMitsuが正)
+    r.kaniMitsu = data.kaniMitsu;
+    r.kaniLines = rows.length ? rows : null;
+    r.kaniUpdatedAt = data.kaniUpdatedAt || new Date().toISOString();
+    r.kaniSetBy = (typeof getMyself==='function' ? getMyself() : '') || '';
+    saveState();
+    document.getElementById('kani-total').textContent = '¥' + (Number(data.kaniMitsu)||0).toLocaleString();
+    if(rows.length){
+      const txt = kaniCopyTextCal_(r, rows, Number(data.kaniMitsu)||0);
+      document.getElementById('kani-copy-text').value = txt;
+      document.getElementById('kani-copy-wrap').style.display = '';
+      if(typeof showAutoSyncToast==='function') showAutoSyncToast(`⚡ 簡易見積 ¥${(Number(data.kaniMitsu)||0).toLocaleString()} を台帳に保存しました`);
+    }else{
+      document.getElementById('kani-copy-wrap').style.display = 'none';
+      if(typeof showAutoSyncToast==='function') showAutoSyncToast('⚡ 簡易見積を消しました(明細合計に戻ります)');
+    }
+    const metaEl = document.getElementById('kani-meta');
+    metaEl.textContent = rows.length ? `⚡ 保存済: ¥${(Number(data.kaniMitsu)||0).toLocaleString()} ・ ${r.kaniSetBy} ・ たった今` : '';
+    metaEl.style.display = rows.length ? '' : 'none';
+    document.getElementById('kani-warn').style.display = 'none';
+  }catch(e){
+    show('保存に失敗しました: ' + ((e && e.message) || e));
+  }finally{
+    __kaniSending = false;
+    btn.disabled = false; btn.textContent = '✓ 台帳に保存';
+  }
+}
+// 配線(静的・一度だけ)
+(function(){
+  const m = document.getElementById('kaniModal');
+  if(!m) return;
+  document.getElementById('kani-cancel').onclick = closeKaniModal_;
+  document.getElementById('kani-save').onclick = saveKaniModal_;
+  document.getElementById('kani-clear').onclick = ()=>{
+    if(!confirm('全行を空にします。「✓台帳に保存」すると簡易見積が消えて明細合計に戻ります')) return;
+    __kaniRenderRows_(Array.from({length:KANI_CAL_ROWS}, ()=>({name:'',qty:'',unit:'',unitPrice:'',amount:0})));
+    document.querySelectorAll('input[name="kani-cal-travel"]').forEach(rd=>rd.checked=false);
+  };
+  document.getElementById('kani-copy-btn').onclick = async ()=>{
+    const ta = document.getElementById('kani-copy-text');
+    try{ await navigator.clipboard.writeText(ta.value); }
+    catch(e){ ta.select(); document.execCommand('copy'); }
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast('📋 コピーしました(LINE/メールに貼り付けできます)');
+  };
+  document.querySelectorAll('input[name="kani-cal-travel"]').forEach(rd=>{
+    rd.onchange = ()=>{
+      const amts = document.querySelectorAll('#kani-rows .k-amt');
+      const names = document.querySelectorAll('#kani-rows .k-name');
+      const last = amts[amts.length-1], lastName = names[names.length-1];
+      if(last){ last.value = Number(rd.value)||0; }
+      if(lastName && !lastName.value.trim()) lastName.value = '出張費';
+      __kaniTotal_();
+    };
+  });
+  m.onclick = (e)=>{ if(e.target===m && !__kaniSending) closeKaniModal_(); };
 })();
 
 // ===========================================================
