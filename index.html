@@ -2536,7 +2536,10 @@
   .inv-fab.on{display:grid}
 
   /* ---------- sheet (modal) ---------- */
-  .inv-sheet-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:100;
+  /* z-index:700 = スマホ下部ナビ(z600)より上。100だとナビがシートに突き抜けて下部(備考〜入荷処理するボタン)に被り、
+     触ってもナビに当たるのでスクロールもタップも効かなかった(「入荷スクロールできない」山田報告 v1.30.417)。
+     カレンダー側 .modal-overlay は v1.30.358(大村報告)で同じ修正済み=在庫ビューは後から移植したため直し漏れていた。 */
+  .inv-sheet-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:700;
     display:none;align-items:flex-end;justify-content:center}
   .inv-sheet-backdrop.on{display:flex}
   .inv-sheet{background:#fff;width:100%;max-width:560px;border-radius:20px 20px 0 0;
@@ -2624,7 +2627,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.416</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.417</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
