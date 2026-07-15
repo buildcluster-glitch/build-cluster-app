@@ -2635,7 +2635,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.426</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.427</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -6838,7 +6838,9 @@ function mergeAlertMaps_(a,b){ const out={}; const keys=new Set([...Object.keys(
 function getAlert_(id){ const e=loadAlerts_()[id]; return (e && e.text) ? e : null; }
 function alertChipHtml_(id, opts){
   const e = getAlert_(id); if(!e) return "";
-  const txt = `⚠${e.text}${e.author?(' '+e.author):''}`;
+  // 著者は姓だけ(「山田裕貴」→「山田」)=チップ幅を食わない(山田 2026-07-15・v1.30.427)。ホバーtitleはフルネーム
+  const __au = (typeof surnameOf_==='function') ? surnameOf_(e.author) : (e.author||'');
+  const txt = `⚠${e.text}${__au?(' '+__au):''}`;
   const inline = opts&&opts.inline;
   const st = inline
     ? `display:inline-block;max-width:100%;font-size:9px;font-weight:700;color:#dc2626;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom`
