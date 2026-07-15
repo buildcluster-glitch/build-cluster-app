@@ -2627,7 +2627,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.421</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.422</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -19935,6 +19935,10 @@ function renderRestoTaskRow(t, cat){
       </div></div>`;
     logBtnHtml = `<button class="rt-logbtn ${logCount?"has":""}" data-role="log-toggle" title="作業ログ">📝${logCount||""}</button>`;
   }
+  // ➕ 追加工事の編集ボタン(v1.30.422): バッジタップだけでは気づけない(山田)→📝の隣に明示ボタン
+  const extraBtnHtml = t.extraId
+    ? `<button class="rt-logbtn" data-role="extra-edit" title="追加工事を編集・削除" style="background:#fff7ed;border-color:#f59e0b;color:#b45309;font-weight:700">✎</button>`
+    : "";
   const noteHtml = t.note ? `<div class="rt-sub" style="background:#fef3c7;padding:4px 8px;border-radius:6px;margin-top:3px">📝 ${escapeHtml(t.note)}</div>` : "";
   return `
     <div class="rtask ${t.status} ${cat==="reduced"?"reduced":""}" data-id="${t.id}">
@@ -19952,7 +19956,7 @@ function renderRestoTaskRow(t, cat){
           ${t.statusBy?`<div class="rt-sub" style="font-size:10px">${escapeHtml(RESTO_STATUS_LABEL[t.status]||t.status)} : ${escapeHtml(t.statusBy)} ${restoFmtDateTime(t.statusAt)}</div>`:""}
           ${noteHtml}
         </div>
-        ${logBtnHtml}
+        ${extraBtnHtml}${logBtnHtml}
       </div>
       ${logsHtml}
     </div>`;
@@ -19963,14 +19967,15 @@ function wireRestoTaskRows(el){
     const id = row.dataset.id;
     const tog = row.querySelector('[data-role="toggle"]');
     if(tog) tog.onclick = e=>{ e.stopPropagation(); restoCycleStatus(id); };
-    // ➕「＋追加」バッジタップ→追加工事の編集/削除モーダル(v1.30.421)
-    const exb = row.querySelector('[data-role="extra-edit"]');
-    if(exb) exb.onclick = (e)=>{
-      e.stopPropagation();
-      const p = (state.restorations||[]).find(x=>x.id===restoDetailId);
-      const t = p && (p.tasks||[]).find(x=>x.id===id);
-      if(t && t.extraId && typeof openExtraWorkEdit_==='function') openExtraWorkEdit_(t.extraId);
-    };
+    // ➕「＋追加」バッジ or ✎ボタン→追加工事の編集/削除モーダル(v1.30.421・✎明示ボタンはv1.30.422)
+    row.querySelectorAll('[data-role="extra-edit"]').forEach(exb=>{
+      exb.onclick = (e)=>{
+        e.stopPropagation();
+        const p = (state.restorations||[]).find(x=>x.id===restoDetailId);
+        const t = p && (p.tasks||[]).find(x=>x.id===id);
+        if(t && t.extraId && typeof openExtraWorkEdit_==='function') openExtraWorkEdit_(t.extraId);
+      };
+    });
     row.querySelectorAll('[data-role="edit"]').forEach(x=>x.onclick = ()=>restoEditTaskNote(id));
     // ログ折り畳みトグル
     const logToggle = row.querySelector('[data-role="log-toggle"]');
