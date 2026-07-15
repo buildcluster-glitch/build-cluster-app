@@ -493,6 +493,10 @@
   .event-chip > .chip-alert{
     flex-basis:100%;width:100%;display:block;padding:0 8px;line-height:13px;
   }
+  /* ➕追加工事モーダル: 入力欄がブラウザ既定幅のままグリッドに収まらず横スクロール/見切れ(山田報告 v1.30.423) */
+  #extraWorkModal .field input, #extraWorkModal .field textarea{width:100%;box-sizing:border-box;min-width:0}
+  #extraWorkModal .field-row > .field{min-width:0}
+  #extraWorkModal .field-row .field > span{min-width:0}
   /* 📏 サブ行あり(連携情報/工事/見積/アラート)チップ: 行を上詰め=予約高さの余りが行間に化けるのを防ぐ(v1.30.414)
      既定のalign-content:stretchだと箱の余り高さが各行に配分され、gapを詰めても行間が開いて見えた。
      ※単行チップには当てない(白い時刻ピルのエンドキャップがカード下端まで届く既存デザインを維持 v1.30.174) */
@@ -2627,7 +2631,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.422</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.423</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -20463,7 +20467,8 @@ async function openExtraWorkEdit_(taskExtraId){
   document.getElementById("xw-room").value = line.room || "";
   document.getElementById("xw-qty").value = String((line.hatchuOnly && line.hatchuQty != null && line.hatchuQty !== "") ? line.hatchuQty : (line.qty || 1));
   document.getElementById("xw-unit").value = line.unit || "式";
-  const sup = String(line.supplier || "").trim();
+  const supRaw = String(line.supplier || "").trim();
+  const sup = /^(ビルドクラスタ|自社)$/.test(supRaw) ? "" : supRaw;   // ビルドクラスタ=自社(射影isInhouseと同義・v1.30.423)
   document.querySelector(`input[name="xw-who"][value="${sup ? "gaichu" : "jisha"}"]`).checked = true;
   document.getElementById("xw-supplier").value = sup;
   document.getElementById("xw-supplier-row").style.display = sup ? "" : "none";
@@ -20493,6 +20498,7 @@ async function submitExtraWork_(){
   const note = document.getElementById("xw-note").value.trim();
   if(!name){ show("内容を入力してください"); return; }
   if(who==="gaichu" && !supplier){ show("外注のときは業者名が必須です（空だと自社扱いになってしまうため）"); return; }
+  if(who==="gaichu" && /^(ビルドクラスタ|自社)$/.test(supplier)){ show("「ビルドクラスタ」は自社施工です。施工区分は 🔨自社 を選んでください（台帳の集計で外注と混ざるのを防ぐため）"); return; }
   if(billable && !(unitPrice>0)){
     if(!confirm("単価が¥0のまま「請求に載せる」で登録しますか？")){ show("単価(税別)を入力してください"); return; }
   }
