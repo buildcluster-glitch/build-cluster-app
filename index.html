@@ -493,10 +493,10 @@
   .event-chip > .chip-alert{
     flex-basis:100%;width:100%;display:block;padding:0 8px;line-height:13px;
   }
-  /* ✅ 完了✓が付いた予定(v1.30.424): 打消し線+淡色。ホバーの「✓完了にする」でトグル(event_done共有マップ=全端末) */
-  .event.ev-done{opacity:.55}
-  .event.ev-done .chip-title, .event.ev-done .title{text-decoration:line-through;text-decoration-thickness:1.5px}
-  .month-event.ev-done{opacity:.55;text-decoration:line-through}
+  /* ✅ 完了✓が付いた予定(v1.30.425・山田): 打消し線もグレースケールも無し=文字の後に✅を足すだけ。
+     タイトル末尾に付けると号室ピン留め等の既存レイアウトに干渉するので、CSSの::afterで足す。 */
+  .event.ev-done .chip-title::after, .event.ev-done .title::after{content:" ✅";font-size:11px}
+  .month-event.ev-done::after{content:" ✅"}
   /* ➕追加工事モーダル: 入力欄がブラウザ既定幅のままグリッドに収まらず横スクロール/見切れ(山田報告 v1.30.423) */
   #extraWorkModal .field input, #extraWorkModal .field textarea{width:100%;box-sizing:border-box;min-width:0}
   #extraWorkModal .field-row > .field{min-width:0}
@@ -2635,7 +2635,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.424</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.425</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -13148,7 +13148,7 @@ function renderCalendar(){
       const targetCol = subCols[colIdx % SUB];
       const el = document.createElement("div");
       el.className = "event" + (isMonth ? " event-chip" : "") + (isFree ? " event-allday" : "") + ((isMonth && __hasSubRows) ? " chip-subrows" : "");   // 📏 サブ行ありは行を上詰め(v1.30.414)
-      // ✅ 完了✓が付いた予定は打消し線+淡色(v1.30.424・event_done共有マップ)
+      // ✅ 完了✓が付いた予定はタイトル末尾に✅(v1.30.425・event_done共有マップ)
       if(typeof isEventDone_==='function' && typeof isDoneEligibleEvent_==='function' && isDoneEligibleEvent_(ev) && isEventDone_(ev.id)) el.classList.add('ev-done');
       el.style.top = top+"px";
       el.style.height = height+"px";
@@ -14355,7 +14355,7 @@ function showChipTip(ev, mouseX, mouseY){
       const done = __doneEligible && typeof isEventDone_==='function' && isEventDone_(ev.id);
       const info = (done && typeof eventDoneInfo_==='function') ? eventDoneInfo_(ev.id) : null;
       const t = done
-        ? `<div class="tt-title" style="text-decoration:line-through;opacity:.75">✅ ${escapeHtml(ev.title || "(無題)")}</div>`
+        ? `<div class="tt-title">${escapeHtml(ev.title || "(無題)")} ✅</div>`
         : titleHtml;
       if(!__doneEligible) return t;
       const btn = done
