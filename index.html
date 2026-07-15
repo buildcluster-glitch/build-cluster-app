@@ -2647,7 +2647,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.429</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.430</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -12441,12 +12441,7 @@ function openSanpaiPop_(anchorEl){
       <div class="qp-title">🗑 産廃回収の登録 <span style="font-size:11px;color:#64748b;font-weight:400">当番の「ゴミ籠交換手配」</span></div>
       <div class="qp-sec">
         <div class="qp-label">📅 回収日</div>
-        <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
-          <input type="date" id="sp-date" value="${escapeHtml(st.date)}" style="flex:1;min-width:120px;padding:5px 6px;font-size:12px;border:1px solid var(--border-strong);border-radius:6px">
-          <button class="qp-detail" data-spd="1" style="padding:4px 8px;font-size:11px;background:#f1f5f9">明日</button>
-          <button class="qp-detail" data-spd="2" style="padding:4px 8px;font-size:11px;background:#f1f5f9">明後日</button>
-          <button class="qp-detail" data-spd="7" style="padding:4px 8px;font-size:11px;background:#f1f5f9">来週</button>
-        </div>
+        <input type="date" id="sp-date" value="${escapeHtml(st.date)}" style="width:100%;box-sizing:border-box;padding:5px 6px;font-size:12px;border:1px solid var(--border-strong);border-radius:6px">
       </div>
       <div class="qp-sec">
         <div class="qp-label">🙋 依頼者 <span style="font-weight:400;color:#94a3b8;font-size:10px">(業者に手配した人)</span></div>
@@ -12457,13 +12452,12 @@ function openSanpaiPop_(anchorEl){
       <div class="qp-sec">
         <div class="qp-label">🧺 回収籠数</div>
         <div class="sanpai-pick" id="sp-kago">
-          ${[1,2,3,4,5,6].map(n=>`<button class="kago ${n===st.kago?'on':''}" data-k="${n}">${n}</button>`).join('')}
+          ${[1,2].map(n=>`<button class="kago ${n===st.kago?'on':''}" data-k="${n}">${n}</button>`).join('')}
         </div>
       </div>
       <div class="qp-sec">
-        <div class="qp-label">💡 電球回収</div>
         <div class="sanpai-pick">
-          <button id="sp-denkyu" class="${st.denkyu?'on':''}" style="${st.denkyu?'background:#f59e0b;border-color:#f59e0b':''}">${st.denkyu?'💡 電球回収も依頼する':'電球回収は無し'}</button>
+          <button id="sp-denkyu" class="${st.denkyu?'on':''}" style="${st.denkyu?'background:#f59e0b;border-color:#f59e0b;color:#fff':''}">💡 電球回収も依頼する</button>
         </div>
       </div>
       ${hist.length?`<div class="qp-sec"><div class="qp-label">🕘 履歴 <span style="font-weight:400;color:#94a3b8;font-size:10px">(直近5件)</span></div>
@@ -12475,8 +12469,6 @@ function openSanpaiPop_(anchorEl){
         <button class="qp-detail" id="sp-cancel">キャンセル</button>
         <button class="qp-close" id="sp-save" style="background:#0f172a;color:#fff">✓ 保存</button>
       </div>`;
-    // 回収日クイック
-    pop.querySelectorAll('[data-spd]').forEach(b=>{ b.onclick=()=>{ const n=parseInt(b.dataset.spd,10)||0; const d=new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()+n); st.date=fmtDate(d); draw(); }; });
     pop.querySelector('#sp-date').onchange = (e)=>{ st.date = e.target.value; };
     pop.querySelectorAll('#sp-by button').forEach(b=>{ b.onclick=()=>{ st.by = (st.by===b.dataset.s) ? "" : b.dataset.s; draw(); }; });
     pop.querySelectorAll('#sp-kago button').forEach(b=>{ b.onclick=()=>{ st.kago = parseInt(b.dataset.k,10)||1; draw(); }; });
