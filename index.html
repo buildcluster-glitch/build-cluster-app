@@ -1784,6 +1784,9 @@
   .rtask .rt-body{flex:1;min-width:0;cursor:pointer}
   .rtask .rt-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .rtask .rt-room{font-size:10px;background:#e0e7ff;color:#3730a3;padding:1px 6px;border-radius:4px;font-weight:600;flex-shrink:0}
+  /* ➕ 追加工事バッジ: カレンダーから後入れした工事を一目で識別(山田 2026-07-15・v1.30.416) */
+  .rtask .rt-extra{font-size:10px;background:#f59e0b;color:#fff;padding:1px 6px;border-radius:4px;font-weight:700;flex-shrink:0}
+  .rtask.done .rt-extra{background:#fbbf24}
   .rtask .rt-name{font-weight:600;font-size:13px;color:var(--text)}
   .rtask .rt-qty{font-size:11px;color:var(--muted)}
   .rtask .rt-sub{font-size:11px;color:var(--muted);margin-top:1px}
@@ -2621,7 +2624,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.415</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.416</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -10985,6 +10988,11 @@ function restoSyncTasks(existingTasks, serverTasks){
       checkWork: kept?.checkWork || false, checkWorkBy: kept?.checkWorkBy || "", checkWorkAt: kept?.checkWorkAt || null,
       checkAmount: kept?.checkAmount || false, checkAmountBy: kept?.checkAmountBy || "", checkAmountAt: kept?.checkAmountAt || null,
       logs: kept?.logs || [], note: kept?.note || "",
+      // ➕ 追加工事マーカー: 再構築で消すと「＋追加」バッジが同期のたびに消える(v1.30.416)。
+      //   st.* = 将来GAS射影がextraId/addedByを載せた時に全端末で出る / kept.* = 今の自端末フォールバック。
+      extraId: st.extraId || kept?.extraId || "",
+      addedBy: st.addedBy || kept?.addedBy || "",
+      extraAddedAt: kept?.extraAddedAt || null,
     };
   });
   // ➕ 追加工事の楽観タスク保護(v1.30.408): カレンダーで登録→台帳追記直後は、台帳追記前に発火していた
@@ -19878,6 +19886,7 @@ function renderRestoTaskRow(t, cat){
           : `<button class="rt-check" data-role="toggle" title="${t.statusBy?escapeHtml(t.statusBy)+" "+restoFmtDateTime(t.statusAt):""}">${t.status==="done"?"✅":t.status==="wip"?"◐":""}</button>`}
         <div class="rt-body" data-role="edit">
           <div class="rt-head">
+            ${t.extraId?`<span class="rt-extra" title="カレンダーから登録した追加工事${t.addedBy?` (${escapeHtml(t.addedBy)})`:""}">＋追加</span>`:""}
             ${t.room?`<span class="rt-room">${escapeHtml(t.room)}</span>`:""}
             <span class="rt-name">${escapeHtml(dispName)}</span>
             ${qtyStr?`<span class="rt-qty">${escapeHtml(qtyStr)}</span>`:""}
@@ -20395,6 +20404,7 @@ async function submitExtraWork_(){
         checkAmount:false, checkAmountBy:"", checkAmountAt:null,
         logs:[], note,
         extraId: __xwExtraId, extraAddedAt: Date.now(),    // restoSyncTasks 24h保護マーカー
+        addedBy: payload.addedBy || "",                    // 「＋追加」バッジのツールチップ用(v1.30.416)
       });
       saveState();
     }
