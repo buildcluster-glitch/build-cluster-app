@@ -2635,7 +2635,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.425</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.426</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -5607,7 +5607,9 @@ function showCheckStaffPicker(el, ck){
         <button data-c="home" class="${(ck.commute||'').includes('直帰')?'on':''}" style="background:#dcfce7">🏠 直帰</button>
       </div>
     </div>
-    ${alertInputHtml_(ck.id)}
+    ${alertInputHtml_((typeof checkAlertId_==='function') ? checkAlertId_(ck, (state.restorations||[]).find(r=>
+        (ck.extDriveFileId && r.extDriveFileId===ck.extDriveFileId) || (ck.extEstimateId && r.extEstimateId===ck.extEstimateId)
+      )) : ck.id)}
     <div class="qp-actions">
       <button class="qp-detail" data-role="open-modal">✏️ 詳細編集</button>
       <button class="qp-close" data-role="close">✓ 保存</button>
@@ -6054,7 +6056,12 @@ function renderCheckCard(ck, today){
       ${moveInHtml}
     </div>
     ${ck.memo ? `<div class="ck-memo">${escapeHtml(ck.memo)}</div>` : ""}
-    ${(typeof alertChipHtml_==='function' && alertChipHtml_(ck.id)) ? `<div style="margin-top:2px">${alertChipHtml_(ck.id)}</div>` : ""}
+    ${(()=>{ // ⚠ アラート: 事前チップ等で入力された1本もキー解決で拾う(v1.30.426・山田「最終確認時ピカール…」が出なかった)
+      if(typeof alertChipHtml_!=='function') return "";
+      const __ak = (typeof checkAlertId_==='function') ? checkAlertId_(ck, linkedResto) : ck.id;
+      const __h = alertChipHtml_(__ak);
+      return __h ? `<div style="margin-top:2px">${__h}</div>` : "";
+    })()}
   </div>`;
 }
 
@@ -19895,33 +19902,44 @@ function renderRestoDetail(){
   renderRestoAlert_(p);   // ⚠ アラート(常時赤字・全員共有) 現場メモの下 v1.30.410
 }
 
-// ⚠ 原状回復のアラートID解決 v1.30.411
-//   アラートのキーは入力場所ごとに別(最終確認ck.id="gas-"+fid／立会=_taikyoRawId／予定・事前=ev.id)。
-//   この物件に紐づく候補キーを走査し、**既にアラートが入っているキーを優先**して返す
-//   (=立会チップ等どこで入力した1本でもこの欄に出る・編集すると元の表示場所にも反映)。
-//   どこにも無ければ最終確認カードのキー("gas-"+fid)で新規作成=カード上に常時赤字表示。
+// ⚠ アラートのキー解決 v1.30.426(共通化・v1.30.411の restoAlertId_ を一般化)
+//   同じ物件でも**レコードごとにアラートのキーが違う**(最終確認ck.id="gas-"+fid / 事前・予定ev.id / 立会_taikyoRawId)。
+//   そのため「事前チップに書いたアラートが最終確認カードに出ない」事故が起きる(山田報告 2026-07-15:
+//   『最終確認時ピカールで台所水栓根本磨きする』が事前ev.idに保存され、8/6の最終確認カードから見えなかった)。
+//   → 物件に紐づく候補キーを走査し、**既にアラートが実在するキーを優先**して返す(実在キーだけ採用=誤リンク低リスク)。
+//   ownKey(自分のレコードのキー)に有ればそれが最優先=各レコードは自分のアラートを優先表示。
+//   入力(進捗ダイアログ)も表示(最終確認カード)も同じ解決を通す=どこで書いても同じ1本を共有する。
+function alertKeyResolve_(ownKey, name, room){
+  const amap = (typeof loadAlerts_==='function') ? loadAlerts_() : {};
+  const has = k => { const e = k && amap[k]; return !!(e && e.text); };
+  if(has(ownKey)) return ownKey;
+  const norm = s => String(s||"").normalize("NFKC").replace(/\s|　/g,"");
+  const nm = norm(name), rm = norm(room);
+  if(!nm) return ownKey;
+  for(const ev of (state.events||[])){
+    if(!ev) continue;
+    const key = ev._taikyoRawId || ev.id;
+    if(!has(key)) continue;
+    const evNm = norm(ev._bukken||""), evRm = norm(ev._room||"");
+    const title = norm(String(ev.title||"").split(/\r?\n/)[0]);
+    if((evNm && evNm===nm && (!rm || evRm===rm)) || (title.indexOf(nm)>=0 && (!rm || title.indexOf(rm)>=0))) return key;
+  }
+  return ownKey;
+}
+// 原状回復(進捗ダイアログ)のアラートキー: 紐づく最終確認カードのキーを自分のキーとして解決
 function restoAlertId_(p){
   if(!p) return "";
   const fid = p.extDriveFileId || "";
   const ck = (state.checks||[]).find(c => c && ((fid && c.extDriveFileId===fid) || (p.extEstimateId && c.extEstimateId===p.extEstimateId)));
   const ckKey = (ck && ck.id) ? ck.id : (fid ? "gas-"+fid : (p.id||""));
-  const amap = (typeof loadAlerts_==='function') ? loadAlerts_() : {};
-  const has = k => { const e = k && amap[k]; return !!(e && e.text); };
-  if(has(ckKey)) return ckKey;
-  // 立会・予定・事前チップで入力済みのアラートを物件名+号室で探す(アラートが実在するキーだけ採用=誤リンク低リスク)
-  const norm = s => String(s||"").normalize("NFKC").replace(/\s|　/g,"");
-  const nm = norm(p.name), rm = norm(p.room);
-  if(nm){
-    for(const ev of (state.events||[])){
-      if(!ev) continue;
-      const key = ev._taikyoRawId || ev.id;
-      if(!has(key)) continue;
-      const evNm = norm(ev._bukken||""), evRm = norm(ev._room||"");
-      const title = norm(String(ev.title||"").split(/\r?\n/)[0]);
-      if((evNm && evNm===nm && (!rm || evRm===rm)) || (title.indexOf(nm)>=0 && (!rm || title.indexOf(rm)>=0))) return key;
-    }
-  }
-  return ckKey;
+  return alertKeyResolve_(ckKey, p.name, p.room);
+}
+// 最終確認カードのアラートキー: 自分のck.id優先→無ければ紐づく物件名+号室で他レコードのアラートを拾う(v1.30.426)
+function checkAlertId_(ck, linkedResto){
+  if(!ck) return "";
+  const nm = (linkedResto && linkedResto.name) || String(ck.title||"").replace(/\s*\S*$/,"") || ck.title || "";
+  const rm = (linkedResto && linkedResto.room) || "";
+  return alertKeyResolve_(ck.id, nm, rm);
 }
 function renderRestoAlert_(p){
   const sec = document.getElementById("rdAlertSec");
