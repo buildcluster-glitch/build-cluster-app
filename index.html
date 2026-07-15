@@ -493,6 +493,10 @@
   .event-chip > .chip-alert{
     flex-basis:100%;width:100%;display:block;padding:0 8px;line-height:13px;
   }
+  /* 📏 サブ行あり(連携情報/工事/見積/アラート)チップ: 行を上詰め=予約高さの余りが行間に化けるのを防ぐ(v1.30.414)
+     既定のalign-content:stretchだと箱の余り高さが各行に配分され、gapを詰めても行間が開いて見えた。
+     ※単行チップには当てない(白い時刻ピルのエンドキャップがカード下端まで届く既存デザインを維持 v1.30.174) */
+  .event-chip.chip-subrows{align-content:flex-start}
   /* 単行モード(改行なし) — タイトル+アイコンを1行に固定(折返さない)。連携情報/見積はtitle外の独立行へ(v1.30.97) */
   .event-chip .chip-title.single-line{
     white-space:nowrap;text-overflow:ellipsis;flex-wrap:nowrap;
@@ -2617,7 +2621,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.413</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.414</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -12981,12 +12985,12 @@ function renderCalendar(){
       const __foldEst = !!(__linkText && __estText);
       const __linkRowText = __foldEst ? `${__linkText} ／ ${__estText}` : __linkText;
       // 列幅~196px=1行22字前後。行間gap/余白込みで余裕を持たせる(2行=32px)→2行目の見切れ防止(v1.30.97)
-      const __linkRow = __linkRowText ? (__linkRowText.length <= 22 ? 18 : 32) : 0;
-      const __estRow = (__estText && !__foldEst) ? 16 : 0;   // 連携情報が無い時だけ見積を独立行に
+      const __linkRow = __linkRowText ? (__linkRowText.length <= 22 ? 15 : 28) : 0;   // v1.30.414 行間詰め: 18/32→15/28(中身13/26+gap1+余白1・flex-start化とセット)
+      const __estRow = (__estText && !__foldEst) ? 15 : 0;   // 連携情報が無い時だけ見積を独立行に(16→15 v1.30.414)
       // ⚠ アラート(常時赤字・全員共有)。立会は_taikyoRawId、それ以外はev.idで引く(v1.30.115)
       const __alertKey = ev._taikyoRawId || ev.id;
       const __alertHtml = (typeof alertChipHtml_==='function') ? alertChipHtml_(__alertKey) : "";
-      const __alertRow = __alertHtml ? 18 : 0;   // 行高13+gap1+余白4(見切れ防止・v1.30.413 行間詰めで23→18)
+      const __alertRow = __alertHtml ? 15 : 0;   // 行高13+gap1+余白1(v1.30.414 行間詰めで23→15・flex-start化とセット)
       // 着色チップは「本文(色)と時刻ピルを分離」表示にする(修繕と同じ見た目)。
       //   サブ行(連携情報/工事/見積/アラート)が無いイベントは非カード化=el透明・本文だけ着色・時刻ピルは別箱に分離。
       //   サブ行があるイベントはそれらが透明地で読めなくなるためカード維持(一体化)。行かない(__jizenSkip)もカード維持。v1.30.175
@@ -13016,7 +13020,7 @@ function renderCalendar(){
       }
       const targetCol = subCols[colIdx % SUB];
       const el = document.createElement("div");
-      el.className = "event" + (isMonth ? " event-chip" : "") + (isFree ? " event-allday" : "");
+      el.className = "event" + (isMonth ? " event-chip" : "") + (isFree ? " event-allday" : "") + ((isMonth && __hasSubRows) ? " chip-subrows" : "");   // 📏 サブ行ありは行を上詰め(v1.30.414)
       el.style.top = top+"px";
       el.style.height = height+"px";
       el.style.left = "2px";
