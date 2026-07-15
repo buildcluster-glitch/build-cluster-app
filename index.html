@@ -2617,7 +2617,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.410</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.411</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -19702,16 +19702,33 @@ function renderRestoDetail(){
   renderRestoAlert_(p);   // ⚠ アラート(常時赤字・全員共有) 現場メモの下 v1.30.410
 }
 
-// ⚠ 原状回復のアラートID解決: 最終確認カード(ck.id="gas-"+driveFileId)と同じキーに揃える
-//   → ここで入れたアラートがカレンダーの最終確認カードに常時赤字で表示される(既存の表示経路に相乗り)。
-//   カード未生成(最終確認日なし)でも "gas-"+fid にしておけば、カードが出た瞬間から表示される。
+// ⚠ 原状回復のアラートID解決 v1.30.411
+//   アラートのキーは入力場所ごとに別(最終確認ck.id="gas-"+fid／立会=_taikyoRawId／予定・事前=ev.id)。
+//   この物件に紐づく候補キーを走査し、**既にアラートが入っているキーを優先**して返す
+//   (=立会チップ等どこで入力した1本でもこの欄に出る・編集すると元の表示場所にも反映)。
+//   どこにも無ければ最終確認カードのキー("gas-"+fid)で新規作成=カード上に常時赤字表示。
 function restoAlertId_(p){
   if(!p) return "";
   const fid = p.extDriveFileId || "";
   const ck = (state.checks||[]).find(c => c && ((fid && c.extDriveFileId===fid) || (p.extEstimateId && c.extEstimateId===p.extEstimateId)));
-  if(ck && ck.id) return ck.id;
-  if(fid) return "gas-"+fid;
-  return p.id || "";   // 手動追加物件はローカルidで(共有mapには載るが他端末に同一レコードが無いだけ・無害)
+  const ckKey = (ck && ck.id) ? ck.id : (fid ? "gas-"+fid : (p.id||""));
+  const amap = (typeof loadAlerts_==='function') ? loadAlerts_() : {};
+  const has = k => { const e = k && amap[k]; return !!(e && e.text); };
+  if(has(ckKey)) return ckKey;
+  // 立会・予定・事前チップで入力済みのアラートを物件名+号室で探す(アラートが実在するキーだけ採用=誤リンク低リスク)
+  const norm = s => String(s||"").normalize("NFKC").replace(/\s|　/g,"");
+  const nm = norm(p.name), rm = norm(p.room);
+  if(nm){
+    for(const ev of (state.events||[])){
+      if(!ev) continue;
+      const key = ev._taikyoRawId || ev.id;
+      if(!has(key)) continue;
+      const evNm = norm(ev._bukken||""), evRm = norm(ev._room||"");
+      const title = norm(String(ev.title||"").split(/\r?\n/)[0]);
+      if((evNm && evNm===nm && (!rm || evRm===rm)) || (title.indexOf(nm)>=0 && (!rm || title.indexOf(rm)>=0))) return key;
+    }
+  }
+  return ckKey;
 }
 function renderRestoAlert_(p){
   const sec = document.getElementById("rdAlertSec");
