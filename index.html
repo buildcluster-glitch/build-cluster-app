@@ -463,7 +463,7 @@
   .event-chip{
     padding:0;font-size:11px;line-height:1.5;
     background:transparent !important;border:none;
-    display:flex;align-items:stretch;gap:3px;overflow:hidden;
+    display:flex;align-items:stretch;gap:1px 3px;overflow:hidden;   /* 行間1px/横3px=サブ行の行間を詰める(山田 2026-07-15) */
     color:inherit !important;
   }
   .event-chip .chip-cat{
@@ -473,7 +473,7 @@
     display:inline-flex;align-items:center;justify-content:center;
   }
   .event-chip .chip-title{
-    padding:6px 8px;border-radius:4px;
+    padding:5px 8px;border-radius:4px;   /* 6→5px=サブ行との行間を詰める(v1.30.413) */
     font-weight:600;flex:1;min-width:0;line-height:1.4;font-size:12px;
     word-break:break-word;overflow:hidden;
     display:flex;align-items:center;gap:6px;
@@ -489,9 +489,9 @@
   .event-chip > .chip-est-row{
     flex-basis:100%;width:100%;display:block;padding:0 8px;line-height:13px;
   }
-  /* ⚠ アラート行(常時赤字): チップ直下の独立行 v1.30.115 (v1.30.117 行高に余裕=見切れ防止) */
+  /* ⚠ アラート行(常時赤字): チップ直下の独立行 v1.30.115 (v1.30.413 行高15→13=行間詰め・連携情報行と同じ) */
   .event-chip > .chip-alert{
-    flex-basis:100%;width:100%;display:block;padding:0 8px 1px;line-height:15px;
+    flex-basis:100%;width:100%;display:block;padding:0 8px;line-height:13px;
   }
   /* 単行モード(改行なし) — タイトル+アイコンを1行に固定(折返さない)。連携情報/見積はtitle外の独立行へ(v1.30.97) */
   .event-chip .chip-title.single-line{
@@ -2617,7 +2617,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.412</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.413</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -12986,7 +12986,7 @@ function renderCalendar(){
       // ⚠ アラート(常時赤字・全員共有)。立会は_taikyoRawId、それ以外はev.idで引く(v1.30.115)
       const __alertKey = ev._taikyoRawId || ev.id;
       const __alertHtml = (typeof alertChipHtml_==='function') ? alertChipHtml_(__alertKey) : "";
-      const __alertRow = __alertHtml ? 23 : 0;   // 行高15+余白+flex gap分(見切れ防止 v1.30.117)
+      const __alertRow = __alertHtml ? 18 : 0;   // 行高13+gap1+余白4(見切れ防止・v1.30.413 行間詰めで23→18)
       // 着色チップは「本文(色)と時刻ピルを分離」表示にする(修繕と同じ見た目)。
       //   サブ行(連携情報/工事/見積/アラート)が無いイベントは非カード化=el透明・本文だけ着色・時刻ピルは別箱に分離。
       //   サブ行があるイベントはそれらが透明地で読めなくなるためカード維持(一体化)。行かない(__jizenSkip)もカード維持。v1.30.175
