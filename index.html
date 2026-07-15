@@ -2621,7 +2621,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.414</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.415</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -13547,6 +13547,8 @@ function renderCalendar(){
   if(__isMonth){
     attachColResizeHandles(colCount);
     // hour-cell スクロール式に移行したため fixChipOverlaps は不要
+    // 📏 サブ行チップの下余白刈り取り(v1.30.415)→autoGrowより先(縮小後の高さで行高を計算させる)
+    if(typeof trimSubrowChips_==='function') trimSubrowChips_(grid);
     // 📏 予定が多い時間は行を自動で広げて全部見せる(v1.30.250)→広げ切れない分だけ▼バッジ
     if(typeof autoGrowHourRows_==='function') autoGrowHourRows_(grid);
     // 🔻 セル内スクロールで隠れた予定の見落とし防止バッジ(v1.30.249)
@@ -13554,6 +13556,30 @@ function renderCalendar(){
   }
   // 時間グリッドの行高(HOUR_PX)リサイズ
   attachRowResizeHandle();
+}
+
+// 📏 サブ行ありチップの下余白を実測で刈り取る(v1.30.415・山田「👇の余白が…」)
+//   __linkRow の「22文字超→2行ぶん予約」は列幅が広いと実際は1行で収まり、予約ぶん(~13px)が
+//   チップ下端の色付き余白になる。描画後に実コンテンツ下端を測り**縮小のみ**反映(拡大はしない)。
+//   read→write の2段でレイアウトスラッシング回避。対象は .chip-subrows のみ(単行チップ不変)。
+function trimSubrowChips_(grid){
+  if(!grid) return;
+  const chips = grid.querySelectorAll(".event-chip.chip-subrows");
+  if(!chips.length) return;
+  const mob = window.innerWidth <= 700;
+  const plans = [];
+  chips.forEach(chip=>{
+    let contentBottom = 0;
+    for(const ch of chip.children){
+      const b = ch.offsetTop + ch.offsetHeight;
+      if(b > contentBottom) contentBottom = b;
+    }
+    if(contentBottom <= 0) return;
+    const needed = Math.max(mob ? 20 : 26, contentBottom + 3);   // 下パディング2+境界~1
+    const cur = parseFloat(chip.style.height) || chip.offsetHeight;
+    if(needed < cur) plans.push([chip, needed]);
+  });
+  plans.forEach(([chip, h])=>{ chip.style.height = h + "px"; });
 }
 
 // 📏 予定が多い時間帯は行高を自動で広げて全部見せる(v1.30.250・山田「行が勝手に追加されるってことはできる？」)
