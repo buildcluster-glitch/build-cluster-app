@@ -1806,7 +1806,8 @@
   .rt-log{display:flex;align-items:center;gap:6px;font-size:11px;color:#475569;padding:2px 0;flex-wrap:wrap}
   .rt-log .d{color:var(--muted);flex-shrink:0}
   .rt-log .by{background:#e0e7ff;color:#3730a3;padding:0 5px;border-radius:4px;font-weight:600;flex-shrink:0}
-  .rt-log .text{flex:1;min-width:0}
+  /* ログ本文=赤字太字で目立たせる(現場の申し送りが灰色で埋もれる・山田 2026-07-15) */
+  .rt-log .text{flex:1;min-width:0;color:#dc2626;font-weight:600}
   .rt-log .rm{background:none;border:none;color:#dc2626;cursor:pointer;font-size:13px}
   .rt-log-img{width:54px;height:54px;object-fit:cover;border-radius:6px;cursor:pointer;flex-basis:100%;margin-top:2px}
   .rt-log-add{display:flex;align-items:center;gap:4px;margin-top:4px}
@@ -2616,7 +2617,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.408</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.409</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
