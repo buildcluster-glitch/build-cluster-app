@@ -254,7 +254,7 @@
   /* 🗑 産廃回収(次回)バッジ v1.30.428: クリックで登録ポップ。未登録は赤で気づかせる */
   .sanpai-btn{font-size:11px;border:1.5px solid var(--border-strong);background:#fff;color:#0f172a;border-radius:8px;padding:1px 8px;cursor:pointer;white-space:nowrap;font-weight:700}
   .sanpai-btn:hover{background:#f1f5f9;border-color:#0f172a}
-  .sanpai-btn.none{border-color:#dc2626;background:#fef2f2;color:#dc2626}
+  /* 未登録は赤で急かさない=通常の黒字(山田 v1.30.429)。産廃回収は日が決まってないのが普通の状態 */
   .sanpai-btn .sp-kago{color:#b45309;margin-left:3px}
   /* 登録ポップ内のボタンピッカー(依頼者・籠数) */
   .sanpai-pick{display:flex;flex-wrap:wrap;gap:5px}
@@ -2647,7 +2647,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.428</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.429</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -12404,13 +12404,13 @@ function renderHeaderDuty_(){
     if(nx){
       const d = parseDate(nx.date);
       const ds = (d && !isNaN(d)) ? `${d.getMonth()+1}/${d.getDate()}(${DOW_JA[d.getDay()]})` : nx.date;
-      label = `🗑産廃 ${ds}${nx.kago?`<span class="sp-kago">籠${nx.kago}</span>`:''}${nx.denkyu?' 💡':''}`;
+      label = `🗑産廃回収 ${ds}${nx.kago?`<span class="sp-kago">籠${nx.kago}</span>`:''}${nx.denkyu?' 💡':''}`;
       tip = `次回の産廃回収\n回収日: ${nx.date}\n依頼者: ${nx.by||'(未設定)'}\n籠数: ${nx.kago||'-'}${nx.denkyu?'\n💡 電球回収あり':''}\n\nクリックで編集`;
       cls = '';
     }else{
-      label = '🗑産廃 未登録';
-      tip = '次回の産廃回収が未登録です（クリックで登録）\n※当番の役割「ゴミ籠交換手配」';
-      cls = 'none';
+      label = '🗑産廃回収 次回未定';
+      tip = '次回の産廃回収は未定（クリックで登録）\n※当番の役割「ゴミ籠交換手配」';
+      cls = '';
     }
     html += `<span class="hd-sanpai"><button class="sanpai-btn ${cls}" id="sanpaiBtn" title="${escapeHtml(tip)}">${label}</button></span>`;
   }
