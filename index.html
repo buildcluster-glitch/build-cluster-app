@@ -2647,7 +2647,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.431</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.432</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -12404,8 +12404,8 @@ function renderHeaderDuty_(){
     if(nx){
       const d = parseDate(nx.date);
       const ds = (d && !isNaN(d)) ? `${d.getMonth()+1}/${d.getDate()}(${DOW_JA[d.getDay()]})` : nx.date;
-      label = `🗑産廃回収 ${ds}${nx.kago?`<span class="sp-kago">籠${nx.kago}</span>`:''}${nx.denkyu?' 💡':''}`;
-      tip = `次回の産廃回収\n回収日: ${nx.date}\n依頼者: ${nx.by||'(未設定)'}\n籠数: ${nx.kago||'-'}${nx.denkyu?'\n💡 電球回収あり':''}\n\nクリックで編集`;
+      label = `🗑産廃回収 ${ds}${nx.kago?`<span class="sp-kago">籠${nx.kago}台</span>`:''}${nx.denkyu?' 💡':''}`;
+      tip = `次回の産廃回収\n回収日: ${nx.date}\n依頼者: ${nx.by||'(未設定)'}\n籠数: ${nx.kago?nx.kago+'台':'-'}${nx.denkyu?'\n💡 電球回収あり':''}\n\nクリックで編集`;
       cls = '';
     }else{
       label = '🗑産廃回収 次回未定';
@@ -12462,7 +12462,7 @@ function openSanpaiPop_(anchorEl){
       </div>
       ${hist.length?`<div class="qp-sec"><div class="qp-label">🕘 履歴 <span style="font-weight:400;color:#94a3b8;font-size:10px">(直近5件)</span></div>
         <div class="sanpai-hist">${hist.map(h=>{ const d=parseDate(h.date); const ds=(d&&!isNaN(d))?`${d.getMonth()+1}/${d.getDate()}`:h.date;
-          return `<div>${ds} ・ 籠${h.kago||'-'}${h.denkyu?' 💡':''} ・ ${escapeHtml(disp(h.by||'-'))}</div>`; }).join('')}</div></div>`:''}
+          return `<div>${ds} ・ 籠${h.kago?h.kago+'台':'-'}${h.denkyu?' 💡':''} ・ ${escapeHtml(disp(h.by||'-'))}</div>`; }).join('')}</div></div>`:''}
       <div class="qp-actions">
         ${origDate?`<button class="qp-detail" id="sp-del" style="background:#fee2e2;color:#dc2626">🗑 削除</button>`:''}
         <span style="flex:1"></span>
@@ -12491,7 +12491,7 @@ function openSanpaiPop_(anchorEl){
         if(origDate && origDate !== dv && typeof setSanpai_==='function') await setSanpai_(origDate, null).catch(()=>{});
         if(typeof setSanpai_==='function') await setSanpai_(dv, { by:st.by, kago:st.kago, denkyu:!!st.denkyu });
         pop.remove(); if(typeof render==='function') render();
-        if(typeof showAutoSyncToast==='function') showAutoSyncToast(`🗑 産廃回収を登録しました（${dv} 籠${st.kago}${st.denkyu?' 💡電球あり':''}）`);
+        if(typeof showAutoSyncToast==='function') showAutoSyncToast(`🗑 産廃回収を登録しました（${dv} 籠${st.kago}台${st.denkyu?' 💡電球あり':''}）`);
       }catch(e){ btn.disabled=false; btn.textContent='✓ 保存'; alert('保存に失敗: '+(e&&e.message||e)); }
     };
   };
