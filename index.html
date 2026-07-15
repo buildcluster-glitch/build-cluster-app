@@ -2627,7 +2627,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.417</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.418</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -11686,7 +11686,10 @@ async function pushExtraWorkToGAS_(driveFileId, payload){
 }
 
 // 🏁 原状回復の「完了/完了取消」を台帳(master_sync)へ書き戻し。v1.30.230
-//   done=true : 営業status=完工 / 工事workflowStatus=完了 / completeDate=今日 を台帳へ。
+//   done=true : 営業status=完了 / 工事workflowStatus=完工 / completeDate=今日 を台帳へ。
+//   ⚠v1.30.418修正: v1.30.230実装時から status:"完工"/workflowStatus:"完了" と語彙が【逆】だった。
+//     見積アプリの語彙は 営業=ESTIMATE_STATUSES(完工なし・完了が正) / 進行(原状回復)=PROG_WORKFLOW_RESTORATION(完了なし・完工が正)。
+//     逆だと台帳一覧のプルダウンが照合失敗して「下書き」表示になり、営業status=完了を条件にする集計からも漏れる。
 //   done=false: 完了前のstatus/workflowStatusに戻し completeDateをクリア。
 //   Drive同期由来(extDriveFileId あり)のみ対象。手動追加物件は台帳が無いのでスキップ。
 //   ※ status/workflowStatus は既存 task-update-appointment で即反映。completeDate は master_sync側の
@@ -11702,9 +11705,9 @@ async function pushRestoCompleteToGAS_(p, done){
     // 完了前のステータスを退避(取消時に戻すため・初回のみ)
     if(p._statusBeforeComplete === undefined) p._statusBeforeComplete = p.status || "";
     if(p._wfBeforeComplete     === undefined) p._wfBeforeComplete     = p.workflowStatus || "";
-    p.status = "完工";
-    p.workflowStatus = "完了";
-    fields = { status:"完工", workflowStatus:"完了", completeDate: p.completeDate || "" };
+    p.status = "完了";
+    p.workflowStatus = "完工";
+    fields = { status:"完了", workflowStatus:"完工", completeDate: p.completeDate || "" };
   }else{
     const prevStatus = (p._statusBeforeComplete !== undefined && p._statusBeforeComplete !== "") ? p._statusBeforeComplete : "受注（工事指示有）";
     const prevWf     = (p._wfBeforeComplete     !== undefined) ? p._wfBeforeComplete     : "";
