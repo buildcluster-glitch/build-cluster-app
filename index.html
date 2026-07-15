@@ -2617,7 +2617,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.411</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.412</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -5549,7 +5549,7 @@ function showCheckStaffPicker(el, ck){
     ${alertInputHtml_(ck.id)}
     <div class="qp-actions">
       <button class="qp-detail" data-role="open-modal">✏️ 詳細編集</button>
-      <button class="qp-close" data-role="close">閉じる</button>
+      <button class="qp-close" data-role="close">✓ 保存</button>
     </div>`;
   document.body.appendChild(pop);
   wireAlertInput_(pop);
@@ -5607,7 +5607,7 @@ function showCheckStaffPicker(el, ck){
     };
   });
   pop.querySelector('[data-role="open-modal"]').onclick = ()=>{ pop.remove(); openCheckModal(ck); };
-  pop.querySelector('[data-role="close"]').onclick = ()=>pop.remove();
+  pop.querySelector('[data-role="close"]').onclick = ()=>{ if(typeof flushAlertInput_==='function') flushAlertInput_(pop); pop.remove(); };
   // 外側クリックで閉じる
   const closeOnOutside = (ev)=>{
     if(!pop.contains(ev.target)){
@@ -6820,6 +6820,8 @@ function alertInputHtml_(id){
     <input type="text" class="qp-alert-input" data-alert-id="${escapeHtml(String(id))}" value="${escapeHtml(cur)}" placeholder="例: 電気メーター写真お願いします" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px;color:#dc2626;font-weight:600">
   </div>`;
 }
+// ⚠ 未確定のアラート入力を確定させる(「✓ 保存」押下時の保険。blur自動保存と二重でも__lastガードで無害)v1.30.412
+function flushAlertInput_(pop){ try{ const inp=pop && pop.querySelector('.qp-alert-input'); if(inp) inp.dispatchEvent(new Event('blur')); }catch(_){} }
 function wireAlertInput_(pop){
   const inp=pop.querySelector('.qp-alert-input'); if(!inp) return;
   let __last=inp.value;
@@ -8248,7 +8250,7 @@ function showTaikyoStaffPicker(el, ev){
       </div>
     </div>
     <div class="qp-actions">
-      <button class="qp-close" data-role="close">閉じる</button>
+      <button class="qp-close" data-role="close">✓ 保存</button>
     </div>`;
   document.body.appendChild(pop);
   wireAlertInput_(pop);
@@ -8448,7 +8450,7 @@ function showTaikyoStaffPicker(el, ev){
   if(typeof fetchTaikyoComments_==='function') fetchTaikyoComments_({silent:true}).then(()=>{ if(pop.isConnected) renderComments(); }).catch(()=>{});
 
   const cleanup_ = ()=>{ if(__refreshOpenTaikyoCommentUI_===renderComments) __refreshOpenTaikyoCommentUI_=null; };
-  pop.querySelector('[data-role="close"]').onclick = ()=>{ cleanup_(); pop.remove(); };
+  pop.querySelector('[data-role="close"]').onclick = ()=>{ if(typeof flushAlertInput_==='function') flushAlertInput_(pop); cleanup_(); pop.remove(); };
   const closeOnOutside = (ev2)=>{
     if(ev2.target.closest && ev2.target.closest('.reaction-picker')) return; // リアクションピッカー操作中は閉じない
     if(!pop.contains(ev2.target)){ cleanup_(); pop.remove(); document.querySelectorAll('.reaction-picker').forEach(x=>x.remove()); document.removeEventListener("pointerdown", closeOnOutside, true); }
@@ -8556,7 +8558,7 @@ function showEventStaffPicker(el, ev){
     <div class="qp-actions">
       <button class="qp-detail" data-role="open-modal">✏️ 編集</button>
       <button class="qp-del-event" data-role="delete">🗑 削除</button>
-      <button class="qp-close" data-role="close">閉じる</button>
+      <button class="qp-close" data-role="close">✓ 保存</button>
     </div>`;
   document.body.appendChild(pop);
   wireAlertInput_(pop);
@@ -8754,7 +8756,7 @@ function showEventStaffPicker(el, ev){
     pop.remove();
     render();
   };
-  pop.querySelector('[data-role="close"]').onclick = ()=>pop.remove();
+  pop.querySelector('[data-role="close"]').onclick = ()=>{ if(typeof flushAlertInput_==='function') flushAlertInput_(pop); pop.remove(); };
   // 💬 コメント(チャット風・全員共有=予定本体ev.commentsに保存→クラウド同期)v1.30.69
   const me = getMyself();
   const liveEv = ()=>(state.events||[]).find(e=>e.id===ev.id) || ev;
@@ -9721,7 +9723,7 @@ function showTaskChecklistPopup(el, ev){
       <div class="qp-actions">
         <button class="qp-detail" data-role="open-modal">✏️ 本文編集</button>
         <button class="qp-del-event" data-role="del-event" title="この事務タスク予定を丸ごと削除">🗑 予定削除</button>
-        <button class="qp-close" data-role="close">閉じる</button>
+        <button class="qp-close" data-role="close">✓ 保存</button>
       </div>`;
     pop.querySelectorAll('.tp-status-sel').forEach(sel=>{
       sel.onchange = ()=> mutate(t=>setTaskStatus_(t, parseInt(sel.dataset.line,10), sel.value, (typeof getMyself==='function'?getMyself():"")));
@@ -9854,7 +9856,7 @@ function showTaskChecklistPopup(el, ev){
       }
       pop.remove();
     };
-    pop.querySelector('[data-role="close"]').onclick = ()=>pop.remove();
+    pop.querySelector('[data-role="close"]').onclick = ()=>{ if(typeof flushAlertInput_==='function') flushAlertInput_(pop); pop.remove(); };
     // 💬 業務連絡 配線(ev.messages・全端末共有) v1.30.90
     const liveTarget_ = ()=>(state.events||[]).find(e=>e.id===ev.id);
     // 💬 業務連絡は shared-config 'jimu_messages'(staffキー・全員共有)へ移行 v1.30.203。開いてる欄の再描画フックを差し替え
@@ -14552,7 +14554,7 @@ function showRepairQuickPop(r, anchorEl){
     </div>
     <div class="qp-actions">
       <button class="qp-detail" id="qp-open-detail">✎ 詳細編集</button>
-      <button class="qp-close" id="qp-close-btn">閉じる</button>
+      <button class="qp-close" id="qp-close-btn">✓ 保存</button>
     </div>
   `;
   document.body.appendChild(pop);
@@ -14757,7 +14759,7 @@ function showRepairQuickPop(r, anchorEl){
     closeQuickPop();
     openRepairSheet(r.id);
   };
-  pop.querySelector('#qp-close-btn').onclick = closeQuickPop;
+  pop.querySelector('#qp-close-btn').onclick = ()=>{ if(typeof flushAlertInput_==='function') flushAlertInput_(pop); closeQuickPop(); };
 
   // 開いた直後のclickイベント (capture)で即閉じしないよう少し遅延
   setTimeout(()=>{
