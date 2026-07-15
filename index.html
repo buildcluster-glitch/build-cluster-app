@@ -1784,8 +1784,8 @@
   .rtask .rt-body{flex:1;min-width:0;cursor:pointer}
   .rtask .rt-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .rtask .rt-room{font-size:10px;background:#e0e7ff;color:#3730a3;padding:1px 6px;border-radius:4px;font-weight:600;flex-shrink:0}
-  /* ➕ 追加工事バッジ: カレンダーから後入れした工事を一目で識別(山田 2026-07-15・v1.30.416) */
-  .rtask .rt-extra{font-size:10px;background:#f59e0b;color:#fff;padding:1px 6px;border-radius:4px;font-weight:700;flex-shrink:0}
+  /* ➕ 追加工事バッジ: カレンダーから後入れした工事を一目で識別(山田 2026-07-15・v1.30.416)。タップで編集/削除(v1.30.421) */
+  .rtask .rt-extra{font-size:10px;background:#f59e0b;color:#fff;padding:1px 6px;border-radius:4px;font-weight:700;flex-shrink:0;cursor:pointer}
   .rtask.done .rt-extra{background:#fbbf24}
   .rtask .rt-name{font-weight:600;font-size:13px;color:var(--text)}
   .rtask .rt-qty{font-size:11px;color:var(--muted)}
@@ -2627,7 +2627,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.420</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.421</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -2937,7 +2937,7 @@
      z-index:710 = restoDialog(modal-overlay z700)の上に重ねる -->
 <div class="modal-overlay" id="extraWorkModal" style="z-index:710">
   <div class="modal" style="max-width:440px">
-    <div class="modal-header">＋ 追加工事の登録 <span id="xw-prop" style="font-weight:400;font-size:11px;color:var(--muted)"></span></div>
+    <div class="modal-header"><span id="xw-title">＋ 追加工事の登録</span> <span id="xw-prop" style="font-weight:400;font-size:11px;color:var(--muted)"></span></div>
     <div class="modal-body">
       <div class="field">
         <label>内容 *</label>
@@ -2977,6 +2977,8 @@
       <div id="xw-error" style="display:none;color:#dc2626;font-size:12px;font-weight:600;white-space:pre-wrap"></div>
     </div>
     <div class="modal-footer">
+      <button class="nav-btn" id="xw-delete" style="display:none;color:#dc2626" title="この追加工事を台帳(見積アプリ)からも削除します">🗑 削除</button>
+      <span style="flex:1"></span>
       <button class="nav-btn" id="xw-cancel">キャンセル</button>
       <button class="nav-btn primary" id="xw-save">台帳に登録</button>
     </div>
@@ -19941,7 +19943,7 @@ function renderRestoTaskRow(t, cat){
           : `<button class="rt-check" data-role="toggle" title="${t.statusBy?escapeHtml(t.statusBy)+" "+restoFmtDateTime(t.statusAt):""}">${t.status==="done"?"✅":t.status==="wip"?"◐":""}</button>`}
         <div class="rt-body" data-role="edit">
           <div class="rt-head">
-            ${t.extraId?`<span class="rt-extra" title="カレンダーから登録した追加工事${t.addedBy?` (${escapeHtml(t.addedBy)})`:""}">＋追加</span>`:""}
+            ${t.extraId?`<span class="rt-extra" data-role="extra-edit" title="カレンダーから登録した追加工事${t.addedBy?` (${escapeHtml(t.addedBy)})`:""} — タップで編集・削除">＋追加</span>`:""}
             ${t.room?`<span class="rt-room">${escapeHtml(t.room)}</span>`:""}
             <span class="rt-name">${escapeHtml(dispName)}</span>
             ${qtyStr?`<span class="rt-qty">${escapeHtml(qtyStr)}</span>`:""}
@@ -19961,6 +19963,14 @@ function wireRestoTaskRows(el){
     const id = row.dataset.id;
     const tog = row.querySelector('[data-role="toggle"]');
     if(tog) tog.onclick = e=>{ e.stopPropagation(); restoCycleStatus(id); };
+    // ➕「＋追加」バッジタップ→追加工事の編集/削除モーダル(v1.30.421)
+    const exb = row.querySelector('[data-role="extra-edit"]');
+    if(exb) exb.onclick = (e)=>{
+      e.stopPropagation();
+      const p = (state.restorations||[]).find(x=>x.id===restoDetailId);
+      const t = p && (p.tasks||[]).find(x=>x.id===id);
+      if(t && t.extraId && typeof openExtraWorkEdit_==='function') openExtraWorkEdit_(t.extraId);
+    };
     row.querySelectorAll('[data-role="edit"]').forEach(x=>x.onclick = ()=>restoEditTaskNote(id));
     // ログ折り畳みトグル
     const logToggle = row.querySelector('[data-role="log-toggle"]');
@@ -20381,11 +20391,15 @@ function updateAddExtraBtn_(){
   btn.onclick = ok ? (()=>openExtraWorkModal_()) : null;
 }
 let __xwExtraId = null;   // idempotencyキー: 初回submitで採番→リトライで使い回し→モーダル開き直しでリセット
+let __xwEditId = null;    // 編集モード: 対象行のextraId(null=新規登録) v1.30.421
 let __xwSending = false;
 function openExtraWorkModal_(){
   const p = (state.restorations||[]).find(x=>x.id===restoDetailId);
   if(!p || !p.extDriveFileId) return;
-  __xwExtraId = null; __xwSending = false;
+  __xwExtraId = null; __xwEditId = null; __xwSending = false;
+  document.getElementById("xw-title").textContent = "＋ 追加工事の登録";
+  document.getElementById("xw-save").textContent = "台帳に登録";
+  document.getElementById("xw-delete").style.display = "none";
   document.getElementById("xw-prop").textContent = `${p.name||""} ${p.room||""}`;
   document.getElementById("xw-name").value = "";
   document.getElementById("xw-room").value = "";
@@ -20407,7 +20421,54 @@ function openExtraWorkModal_(){
   document.getElementById("extraWorkModal").classList.add("show");
   setTimeout(()=>{ try{ document.getElementById("xw-name").focus(); }catch(_){} }, 50);
 }
-function closeExtraWorkModal_(){ document.getElementById("extraWorkModal").classList.remove("show"); }
+function closeExtraWorkModal_(){ document.getElementById("extraWorkModal").classList.remove("show"); __xwEditId = null; }
+// ✎ 追加工事の編集モードで開く(v1.30.421)。現在値は台帳(Drive)の実物から取得=正確
+//   (タスクにはunitPrice/billable/原価が載っていないため。get-ledgerはJSON文字列を返すのでparse必須)
+async function openExtraWorkEdit_(taskExtraId){
+  const p = (state.restorations||[]).find(x=>x.id===restoDetailId);
+  if(!p || !p.extDriveFileId) return;
+  const s = loadGasSettings();
+  if(!s.url || !s.token){ alert("GAS設定がありません(⚙Drive同期設定)"); return; }
+  showSyncIndicator("追加工事を読込中...");
+  let line = null;
+  try{
+    const res = await fetch(s.url, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body: JSON.stringify({token:s.token, action:"get-ledger", fileId:p.extDriveFileId})});
+    const d = await res.json();
+    let est = d.content; if(typeof est === "string") est = JSON.parse(est);
+    line = ((est && est.lines) || []).find(l=>l && l.extraId === taskExtraId);
+    hideSyncIndicator("success", "");
+  }catch(e){
+    hideSyncIndicator("error", "読込失敗");
+    alert("台帳の読込に失敗しました: " + e.message);
+    return;
+  }
+  if(!line){
+    alert("台帳に該当の追加工事が見つかりません(見積アプリ側で削除済みの可能性)。☁全同期で最新を取り込んでください");
+    return;
+  }
+  openExtraWorkModal_();               // 新規モードでリセット表示→この後に編集値を流し込む
+  __xwEditId = taskExtraId;
+  const billable = !line.hatchuOnly;
+  const name = billable ? (line.item || "") : (line.hatchuItem || "");
+  document.getElementById("xw-title").textContent = "✎ 追加工事の編集";
+  document.getElementById("xw-save").textContent = "変更を保存";
+  document.getElementById("xw-delete").style.display = "";
+  document.getElementById("xw-name").value = name;
+  document.getElementById("xw-room").value = line.room || "";
+  document.getElementById("xw-qty").value = String((line.hatchuOnly && line.hatchuQty != null && line.hatchuQty !== "") ? line.hatchuQty : (line.qty || 1));
+  document.getElementById("xw-unit").value = line.unit || "式";
+  const sup = String(line.supplier || "").trim();
+  document.querySelector(`input[name="xw-who"][value="${sup ? "gaichu" : "jisha"}"]`).checked = true;
+  document.getElementById("xw-supplier").value = sup;
+  document.getElementById("xw-supplier-row").style.display = sup ? "" : "none";
+  document.getElementById("xw-billable").checked = billable;
+  document.getElementById("xw-price").value = billable && line.unitPrice ? String(line.unitPrice) : "";
+  document.getElementById("xw-price").disabled = !billable;
+  document.getElementById("xw-price-req").style.visibility = billable ? "visible" : "hidden";
+  document.getElementById("xw-cost").value = line.orderPrice ? String(line.orderPrice) : "";
+  document.getElementById("xw-note").value = line.note || "";
+}
 async function submitExtraWork_(){
   if(__xwSending) return;
   const err = document.getElementById("xw-error");
@@ -20429,6 +20490,43 @@ async function submitExtraWork_(){
   if(who==="gaichu" && !supplier){ show("外注のときは業者名が必須です（空だと自社扱いになってしまうため）"); return; }
   if(billable && !(unitPrice>0)){
     if(!confirm("単価が¥0のまま「請求に載せる」で登録しますか？")){ show("単価(税別)を入力してください"); return; }
+  }
+  // ✎ 編集モード(v1.30.421): 既存行をextraIdで台帳側書き換え→ローカルタスクも同キー化して更新
+  if(__xwEditId){
+    __xwSending = true;
+    const saveBtn2 = document.getElementById("xw-save");
+    saveBtn2.disabled = true; saveBtn2.textContent = "保存中…";
+    try{
+      const s2 = loadGasSettings();
+      const res = await fetch(s2.url, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
+        body: JSON.stringify({ action:"task-update-extra-work", token:s2.token, driveFileId:p.extDriveFileId,
+          extraId:__xwEditId, editedBy:(typeof getMyself==='function'?getMyself():"")||"",
+          work:{ name, room, qty, unit, unitPrice, supplier, orderPrice, billable, note } })});
+      const data = await res.json().catch(()=>null);
+      if(!data) throw new Error("サーバー応答が不正です");
+      if(data.ok !== true){
+        if(/unknown kind/i.test(data.error||"")) throw new Error("GAS側が未対応です(master_syncの再デプロイ待ち)");
+        throw new Error(data.error || "GAS returned ok:false");
+      }
+      const p2 = (state.restorations||[]).find(x=>x.id===restoDetailId) || p;
+      const t = (p2.tasks||[]).find(x=>x.extraId===__xwEditId);
+      if(t){
+        t.name = name; t.room = room; t.qty = qty; t.unit = unit;
+        t.amount = billable ? qty*unitPrice : 0;
+        t.category = supplier ? "outsource" : "inhouse";
+        t.contractor = supplier; t.note = note;
+        saveState();
+      }
+      closeExtraWorkModal_();
+      if(restoDetailId){ try{ renderRestoDetail(); }catch(_){} }
+      if(typeof showAutoSyncToast==='function') showAutoSyncToast("✎ 追加工事を更新しました(台帳にも反映)");
+    }catch(e){
+      show("更新に失敗しました: " + ((e && e.message) || e));
+    }finally{
+      __xwSending = false;
+      saveBtn2.disabled = false; saveBtn2.textContent = "変更を保存";
+    }
+    return;
   }
   if(!__xwExtraId) __xwExtraId = `xw_${Date.now()}_${String(uid()).slice(-5)}`;
   const payload = {
@@ -20479,6 +20577,32 @@ async function submitExtraWork_(){
   if(!m) return;
   document.getElementById("xw-cancel").onclick = closeExtraWorkModal_;
   document.getElementById("xw-save").onclick = submitExtraWork_;
+  // 🗑 削除(編集モードのみ表示・v1.30.421): 台帳の行を削除→ローカルタスクも即除去
+  document.getElementById("xw-delete").onclick = async ()=>{
+    if(!__xwEditId || __xwSending) return;
+    const p = (state.restorations||[]).find(x=>x.id===restoDetailId);
+    if(!p || !p.extDriveFileId) return;
+    if(!confirm("この追加工事を削除しますか？\n\n・台帳(見積アプリ)の明細からも削除されます")) return;
+    __xwSending = true;
+    const db = document.getElementById("xw-delete"); db.disabled = true;
+    const err = document.getElementById("xw-error");
+    try{
+      const s = loadGasSettings();
+      const res = await fetch(s.url, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
+        body: JSON.stringify({ action:"task-update-extra-work", token:s.token, driveFileId:p.extDriveFileId, extraId:__xwEditId, remove:true })});
+      const data = await res.json().catch(()=>null);
+      if(!data || data.ok !== true) throw new Error((data && data.error) || "削除に失敗しました");
+      p.tasks = (p.tasks||[]).filter(t=>t.extraId !== __xwEditId);   // ローカル即除去(24h保護の対象からも外れる)
+      saveState();
+      closeExtraWorkModal_();
+      if(restoDetailId){ try{ renderRestoDetail(); }catch(_){} }
+      if(typeof showAutoSyncToast==='function') showAutoSyncToast(data.already ? "🗑 既に削除済みでした" : "🗑 追加工事を削除しました(台帳からも削除)");
+    }catch(e){
+      err.textContent = "削除に失敗しました: " + ((e && e.message) || e); err.style.display = "";
+    }finally{
+      __xwSending = false; db.disabled = false;
+    }
+  };
   m.onclick = (e)=>{ if(e.target===m && !__xwSending) closeExtraWorkModal_(); };   // 背景クリックで閉じる(送信中は無効)
   document.querySelectorAll('input[name="xw-who"]').forEach(r=>{
     r.onchange = ()=>{ document.getElementById("xw-supplier-row").style.display = (r.value==="gaichu" && r.checked) ? "" : "none"; };
