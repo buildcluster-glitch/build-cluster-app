@@ -250,7 +250,19 @@
   .leave-badge.duty-done .lb-staff{text-decoration:line-through}
   /* 🔄📞 ヘッダー(要対応の隣)の当番・電話番 v1.30.199 */
   .header-duty-box{display:inline-flex;align-items:center;gap:8px;flex-wrap:nowrap}
-  .header-duty-box .hd-duty,.header-duty-box .hd-phone{display:inline-flex;align-items:center;gap:3px;white-space:nowrap}
+  .header-duty-box .hd-duty,.header-duty-box .hd-phone,.header-duty-box .hd-sanpai{display:inline-flex;align-items:center;gap:3px;white-space:nowrap}
+  /* 🗑 産廃回収(次回)バッジ v1.30.428: クリックで登録ポップ。未登録は赤で気づかせる */
+  .sanpai-btn{font-size:11px;border:1.5px solid var(--border-strong);background:#fff;color:#0f172a;border-radius:8px;padding:1px 8px;cursor:pointer;white-space:nowrap;font-weight:700}
+  .sanpai-btn:hover{background:#f1f5f9;border-color:#0f172a}
+  .sanpai-btn.none{border-color:#dc2626;background:#fef2f2;color:#dc2626}
+  .sanpai-btn .sp-kago{color:#b45309;margin-left:3px}
+  /* 登録ポップ内のボタンピッカー(依頼者・籠数) */
+  .sanpai-pick{display:flex;flex-wrap:wrap;gap:5px}
+  .sanpai-pick button{font-size:12px;border:1px solid var(--border-strong);background:#fff;border-radius:8px;padding:4px 10px;cursor:pointer;font-weight:600;color:#0f172a}
+  .sanpai-pick button.on{background:#0f172a;color:#fff;border-color:#0f172a}
+  .sanpai-pick button.kago.on{background:#b45309;border-color:#b45309}
+  .sanpai-hist{font-size:11px;color:var(--muted);max-height:104px;overflow:auto}
+  .sanpai-hist div{padding:2px 0;border-top:1px solid var(--border)}
   .header-duty-box .hd-lbl{font-size:11px;color:#64748b;font-weight:700;cursor:help}
   .header-duty-box .leave-badge{font-size:11px;padding:1px 6px;border-radius:8px}
   .header-duty-box .leave-badge .lb-staff{font-weight:700}
@@ -2635,7 +2647,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.427</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.428</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -6782,6 +6794,65 @@ async function setPhoneDuty_(date, staff){
     }catch(_){}
   }
   await pushPhoneDutyMap_(map);
+  return map;
+}
+// 🗑 産廃回収を全端末共有 — shared-config 'sanpai' v1.30.428(山田要望)
+//   当番の役割「ゴミ籠交換手配」の実務: 業者に回収を依頼した日・依頼者・籠数・電球回収の有無を記録。
+//   ヘッダー(📞電話番の隣)に「次回」だけ表示=回収日を過ぎたら自動で消える(未登録表示に戻る)。
+//   過去分は履歴として保持(ポップの履歴欄で「前回いつ・何籠頼んだか」を参照)。
+//   value(JSON) = { items:{ [date(YYYY-MM-DD)]: {by(依頼者), kago(籠数), denkyu(bool), at, setBy} }, updatedAt }
+// ===========================================================
+const SANPAI_KEY = "buildcluster_sanpai";
+function loadSanpai_(){ try{ const o=JSON.parse(localStorage.getItem(SANPAI_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
+function saveSanpai_(map){ try{ localStorage.setItem(SANPAI_KEY, JSON.stringify(map||{})); }catch(e){} }
+function mergeSanpaiMaps_(a,b){ const out={}; const keys=new Set([...Object.keys(a||{}),...Object.keys(b||{})]); keys.forEach(k=>{ const ea=a&&a[k], eb=b&&b[k]; if(!ea){out[k]=eb;return;} if(!eb){out[k]=ea;return;} out[k]=(String(eb.at||'')>=String(ea.at||''))?eb:ea; }); return out; } // last-write-wins
+// 次回(今日以降で最も近い回収日)。過ぎた分は返さない=ヘッダーから自動で消える
+function nextSanpai_(){
+  const map=loadSanpai_(); const today=(typeof fmtDate==='function')?fmtDate(new Date()):new Date().toISOString().slice(0,10);
+  const ds=Object.keys(map).filter(d=>map[d] && !map[d].deleted && d>=today).sort();
+  return ds.length ? Object.assign({date:ds[0]}, map[ds[0]]) : null;
+}
+// 履歴(新しい順・既定5件)
+function sanpaiHistory_(n){
+  const map=loadSanpai_(); const today=(typeof fmtDate==='function')?fmtDate(new Date()):new Date().toISOString().slice(0,10);
+  return Object.keys(map).filter(d=>map[d] && !map[d].deleted && d<today).sort().reverse().slice(0, n||5).map(d=>Object.assign({date:d}, map[d]));
+}
+async function fetchSanpai_(opts={}){
+  const s=loadGasSettings(); const local=loadSanpai_();
+  if(!s.url||!s.token){ return local; }
+  try{
+    const url=`${s.url}?action=get-shared-config&key=sanpai&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res=await fetch(url,{method:'GET',redirect:'follow'}); if(!res.ok) throw new Error('HTTP '+res.status);
+    const data=await res.json(); let raw=data.value;
+    if(raw===''||raw==null) raw={items:{}}; else if(typeof raw==='string'){ try{raw=JSON.parse(raw);}catch(e){raw={items:{}};} }
+    const remote=(raw&&raw.items&&typeof raw.items==='object')?raw.items:{};
+    const merged=mergeSanpaiMaps_(remote, local);
+    saveSanpai_(merged);
+    if(opts.push && JSON.stringify(merged)!==JSON.stringify(remote)){ pushSanpaiMap_(merged).catch(()=>{}); }
+    if(!opts.silent && typeof render==='function') render();
+    return merged;
+  }catch(err){ if(!opts.silent) console.warn('[sanpai] fetch失敗:', err.message); return local; }
+}
+async function pushSanpaiMap_(map){
+  const s=loadGasSettings(); if(!s.url||!s.token) return;
+  const payload={ items:map||{}, updatedAt:new Date().toISOString() };
+  try{ await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'sanpai',value:JSON.stringify(payload),token:s.token,savedBy:'calendar-app'})}); }catch(e){ console.warn('[sanpai] push失敗:', e.message); }
+}
+//   entry=null で削除(トゥームストーン=他端末でも消える)
+async function setSanpai_(date, entry){
+  if(!date) return;
+  const stamp=()=> entry ? Object.assign({}, entry, { at:new Date().toISOString(), setBy:(typeof getMyself==='function'?getMyself():'')||'' })
+                         : { deleted:true, at:new Date().toISOString(), setBy:(typeof getMyself==='function'?getMyself():'')||'' };
+  let map=loadSanpai_(); map[date]=stamp(); saveSanpai_(map);
+  const s=loadGasSettings();
+  if(s.url&&s.token){
+    try{ const url=`${s.url}?action=get-shared-config&key=sanpai&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+      const res=await fetch(url,{method:'GET',redirect:'follow'});
+      if(res.ok){ const d=await res.json(); let raw=d.value; if(typeof raw==='string'){ try{raw=JSON.parse(raw);}catch(_){raw=null;} }
+        if(raw&&raw.items&&typeof raw.items==='object'){ map=mergeSanpaiMaps_(raw.items, loadSanpai_()); map[date]=stamp(); saveSanpai_(map); } }
+    }catch(_){}
+  }
+  await pushSanpaiMap_(map);
   return map;
 }
 // ✅ 当番完了(週次)を全端末共有 — shared-config 'toban_done' v1.30.198
@@ -11458,6 +11529,7 @@ async function syncChecksFromGAS(opts){
     // ⚠ 再同期時はアラートも最新を取りに行く(v1.30.115)
     if(typeof fetchAlerts_==='function') fetchAlerts_({silent:true}).catch(()=>{});
     if(typeof fetchEventDone_==='function') fetchEventDone_({silent:true}).catch(()=>{});
+    if(typeof fetchSanpai_==='function') fetchSanpai_({silent:true}).catch(()=>{});
     // 🚫 再同期時は事前「行かない」も最新を取りに行く(v1.30.131)
     if(typeof fetchSkipVisit_==='function') fetchSkipVisit_({silent:true}).catch(()=>{});
     // 🖱 再同期時は修繕の表示位置(仮置き)も最新を取りに行く(v1.30.161)
@@ -12325,11 +12397,128 @@ function renderHeaderDuty_(){
       + present.map(s=>`<option value="${escapeHtml(s)}" ${s===cur?'selected':''}>${escapeHtml(disp(s))}</option>`).join('')
       + `</select></span>`;
   }
+  // 🗑 次回の産廃回収(電話番の隣・v1.30.428)。回収日を過ぎた分は nextSanpai_ が返さない=自動で消える
+  {
+    const nx = (typeof nextSanpai_==='function') ? nextSanpai_() : null;
+    let label, tip, cls;
+    if(nx){
+      const d = parseDate(nx.date);
+      const ds = (d && !isNaN(d)) ? `${d.getMonth()+1}/${d.getDate()}(${DOW_JA[d.getDay()]})` : nx.date;
+      label = `🗑産廃 ${ds}${nx.kago?`<span class="sp-kago">籠${nx.kago}</span>`:''}${nx.denkyu?' 💡':''}`;
+      tip = `次回の産廃回収\n回収日: ${nx.date}\n依頼者: ${nx.by||'(未設定)'}\n籠数: ${nx.kago||'-'}${nx.denkyu?'\n💡 電球回収あり':''}\n\nクリックで編集`;
+      cls = '';
+    }else{
+      label = '🗑産廃 未登録';
+      tip = '次回の産廃回収が未登録です（クリックで登録）\n※当番の役割「ゴミ籠交換手配」';
+      cls = 'none';
+    }
+    html += `<span class="hd-sanpai"><button class="sanpai-btn ${cls}" id="sanpaiBtn" title="${escapeHtml(tip)}">${label}</button></span>`;
+  }
   box.innerHTML = html;
   const ddb = box.querySelector('#dutyDoneBtn');
   if(ddb){ ddb.onclick = ()=>{ const wk=ddb.dataset.wk; if(!wk) return; const now=(typeof getTobanDoneEntry_==='function')&&getTobanDoneEntry_(wk); if(typeof setTobanDone_==='function') setTobanDone_(wk, !now).catch(()=>{}); render(); }; }
   const ps = box.querySelector('#phoneDutySel');
   if(ps){ ps.onchange = ()=>{ if(typeof setPhoneDuty_==='function') setPhoneDuty_(todayStr, ps.value).catch(()=>{}); render(); }; }
+  const sb = box.querySelector('#sanpaiBtn');
+  if(sb){ sb.onclick = (e)=>{ e.stopPropagation(); if(typeof openSanpaiPop_==='function') openSanpaiPop_(sb); }; }
+}
+
+// 🗑 産廃回収の登録ポップ(v1.30.428・山田「ボタン形式で登録できるように 依頼者・回収籠数・+電球回収」)
+//   回収日=date input＋クイックボタン / 依頼者・籠数=ボタンピッカー / 電球回収=トグル。全端末共有(shared-config 'sanpai')。
+function openSanpaiPop_(anchorEl){
+  document.querySelectorAll('.quick-pop.sanpai-pop').forEach(p=>p.remove());
+  const nx = (typeof nextSanpai_==='function') ? nextSanpai_() : null;
+  const disp = (typeof getStaffDisplayName==='function') ? getStaffDisplayName : (x=>x);
+  const me = (typeof getMyself==='function') ? getMyself() : "";
+  // 編集中の状態(既存の次回があればそれを、無ければ新規=依頼者は自分・籠数1)
+  let st = { date: nx ? nx.date : "", by: nx ? (nx.by||"") : (me||""), kago: nx ? (nx.kago||1) : 1, denkyu: nx ? !!nx.denkyu : false };
+  const origDate = nx ? nx.date : "";
+  const pop = document.createElement('div');
+  pop.className = 'quick-pop sanpai-pop';
+  const hist = (typeof sanpaiHistory_==='function') ? sanpaiHistory_(5) : [];
+  const draw = ()=>{
+    pop.innerHTML = `
+      <div class="qp-title">🗑 産廃回収の登録 <span style="font-size:11px;color:#64748b;font-weight:400">当番の「ゴミ籠交換手配」</span></div>
+      <div class="qp-sec">
+        <div class="qp-label">📅 回収日</div>
+        <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
+          <input type="date" id="sp-date" value="${escapeHtml(st.date)}" style="flex:1;min-width:120px;padding:5px 6px;font-size:12px;border:1px solid var(--border-strong);border-radius:6px">
+          <button class="qp-detail" data-spd="1" style="padding:4px 8px;font-size:11px;background:#f1f5f9">明日</button>
+          <button class="qp-detail" data-spd="2" style="padding:4px 8px;font-size:11px;background:#f1f5f9">明後日</button>
+          <button class="qp-detail" data-spd="7" style="padding:4px 8px;font-size:11px;background:#f1f5f9">来週</button>
+        </div>
+      </div>
+      <div class="qp-sec">
+        <div class="qp-label">🙋 依頼者 <span style="font-weight:400;color:#94a3b8;font-size:10px">(業者に手配した人)</span></div>
+        <div class="sanpai-pick" id="sp-by">
+          ${STAFF.map(s=>`<button data-s="${escapeHtml(s)}" class="${s===st.by?'on':''}" style="${s===st.by?'':`border-color:${STAFF_COLORS[s]||'#cbd5e1'}`}">${escapeHtml(disp(s))}</button>`).join('')}
+        </div>
+      </div>
+      <div class="qp-sec">
+        <div class="qp-label">🧺 回収籠数</div>
+        <div class="sanpai-pick" id="sp-kago">
+          ${[1,2,3,4,5,6].map(n=>`<button class="kago ${n===st.kago?'on':''}" data-k="${n}">${n}</button>`).join('')}
+        </div>
+      </div>
+      <div class="qp-sec">
+        <div class="qp-label">💡 電球回収</div>
+        <div class="sanpai-pick">
+          <button id="sp-denkyu" class="${st.denkyu?'on':''}" style="${st.denkyu?'background:#f59e0b;border-color:#f59e0b':''}">${st.denkyu?'💡 電球回収も依頼する':'電球回収は無し'}</button>
+        </div>
+      </div>
+      ${hist.length?`<div class="qp-sec"><div class="qp-label">🕘 履歴 <span style="font-weight:400;color:#94a3b8;font-size:10px">(直近5件)</span></div>
+        <div class="sanpai-hist">${hist.map(h=>{ const d=parseDate(h.date); const ds=(d&&!isNaN(d))?`${d.getMonth()+1}/${d.getDate()}`:h.date;
+          return `<div>${ds} ・ 籠${h.kago||'-'}${h.denkyu?' 💡':''} ・ ${escapeHtml(disp(h.by||'-'))}</div>`; }).join('')}</div></div>`:''}
+      <div class="qp-actions">
+        ${origDate?`<button class="qp-detail" id="sp-del" style="background:#fee2e2;color:#dc2626">🗑 削除</button>`:''}
+        <span style="flex:1"></span>
+        <button class="qp-detail" id="sp-cancel">キャンセル</button>
+        <button class="qp-close" id="sp-save" style="background:#0f172a;color:#fff">✓ 保存</button>
+      </div>`;
+    // 回収日クイック
+    pop.querySelectorAll('[data-spd]').forEach(b=>{ b.onclick=()=>{ const n=parseInt(b.dataset.spd,10)||0; const d=new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()+n); st.date=fmtDate(d); draw(); }; });
+    pop.querySelector('#sp-date').onchange = (e)=>{ st.date = e.target.value; };
+    pop.querySelectorAll('#sp-by button').forEach(b=>{ b.onclick=()=>{ st.by = (st.by===b.dataset.s) ? "" : b.dataset.s; draw(); }; });
+    pop.querySelectorAll('#sp-kago button').forEach(b=>{ b.onclick=()=>{ st.kago = parseInt(b.dataset.k,10)||1; draw(); }; });
+    pop.querySelector('#sp-denkyu').onclick = ()=>{ st.denkyu = !st.denkyu; draw(); };
+    pop.querySelector('#sp-cancel').onclick = ()=> pop.remove();
+    const del = pop.querySelector('#sp-del');
+    if(del) del.onclick = async ()=>{
+      if(!confirm(`${origDate} の産廃回収の登録を削除しますか？`)) return;
+      if(typeof setSanpai_==='function') await setSanpai_(origDate, null).catch(()=>{});
+      pop.remove(); if(typeof render==='function') render();
+      if(typeof showAutoSyncToast==='function') showAutoSyncToast('🗑 産廃回収の登録を削除しました');
+    };
+    pop.querySelector('#sp-save').onclick = async ()=>{
+      const dv = pop.querySelector('#sp-date').value || st.date;
+      if(!dv){ alert('回収日を選んでください'); return; }
+      if(!st.by){ alert('依頼者を選んでください'); return; }
+      const btn = pop.querySelector('#sp-save'); btn.disabled = true; btn.textContent = '保存中…';
+      try{
+        // 日付を変更した場合は旧レコードを削除(同じ予定が2件残らないように)
+        if(origDate && origDate !== dv && typeof setSanpai_==='function') await setSanpai_(origDate, null).catch(()=>{});
+        if(typeof setSanpai_==='function') await setSanpai_(dv, { by:st.by, kago:st.kago, denkyu:!!st.denkyu });
+        pop.remove(); if(typeof render==='function') render();
+        if(typeof showAutoSyncToast==='function') showAutoSyncToast(`🗑 産廃回収を登録しました（${dv} 籠${st.kago}${st.denkyu?' 💡電球あり':''}）`);
+      }catch(e){ btn.disabled=false; btn.textContent='✓ 保存'; alert('保存に失敗: '+(e&&e.message||e)); }
+    };
+  };
+  draw();
+  document.body.appendChild(pop);
+  // 位置: バッジの下(画面外に出ないよう補正)
+  const rect = anchorEl.getBoundingClientRect();
+  pop.style.left='0px'; pop.style.top='0px';
+  const pr = pop.getBoundingClientRect();
+  let x = rect.left, y = rect.bottom + 6;
+  if(x + pr.width > window.innerWidth - 8) x = window.innerWidth - pr.width - 8;
+  if(y + pr.height > window.innerHeight - 8) y = Math.max(8, rect.top - pr.height - 6);
+  if(x < 8) x = 8;
+  pop.style.left = x+'px'; pop.style.top = y+'px';
+  // 外クリックで閉じる
+  setTimeout(()=>{
+    const off = (e)=>{ if(!pop.contains(e.target)){ pop.remove(); document.removeEventListener('mousedown', off); } };
+    document.addEventListener('mousedown', off);
+  }, 0);
 }
 function renderLeaveBand(){
   const today = new Date(); today.setHours(0,0,0,0);
@@ -22214,6 +22403,11 @@ setTimeout(()=>{
       if(typeof fetchEventDone_==='function'){
         fetchEventDone_({silent:true, push:true}).catch(()=>{});
         setInterval(()=>fetchEventDone_({silent:true}).catch(()=>{}), 5*60*1000);
+      }
+      // 🗑 産廃回収(全員共有)=起動時+5分ごと(v1.30.428)
+      if(typeof fetchSanpai_==='function'){
+        fetchSanpai_({silent:true, push:true}).catch(()=>{});
+        setInterval(()=>fetchSanpai_({silent:true}).catch(()=>{}), 5*60*1000);
       }
       // 🐞 バグ・要望の報告(全員共有)=起動時+5分ごとに取得(ヘッダーの未対応バッジ更新)v1.30.257
       if(typeof fetchCalReports_==='function'){
