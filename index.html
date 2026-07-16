@@ -2652,7 +2652,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.438</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.439</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -5736,16 +5736,6 @@ function attachCheckDragOrClick(el, ck){
     // 🏠 修繕バッジのカードでも「紐づく原状回復が工程(タスク)を持つ」なら進捗ダイアログへ(山田 v1.30.437)。
     //   山田の定義=「原状回復性質がある修繕」は工程を持っているやつ。工程が無い純粋な修繕は従来どおり修繕シート。
     if(resto && (!isRepairCheck_(ck) || (resto.tasks||[]).length)){ openRestoDialog(resto.id); return; }
-    // 🔍 一時診断(v1.30.438・山田の「アクティブパレス百合ヶ丘C7 10で進捗が出ない」調査用)。
-    //    山田本人にだけ出す(他スタッフには無害)。原因が判明したらこのブロックごと削除する。
-    if(isRepairCheck_(ck) && typeof getMyself==='function' && getMyself()==='山田裕貴' && typeof showAutoSyncToast==='function'){
-      const _n = (state.restorations||[]).length;
-      const _near = (state.restorations||[]).filter(r=>__nzAll(String(r.name||"")).indexOf(__nzAll(_ckNorm).slice(0,6))>=0)
-        .map(r=>`${r.name}|${r.room}|工程${(r.tasks||[]).length}`).slice(0,3).join(' , ') || 'なし';
-      showAutoSyncToast(resto
-        ? `🔍 resto有 ${resto.name}/${resto.room} 工程${(resto.tasks||[]).length}件 → 工程0で修繕シート`
-        : `🔍 resto無 key=${__ckKey} / ckDrive=${(ck.extDriveFileId||'空')} / 原状回復${_n}件 / 似た名前: ${_near}`);
-    }
     // 2. 修繕案件
     const _repairs = state.repairs || [];
     const repair =
@@ -11284,14 +11274,23 @@ function isCompletedJizenEvent_(ev){
   if(!best) return false;
   return /完了|完工|完成/.test(String(best.status||"")) || !!(best.completeDate);
 }
+// 🏠 工程をこの件数以上持つ「修繕」は原状回復性質あり=進捗ダイアログを開ける(山田 v1.30.439)。
+//   1〜2工程の単発修理は対象外にするための線引き。
+const REPAIR_RESTO_MIN_TASKS = 3;
 function extractRestorations(properties, existing){
   const exById = new Map();
   (existing||[]).forEach(p=>exById.set(p.id, p));
   const out = [];
   (properties||[]).forEach(p=>{
     const koji = String(p.kojiName||"").trim();
-    const isResto = p.isRestoration || koji === "原状回復工事";
-    if(!isResto) return;
+    // 🏠 v1.30.439(山田「修繕でも原状回復性質があるやつは1クリックで進捗ダイアログ」):
+    //   「原状回復性質」= 工程(タスク)を3件以上持つ、が山田の定義。単発修理(1〜2工程)は対象外。
+    //   GASは工事種別に関係なく tasks を送っている(master_sync convertEstimateToProperty_ :2752)のに、
+    //   従来ここで「原状回復工事」以外を弾いて工程を捨てていた=進捗ダイアログを開く先が無かった。
+    //   ⚠ _repairResto 印を付け 🏠原状回復タブの一覧/件数からは除外する(タブは従来どおり=山田の指定)。
+    const isRealResto = p.isRestoration || koji === "原状回復工事";
+    const isRepairResto = !isRealResto && Array.isArray(p.tasks) && p.tasks.length >= REPAIR_RESTO_MIN_TASKS;
+    if(!isRealResto && !isRepairResto) return;
     const id = "resto-" + (p.driveFileId || p.estimateId || p.no || (p.name+"|"+(p.room||"")));
     const prev = exById.get(id);
     const prop = {
@@ -11302,6 +11301,8 @@ function extractRestorations(properties, existing){
       client: p.clientRaw || prev?.client || "",
       clientCat: p.clientCat || prev?.clientCat || autoDetectClientCat(p.clientRaw||p.client||p.clientCat||""),
       kojiName: koji || "原状回復工事",
+      // 🔧 工程を持つ修繕(v1.30.439): 進捗ダイアログを開くためだけのレコード。🏠原状回復タブには出さない。
+      _repairResto: isRepairResto,
       layout: p.floor_plan || p.layout || prev?.layout || "",
       orderDate: normalizeDate(p.orderDate || p.document_date),
       moveout: p.move_out_month || prev?.moveout || "",
@@ -12295,7 +12296,7 @@ function renderHeader(){
     const apoMi = (state.repairs||[]).filter(r=>(r.workflowStatus||"アポ・手配 未")==="アポ・手配 未").length;
     navDate.textContent = `🔧 修繕・アフター  (${total}件${apoMi?" / アポ未 "+apoMi+"件":""})`;
   }else if(currentView==="resto"){
-    const act = (state.restorations||[]).filter(p=>!(p.completeDate && String(p.completeDate).trim())).length;
+    const act = (state.restorations||[]).filter(p=>!p._repairResto && !(p.completeDate && String(p.completeDate).trim())).length;   // 工程持ち修繕の裏レコードは数えない(v1.30.439)
     navDate.textContent = `🏠 原状回復  (進行中 ${act}件)`;
   }else if(currentView==="inventory"){
     // 在庫データは在庫モジュール(IIFE)内にあるため window 経由で件数を取得(state.inv は存在しない)v1.30.147
@@ -19759,7 +19760,8 @@ function renderRestoView(){
 }
 
 function renderRestoList(){
-  const all = state.restorations || [];
+  // 🔧 工程を持つ修繕(_repairResto)は進捗ダイアログ用の裏レコード=一覧・件数には出さない(山田 v1.30.439)
+  const all = (state.restorations || []).filter(p=>!p._repairResto);
   // フィルタチップ: ステータス
   const statusChips = [
     {key:"active", label:"進行中"},
