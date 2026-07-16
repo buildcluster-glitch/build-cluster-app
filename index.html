@@ -2652,7 +2652,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.436</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.437</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -5716,17 +5716,26 @@ function attachCheckDragOrClick(el, ck){
   };
   // 関連する原状回復進捗/修繕シートを開く (PCシングルクリック / 📱タップ 共通)
   const openLinkedDetail_ = ()=>{
-    // 1. extDriveFileId → extEstimateId → title(フル→号室除去) の順で原状回復案件を探す
+    // 1. extDriveFileId → extEstimateId → 物件名+号室(正規化) → title の順で原状回復案件を探す
     const _restos = state.restorations || [];
     const _ckFull = ck.title ? ck.title.trim() : "";
     const _ckNorm = _ckFull.replace(/\s+\d+$/, "").trim();
+    // 🔑 物件名+号室の正規化キー(v1.30.437・山田「修繕でも原状回復性質があるやつは1クリック」)。
+    //   ck.title は「物件名 号室」の連結・restoは name/room が別フィールド。修繕と原状回復で台帳が別だと
+    //   表記(空白/全角半角/「10」と「10号室」)が揺れ、従来の r.name === _ckNorm 完全一致では引けなかった。
+    //   ※号室まで含めて突き合わせる = 同じ建物の別部屋を誤って開かない。
+    const __nzAll = s => String(s||"").normalize("NFKC").replace(/[\s　]/g,"").replace(/号室?$/,"").toUpperCase();
+    const __ckKey = __nzAll(_ckFull);
     const resto =
       (ck.extDriveFileId && _restos.find(r=>r.extDriveFileId === ck.extDriveFileId)) ||
       (ck.extEstimateId  && _restos.find(r=>r.extEstimateId  === ck.extEstimateId )) ||
+      (__ckKey           && _restos.find(r=>__nzAll(String(r.name||"")+String(r.room||"")) === __ckKey)) ||
       (_ckFull           && _restos.find(r=>r.name === _ckFull)) ||
       (_ckNorm           && _restos.find(r=>r.name === _ckNorm)) ||
       null;
-    if(resto){ openRestoDialog(resto.id); return; }
+    // 🏠 修繕バッジのカードでも「紐づく原状回復が工程(タスク)を持つ」なら進捗ダイアログへ(山田 v1.30.437)。
+    //   山田の定義=「原状回復性質がある修繕」は工程を持っているやつ。工程が無い純粋な修繕は従来どおり修繕シート。
+    if(resto && (!isRepairCheck_(ck) || (resto.tasks||[]).length)){ openRestoDialog(resto.id); return; }
     // 2. 修繕案件
     const _repairs = state.repairs || [];
     const repair =
