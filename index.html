@@ -1742,6 +1742,11 @@
   /* アーカイブ済(完了取消し)時はグレー */
   .rd-archive-btn.archived{background:#94a3b8;box-shadow:0 2px 6px rgba(0,0,0,.15)}
   .rd-archive-btn.archived:hover{background:#64748b}
+  /* ⚡ 簡易見積(修繕詳細・v1.30.434): 完了ボタンの上に置く=金額を決めてから完了、を1画面で完結(山田)。
+     完了(緑)と役割が違うので紫。台帳リンクありの修繕でだけ表示(openRepairSheetでdisplay制御)。 */
+  .rd-kani-btn{display:block;margin:0 auto 10px;background:#f3f0ff;color:#5b21b6;border:1px solid #ddd6fe;
+    border-radius:8px;padding:9px 24px;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s}
+  .rd-kani-btn:hover{background:#ede9fe;border-color:#c4b5fd}
   /* 🛠 自社工事進捗バー (rdJishaProgress) */
   .rd-jisha-progress{margin:4px 0 6px}
   .rd-jp-row{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--border);border-radius:7px;padding:5px 10px}
@@ -2647,7 +2652,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.433</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.434</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -2858,6 +2863,8 @@
       </div>
       <!-- ✅ 最終確認の✓完了ボタンと同じ: 1クリックで完了+完了日を記録して台帳へ即書戻し(南部/大村要望)v1.30.349 -->
       <div class="rd-archive-section">
+        <!-- ⚡ 簡易見積(v1.30.434・山田「完了と合わせて処理したいから」): クイックポップから移設。完了の直前に金額を確定できる -->
+        <button id="rs-kani" class="rd-kani-btn" type="button" style="display:none" title="現場で金額即答→コピペでLINE送信(台帳に保存されます)">⚡ 簡易見積</button>
         <button id="rs-complete" class="rd-archive-btn" type="button" title="ステータス=完了・完了日=今日 を1クリックで記録し即座に台帳へ書戻します">✓ 完了にする</button>
       </div>
     </div>
@@ -14932,7 +14939,7 @@ function showRepairQuickPop(r, anchorEl){
       </div>
     </div>
     <div class="qp-actions">
-      ${r.extDriveFileId ? `<button class="qp-detail" id="qp-kani" style="background:#f3f0ff;color:#5b21b6;font-weight:700" title="現場で金額即答→コピペでLINE送信(台帳に保存されます)">⚡ 簡易見積${r.kaniMitsu!=null?` ¥${(+r.kaniMitsu).toLocaleString()}`:''}</button>` : ''}
+      <!-- ⚡簡易見積はここから詳細編集シートへ移設(v1.30.434・山田「完了と合わせて処理したいから」) -->
       <button class="qp-detail" id="qp-open-detail">✎ 詳細編集</button>
       <button class="qp-close" id="qp-close-btn">✓ 保存</button>
     </div>
@@ -15140,8 +15147,6 @@ function showRepairQuickPop(r, anchorEl){
     openRepairSheet(r.id);
   };
   pop.querySelector('#qp-close-btn').onclick = ()=>{ if(typeof flushAlertInput_==='function') flushAlertInput_(pop); closeQuickPop(); };
-  // ⚡ 簡易見積(v1.30.419): ポップを閉じてモーダルを開く(台帳リンクあり修繕のみボタンが出る)
-  { const __kb = pop.querySelector('#qp-kani'); if(__kb) __kb.onclick = ()=>{ closeQuickPop(); openKaniModal_(r.id); }; }
 
   // 開いた直後のclickイベント (capture)で即閉じしないよう少し遅延
   setTimeout(()=>{
@@ -19373,6 +19378,14 @@ function openRepairSheet(id){
     completeBtn.textContent = isDone ? "↩ 完了を取消" : "✓ 完了にする";
     completeBtn.classList.toggle("archived", isDone);
   }
+  // ⚡ 簡易見積ボタン(v1.30.434・クイックポップから移設): 台帳リンクあり(Drive同期由来)の修繕だけ。
+  //   モーダル(z710)は詳細シート(z700)の上に重なる=閉じずに開けるので、保存後そのまま「✓完了にする」に進める。
+  const kaniBtn = document.getElementById("rs-kani");
+  if(kaniBtn){
+    kaniBtn.style.display = r.extDriveFileId ? "" : "none";
+    kaniBtn.textContent = "⚡ 簡易見積" + (r.kaniMitsu!=null ? ` ¥${(+r.kaniMitsu).toLocaleString()}` : "");
+    kaniBtn.onclick = ()=> openKaniModal_(r.id);
+  }
   repairSheet.classList.add("show");
 }
 function closeRepairSheet(){ repairSheet.classList.remove("show"); editingRepairId = null; __refreshOpenRepairCommentUI_ = null; }
@@ -21089,7 +21102,19 @@ function __kaniFillDatalists_(){
   const units = [...new Set(items.map(x=>String(x.unit||'').trim()).filter(Boolean))];
   document.getElementById('kani-cal-units').innerHTML = (units.length?units:['式','㎡','m','枚','箇所']).map(u=>`<option value="${escapeHtml(u)}">`).join('');
 }
-function closeKaniModal_(){ document.getElementById('kaniModal').classList.remove('show'); __kaniRepairId = null; }
+function closeKaniModal_(){
+  document.getElementById('kaniModal').classList.remove('show');
+  // 詳細シートを開いたまま重ねて使う(v1.30.434)ので、閉じる時に⚡ボタンの金額表示を最新へ。
+  // 保存直後に「⚡簡易見積 ¥28,000」と出た状態で「✓完了にする」に進める。
+  try{
+    const kb = document.getElementById('rs-kani');
+    const r = (state.repairs||[]).find(x=>x.id===__kaniRepairId);
+    if(kb && r && editingRepairId === __kaniRepairId){
+      kb.textContent = "⚡ 簡易見積" + (r.kaniMitsu!=null ? ` ¥${(+r.kaniMitsu).toLocaleString()}` : "");
+    }
+  }catch(_){}
+  __kaniRepairId = null;
+}
 async function saveKaniModal_(){
   if(__kaniSending) return;
   const err = document.getElementById('kani-error');
