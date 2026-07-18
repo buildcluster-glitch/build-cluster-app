@@ -52,8 +52,11 @@ echo "   3. ☁設定でクラウド同期URL貼付"
 echo "   4. 👤マイ で自分の名前選択"
 echo ""
 
-# クリップボードにコピー
+# クリップボードにコピー (Windows/macOS)
 if command -v clip.exe >/dev/null 2>&1; then
   echo "$URL" | clip.exe
+  echo "📋 URLをクリップボードにコピーしました"
+elif command -v pbcopy >/dev/null 2>&1; then
+  echo "$URL" | pbcopy
   echo "📋 URLをクリップボードにコピーしました"
 fi
