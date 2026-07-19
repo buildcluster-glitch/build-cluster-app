@@ -2652,7 +2652,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.439</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.440</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -19621,6 +19621,7 @@ let restoStatusFilter = "active";  // 'active'|'all'|'todo'|'wip'|'archived'
 let restoPersonFilter = "all";     // 見積作成者(p.staff)別 絞り込み 'all'|名前|""(未設定) v1.30.85
 let restoSearch = "";
 let restoDetailId = null;          // 詳細表示中の物件id (null=リスト)
+let __rdLastDetailId = null;       // 直前に詳細表示していた物件id(現場メモ下書きの持ち越し検知用 v1.30.440)
 let restoTaskStatusFilter = null;  // 詳細内ステータス絞込
 
 const RESTO_STATUS_LABEL = {todo:"未対応", wip:"進行中", done:"完了"};
@@ -19995,6 +19996,9 @@ function renderRestoCard(p){
 function renderRestoDetail(){
   const p = (state.restorations||[]).find(x=>x.id===restoDetailId);
   if(!p){ restoDetailId=null; renderRestoView(); return; }
+  // 📷 別物件に切り替わったら未確定の現場メモ下書き(写真/本文)を破棄。
+  //    ダイアログのDOMは全物件共有のため、放置すると他物件でも表示され続ける(鈴木報告 v1.30.440)
+  if(p.id !== __rdLastDetailId){ resetRdCommentDraft_(); __rdLastDetailId = p.id; }
   // 📋 営業/工事ステータスバッジ付きタイトル (v1.9.3〜)
   const tEl = document.getElementById("rdTitle");
   // 営業ステータス色: 受注系=緑/見積中=青/失注=グレー
@@ -20523,6 +20527,15 @@ function restoPermaDelete(taskId){
   const p = state.restorations.find(x=>x.id===restoDetailId);
   p.tasks = p.tasks.filter(x=>x.id!==taskId);
   restoSave(); renderRestoDetail();
+}
+function resetRdCommentDraft_(){
+  // 未確定(「追加」前)の現場メモ下書きを破棄。file inputも空にして同じ写真の再選択でonchangeが発火するように
+  const ta = document.getElementById("rdCommentInput");
+  if(ta){ ta.value=""; ta.style.height=''; }
+  const pv = document.getElementById("rdCommentPhotoPreview");
+  if(pv){ pv.style.display="none"; pv.src=""; delete pv.dataset.compressed; }
+  const inp = document.getElementById("rdCommentPhoto");
+  if(inp) inp.value = "";
 }
 function restoAddComment(){
   const p = state.restorations.find(x=>x.id===restoDetailId);
