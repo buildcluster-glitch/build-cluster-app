@@ -2652,7 +2652,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.441</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.442</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -2670,6 +2670,7 @@
     <button data-view="resto">🏠 原状回復</button>
     <button data-view="inventory">📦 在庫管理</button>
     <button data-view="__tanka__" id="tankaBtn" title="💴 単価表 — スマホ単価表と同じ内容(検索・元請切替)をアプリ内で開く">💴 単価表</button>
+    <button data-view="__gantt__" id="ganttBtn" title="📊 工事進捗ガント — 見積アプリの工事進捗タブ(Web閲覧版・表示のみ)をアプリ内で開く">📊 進捗</button>
   </div>
   <button class="nav-btn" id="myEventsBtn" title="👤 自分の設定・フィルタON/OFF">👤 マイ</button>
   </div>
@@ -2719,6 +2720,7 @@
   <button data-mnav="resto">🏠<span>原状回復</span></button>
   <button data-mnav="inventory">📦<span>在庫</span></button>
   <button data-mnav="tanka">💴<span>単価</span></button>
+  <button data-mnav="gantt">📊<span>進捗</span></button>
 </nav>
 
 <div class="calendar-wrap" id="calendarWrap">
@@ -16626,11 +16628,37 @@ function openTankaModal_(){
 }
 // PCの💴単価表ボタンは view-switch 内に置き、その配線(下の.view-switch forEach)でモーダルを開く。
 
+// 📊 工事進捗ガント(見積アプリ progress.html のWeb閲覧版)をアプリ内モーダルで表示 v1.30.442
+//   tanka方式(v1.30.381)の完全コピー。ガント側は tanka_gas_url/tanka_gas_token を読む設計
+//   ([[project_gantt_web]])なので設定コピーもtankaと同じキーでよい=スタッフの⚙入力ゼロ。
+const GANTT_PAGE_URL = 'https://buildcluster-glitch.github.io/gantt/';
+function openGanttModal_(){
+  try{ const s=loadGasSettings(); if(s && s.url && s.token){ localStorage.setItem('tanka_gas_url', s.url); localStorage.setItem('tanka_gas_token', s.token); } }catch(_){}
+  let ov = document.getElementById('ganttModal');
+  if(!ov){
+    ov = document.createElement('div'); ov.id='ganttModal';
+    ov.style.cssText = 'display:none;position:fixed;inset:0;z-index:900;background:#f1f5f9;flex-direction:column';
+    ov.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#2563eb;color:#fff;flex-shrink:0;padding-top:max(8px,env(safe-area-inset-top,0))">
+        <b style="flex:1;font-size:15px">📊 工事進捗ガント <span style="font-size:11px;font-weight:400;opacity:.8">表示のみ</span></b>
+        <a href="${GANTT_PAGE_URL}" target="_blank" rel="noopener" style="color:#fff;font-size:12px;background:rgba(255,255,255,.2);padding:6px 10px;border-radius:6px;text-decoration:none;white-space:nowrap">↗ 別タブ</a>
+        <button id="ganttModalClose" style="background:rgba(255,255,255,.25);border:0;color:#fff;font-size:13px;font-weight:700;padding:6px 14px;border-radius:6px;cursor:pointer;white-space:nowrap">✕ 閉じる</button>
+      </div>
+      <iframe id="ganttFrame" style="flex:1;border:0;width:100%"></iframe>`;
+    document.body.appendChild(ov);
+    document.getElementById('ganttModalClose').onclick = ()=>{ ov.style.display='none'; };
+  }
+  const fr = ov.querySelector('#ganttFrame');
+  if(!fr.src) fr.src = GANTT_PAGE_URL;   // 初回だけロード(以降はスクロール位置・表示月などを保持したまま再表示)
+  ov.style.display = 'flex';
+}
+
 // 📱 下部ナビ (スマホのみ表示。クリックでビュー切替)
 document.querySelectorAll('#mobileNav button').forEach(b=>{
   b.onclick = ()=>{
     const k = b.dataset.mnav;
     if(k === 'tanka'){ openTankaModal_(); return; }   // 💴 単価表はビュー切替でなくモーダル
+    if(k === 'gantt'){ openGanttModal_(); return; }   // 📊 進捗ガントも同様にモーダル
     currentView = (k === 'cal') ? 'month' : k;
     render();
   };
@@ -16638,6 +16666,7 @@ document.querySelectorAll('#mobileNav button').forEach(b=>{
 document.querySelectorAll(".view-switch button").forEach(b=>{
   b.onclick = ()=>{
     if(b.dataset.view==='__tanka__'){ openTankaModal_(); return; }   // 💴 単価表はモーダル(ビュー切替でない)
+    if(b.dataset.view==='__gantt__'){ openGanttModal_(); return; }   // 📊 進捗ガントも同様
     currentView = b.dataset.view; render();
   };
 });
