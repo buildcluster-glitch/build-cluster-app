@@ -2652,7 +2652,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.443</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.444</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -5063,10 +5063,11 @@ function visibleDates(){
     return Array.from({length:3}, (_,i)=>addDays(currentDate, i));
   }
   if(currentView==="month"){
-    // 📱 スマホ: 前日から30日のローリング表示 (‹›で±30日。月の切れ目で分断されない)
-    //   前日も入れておくと「昨日の続き」を見ながら作業しやすい(山田 2026-06-20)v1.30.137
+    // 📱 スマホ: 過去14日+今日から30日のローリング表示 (‹›で±30日。月の切れ目で分断されない)
+    //   初期スクロールは今日列アンカー(scrollToToday)なので見た目は従来どおり、
+    //   左スワイプで過去2週間まで遡れる(山田要望 2026-07-20 v1.30.444。旧: 前日までしか描画されず遡れなかった)
     if(window.innerWidth <= 700){
-      return Array.from({length:30}, (_,i)=>addDays(currentDate, i-1));
+      return Array.from({length:44}, (_,i)=>addDays(currentDate, i-14));
     }
     // 月の1日〜末日（時間グリッドで横スクロール）
     const first = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
@@ -16554,7 +16555,19 @@ function navigate(dir){
   const body = document.getElementById("calBody");
   if(body){
     body.scrollTop = 0;
-    body.scrollLeft = 0;
+    if(currentView==="month" && window.innerWidth <= 700){
+      // 📱 過去14日も描画しているため左端(=2週間前)ではなく移動先の日付列にアンカー(v1.30.444)
+      const el = body.querySelector(`.day-col[data-col-key="date-${fmtDate(currentDate)}"]`)
+              || body.querySelector(`.day-col-header[data-col-key="date-${fmtDate(currentDate)}"]`);
+      if(el){
+        const colLeft = el.getBoundingClientRect().left - body.getBoundingClientRect().left + body.scrollLeft;
+        body.scrollLeft = Math.max(0, colLeft - TIME_COL_W - 8);
+      } else {
+        body.scrollLeft = 0;
+      }
+    } else {
+      body.scrollLeft = 0;
+    }
   }
 }
 document.getElementById("prevBtn").onclick = ()=>navigate(-1);
