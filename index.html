@@ -2652,7 +2652,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.446</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.447</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -12393,8 +12393,8 @@ function monthlyLeaveStats_(d){
       if(isNichiShuku_(ds)) base += 1;                        // 日祝は自動で全員休み(所定)
     }
     const taken = (base+nenkyu+yukyu+hankyu) > 0;
-    const extras = (nenkyu>0?1:0)+(yukyu>0?1:0)+(hankyu>0?1:0);
-    const fracShort = `${num(base)}/${num(holN)}${extras?'+':''}`;   // バッジは超コンパクト(+は年休/有給/半休あり・詳細はtooltip)
+    const extraDays = nenkyu + yukyu + hankyu;   // 所定休以外(年休/有給/半休)の合計日数
+    const fracShort = `${num(base)}/${num(holN)}${extraDays>0?`+${num(extraDays)}`:''}`;   // 例 8/9+1(+の内訳=年休/有給/半休の合計日数・詳細はtooltip)
     const tipLine = `${month}月の休み: 所定 ${num(base)}/${num(holN)}${nenkyu?` ・年休${num(nenkyu)}`:''}${yukyu?` ・有給${num(yukyu)}`:''}${hankyu?` ・半休${num(hankyu)}`:''}`;
     return { base, nenkyu, yukyu, hankyu, taken, fracShort, tipLine };
   };
