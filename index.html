@@ -2652,7 +2652,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.444</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.445</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -3727,6 +3727,8 @@
           <label><input type="radio" name="ev-timemode" value="timed" checked><span>時間指定</span></label>
           <label><input type="radio" name="ev-timemode" value="allday"><span>終日</span></label>
           <label><input type="radio" name="ev-timemode" value="anytime"><span>いつでも（表記なし）</span></label>
+          <label><input type="radio" name="ev-timemode" value="am"><span>AM中</span></label>
+          <label><input type="radio" name="ev-timemode" value="pm"><span>PM中</span></label>
         </div>
       </div>
       <div class="field">
@@ -8693,7 +8695,10 @@ function showEventStaffPicker(el, ev){
   const titleLine = (ev.title||"").split(/\r?\n/)[0];
   // 🕐 日時変更用(全員共有)。時刻あり=timed/無し=時間未定。v1.30.169
   const __evSelTime = (ev.timeMode==='timed') ? (ev.start||'') : '';
-  let __evTimeOptsHtml = `<option value=""${__evSelTime?'':' selected'}>時間未定</option>`;
+  // 🌗 AM中/PM中(v1.30.445 山田要望): 時刻は決めないが午前/午後は決まっている予定。timeMode='am'/'pm'(同期列は既存timeMode=GAS変更不要)
+  let __evTimeOptsHtml = `<option value=""${(!__evSelTime && ev.timeMode!=='am' && ev.timeMode!=='pm')?' selected':''}>時間未定</option>`
+    + `<option value="__am__"${ev.timeMode==='am'?' selected':''}>AM中</option>`
+    + `<option value="__pm__"${ev.timeMode==='pm'?' selected':''}>PM中</option>`;
   for(let h=7;h<=19;h++){ for(let m=0;m<60;m+=15){ const v=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`; __evTimeOptsHtml += `<option value="${v}"${v===__evSelTime?' selected':''}>${v}</option>`; } }
   const __evEndOf = st => st ? `${String(Math.min(+st.slice(0,2)+1,23)).padStart(2,'0')}:${st.slice(3)}` : '10:00';
   pop.innerHTML = `
@@ -8907,7 +8912,13 @@ function showEventStaffPicker(el, ev){
       if(!real){ return; }
       if(typeof pushHistory==='function') pushHistory();
       real.date = nd;
-      if(nt){ real.start = nt; real.end = __evEndOf(nt); real.timeMode = 'timed'; real.allday = false; }
+      if(nt==='__am__' || nt==='__pm__'){
+        // 🌗 AM中/PM中: 時刻なし扱いだが表示位置アンカーとしてstart/endを午前/午後に置く(v1.30.445)
+        const isAm = nt==='__am__';
+        real.timeMode = isAm ? 'am' : 'pm'; real.allday = false;
+        real.start = isAm ? '09:00' : '13:00'; real.end = isAm ? '10:00' : '14:00';
+      }
+      else if(nt){ real.start = nt; real.end = __evEndOf(nt); real.timeMode = 'timed'; real.allday = false; }
       else { real.timeMode = 'anytime'; real.allday = false; }
       real.updatedAt = new Date().toISOString();
       saveState();
@@ -8915,7 +8926,7 @@ function showEventStaffPicker(el, ev){
       render();
       if(typeof flashEventChip_==='function') flashEventChip_(real.id);
       __evDtApply.textContent = '✓ 変更'; setTimeout(()=>{ try{ __evDtApply.textContent='変更'; }catch(_){} }, 1200);
-      if(typeof showAutoSyncToast==='function'){ const dd=parseDate(nd); showAutoSyncToast(`✅ 予定を ${(dd&&!isNaN(dd))?`${dd.getMonth()+1}/${dd.getDate()}`:nd}${nt?` ${nt}`:'(時間未定)'} に変更`); }
+      if(typeof showAutoSyncToast==='function'){ const dd=parseDate(nd); const tLabel = nt==='__am__' ? ' AM中' : nt==='__pm__' ? ' PM中' : nt ? ` ${nt}` : '(時間未定)'; showAutoSyncToast(`✅ 予定を ${(dd&&!isNaN(dd))?`${dd.getMonth()+1}/${dd.getDate()}`:nd}${tLabel} に変更`); }
     };
   }
   // 🕔 v1.30.311: ワンタップで時間未定にする + 未定バッジ付与
@@ -13409,7 +13420,8 @@ function renderCalendar(){
       const catHtml = cat
         ? `<span class="cat-badge" style="background:${cat.color};color:${textColorFor(cat.color)}">${escapeHtml(cat.name)}</span>`
         : "";
-      const isAnytime = ev.timeMode === "anytime";
+      const isAnytime = ev.timeMode === "anytime" || ev.timeMode === "am" || ev.timeMode === "pm";
+      const __twLabel = ev.timeMode === "am" ? "AM中" : ev.timeMode === "pm" ? "PM中" : null;   // 🌗 v1.30.445
       const cont = contractorInfo(ev.contractor);
       // 🚫 事前「行かない(訪問不要)」: グレー化+🚫行かない印(台帳NOで全PC共有)v1.30.131
       const __jizenSkip = isJizenEvent_(ev) && typeof isSkipVisit_==='function' && isSkipVisit_(ev);
@@ -13474,7 +13486,7 @@ function renderCalendar(){
         ev.memo ? `📝 ${ev.memo}` : "",
         __ttStaff ? `担当: ${__ttStaff}` : "",
         multi ? `参加: ${staffList.join("/")}` : "",
-        !isFree && !isAnytime ? `${ev.start}〜${ev.end}` : (isAnytime ? "(時間未定)" : "(終日)"),
+        !isFree && !isAnytime ? `${ev.start}〜${ev.end}` : (isAnytime ? `(${__twLabel || "時間未定"})` : "(終日)"),
       ].filter(Boolean).join("\n");
       // コメントアイコン(メモあり時のみ)
       const memoIcon = ev.memo ? `<span class="chip-memo" title="📝 ${escapeHtml(ev.memo)}">📝</span>` : "";
@@ -13566,7 +13578,7 @@ function renderCalendar(){
         const timeBox = (ev.source==="direct-morning") ? ""   // 🚗直行マーカーは時刻(09:00)を出さない(v1.30.241)
           : (typeof isJizenEvent_==='function' && isJizenEvent_(ev)) ? ""   // 📌事前は時間バッジ(09:00等)を出さない=時間未定/時刻あり両方(v1.30.327・山田)
           : (ev.undecidedBadge === true) ? `<span class="chip-time" style="opacity:.7">未定</span>`   // 🕔 v1.30.311: 予定単位の未定フラグ(担当ポップの🕔未定にボタンで付与)
-          : isAnytime ? ""   // anytime単独ではバッジ非表示 (時刻無しで判別可)
+          : isAnytime ? (__twLabel ? `<span class="chip-time" style="opacity:.85">${__twLabel}</span>` : "")   // anytime単独ではバッジ非表示 / AM中・PM中はバッジ表示(v1.30.445)
           : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;
         // 参加者バッジ/見積行は title 外(チップ直下)に独立行として配置。工事ボリュームは号室の隣(__volBadge)。
         // ※複数行タイトル時は staffBadges を __titleInner 内に入れ込み済みなので外側では出さない(v1.30.170)
@@ -14513,6 +14525,8 @@ function showChipTip(ev, mouseX, mouseY){
   let timeText = "";
   if(ev.allday || ev.timeMode === "allday") timeText = "終日";
   else if(ev.timeMode === "anytime") timeText = "時間未定";
+  else if(ev.timeMode === "am") timeText = "AM中";
+  else if(ev.timeMode === "pm") timeText = "PM中";
   else timeText = `${ev.start} 〜 ${ev.end}`;
   rows.push(`<div class="tt-row"><span class="tt-key">🕐</span><span class="tt-val">${escapeHtml(timeText)}</span></div>`);
   // 直行/直帰
@@ -16265,8 +16279,9 @@ document.getElementById("ev-save").onclick = ()=>{
   // anytime は時間入力非表示なので、既存値があれば保持、なければ 9:00/10:00 デフォ
   const startInput = document.getElementById("ev-start").value || "09:00";
   const endInput   = document.getElementById("ev-end").value || "10:00";
-  const start = timeMode === "allday" ? "00:00" : startInput;
-  const end   = timeMode === "allday" ? "23:59" : endInput;
+  // 🌗 AM中/PM中は表示位置アンカーとして午前/午後に固定配置(v1.30.445)
+  const start = timeMode === "allday" ? "00:00" : timeMode === "am" ? "09:00" : timeMode === "pm" ? "13:00" : startInput;
+  const end   = timeMode === "allday" ? "23:59" : timeMode === "am" ? "10:00" : timeMode === "pm" ? "14:00" : endInput;
   if(timeMode === "timed" && timeToMin(end)<=timeToMin(start)){ alert("終了時刻は開始時刻より後にしてください"); return; }
   // 参加者(チェック済) - リーダー(ev.staff)はチップに別途出るので重複保存しない
   const leader = document.getElementById("ev-staff").value;
