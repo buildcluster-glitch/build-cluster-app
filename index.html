@@ -2053,6 +2053,8 @@
     /* 📢 連絡事項機能はスマホでは非表示(v1.30.305・山田) */
     #announceBtn{display:none}
     #announceBar{display:none !important}
+    /* 📋 山一 請求締めアラートもスマホ非表示(v1.30.449・山田「PCだけでOK」=請求は事務/PC作業) */
+    #yamaichiCloseAlert{display:none !important}
     /* 🔍 カレンダー縮小スイッチはPC専用(スマホはv244縮小済+ピンチズームで足りる) */
     #calZoomSwitch{display:none}
 
@@ -2661,7 +2663,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.448</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.449</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
