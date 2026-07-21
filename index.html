@@ -2652,7 +2652,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.445</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.446</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -16095,8 +16095,8 @@ function openEventModal(ev, defaults){
 
   document.getElementById("ev-title").value = ev?.title || defaults?.title || "";
   document.getElementById("ev-date").value  = ev?.date  || defaults?.date || fmtDate(currentDate);
-  // 時間モード: ev.timeMode (新) or ev.allday (旧データ) からデフォルト
-  const tm = ev?.timeMode || (ev?.allday ? "allday" : "timed");
+  // 時間モード: ev.timeMode (新) or ev.allday (旧データ) or defaults.timeMode(簡易→詳細の引継ぎ v1.30.446)
+  const tm = ev?.timeMode || (ev?.allday ? "allday" : (defaults?.timeMode || "timed"));
   document.querySelectorAll('input[name="ev-timemode"]').forEach(r=>{ r.checked = (r.value===tm); });
   document.getElementById("ev-start").value = ev?.start || defaults?.start || "09:00";
   document.getElementById("ev-end").value   = ev?.end   || defaults?.end   || "10:00";
@@ -16723,8 +16723,15 @@ function showQuickAddSheet_(defaults={}, editEv=null){
   // クリック位置(アクティブセル/ダブルクリック)。位置だけ posStart に保持 → 時間未定でも選んだ位置(例11:45)に表示(v1.30.65)
   // 編集時は時刻指定ならその時刻を初期選択、時間未定/終日なら「時間未定」(位置は元のstartを保持)
   const posStart = isEdit ? (editEv.start||"") : (defaults.start || "");
-  const selTime = isEdit ? (editEv.timeMode==="timed" ? (editEv.start||"") : "") : "";
-  const timeOpts = [`<option value=""${selTime?"":" selected"}>時間未定</option>`];
+  // 🌗 AM中/PM中(v1.30.446): timeMode='am'/'pm'。編集時は該当センチネルを初期選択
+  const selTime = isEdit
+    ? (editEv.timeMode==="timed" ? (editEv.start||"") : editEv.timeMode==="am" ? "__am__" : editEv.timeMode==="pm" ? "__pm__" : "")
+    : "";
+  const timeOpts = [
+    `<option value=""${selTime?"":" selected"}>時間未定</option>`,
+    `<option value="__am__"${selTime==="__am__"?" selected":""}>AM中</option>`,
+    `<option value="__pm__"${selTime==="__pm__"?" selected":""}>PM中</option>`,
+  ];
   for(let h=7; h<=19; h++) for(let m=0; m<60; m+=15){
     const v = `${pad(h)}:${pad(m)}`;
     timeOpts.push(`<option value="${v}"${v===selTime?' selected':''}>${v}</option>`);
@@ -16803,10 +16810,12 @@ function showQuickAddSheet_(defaults={}, editEv=null){
     const t = bd.querySelector('#qa-title').value;
     const d = bd.querySelector('#qa-date').value;
     const st = bd.querySelector('#qa-time').value;
-    const posS = st || posStart || "";   // 時間未定でもクリック位置を引き継ぐ
+    const __ampm = (st==='__am__' || st==='__pm__');   // 🌗 AM中/PM中は時刻扱いにしない(詳細フォームへtimeMode渡す)
+    const __realSt = __ampm ? (st==='__am__' ? '09:00' : '13:00') : st;
+    const posS = __realSt || posStart || "";   // 時間未定でもクリック位置を引き継ぐ
     bd.remove();
     if(isEdit){ openEventModal(editEv); return; }   // 編集: 従来フォームで詳細編集
-    openEventModal(null, {date:d||undefined, staff:selStaff[0]||undefined, participants:selStaff.slice(1), start:posS||undefined, end:posS?endOf(posS):undefined, category:selCat||undefined});
+    openEventModal(null, {date:d||undefined, staff:selStaff[0]||undefined, participants:selStaff.slice(1), start:posS||undefined, end:posS?endOf(posS):undefined, category:selCat||undefined, timeMode: __ampm ? (st==='__am__'?'am':'pm') : undefined});
     try{ if(t) document.getElementById('ev-title').value = t; }catch(_){}
     // 🚗 直行/直帰の選択を詳細フォームへ引き継ぎ
     try{ document.getElementById('ev-commute-go').checked = selCommute.go; document.getElementById('ev-commute-home').checked = selCommute.home; }catch(_){}
@@ -16822,7 +16831,8 @@ function showQuickAddSheet_(defaults={}, editEv=null){
       if(!target){ bd.remove(); return; }
       if(typeof pushHistory==='function') pushHistory();
       target.title = title; target.category = selCat||""; target.staff = selStaff[0]||""; target.participants = selStaff.slice(1); target.date = d; target.commute = __commuteStr();
-      if(st){ target.start = st; target.end = endOf(st); target.timeMode = "timed"; target.allday = false; }
+      if(st==='__am__' || st==='__pm__'){ const isAm = st==='__am__'; target.timeMode = isAm?'am':'pm'; target.allday = false; target.start = isAm?'09:00':'13:00'; target.end = isAm?'10:00':'14:00'; }   // 🌗 v1.30.446
+      else if(st){ target.start = st; target.end = endOf(st); target.timeMode = "timed"; target.allday = false; }
       else { const posS = posStart || target.start || "09:00"; target.start = posS; target.end = endOf(posS); target.timeMode = target.allday ? (target.timeMode||"allday") : "anytime"; }
       target.updatedAt = new Date().toISOString();
       saveState();
@@ -16830,11 +16840,14 @@ function showQuickAddSheet_(defaults={}, editEv=null){
       render(); bd.remove();
       return;
     }
-    // 表示位置: 時刻を選べばその時刻(timed) / 時間未定でもクリック位置(posStart)があればそこに配置(anytime) / 無ければ09:00
-    const posS = st || posStart || "09:00";
+    // 🌗 AM中/PM中(v1.30.446): 時刻扱いにせずtimeMode=am/pm、配置アンカーは午前9時/午後1時
+    const __ampm = (st==='__am__' || st==='__pm__');
+    const __tMode = __ampm ? (st==='__am__'?'am':'pm') : (st ? "timed" : "anytime");
+    // 表示位置: 時刻を選べばその時刻(timed) / AM中PM中=午前午後アンカー / 時間未定でもクリック位置(posStart)があればそこ / 無ければ09:00
+    const posS = __ampm ? (st==='__am__'?'09:00':'13:00') : (st || posStart || "09:00");
     const ev = {
       id: uid(), title, category: selCat||"", contractor:"", staff: selStaff[0]||"", participants: selStaff.slice(1),
-      date: d, start: posS, end: endOf(posS), allday: false, timeMode: st ? "timed" : "anytime",
+      date: d, start: posS, end: endOf(posS), allday: false, timeMode: __tMode,
       color:"", memo:"", commute: __commuteStr(), importance: [], updatedAt: new Date().toISOString(),
     };
     if(typeof pushHistory==='function') pushHistory();
