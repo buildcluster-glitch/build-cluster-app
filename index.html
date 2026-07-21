@@ -116,6 +116,15 @@
   .announce-del:hover{opacity:1}
   .announce-edit{background:transparent;border:none;color:#92700e;cursor:pointer;font-size:13px;flex-shrink:0;opacity:.7}
   .announce-edit:hover{opacity:1}
+  /* 📋 山一 請求締めアラート(毎月19日〜提出期限)v1.30.448 */
+  .yamaichi-alert{background:#fee2e2;border-bottom:2px solid #ef4444;padding:8px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .yamaichi-alert .ya-icon{font-size:18px;flex-shrink:0}
+  .yamaichi-alert .ya-text{font-weight:700;color:#991b1b;font-size:13px;flex:1 1 240px;min-width:150px;line-height:1.45}
+  .yamaichi-alert .ya-text b{color:#dc2626}
+  .yamaichi-alert .ya-btn{background:#dc2626;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;white-space:nowrap}
+  .yamaichi-alert .ya-btn:hover{background:#b91c1c}
+  .yamaichi-alert .ya-dismiss{background:transparent;border:1px solid #fca5a5;color:#b91c1c;border-radius:6px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;white-space:nowrap}
+  .yamaichi-alert .ya-dismiss:hover{background:#fecaca}
   .leave-summary .ls-holiday{
     font-weight:800;color:#0369a1;background:#e0f2fe;
     padding:2px 9px;border-radius:11px;white-space:nowrap;
@@ -2652,7 +2661,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.447</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.448</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -2690,6 +2699,8 @@
 </header>
 
 <div class="announce-bar" id="announceBar" style="display:none"></div>
+<!-- 📋 山一 請求締めアラート(毎月19日〜提出期限。20日締め/21日提出・日祝は翌営業日)v1.30.448 -->
+<div class="yamaichi-alert" id="yamaichiCloseAlert" style="display:none"></div>
 <!-- 🏖 休みサマリ独立行は v1.30.368 で出社バー(leaveBand)に統合(各チップにfracバッジ+行末に月休みピル) -->
 
 <div class="leave-band" id="leaveBand">
@@ -5367,6 +5378,7 @@ function render(){
   if(__cg) __cg.classList.toggle('tswipe', true);
   renderHeader();
   renderStaffLegend();
+  if(typeof renderYamaichiCloseAlert_==='function') renderYamaichiCloseAlert_();  // 📋 山一 請求締めアラート(全ビュー共通)v1.30.448
   if(typeof updateActionListCount_==='function') updateActionListCount_();  // 🗓 要対応バッジ件数更新(v1.30.183)
   if(typeof renderHeaderDuty_==='function') renderHeaderDuty_();  // 🔄📞 当番・電話番(要対応の隣・全ビュー共通)v1.30.199
 
@@ -8138,6 +8150,47 @@ function renderAnnounceBar_(){
       ta.onblur=commit;
     });
   }
+}
+
+// ====================================================================
+// 📋 山一 請求締めアラート(v1.30.448・山田)
+//   山一地所への請求書は20日締め・21日提出(21日が日祝なら翌営業日まで)。
+//   毎月19日〜提出期限日まで「20日までに完了した山一案件の完了処理を忘れずに」を表示。
+//   純粋に日付連動=全端末で同一・GAS同期不要。dismissは当月・この端末のみ(翌月は自動復活)。
+// ====================================================================
+function yamaichiCloseDeadline_(year, month0){
+  // 提出期限=21日起点。日祝(日曜/祝日)なら翌営業日へ送る(isNichiShukuDate_相当・土は営業日扱い)
+  let d = new Date(year, month0, 21);
+  let guard = 0;
+  while(guard++ < 14 && (d.getDay()===0 || (typeof isHoliday==='function' && isHoliday(d)))){
+    d.setDate(d.getDate()+1);
+  }
+  return d;
+}
+function renderYamaichiCloseAlert_(todayOverride){
+  const bar = document.getElementById('yamaichiCloseAlert');
+  if(!bar) return;
+  const today = todayOverride ? new Date(todayOverride) : new Date(); today.setHours(0,0,0,0);
+  const y = today.getFullYear(), m0 = today.getMonth();
+  const windowStart = new Date(y, m0, 19);
+  const deadline = yamaichiCloseDeadline_(y, m0);
+  const inWindow = today >= windowStart && today <= deadline;
+  const monthKey = `${y}-${pad(m0+1)}`;
+  const dismissed = (()=>{ try{ return localStorage.getItem('bc_yamaichi_close_ack_'+monthKey)==='1'; }catch(_){ return false; } })();
+  if(!inWindow || dismissed){ bar.style.display='none'; bar.innerHTML=''; return; }
+  const dow = '日月火水木金土'[deadline.getDay()];
+  const dlLabel = `${deadline.getMonth()+1}/${deadline.getDate()}(${dow})`;
+  const isDeadlineToday = today.getTime()===deadline.getTime();
+  bar.style.display='';
+  bar.innerHTML = `
+    <span class="ya-icon">📋</span>
+    <span class="ya-text">山一の請求締め: <b>20日までに完了した山一案件</b>は忘れずに完了処理を（提出期限 <b>${dlLabel}</b>まで${isDeadlineToday?' ・⚠本日締切':''}）</span>
+    <button class="ya-btn" id="yaGoResto">🏠 原状回復を開く</button>
+    <button class="ya-dismiss" id="yaDismiss" title="今月分は非表示(翌月また出ます・この端末のみ)">今月は確認済</button>`;
+  const go = bar.querySelector('#yaGoResto');
+  if(go) go.onclick=()=>{ currentView='resto'; render(); };
+  const dm = bar.querySelector('#yaDismiss');
+  if(dm) dm.onclick=()=>{ try{ localStorage.setItem('bc_yamaichi_close_ack_'+monthKey,'1'); }catch(_){} renderYamaichiCloseAlert_(); };
 }
 
 // 立会レコードを仮想イベントに変換 (カレンダー描画用)
