@@ -2668,7 +2668,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.451</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.452</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -10179,7 +10179,34 @@ function showTaskChecklistPopup(el, ev){
     const liveTarget_ = ()=>(state.events||[]).find(e=>e.id===ev.id);
     // 💬 業務連絡は shared-config 'jimu_messages'(staffキー・全員共有)へ移行 v1.30.203。開いてる欄の再描画フックを差し替え
     const msgStaff_ = ()=>{ const t=liveTarget_(); return (t&&t.staff)||cur.staff||""; };
-    __refreshOpenJimuMsgUI_ = ()=>{ if(!pop.isConnected){ __refreshOpenJimuMsgUI_=null; return; } try{ ({cur,ti}=build()); if(ti) renderInner(); }catch(_){} };
+    // ✋ v1.30.452(鈴木報告「タスク追加中に打った文字が飛ぶ」): 背景同期(業務連絡/コメント)のrenderInnerが
+    //   ポップDOMを作り直し、タスク追加欄などに入力中の文字を消していた。入力欄にフォーカスがある間は
+    //   再描画を保留し、欄を離れた瞬間に1回だけ反映する。
+    let __jimuRefreshPending_ = false, __jimuFocusoutArmed_ = false;
+    const __popTyping_ = ()=>{ const ae=document.activeElement; return !!(ae && pop.contains(ae) && (ae.tagName==='INPUT' || ae.tagName==='TEXTAREA' || ae.isContentEditable)); };
+    const __doJimuRefresh_ = ()=>{
+      if(!pop.isConnected) return;
+      // 送信前のタスク下書きは再描画(DOM作り直し)で消えるので、退避→復元する
+      const inpEl = pop.querySelector('.tp-add-input');
+      const draft = inpEl ? inpEl.value : "";
+      try{ ({cur,ti}=build()); if(ti) renderInner(); }catch(_){}
+      if(draft){ const ni = pop.querySelector('.tp-add-input'); if(ni && !ni.value) ni.value = draft; }
+    };
+    const __armJimuFocusoutFlush_ = ()=>{
+      if(__jimuFocusoutArmed_) return; __jimuFocusoutArmed_ = true;
+      pop.addEventListener('focusout', function onFO(){
+        setTimeout(()=>{
+          if(__popTyping_()) return;   // まだ別の入力欄にいる→待機継続(onFOは残す)
+          pop.removeEventListener('focusout', onFO); __jimuFocusoutArmed_ = false;
+          if(__jimuRefreshPending_){ __jimuRefreshPending_ = false; __doJimuRefresh_(); }
+        }, 0);
+      });
+    };
+    __refreshOpenJimuMsgUI_ = ()=>{
+      if(!pop.isConnected){ __refreshOpenJimuMsgUI_=null; return; }
+      if(__popTyping_()){ __jimuRefreshPending_ = true; __armJimuFocusoutFlush_(); return; }   // 入力中は保留
+      __jimuRefreshPending_ = false; __doJimuRefresh_();
+    };
     const sendMsg_ = (text)=>{ text=String(text||'').trim(); if(!text) return; if(!meSelf){ alert('先に「👤 自分」を設定してください(👤マイ)'); return; } const st=msgStaff_(); if(!st) return; msgReactPickerId=null; if(typeof addJimuMessage_==='function') addJimuMessage_(st, text, meSelf); };
     const msgInput = pop.querySelector('.tp-msg-input'), msgSend = pop.querySelector('.tp-msg-send');
     if(msgSend) msgSend.onclick = ()=>sendMsg_(msgInput.value);
