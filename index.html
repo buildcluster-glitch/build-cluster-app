@@ -874,6 +874,11 @@
   .quick-pop.task-pop .tp-row .tp-prio-sel:hover{border-color:#94a3b8}
   .quick-pop.task-pop .tp-row .tp-status-sel{flex:0 0 auto;border:1.5px solid #cbd5e1;background:#fff;font-size:11px;font-weight:700;cursor:pointer;padding:2px 1px;border-radius:5px}
   .quick-pop.task-pop .tp-row .tp-status-sel:hover{border-color:#94a3b8}
+  /* 🔀 並び替え矢印(v1.30.451) */
+  .quick-pop.task-pop .tp-row .tp-move-wrap{display:flex;flex-direction:column;gap:1px;flex:0 0 auto;margin-top:1px}
+  .quick-pop.task-pop .tp-row .tp-move{border:1px solid #cbd5e1;background:#fff;color:#64748b;font-size:8px;line-height:1;cursor:pointer;padding:1px 3px;border-radius:4px}
+  .quick-pop.task-pop .tp-row .tp-move:hover{border-color:#2563eb;color:#2563eb;background:#eff6ff}
+  .quick-pop.task-pop .tp-row .tp-move-ph{height:13px}
   .quick-pop.task-pop .tp-row.inprogress{background:#eff6ff}
   .quick-pop.task-pop .tp-row.inprogress .tp-text{color:#1d4ed8;font-weight:600}
   .quick-pop.task-pop .tp-row input[type=checkbox]{margin-top:2px;width:16px;height:16px;cursor:pointer;flex:0 0 auto}
@@ -2663,7 +2668,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.450</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.451</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -9522,6 +9527,14 @@ function sweepTaskArchive_(days){
   return changed;
 }
 // タスク行の文言を編集(インデント/完了マーク/bullet/優先度/完了ログ は保持)
+// 🔀 2つのタスク行を丸ごと入れ替える(v1.30.451・並び替え)。行に付いた優先度/状態/コメントキー(=本文)は
+//   行と一緒に動くので、テキスト基準のコメント/リマインドは壊れない。同一ソートグループ内の隣と入れ替える運用。
+function swapTaskLines_(title, i, j){
+  const lines = String(title||"").split(/\r?\n/);
+  if(i<0 || j<0 || i>=lines.length || j>=lines.length || i===j) return title;
+  const tmp = lines[i]; lines[i] = lines[j]; lines[j] = tmp;
+  return lines.join("\n");
+}
 function editTaskLine_(title, lineIndex, newText){
   const lines = String(title||"").split(/\r?\n/);
   if(lineIndex<0 || lineIndex>=lines.length) return title;
@@ -9914,12 +9927,20 @@ function showTaskChecklistPopup(el, ev){
     const doneTasks = ti.tasks.filter(t=>t.done);
     const trash = ti.trash || [];
     const __fmtCmtT_ = (at)=>{ if(!at) return ''; const d=new Date(at); if(isNaN(d)) return ''; const p=n=>String(n).padStart(2,'0'); const td=new Date(); td.setHours(0,0,0,0); return d>=td?`${p(d.getHours())}:${p(d.getMinutes())}`:`${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`; };
-    const rowHtml = (t)=>{
+    const rowHtml = (t, moveUpTo, moveDownTo)=>{
       // 💬 コメント常時表示(v1.30.265・鈴木要望「以前のように常時表示」): タスク行の下にインライン表示
       const __cs = getTaskCmts_(taskCKey_(t.text));
       const __cmtBlock = __cs.length ? `<div class="tp-cmt-inline">${__cs.map(c=>`<div class="tp-cmt-line"><b>${escapeHtml(c.author||'?')}</b><span class="tp-cmt-txt">${escapeHtml(c.text||'')}</span><span class="tp-cmt-time">${escapeHtml(__fmtCmtT_(c.at))}</span></div>`).join('')}</div>` : '';
+      // 🔀 並び替え矢印(v1.30.451): 同じグループ内に上/下の相手がいる時だけ表示(グループ跨ぎはソートが打ち消すので出さない)
+      const __moveHtml = (moveUpTo!=null || moveDownTo!=null)
+        ? `<span class="tp-move-wrap">
+             ${moveUpTo!=null ? `<button class="tp-move" data-move-from="${t.index}" data-move-to="${moveUpTo}" title="上へ移動">▲</button>` : `<span class="tp-move-ph"></span>`}
+             ${moveDownTo!=null ? `<button class="tp-move" data-move-from="${t.index}" data-move-to="${moveDownTo}" title="下へ移動">▼</button>` : `<span class="tp-move-ph"></span>`}
+           </span>`
+        : '';
       return `
       <div class="tp-row ${t.done?'done':''}${t.inProgress?' inprogress':''}" style="border-left:3px solid ${(t.prio&&TASK_PRIO_COLOR[t.prio])||'transparent'}">
+        ${__moveHtml}
         <select class="tp-prio-sel" data-line="${t.index}" title="優先度を選択" style="color:${TASK_PRIO_COLOR[t.prio||'']}">
           <option value="🔴" ${(t.prio||'')==='🔴'?'selected':''}>高</option>
           <option value="" ${!t.prio?'selected':''}>普</option>
@@ -9944,14 +9965,19 @@ function showTaskChecklistPopup(el, ev){
       </div>${__cmtBlock}`;
     };
     // 未完了を優先度グループごとに区切り線で分割
+    // 🔀 並び替え(v1.30.451): 同一グループ(進行中フラグ＋優先度が同じ)内の隣とだけ入れ替え可能
+    const __rankOf = t => (TASK_PRIO_RANK[t.prio] ?? 1);
+    const __sameGroup = (a,b) => !!a && !!b && (!!a.inProgress===!!b.inProgress) && (__rankOf(a)===__rankOf(b));
     let __prevRank = null, __prevIP = null;
-    const pendingHtml = pending.map(t=>{
-      const rank = (TASK_PRIO_RANK[t.prio] ?? 1);
+    const pendingHtml = pending.map((t,pi)=>{
+      const rank = __rankOf(t);
       const ip = !!t.inProgress;
       // 進行中→未着手の境目、または優先度グループの変わり目で区切り線
       const sep = (__prevIP!==null && (ip!==__prevIP || rank!==__prevRank)) ? '<div class="tp-sep"></div>' : '';
       __prevRank = rank; __prevIP = ip;
-      return sep + rowHtml(t);
+      const upTo   = __sameGroup(t, pending[pi-1]) ? pending[pi-1].index : null;   // 表示上の1つ上と同グループなら入れ替え可
+      const downTo = __sameGroup(t, pending[pi+1]) ? pending[pi+1].index : null;
+      return sep + rowHtml(t, upTo, downTo);
     }).join("");
     const archive = ti.archive || [];
     const trashRowHtml = (t)=>`
@@ -10071,6 +10097,15 @@ function showTaskChecklistPopup(el, ev){
         if(!confirm(`「${__txt}」を削除しますか?\n(ゴミ箱に移動します・後で復元できます)`)) return;
         mutate(t=>deleteTaskLine_(t, parseInt(b.dataset.line,10)));   // ゴミ箱へ(復元可)
         if(typeof showAutoSyncToast==='function') showAutoSyncToast('🗑 ゴミ箱に移動しました(下の🗑から復元できます)');
+      };
+    });
+    // 🔀 並び替え(v1.30.451): ▲▼で同グループ内の隣とタスク行を入れ替え
+    pop.querySelectorAll('.tp-move').forEach(b=>{
+      b.onclick = ()=>{
+        const from = parseInt(b.dataset.moveFrom,10);
+        const to   = parseInt(b.dataset.moveTo,10);
+        if(isNaN(from) || isNaN(to)) return;
+        mutate(t=>swapTaskLines_(t, from, to));
       };
     });
     pop.querySelectorAll('.tp-restore').forEach(b=>{
