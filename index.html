@@ -2663,7 +2663,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.449</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.450</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -18757,6 +18757,42 @@ function openBugReportModal_(){
   }).catch(()=>{});
 }
 let __brEditId = null;   // 編集中のバグ報告id(v1.30.386)
+// 📋 画像をクリップボードにコピー(v1.30.450)。data URI / https URL 両対応。
+//   Clipboard APIの画像書き込みはPNG必須の環境が多い→canvasでPNG化してから書き込む。
+//   Drive等クロスオリジンURLはcrossOrigin指定で読み、CORS不可ならcatch側でエラー表示。
+function __toPngBlob_(srcBlobOrUrl){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    let objUrl = null;
+    img.crossOrigin = 'anonymous';
+    img.onload = ()=>{
+      try{
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth || img.width; c.height = img.naturalHeight || img.height;
+        c.getContext('2d').drawImage(img, 0, 0);
+        if(objUrl) URL.revokeObjectURL(objUrl);
+        c.toBlob(b=> b ? resolve(b) : reject(new Error('PNG変換に失敗')), 'image/png');
+      }catch(e){ if(objUrl) URL.revokeObjectURL(objUrl); reject(e); }
+    };
+    img.onerror = ()=>{ if(objUrl) URL.revokeObjectURL(objUrl); reject(new Error('画像の読み込みに失敗')); };
+    if(srcBlobOrUrl instanceof Blob){ objUrl = URL.createObjectURL(srcBlobOrUrl); img.src = objUrl; }
+    else { img.src = srcBlobOrUrl; }
+  });
+}
+async function copyImageToClipboard_(src){
+  if(!navigator.clipboard || !window.ClipboardItem) throw new Error('この端末はコピー非対応');
+  let pngBlob;
+  if(/^data:image\//.test(src)){
+    // data URI: fetchでBlob化→(PNGでなければ)canvas変換
+    const resp = await fetch(src);
+    const blob = await resp.blob();
+    pngBlob = blob.type==='image/png' ? blob : await __toPngBlob_(blob);
+  } else {
+    // https URL: Imageで直接読んでcanvas→PNG(CORS許可が前提。不可ならcatch)
+    pngBlob = await __toPngBlob_(src);
+  }
+  await navigator.clipboard.write([ new ClipboardItem({ 'image/png': pngBlob }) ]);
+}
 function renderBugReportModal_(){
   const list = document.getElementById("br-list"); if(!list) return;
   const items = Object.values(loadCalReports_()).filter(r=>r && !r.deleted)
@@ -18801,6 +18837,7 @@ function renderBugReportModal_(){
       ${cmts}
       <div style="display:flex;gap:6px;margin-top:5px">
         <button data-br-cmt="${r.id}" class="btn" style="font-size:10px;padding:2px 8px">💬 コメント${(r.comments||[]).length?` (${(r.comments||[]).length})`:""}</button>
+        ${(r.photo && /^(data:image\/|https?:\/\/)/.test(r.photo)) ? `<button data-br-copyimg="${r.id}" class="btn" style="font-size:10px;padding:2px 8px">📋 画像コピー</button>` : ""}
         ${(r.by===me||!r.by) && r.id!==__brEditId ? `<button data-br-edit="${r.id}" class="btn" style="font-size:10px;padding:2px 8px">✏️ 編集</button>` : ""}
         ${(r.by===me||!r.by) ? `<button data-br-del="${r.id}" class="btn" style="font-size:10px;padding:2px 8px;color:#dc2626">🗑 削除</button>` : ""}
       </div>
@@ -18824,6 +18861,26 @@ function renderBugReportModal_(){
   // 📷 添付画像クリック→拡大(既存の写真ズームを流用)v1.30.260
   list.querySelectorAll("[data-br-zoom]").forEach(img=>{
     img.onclick = ()=>{ if(typeof restoShowPhotoZoom==='function') restoShowPhotoZoom(img.src); };
+  });
+  // 📋 添付画像をクリップボードにコピー(v1.30.450・山田要望)。PNG化してClipboard APIへ
+  list.querySelectorAll("[data-br-copyimg]").forEach(b=>{
+    b.onclick = async ()=>{
+      const r = loadCalReports_()[b.dataset.brCopyimg];
+      if(!r || !r.photo){ return; }
+      const orig = b.textContent;
+      b.disabled = true; b.textContent = "⏳ コピー中…";
+      try{
+        await copyImageToClipboard_(r.photo);
+        b.textContent = "✓ コピーしました";
+        if(typeof showAutoSyncToast==='function') showAutoSyncToast("📋 画像をクリップボードにコピーしました");
+      }catch(e){
+        console.warn('[画像コピー] 失敗', e);
+        b.textContent = "✗ 失敗";
+        if(typeof showAutoSyncToast==='function') showAutoSyncToast("⚠ 画像コピー失敗: "+(e.message||e)+"（画像を長押し/右クリックでコピーしてください）");
+      }finally{
+        setTimeout(()=>{ try{ b.disabled=false; b.textContent=orig; }catch(_){} }, 1600);
+      }
+    };
   });
   list.querySelectorAll("[data-br-del]").forEach(b=>{
     b.onclick = ()=>{
