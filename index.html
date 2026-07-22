@@ -2668,7 +2668,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.452</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.453</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -13479,7 +13479,13 @@ function renderCalendar(){
       const __willCard = __jizenSkipEarly || __hasSubRows;
       // カード枠(border1.5+padding2)分の高さ加算はカード時のみ
       const __carded = __willCard;
-      let chipHeight = (__effLines === 1 ? 28 : __effLines * 18 + 14) + __linkRow + __jizenRow + __estRow + __alertRow + (__carded ? 8 : 0);
+      // 🧑‍🤝‍🧑 参加者バッジ(2名以上)は本文行より背が高く、旧式は__staffRowsを高さに未加算で
+      //   1行チップの下端が見切れていた(打合MTG等・山田報告 v1.30.453)。バッジぶんを確保:
+      //   1行タイトルはバッジが本文に同居=底上げ、2行以上や7名超(2段)は行ぶん加算。
+      const __badgeAllow = __staffRows > 0
+        ? ((__effLines === 1 ? 10 : 0) + (__staffRows >= 2 ? 20 : 0))
+        : 0;
+      let chipHeight = (__effLines === 1 ? 28 : __effLines * 18 + 14) + __linkRow + __jizenRow + __estRow + __alertRow + __badgeAllow + (__carded ? 8 : 0);
       if(window.innerWidth <= 700){ chipHeight = Math.round(chipHeight * 0.78); }   // 📱スマホはチップ箱も縮小(v1.30.244)
       // 月ビュー/終日/事前帯 はチップ高さ、それ以外は duration に応じた縦長ブロック
       const height = (isMonth || isFree || isJizen)
