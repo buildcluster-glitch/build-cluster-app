@@ -2672,7 +2672,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.458</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.459</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -14974,9 +14974,39 @@ function buildRescheduleGhosts_(){
       memo:`再アポの元の予定（${workerLead||'担当未設定'}）\n元: ${r.date}${time?(" "+time):""}${r.newDate?`\n新: ${r.newDate}${r.newTime?(" "+r.newTime):""}`:""}${reason?`\n理由: ${reason}`:""}`,
       importance:[], updatedAt: r.ts || "",
       source:"reschedule-trace",   // task-sync/重複統合の対象外マーカー(state.eventsには入らない)
+      _traceId: r.id || "",        // 🗑 削除用: reschedule_tracesから該当を消すための識別子(v1.30.459)
+      _traceKey: key,              // id無しfallback用(物件|号室|旧日|旧時刻)
     });
   }
   return out;
+}
+// 🗑 再アポの「元の予定」跡を1件削除(reschedule_tracesから消す=全端末から消える)v1.30.459
+//   クラ助の保存形(配列/{items}/{traces})を保ってpushする(read-modify-write=他端末の跡を消さない)
+async function removeRescheduleTrace_(traceId, traceKey){
+  const keyOf = t => `${t&&t.bukken||''}|${t&&t.room||''}|${t&&t.date||''}|${t&&t.time||''}`;
+  const isTarget = t => (traceId && t && t.id===traceId) || (traceKey && keyOf(t)===traceKey);
+  // 楽観: ローカルから即除去→再描画
+  __rescheduleTraces = (__rescheduleTraces||[]).filter(t=>!isTarget(t));
+  saveCachedRescheduleTraces_(__rescheduleTraces);
+  if(typeof render==='function') render();
+  const s = loadGasSettings();
+  if(!s.url || !s.token) return;
+  try{
+    const url = `${s.url}?action=get-shared-config&key=reschedule_traces&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res = await fetch(url,{method:'GET',redirect:'follow'});
+    let raw = [];
+    if(res.ok){ const d=await res.json(); raw=d.value; if(raw===''||raw==null) raw=[]; else if(typeof raw==='string'){ try{raw=JSON.parse(raw);}catch(_){raw=[];} } }
+    // 保存形を判定して同じ形でpush(クラ助のgetSharedConfigArray_を壊さない)
+    let arr, wrap;
+    if(Array.isArray(raw)){ arr=raw; wrap=a=>a; }
+    else if(raw && Array.isArray(raw.items)){ arr=raw.items; wrap=a=>Object.assign({}, raw, {items:a, updatedAt:new Date().toISOString()}); }
+    else if(raw && Array.isArray(raw.traces)){ arr=raw.traces; wrap=a=>Object.assign({}, raw, {traces:a, updatedAt:new Date().toISOString()}); }
+    else { arr=[]; wrap=a=>a; }
+    const next = arr.filter(t=>!isTarget(t));
+    await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'reschedule_traces',value:JSON.stringify(wrap(next)),token:s.token,savedBy:'calendar-app'})});
+    __rescheduleTraces = next; saveCachedRescheduleTraces_(next);
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast('🔁 元の予定の跡を消しました(全員のカレンダーから消えます)');
+  }catch(e){ console.warn('[reschedule_traces] 削除push失敗:', e.message); if(typeof showAutoSyncToast==='function') showAutoSyncToast('⚠ 跡の削除保存に失敗(この端末では消えています)'); }
 }
 // 🔆 修繕チップを光らせる(変更/移動の完了を明示)。render後に呼ぶ。v1.30.163
 function flashRepairChip_(id){
@@ -15580,6 +15610,13 @@ function attachDragOrClick(el, ev){
     }
     if(ev.source === "taikyo-shared" || ev._readOnly){
       showTaikyoStaffPicker(el, ev);
+      return;
+    }
+    if(ev.source === "reschedule-trace"){   // 🔁 再アポの「元の予定」跡: ダブルクリックで削除(reschedule_tracesから消す)v1.30.459
+      const nm = (ev.title||'').replace(/^🔁/,'').trim();
+      if(confirm(`「${nm}」\nこの“元の予定”の跡を消しますか？\n(記録データから削除＝全員のカレンダーから消えます・元に戻せません)`)){
+        if(typeof removeRescheduleTrace_==='function') removeRescheduleTrace_(ev._traceId, ev._traceKey);
+      }
       return;
     }
     showEventStaffPicker(el, ev);
