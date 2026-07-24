@@ -2672,7 +2672,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.454</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.455</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -11962,7 +11962,7 @@ document.getElementById("ck-save").onclick = async ()=>{
 // fields: {responseDate?, responseTime?, workflowStatus?} — 渡したキーのみ更新
 const WORKFLOW_STATUSES = ["アポ・手配 未","待機","アポ・手配 済","長期連絡なし","-"];
 // 🔄 アポ日時 変更理由(任意選択)。何回もずれる修繕で「なぜずれたか」を後から追えるように(山田要望)v1.30.350
-const REPAIR_RESCHEDULE_REASONS = ["ドタキャン(お客様都合)","追加対応が必要","業者都合","天候不良","日程調整","その他"];
+const REPAIR_RESCHEDULE_REASONS = ["ドタキャン(お客様都合)","追加対応が必要","業者都合","天候不良","日程調整","施工日決定","その他"];
 async function pushAppointmentToGAS(driveFileId, fields){
   const s = loadGasSettings();
   if(!s.url || !s.token) throw new Error("GAS URL/Token 未設定");
