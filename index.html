@@ -2672,7 +2672,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.455</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.456</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -4249,7 +4249,7 @@
   if (window._gcBatchInstalled) return; window._gcBatchInstalled = true;
   var _origFetch = window.fetch.bind(window);
   // ⚠ hatchusho_data(発注書・149KB)はバッチから除外(v1.30.212): バッチ1回が149KB込みで重くなり、軽いキーまで待たされるため。発注書は別途(単発/必要時)取得。
-  var GC_KEYS = ['staffMaster','staffAvailability','taikyo_tachiai_schedule','taikyo_overrides','taikyo_comments','taikyo_shiryo_ready','repair_overrides','repair_comments','repair_pos','check_workers','phone_duty','toban_done','alerts','skip_visit','staff_leaves','event_deletions','jimu_messages','jizen_schedule','calendar_reminders'];
+  var GC_KEYS = ['staffMaster','staffAvailability','taikyo_tachiai_schedule','taikyo_overrides','taikyo_comments','taikyo_shiryo_ready','repair_overrides','repair_comments','repair_pos','check_workers','phone_duty','toban_done','alerts','skip_visit','staff_leaves','event_deletions','jimu_messages','jizen_schedule','calendar_reminders','reschedule_traces'];
   var TTL = 45000; // 起動バーストを束ねる窓(45秒)
   var _cache = null, _cacheAt = 0, _inflight = null, _unsupported = false;
   // 🔄 手動全同期で「今すぐ最新」を取るため、45秒キャッシュを外から無効化できるようにする(v1.30.224)
@@ -13403,8 +13403,9 @@ function renderCalendar(){
     const subCols = dayCol.querySelectorAll(".sub-col");
     // v1.12〜 退去立会(見積アプリ→shared-config)の仮想イベントも合流
     const taikyoVirtuals = buildTaikyoVirtuals_();
+    const rescheduleGhosts = (typeof buildRescheduleGhosts_==='function') ? buildRescheduleGhosts_() : [];   // 🔄 再アポ変更跡(旧日のグレー跡)v1.30.456
     // 📋 事務タスク(チェックリスト)はカレンダーに出さずバッジ専用にする(行削除で消えない)
-    const events = [...state.events, ...taikyoVirtuals, ...directMorningVE].filter(c.filterEvent).filter(e=>!isJimuTaskEvent_(e)).filter(e=>!isCompletedJizenEvent_(e)).filter(e=>!(e.source==='taikyo-shared' && e._dismissed));   // 🗑 取消した立会はグリッドから外し最終確認帯の下へ(v1.30.208)
+    const events = [...state.events, ...taikyoVirtuals, ...directMorningVE, ...rescheduleGhosts].filter(c.filterEvent).filter(e=>!isJimuTaskEvent_(e)).filter(e=>!isCompletedJizenEvent_(e)).filter(e=>!(e.source==='taikyo-shared' && e._dismissed));   // 🗑 取消した立会はグリッドから外し最終確認帯の下へ(v1.30.208)
     // 🔧 事前イベント: 時間未定(anytime)は専用の「事前帯」へ。時刻あり(timed)は通常どおり9-18時グリッドに配置(v1.30.136)
     const __isJizenEv = e => (typeof isJizenEvent_==='function' && isJizenEvent_(e));
     const __isBandJizen = e => !e.allday && __isJizenEv(e) && e.timeMode!=='timed';   // 時間未定の事前=帯
@@ -14897,6 +14898,67 @@ function createDotakyanGhost_(label, date, time, reason){
   if(typeof render==='function') render();
   if(typeof showAutoSyncToast==='function') showAutoSyncToast(`🔄 ${date} に日時変更跡を残しました。新しい日付に変更してください`);
   return ev;
+}
+// ====================================================================
+// 🔄 再アポ処理の変更跡 (reschedule_traces) — クラ助が「再アポ処理」でpushする共有config。
+//   旧日に createDotakyanGhost_ と同じ見た目のグレー仮想イベントを描画(読取専用)。
+//   仮想=state.eventsに入れない=task-sync/重複統合の対象外。移動先の実アポは台帳responseDateから
+//   通常の担当者色で出る(ここでは何もしない=山田指示)。申し送り: [[project_saihou_apo_handoff]] v1.30.456
+// ====================================================================
+let __rescheduleTraces = [];
+const RESCHEDULE_TRACES_CACHE_KEY = "buildcluster_reschedule_traces_cache";
+function loadCachedRescheduleTraces_(){ try{ const raw=localStorage.getItem(RESCHEDULE_TRACES_CACHE_KEY); const a=raw?JSON.parse(raw):[]; return Array.isArray(a)?a:[]; }catch(e){ return []; } }
+function saveCachedRescheduleTraces_(arr){ try{ localStorage.setItem(RESCHEDULE_TRACES_CACHE_KEY, JSON.stringify(Array.isArray(arr)?arr:[])); }catch(e){} }
+async function fetchRescheduleTraces(opts={}){
+  const s = loadGasSettings();
+  if(!s.url || !s.token){ __rescheduleTraces = loadCachedRescheduleTraces_(); return __rescheduleTraces; }
+  try{
+    const url = `${s.url}?action=get-shared-config&key=reschedule_traces&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res = await fetch(url,{method:'GET',redirect:'follow'}); if(!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json(); let raw = data.value;
+    if(raw==='' || raw==null) raw = [];
+    else if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(e){ raw=[]; } }
+    // クラ助の保存形が「配列そのまま」でも「{items:[]}/{traces:[]}」でも拾う
+    const arr = Array.isArray(raw) ? raw : (Array.isArray(raw && raw.items) ? raw.items : (Array.isArray(raw && raw.traces) ? raw.traces : []));
+    __rescheduleTraces = arr;
+    saveCachedRescheduleTraces_(arr);
+    if(!opts.silent && typeof render==='function') render();
+    return arr;
+  }catch(err){ if(!opts.silent) console.warn('[reschedule_traces] fetch失敗:', err.message); __rescheduleTraces = loadCachedRescheduleTraces_(); return __rescheduleTraces; }
+}
+// 変更跡レコード → グレー🔄仮想イベント配列(createDotakyanGhost_と同型)
+function buildRescheduleGhosts_(){
+  const recs = __rescheduleTraces || [];
+  if(!recs.length) return [];
+  // 🗓 防御的ローテ: 過去3ヶ月より古い跡は出さない(立会と同じ・共有configが膨れても表示は絞る)
+  let cutStr = "";
+  if(typeof currentDate !== 'undefined'){ const cut=new Date(currentDate.getFullYear(), currentDate.getMonth()-3, 1); cutStr = fmtDate(cut); }
+  const out = [], seen = new Set();
+  for(const r of recs){
+    if(!r || !r.date) continue;
+    if(r.kind && r.kind!=="reschedule") continue;
+    if(cutStr && r.date < cutStr) continue;
+    const key = `${r.bukken||''}|${r.room||''}|${r.date}|${r.time||''}`;
+    if(seen.has(key)) continue; seen.add(key);
+    const label = `${r.bukken||''}${r.room?(" "+r.room):""}`.trim();
+    const time = r.time||"";
+    const m = String(time).match(/^(\d{1,2})[:：](\d{2})/);
+    const reason = r.reason||"";
+    out.push({
+      id: `_reappt_${r.id || key}`,
+      title: `🔄日時変更 ${label}${time?(" "+time):""}${reason?`（${reason}）`:""}`.trim(),
+      category:"", contractor:"", staff:"", participants:[],
+      date: r.date,
+      start: m ? `${String(m[1]).padStart(2,'0')}:${m[2]}` : "09:00",
+      end:   m ? `${String(Math.min(+m[1]+1,18)).padStart(2,'0')}:${m[2]}` : "10:00",
+      allday:false, timeMode: m ? "timed" : "anytime",
+      color:"#cbd5e1",
+      memo:`日時変更(元の予定)\n元の予定: ${r.date}${time?(" "+time):""}${r.newDate?`\n新: ${r.newDate}${r.newTime?(" "+r.newTime):""}`:""}${reason?`\n理由: ${reason}`:""}`,
+      importance:[], updatedAt: r.ts || "",
+      source:"reschedule-trace",   // task-sync/重複統合の対象外マーカー(state.eventsには入らない)
+    });
+  }
+  return out;
 }
 // 🔆 修繕チップを光らせる(変更/移動の完了を明示)。render後に呼ぶ。v1.30.163
 function flashRepairChip_(id){
@@ -18141,6 +18203,7 @@ document.getElementById('cloudSyncBtn').onclick = ()=>{
   syncChecksFromGAS();               // Drive同期 (最終確認/修繕/原状回復・未設定なら設定誘導confirm)
   // 🗓 立会も今すぐ最新に(従来は起動時+5分ごとのみ→手動☁でも強制取得。ボタン説明文どおりの動きに)v1.30.224
   if(typeof fetchTaikyoSchedule==='function')   fetchTaikyoSchedule({force:true, silent:true}).catch(()=>{});      // 立会 本体
+  if(typeof fetchRescheduleTraces==='function') fetchRescheduleTraces({silent:true}).catch(()=>{});                // 🔄 再アポ変更跡
   if(typeof fetchTaikyoOverrides_==='function') fetchTaikyoOverrides_({silent:true}).catch(()=>{});                // 担当/日時 上書き
   if(typeof fetchTaikyoShiryoReady==='function')fetchTaikyoShiryoReady({force:true, silent:true}).catch(()=>{});   // 📄資料作成済フラグ
   if(typeof fetchTaikyoComments_==='function')  fetchTaikyoComments_({silent:true}).catch(()=>{});                 // 💬立会コメント
@@ -22629,6 +22692,11 @@ setTimeout(()=>{
     // 🗓 退去立会カレンダー (クラ助/見積アプリ→shared-config) 取得・以後5分ごと
     fetchTaikyoSchedule({silent:true});
     setInterval(()=>fetchTaikyoSchedule({silent:true}).catch(()=>{}), 5*60*1000);
+    // 🔄 再アポ変更跡 (クラ助「再アポ処理」→reschedule_traces) 取得・以後5分ごと v1.30.456
+    if(typeof fetchRescheduleTraces==='function'){
+      fetchRescheduleTraces({silent:true}).catch(()=>{});
+      setInterval(()=>fetchRescheduleTraces({silent:true}).catch(()=>{}), 5*60*1000);
+    }
     // 💬 立会コメント (全員共有) 取得・以後5分ごと
     if(typeof fetchTaikyoComments_==='function'){
       fetchTaikyoComments_({silent:true}).catch(()=>{});
