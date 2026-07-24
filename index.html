@@ -2672,7 +2672,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.457</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.458</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -13403,11 +13403,12 @@ function renderCalendar(){
     const subCols = dayCol.querySelectorAll(".sub-col");
     // v1.12〜 退去立会(見積アプリ→shared-config)の仮想イベントも合流
     const taikyoVirtuals = buildTaikyoVirtuals_();
-    // 🔄 再アポ変更跡(旧日のグレー跡)は非表示にした(山田A・v1.30.457): アポは新日へ移動して担当者色で残る=
-    //   旧日には何も出さない。跡データ(reschedule_traces)はクラ助がpush継続=記録は残る。描画コード(buildRescheduleGhosts_)
-    //   /fetch/GC_KEYSは温存＝「やっぱり出す」時は下の併合に ...buildRescheduleGhosts_() を戻すだけ。
+    // 🔁 再アポの「元の予定」を旧日に残す(山田要望v1.30.458): 移動元の担当者カラーで表示(buildRescheduleGhosts_)。
+    //   新日には移動後の本予定、旧日には「🔁…（元の予定）」が両方出る。跡は reschedule_traces 由来の仮想イベント=
+    //   state.eventsに入れない=task-sync/永続化/重複統合の対象外。
+    const rescheduleGhosts = (typeof buildRescheduleGhosts_==='function') ? buildRescheduleGhosts_() : [];
     // 📋 事務タスク(チェックリスト)はカレンダーに出さずバッジ専用にする(行削除で消えない)
-    const events = [...state.events, ...taikyoVirtuals, ...directMorningVE].filter(c.filterEvent).filter(e=>!isJimuTaskEvent_(e)).filter(e=>!isCompletedJizenEvent_(e)).filter(e=>!(e.source==='taikyo-shared' && e._dismissed));   // 🗑 取消した立会はグリッドから外し最終確認帯の下へ(v1.30.208)
+    const events = [...state.events, ...taikyoVirtuals, ...directMorningVE, ...rescheduleGhosts].filter(c.filterEvent).filter(e=>!isJimuTaskEvent_(e)).filter(e=>!isCompletedJizenEvent_(e)).filter(e=>!(e.source==='taikyo-shared' && e._dismissed));   // 🗑 取消した立会はグリッドから外し最終確認帯の下へ(v1.30.208)
     // 🔧 事前イベント: 時間未定(anytime)は専用の「事前帯」へ。時刻あり(timed)は通常どおり9-18時グリッドに配置(v1.30.136)
     const __isJizenEv = e => (typeof isJizenEvent_==='function' && isJizenEvent_(e));
     const __isBandJizen = e => !e.allday && __isJizenEv(e) && e.timeMode!=='timed';   // 時間未定の事前=帯
@@ -14928,13 +14929,24 @@ async function fetchRescheduleTraces(opts={}){
     return arr;
   }catch(err){ if(!opts.silent) console.warn('[reschedule_traces] fetch失敗:', err.message); __rescheduleTraces = loadCachedRescheduleTraces_(); return __rescheduleTraces; }
 }
-// 変更跡レコード → グレー🔄仮想イベント配列(createDotakyanGhost_と同型)
+// 変更跡レコード → 旧日に残す「元の予定」仮想イベント配列。
+//   v1.30.458(山田要望): グレー跡ではなく、移動元の実案件(state.repairs)の担当workerを継承して
+//   担当者カラーで出す。実案件が見つからない/担当未設定ならグレーにフォールバック。
 function buildRescheduleGhosts_(){
   const recs = __rescheduleTraces || [];
   if(!recs.length) return [];
   // 🗓 防御的ローテ: 過去3ヶ月より古い跡は出さない(立会と同じ・共有configが膨れても表示は絞る)
   let cutStr = "";
   if(typeof currentDate !== 'undefined'){ const cut=new Date(currentDate.getFullYear(), currentDate.getMonth()-3, 1); cutStr = fmtDate(cut); }
+  // trace → 実案件(state.repairs)突き合わせ: sourceFileId(extDriveFileId) → 物件名+号室(正規化) の順
+  const __repairs = (state.repairs||[]);
+  const __nzRk = s => String(s==null?'':s).replace(/\s|　/g,'').toLowerCase();
+  const findRepairFor_ = (r)=>{
+    if(r.sourceFileId){ const byId = __repairs.find(x=>x.extDriveFileId && x.extDriveFileId===r.sourceFileId); if(byId) return byId; }
+    const k = __nzRk(String(r.bukken||'')+String(r.room||''));
+    if(!k) return null;
+    return __repairs.find(x=>__nzRk(String(x.name||x.bukken||'')+String(x.room||''))===k) || null;
+  };
   const out = [], seen = new Set();
   for(const r of recs){
     if(!r || !r.date) continue;
@@ -14946,16 +14958,20 @@ function buildRescheduleGhosts_(){
     const time = r.time||"";
     const m = String(time).match(/^(\d{1,2})[:：](\d{2})/);
     const reason = r.reason||"";
+    // 移動元の実案件から担当worker(リーダー=先頭)を継承 → 担当者カラー。取れなければグレー。
+    const rep = findRepairFor_(r);
+    const workerLead = rep ? ((typeof parseWorkers_==='function' ? parseWorkers_(rep.worker||"") : String(rep.worker||"").split(/[,、]/))[0]||"") : "";
+    const col = workerLead ? staffColor_(workerLead) : "#cbd5e1";
     out.push({
       id: `_reappt_${r.id || key}`,
-      title: `🔄日時変更 ${label}${time?(" "+time):""}${reason?`（${reason}）`:""}`.trim(),
-      category:"", contractor:"", staff:"", participants:[],
+      title: `🔁${label}${time?(" "+time):""}（元の予定）`.trim(),
+      category:"", contractor:"", staff: workerLead||"", participants:[],
       date: r.date,
       start: m ? `${String(m[1]).padStart(2,'0')}:${m[2]}` : "09:00",
       end:   m ? `${String(Math.min(+m[1]+1,18)).padStart(2,'0')}:${m[2]}` : "10:00",
       allday:false, timeMode: m ? "timed" : "anytime",
-      color:"#cbd5e1",
-      memo:`日時変更(元の予定)\n元の予定: ${r.date}${time?(" "+time):""}${r.newDate?`\n新: ${r.newDate}${r.newTime?(" "+r.newTime):""}`:""}${reason?`\n理由: ${reason}`:""}`,
+      color: col,
+      memo:`再アポの元の予定（${workerLead||'担当未設定'}）\n元: ${r.date}${time?(" "+time):""}${r.newDate?`\n新: ${r.newDate}${r.newTime?(" "+r.newTime):""}`:""}${reason?`\n理由: ${reason}`:""}`,
       importance:[], updatedAt: r.ts || "",
       source:"reschedule-trace",   // task-sync/重複統合の対象外マーカー(state.eventsには入らない)
     });
