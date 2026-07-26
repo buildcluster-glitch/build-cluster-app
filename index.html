@@ -879,10 +879,12 @@
   .quick-pop.task-pop .tp-row .tp-status-sel{flex:0 0 auto;border:1.5px solid #cbd5e1;background:#fff;font-size:11px;font-weight:700;cursor:pointer;padding:2px 1px;border-radius:5px}
   .quick-pop.task-pop .tp-row .tp-status-sel:hover{border-color:#94a3b8}
   /* 🔀 並び替え矢印(v1.30.451) */
-  .quick-pop.task-pop .tp-row .tp-move-wrap{display:flex;flex-direction:column;gap:1px;flex:0 0 auto;margin-top:1px}
-  .quick-pop.task-pop .tp-row .tp-move{border:1px solid #cbd5e1;background:#fff;color:#64748b;font-size:8px;line-height:1;cursor:pointer;padding:1px 3px;border-radius:4px}
-  .quick-pop.task-pop .tp-row .tp-move:hover{border-color:#2563eb;color:#2563eb;background:#eff6ff}
-  .quick-pop.task-pop .tp-row .tp-move-ph{height:13px}
+  /* 🔀 ドラッグ並び替えグリップ(v1.30.461) */
+  .quick-pop.task-pop .tp-row .tp-drag{flex:0 0 auto;align-self:stretch;display:flex;align-items:center;color:#94a3b8;font-size:14px;line-height:1;cursor:grab;padding:0 3px;border-radius:4px;touch-action:none;user-select:none}
+  .quick-pop.task-pop .tp-row .tp-drag:hover{color:#2563eb;background:#eff6ff}
+  .quick-pop.task-pop .tp-row .tp-drag:active{cursor:grabbing}
+  .quick-pop.task-pop .tp-row .tp-drag-ph{flex:0 0 auto;width:14px}
+  .quick-pop.task-pop .tp-row.tp-dragging{opacity:.85;background:#eff6ff;box-shadow:0 2px 8px rgba(37,99,235,.25)}
   .quick-pop.task-pop .tp-row.inprogress{background:#eff6ff}
   .quick-pop.task-pop .tp-row.inprogress .tp-text{color:#1d4ed8;font-weight:600}
   .quick-pop.task-pop .tp-row input[type=checkbox]{margin-top:2px;width:16px;height:16px;cursor:pointer;flex:0 0 auto}
@@ -2672,7 +2674,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.460</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.461</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -9551,6 +9553,17 @@ function swapTaskLines_(title, i, j){
   const tmp = lines[i]; lines[i] = lines[j]; lines[j] = tmp;
   return lines.join("\n");
 }
+// 🔀 ドラッグ並び替え確定(v1.30.461): 同グループの行indices を「新しい並び順」で受け取り、
+//   元の位置(slot=昇順)に新順の中身を詰め直す。グループ外の行/他タスクは不動。
+function reorderTaskLinesInSlots_(title, order){
+  const lines = String(title||"").split(/\r?\n/);
+  const ord = (order||[]).filter(i=> Number.isInteger(i) && i>=0 && i<lines.length);
+  if(ord.length<2) return title;
+  const slots = ord.slice().sort((a,b)=>a-b);   // 元の位置(昇順=表示スロット)
+  const contents = ord.map(i=>lines[i]);         // 新しい並びの中身
+  slots.forEach((slot,j)=>{ lines[slot] = contents[j]; });
+  return lines.join("\n");
+}
 function editTaskLine_(title, lineIndex, newText){
   const lines = String(title||"").split(/\r?\n/);
   if(lineIndex<0 || lineIndex>=lines.length) return title;
@@ -9969,20 +9982,19 @@ function showTaskChecklistPopup(el, ev){
     const doneTasks = ti.tasks.filter(t=>t.done);
     const trash = ti.trash || [];
     const __fmtCmtT_ = (at)=>{ if(!at) return ''; const d=new Date(at); if(isNaN(d)) return ''; const p=n=>String(n).padStart(2,'0'); const td=new Date(); td.setHours(0,0,0,0); return d>=td?`${p(d.getHours())}:${p(d.getMinutes())}`:`${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`; };
-    const rowHtml = (t, moveUpTo, moveDownTo)=>{
+    const rowHtml = (t, moveUpTo, moveDownTo, groupKey)=>{
       // 💬 コメント常時表示(v1.30.265・鈴木要望「以前のように常時表示」): タスク行の下にインライン表示
       const __cs = getTaskCmts_(taskCKey_(t.text));
       const __cmtBlock = __cs.length ? `<div class="tp-cmt-inline">${__cs.map(c=>`<div class="tp-cmt-line"><b>${escapeHtml(c.author||'?')}</b><span class="tp-cmt-txt">${escapeHtml(c.text||'')}</span><span class="tp-cmt-time">${escapeHtml(__fmtCmtT_(c.at))}</span></div>`).join('')}</div>` : '';
-      // 🔀 並び替え矢印(v1.30.451): 同じグループ内に上/下の相手がいる時だけ表示(グループ跨ぎはソートが打ち消すので出さない)
-      const __moveHtml = (moveUpTo!=null || moveDownTo!=null)
-        ? `<span class="tp-move-wrap">
-             ${moveUpTo!=null ? `<button class="tp-move" data-move-from="${t.index}" data-move-to="${moveUpTo}" title="上へ移動">▲</button>` : `<span class="tp-move-ph"></span>`}
-             ${moveDownTo!=null ? `<button class="tp-move" data-move-from="${t.index}" data-move-to="${moveDownTo}" title="下へ移動">▼</button>` : `<span class="tp-move-ph"></span>`}
-           </span>`
-        : '';
+      // 🔀 並び替え(v1.30.461): 同グループ(進行中フラグ＋優先度が同じ)に相手がいる時だけグリップ表示。
+      //   グリップを掴んで上下ドラッグ→同グループ内で並び替え(離すと確定)。マウス/タッチ両対応。
+      const __draggable = (moveUpTo!=null || moveDownTo!=null);
+      const __dragHandle = __draggable
+        ? `<span class="tp-drag" title="ドラッグで並び替え(同じ状態・優先度の中で)">⠿</span>`
+        : `<span class="tp-drag-ph"></span>`;
       return `
-      <div class="tp-row ${t.done?'done':''}${t.inProgress?' inprogress':''}" style="border-left:3px solid ${(t.prio&&TASK_PRIO_COLOR[t.prio])||'transparent'}">
-        ${__moveHtml}
+      <div class="tp-row ${t.done?'done':''}${t.inProgress?' inprogress':''}" data-line="${t.index}" data-group="${escapeHtml(groupKey||'')}" style="border-left:3px solid ${(t.prio&&TASK_PRIO_COLOR[t.prio])||'transparent'}">
+        ${__dragHandle}
         <select class="tp-prio-sel" data-line="${t.index}" title="優先度を選択" style="color:${TASK_PRIO_COLOR[t.prio||'']}">
           <option value="🔴" ${(t.prio||'')==='🔴'?'selected':''}>高</option>
           <option value="" ${!t.prio?'selected':''}>普</option>
@@ -10019,7 +10031,8 @@ function showTaskChecklistPopup(el, ev){
       __prevRank = rank; __prevIP = ip;
       const upTo   = __sameGroup(t, pending[pi-1]) ? pending[pi-1].index : null;   // 表示上の1つ上と同グループなら入れ替え可
       const downTo = __sameGroup(t, pending[pi+1]) ? pending[pi+1].index : null;
-      return sep + rowHtml(t, upTo, downTo);
+      const groupKey = `${ip?1:0}:${rank}`;   // 🔀 ドラッグ並び替えは同groupKey内のみ(v1.30.461)
+      return sep + rowHtml(t, upTo, downTo, groupKey);
     }).join("");
     const archive = ti.archive || [];
     const trashRowHtml = (t)=>`
@@ -10142,14 +10155,52 @@ function showTaskChecklistPopup(el, ev){
       };
     });
     // 🔀 並び替え(v1.30.451): ▲▼で同グループ内の隣とタスク行を入れ替え
-    pop.querySelectorAll('.tp-move').forEach(b=>{
-      b.onclick = ()=>{
-        const from = parseInt(b.dataset.moveFrom,10);
-        const to   = parseInt(b.dataset.moveTo,10);
-        if(isNaN(from) || isNaN(to)) return;
-        mutate(t=>swapTaskLines_(t, from, to));
-      };
-    });
+    // 🔀 ドラッグ並び替え(v1.30.461): グリップ(⠿)を掴んで同グループ内で上下ドラッグ→離すと確定。
+    //   ライブでDOMを差し替え(行＋直後のコメント欄を一緒に動かす)、離した時にev.title行を新順で確定。マウス/タッチ両対応。
+    (function bindTaskDrag_(){
+      const list = pop.querySelector('.tp-list'); if(!list) return;
+      list.querySelectorAll('.tp-drag').forEach(handle=>{
+        handle.onpointerdown = (e)=>{
+          e.preventDefault(); e.stopPropagation();
+          const row = handle.closest('.tp-row'); if(!row) return;
+          const grp = row.dataset.group;
+          const groupRows = ()=> [...list.querySelectorAll('.tp-row')].filter(r=> r.dataset.group===grp && r.dataset.line!=null);
+          if(groupRows().length < 2) return;
+          row.classList.add('tp-dragging');
+          try{ handle.setPointerCapture(e.pointerId); }catch(_){}
+          // 行の直後にコメント欄(.tp-cmt-inline)があれば一緒に動かす
+          const cmt = (row.nextElementSibling && row.nextElementSibling.classList.contains('tp-cmt-inline')) ? row.nextElementSibling : null;
+          const moveTogether = (before, target)=>{
+            if(before) list.insertBefore(row, target);
+            else       list.insertBefore(row, target.nextSibling);
+            if(cmt) list.insertBefore(cmt, row.nextSibling);   // コメント欄を行の直後へ追従
+          };
+          const onMove = (ev)=>{
+            const y = ev.clientY;
+            const others = groupRows().filter(r=>r!==row);
+            for(const r of others){
+              const rc = r.getBoundingClientRect();
+              // 相手行の中線をまたいだら、その手前/後ろへ差し込む(同グループ内のみ)
+              if(y < rc.top + rc.height/2){ moveTogether(true, r); break; }
+              if(y >= rc.bottom - rc.height/2 && y < rc.bottom + 2){ moveTogether(false, r); break; }
+            }
+          };
+          const onUp = ()=>{
+            document.removeEventListener('pointermove', onMove, true);
+            document.removeEventListener('pointerup', onUp, true);
+            document.removeEventListener('pointercancel', onUp, true);
+            row.classList.remove('tp-dragging');
+            try{ handle.releasePointerCapture(e.pointerId); }catch(_){}
+            // 確定: 同グループ行の現在のDOM順→行index配列→新順で詰め直し
+            const order = groupRows().map(r=> parseInt(r.dataset.line,10)).filter(n=>!isNaN(n));
+            mutate(t=>reorderTaskLinesInSlots_(t, order));   // renderInnerで再描画=正しい状態に整う
+          };
+          document.addEventListener('pointermove', onMove, true);
+          document.addEventListener('pointerup', onUp, true);
+          document.addEventListener('pointercancel', onUp, true);
+        };
+      });
+    })();
     pop.querySelectorAll('.tp-restore').forEach(b=>{
       b.onclick = ()=> mutate(t=>restoreTaskLine_(t, parseInt(b.dataset.line,10)));
     });
