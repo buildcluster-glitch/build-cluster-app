@@ -2672,7 +2672,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.459</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.460</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -7827,10 +7827,12 @@ async function mutateJimuTaskCommentsRemote_(staff, taskKey, mutator){
 // 🪦 タスク行のリネーム/削除の「墓標」(全員共有・shared-config 'jimu_task_tombstones') v1.30.331
 //   value = JSON { tombstones:{ [staff]:{ [taskKey]: at(ISO) } }, updatedAt }
 //   リネーム X→Y / 完全削除 で key(X) を登録 → マージ/統合で「旧行Xの復活」を抑止=2重化しない。★本文には一切触らない★
-//   ⚠安全設計: 効かなくても(空/未取得/旧版端末は無視)従来どおり=悪化しない。TTL=30日で失効(誤抑制回避)。
+//   ⚠安全設計: 効かなくても(空/未取得/旧版端末は無視)従来どおり=悪化しない。TTL失効(誤抑制回避)。
 //   ⚠タスク消失防止は維持: 墓標に載った“明示的に消したkey”しか抑制しない=別端末の本当の新規追加は必ず残る。
+//   ★v1.30.460: TTL 30→365日(数ヶ月開かなかったPCが古い一覧を持ち込んでも古タスクを復活させない)。
+//     誤抑制は「追加=墓標解除(mutateJimuTombstones on:false)」が防ぐ=同名タスクを再追加すれば墓標は消えるので長TTLでも安全。
 const JIMU_TS_CACHE_KEY = "buildcluster_jimu_task_tombstones_cache";
-const JIMU_TS_TTL_MS = 30*24*3600*1000;
+const JIMU_TS_TTL_MS = 365*24*3600*1000;
 function loadJimuTsMap_(){ try{ const o=JSON.parse(localStorage.getItem(JIMU_TS_CACHE_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
 function saveJimuTsMap_(m){ try{ localStorage.setItem(JIMU_TS_CACHE_KEY, JSON.stringify(m||{})); }catch(e){} }
 function isTaskTombstoned_(staff, key){
@@ -9726,6 +9728,32 @@ function consolidateAllJimu_(){
       });
       const newTitle=canonLines.join('\n');
       if(newTitle!==canon.title){ canon.title=newTitle; canon.updatedAt=new Date().toISOString(); if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(canon,'upsert'); }catch(_){} } changed=true; }
+    });
+    if(changed) saveState();
+    return changed;
+  }catch(_){ return false; }
+}
+// 🪦 v1.30.460: 全事務イベントから「他端末で削除済(墓標TTL内)」のアクティブ行を除去。
+//   従来のunion側墓標チェックは“追加を防ぐ”だけ=古いPCがcanon(単独含む)になると既存の古タスクが残り復活していた。
+//   これは既存canon行も墓標で消す=本丸の穴埋め。🗑ゴミ箱/📦アーカイブ行は触らない(削除状態のまま)。
+//   墓標は「追加で自動解除」されるので、再追加した同名タスクは消えない(誤削除しない)。
+function pruneTombstonedTasks_(){
+  try{
+    if(typeof isTaskTombstoned_!=='function' || typeof taskTextKey_!=='function' || typeof isPlainTaskLine_!=='function') return false;
+    let changed=false;
+    (state.events||[]).forEach(e=>{
+      if(!e || e.category!=='事務' || !e.staff || !e.title || e.title.indexOf("\n")<0) return;
+      const lines = String(e.title).split(/\r?\n/);
+      const kept = lines.filter(ln=>{
+        if(!isPlainTaskLine_(ln)) return true;            // 🗑/📦 はそのまま
+        const k = taskTextKey_(ln); if(!k) return true;   // 見出し等
+        return !isTaskTombstoned_(e.staff, k);            // 墓標済み(他端末で削除)=canonからも除去
+      });
+      if(kept.length !== lines.length){
+        e.title = kept.join('\n'); e.updatedAt = new Date().toISOString();
+        if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(e,'upsert'); }catch(_){} }
+        changed=true;
+      }
     });
     if(changed) saveState();
     return changed;
@@ -17743,7 +17771,10 @@ async function cloudSyncPull({ replace=false, signal=null }={}){
       .filter(e=> typeof isEventTombstoned_!=='function' || !isEventTombstoned_(e));
     cloudMergeById_(state.events, __remoteEvents, pendingEventIds);
     if(typeof applyEventDeletionsToState_==='function') applyEventDeletionsToState_();  // ローカルの削除済も除去
+    // 🪦 v1.30.460: 統合/pruneの前に墓標を最新化(未取得のまま統合→古タスク復活の穴を塞ぐ)
+    if(typeof fetchJimuTombstones_==='function'){ try{ await fetchJimuTombstones_({silent:true}); }catch(_){} }
     if(typeof consolidateAllJimu_==='function') consolidateAllJimu_();  // 🔁 ID違いで分裂した事務イベントを1人1個に自動統合(v1.30.162)
+    if(typeof pruneTombstonedTasks_==='function') pruneTombstonedTasks_();  // 🪦 他端末で削除済のアクティブ行をcanonからも除去(復活の本丸対策)v1.30.460
     if(typeof migrateJimuTaskIds_==='function') migrateJimuTaskIds_();   // 🆔 未移行端末(旧版)から来たタスク行にも決定的IDを付与=マージ整合(v1.30.329)
     if(typeof applyJimuMessagesToState_==='function') applyJimuMessagesToState_();  // 💬 業務連絡(共有map)を事務イベントに反映=event-syncの空messagesで消えないように(v1.30.203)
     if(typeof applyRemindersToState_==='function') applyRemindersToState_();  // ⏰ リマインド(共有map)をイベントに再付与=同期で差し替わっても消えない(v1.30.374)
