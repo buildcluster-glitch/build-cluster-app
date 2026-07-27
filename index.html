@@ -2674,7 +2674,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.461</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.462</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -20460,9 +20460,53 @@ function renderRestoCard(p){
     </div>`;
 }
 
+// 📝 作業ログ入力中の「勝手にカーソルが外れる/入力が消える」対策(v1.30.462・鈴木報告)
+//   原因: 5分ごとの自動同期など裏の更新 → render() → renderRestoDetail() が
+//         タスク行を innerHTML で作り直すため、打ちかけの文字・カーソル位置・未送信の📷添付が消える。
+//   対策: 再描画の直前に「フォーカス中の入力欄(タスクid+role+値+選択位置)」と
+//         「未送信の写真プレビュー」を退避し、描画後に元へ戻す(折り畳みも開き直す)。
+function rdCaptureInputs_(){
+  const dm = document.getElementById("restoDetailMode");
+  if(!dm) return null;
+  const st = { focus:null, photos:[] };
+  const ae = document.activeElement;
+  if(ae && dm.contains(ae) && /^(INPUT|TEXTAREA)$/.test(ae.tagName) && ae.type!=="file" && ae.dataset.role){
+    const row = ae.closest(".rtask");
+    st.focus = { taskId: row?row.dataset.id:"", role: ae.dataset.role, value: ae.value,
+                 start: ae.selectionStart, end: ae.selectionEnd };
+  }
+  dm.querySelectorAll('[data-role="log-photo-preview"][data-compressed]').forEach(pv=>{
+    const row = pv.closest(".rtask");
+    if(row) st.photos.push({ taskId: row.dataset.id, data: pv.dataset.compressed });
+  });
+  return (st.focus || st.photos.length) ? st : null;
+}
+function rdRestoreInputs_(st){
+  if(!st) return;
+  const dm = document.getElementById("restoDetailMode");
+  if(!dm) return;
+  const rowOf = id => id ? dm.querySelector('.rtask[data-id="'+String(id).replace(/"/g,'\\"')+'"]') : null;
+  st.photos.forEach(ph=>{
+    const row = rowOf(ph.taskId);
+    const pv = row && row.querySelector('[data-role="log-photo-preview"]');
+    if(!pv) return;
+    pv.src = ph.data; pv.style.display = "block"; pv.dataset.compressed = ph.data;
+    const logs = pv.closest(".rt-logs"); if(logs) logs.classList.remove("collapsed");
+  });
+  const f = st.focus;
+  if(!f) return;
+  const row = rowOf(f.taskId);
+  const el = (row || dm).querySelector('[data-role="'+f.role+'"]');
+  if(!el || !/^(INPUT|TEXTAREA)$/.test(el.tagName)) return;
+  const logs = el.closest(".rt-logs"); if(logs) logs.classList.remove("collapsed");
+  el.value = f.value;
+  try{ el.focus({preventScroll:true}); el.setSelectionRange(f.start, f.end); }catch(_){}
+}
+
 function renderRestoDetail(){
   const p = (state.restorations||[]).find(x=>x.id===restoDetailId);
   if(!p){ restoDetailId=null; renderRestoView(); return; }
+  const __rdKeep = rdCaptureInputs_();   // 📝 入力中の作業ログ/未送信写真を退避(v1.30.462)
   // 📷 別物件に切り替わったら未確定の現場メモ下書き(写真/本文)を破棄。
   //    ダイアログのDOMは全物件共有のため、放置すると他物件でも表示され続ける(鈴木報告 v1.30.440)
   if(p.id !== __rdLastDetailId){ resetRdCommentDraft_(); __rdLastDetailId = p.id; }
@@ -20593,6 +20637,7 @@ function renderRestoDetail(){
   renderRestoTrash(p);
   renderRestoComments(p);
   renderRestoAlert_(p);   // ⚠ アラート(常時赤字・全員共有) 現場メモの下 v1.30.410
+  rdRestoreInputs_(__rdKeep);   // 📝 打ちかけの作業ログ・カーソル位置・未送信写真を復元(v1.30.462)
 }
 
 // ⚠ アラートのキー解決 v1.30.426(共通化・v1.30.411の restoAlertId_ を一般化)
@@ -20814,8 +20859,11 @@ function wireRestoTaskRows(el){
           photo = await restoPersistPhoto_(compressed, prop);   // 📷 デフォでDrive保存(v1.30.393)
           logAdd.textContent = "追加";
         }
-        restoAddLog(id, txt, photo);
+        // ⚠ 先に入力欄と写真プレビューを空にしてから追加する。
+        //   restoAddLog→renderRestoDetail の退避/復元(v1.30.462)が送信済みの文字・写真を復活させてしまうため。
+        logIn.value = "";
         if(preview){ preview.style.display="none"; preview.src=""; delete preview.dataset.compressed; }
+        restoAddLog(id, txt, photo);
       };
       logIn.onkeydown = e=>{ if(e.key==="Enter" && !e.isComposing && e.keyCode!==229){ e.preventDefault(); logAdd.click(); } };   // IME変換Enter除外(v1.30.262)
       logIn.onclick = e=>e.stopPropagation();
@@ -20881,7 +20929,9 @@ function renderRestoTrash(p){
 }
 
 let __rdEditCid = null;   // 編集中の原状回復メモid(v1.30.388)
+let __rdEditFocusedCid = null;   // 📝 メモ編集欄に自動フォーカスを当てたid(裏の再描画で毎回フォーカスを奪わないため)v1.30.462
 function renderRestoComments(p){
+  if(!__rdEditCid) __rdEditFocusedCid = null;   // 編集終了→次回の編集開始で改めて1回フォーカス(v1.30.462)
   const cl = document.getElementById("rdCommentList");
   if(!(p.comments||[]).length){ cl.innerHTML='<div class="resto-empty" style="padding:10px;font-size:12px">メモなし</div>'; return; }
   cl.innerHTML = p.comments.slice().reverse().map(c=>{
@@ -20890,7 +20940,7 @@ function renderRestoComments(p){
       // ✎ インライン編集: prompt()だと改行が入れられない→textareaで複数行編集(鈴木報告 v1.30.388)
       return `<div class="rcomment" data-cid="${c.id}">
         <div class="ch"><b>${escapeHtml(c.author||"—")}</b><span>${escapeHtml(c.date||"")}</span></div>
-        <textarea class="rc-edit-in" rows="3" style="width:100%;box-sizing:border-box;font-size:13px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px;font-family:inherit;resize:vertical;min-height:52px;line-height:1.4">${escapeHtml(c.text||"")}</textarea>
+        <textarea class="rc-edit-in" data-role="cedit-in" rows="3" style="width:100%;box-sizing:border-box;font-size:13px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px;font-family:inherit;resize:vertical;min-height:52px;line-height:1.4">${escapeHtml(c.text||"")}</textarea>
         <div style="display:flex;gap:6px;margin-top:4px;align-items:center"><button class="nav-btn primary" data-role="csave" style="font-size:12px;padding:4px 12px">保存</button><button class="nav-btn" data-role="ccancel" style="font-size:12px;padding:4px 12px">取消</button><span style="font-size:10px;color:var(--muted)">Enterで改行 / Ctrl+Enterで保存</span></div>
       </div>`;
     }
@@ -20910,7 +20960,9 @@ function renderRestoComments(p){
     const saveBtn = el.querySelector('[data-role="csave"]'); if(saveBtn) saveBtn.onclick = ()=>restoSaveCommentEdit(cid, el.querySelector('.rc-edit-in'));
     const cancelBtn = el.querySelector('[data-role="ccancel"]'); if(cancelBtn) cancelBtn.onclick = ()=>{ __rdEditCid=null; renderRestoDetail(); };
     const ta = el.querySelector('.rc-edit-in');
-    if(ta){ ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); ta.onkeydown = e=>{ if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)&&!e.isComposing&&e.keyCode!==229){ e.preventDefault(); restoSaveCommentEdit(cid, ta); } else if(e.key==='Escape'){ e.preventDefault(); __rdEditCid=null; renderRestoDetail(); } }; }
+    // 自動フォーカスは編集開始の1回だけ。裏の同期で再描画される度に focus() すると、
+    // 作業ログ欄など他所で入力中のカーソルを奪ってしまう(v1.30.462)
+    if(ta){ if(__rdEditFocusedCid!==cid){ __rdEditFocusedCid=cid; ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } ta.onkeydown = e=>{ if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)&&!e.isComposing&&e.keyCode!==229){ e.preventDefault(); restoSaveCommentEdit(cid, ta); } else if(e.key==='Escape'){ e.preventDefault(); __rdEditCid=null; renderRestoDetail(); } }; }
     const img = el.querySelector('[data-role="czoom"]');
     if(img) img.onclick = ()=>restoShowPhotoZoom(img.src);
   });
