@@ -2705,7 +2705,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.477</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.478</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -2840,6 +2840,8 @@
         <option value="worker">並び: 🔨作業担当別</option>
       </select>
       <label class="repair-mine"><input type="checkbox" id="repairMineOnly"> 👤自分担当のみ</label>
+      <!-- ✅ 完了済はデフォルト非表示。見たい時だけここをONに(v1.30.478・山田) -->
+      <label class="repair-mine"><input type="checkbox" id="repairShowDone"> ✅完了済も表示</label>
     </div>
   </div>
   <div class="repair-list" id="repairList"></div>
@@ -2938,6 +2940,8 @@
   <div class="resto-list-mode" id="restoListMode">
     <div class="resto-toolbar">
       <div class="resto-filters" id="restoFilters"></div>
+      <!-- ✅ 完了済はデフォルト非表示。見たい時だけON(v1.30.478・山田) -->
+      <label class="repair-mine"><input type="checkbox" id="restoShowDone"> ✅完了済も表示</label>
       <span class="sep"></span>
       <input id="restoSearch" placeholder="🔎 物件名/住所/業者で絞り込み">
       <button class="nav-btn" id="restoReload" title="Drive再同期">🔄</button>
@@ -18895,6 +18899,8 @@ if(typeof window!=='undefined' && window.addEventListener){
 let repairProgressFilter = "all"; // workflowStatus 絞込
 let repairClientFilter = "all";   // 元請けカテゴリ絞込: all / 山一地所 / みどり不動産 / 自社工事 / その他
 let repairMineOnly = false;
+// ✅ 完了済(完了/完工/完成)はデフォルト非表示。ONにした時だけ一覧に出す(v1.30.478・山田)。端末ごとに記憶
+let repairShowDone = (()=>{ try{ return localStorage.getItem('bc_repair_show_done')==='1'; }catch(_){ return false; } })();
 let repairSearch = "";
 let repairSortMode = "progress";  // 並び順: progress(進行状況) / contact(📞担当者別) / worker(🔨作業担当別)
 let repairPersonFilter = "all";   // 👤担当者バッジ絞込: all / スタッフ名 / 外注業者 / ""(未設定)
@@ -19695,7 +19701,10 @@ function exportArchiveAll_(){
 }
 
 function renderRepairView(){
-  const list = state.repairs || [];
+  // ✅ 完了済はデフォルトで一覧から外す(件数・フィルタ・担当バッジも未完了ベース)v1.30.478
+  const __allRepairs = state.repairs || [];
+  const __doneN = __allRepairs.filter(r=> typeof isRepairDone_==='function' && isRepairDone_(r)).length;
+  const list = repairShowDone ? __allRepairs : __allRepairs.filter(r=> !(typeof isRepairDone_==='function' && isRepairDone_(r)));
   // フィルタチップ (workflowStatus 別 + 全件)
   const counts = {all:0};
   WORKFLOW_STATUSES.forEach(w=>counts[w]=0);
@@ -19761,6 +19770,14 @@ function renderRepairView(){
     });
   }
   document.getElementById("repairMineOnly").checked = repairMineOnly;
+  {
+    const __sd = document.getElementById("repairShowDone");
+    if(__sd){
+      __sd.checked = repairShowDone;
+      const __lbl = __sd.parentElement;
+      if(__lbl) __lbl.lastChild.textContent = __doneN ? ` ✅完了済も表示 (${__doneN})` : " ✅完了済も表示";
+    }
+  }
   document.getElementById("repairSearch").value = repairSearch;
   const sortSel = document.getElementById("repairSortMode");
   if(sortSel){
@@ -20082,6 +20099,11 @@ function openRepairWorkflowPop(id, anchor){
 }
 
 document.getElementById("repairMineOnly").onchange = (e)=>{ repairMineOnly = e.target.checked; renderRepairView(); };
+document.getElementById("repairShowDone").onchange = (e)=>{
+  repairShowDone = e.target.checked;
+  try{ localStorage.setItem('bc_repair_show_done', repairShowDone?'1':'0'); }catch(_){}
+  renderRepairView();
+};
 document.getElementById("repairSearch").oninput = (e)=>{ repairSearch = e.target.value; renderRepairView(); };
 document.getElementById("repairReload").onclick = ()=>syncChecksFromGAS();
 { const __ab=document.getElementById("repairArchiveBtn"); if(__ab) __ab.onclick=()=>openArchiveModal_("修繕"); }
@@ -20417,6 +20439,8 @@ repairSheet.onclick = e=>{ if(e.target===repairSheet) closeRepairSheet(); };
 // ===========================================================
 let restoClientFilter = "all";     // 'all' or clientCat
 let restoStatusFilter = "active";  // 'active'|'all'|'todo'|'wip'|'archived'
+// ✅ 完了済(アーカイブ)はデフォルト非表示。ONの時だけ末尾にグレーで残す(v1.30.478・山田)。端末ごとに記憶
+let restoShowDone = (()=>{ try{ return localStorage.getItem('bc_resto_show_done')==='1'; }catch(_){ return false; } })();
 let restoPersonFilter = "all";     // 見積作成者(p.staff)別 絞り込み 'all'|名前|""(未設定) v1.30.85
 let restoSearch = "";
 let restoDetailId = null;          // 詳細表示中の物件id (null=リスト)
@@ -20575,7 +20599,7 @@ function renderRestoList(){
     let cnt;
     if(c.key==="active") cnt = all.filter(p=>!restoIsArchived(p)).length;
     else if(c.key==="archived") cnt = all.filter(restoIsArchived).length;
-    else if(c.key==="all") cnt = all.length;
+    else if(c.key==="all") cnt = restoShowDone ? all.length : all.filter(p=>!restoIsArchived(p)).length;   // 完了済非表示なら件数も未完了ベース(v1.30.478)
     else cnt = all.filter(p=>!restoIsArchived(p) && restoDominantStatus(p)===c.key).length;
     const active = restoStatusFilter === c.key;
     return `<button class="rf-chip ${active?"active":""}" data-key="${c.key}">${escapeHtml(c.label)}<span class="count">${cnt}</span></button>`;
@@ -20583,6 +20607,20 @@ function renderRestoList(){
   filtersEl.querySelectorAll(".rf-chip").forEach(b=>{
     b.onclick = ()=>{ restoStatusFilter = b.dataset.key; renderRestoList(); };
   });
+  // ✅ 完了済も表示 トグル(v1.30.478)
+  {
+    const sd = document.getElementById("restoShowDone");
+    if(sd){
+      const doneN = all.filter(restoIsArchived).length;
+      sd.checked = restoShowDone;
+      if(sd.parentElement) sd.parentElement.lastChild.textContent = doneN ? ` ✅完了済も表示 (${doneN})` : " ✅完了済も表示";
+      sd.onchange = ()=>{
+        restoShowDone = sd.checked;
+        try{ localStorage.setItem('bc_resto_show_done', restoShowDone?'1':'0'); }catch(_){}
+        renderRestoList();
+      };
+    }
+  }
   document.getElementById("restoSearch").value = restoSearch;
 
   // フィルタ適用
@@ -20593,6 +20631,7 @@ function renderRestoList(){
     //  未対応/対応中 タブは進行中のみ。完了済タブは完了済のみ。
     const __arch = restoIsArchived(p);
     if(restoStatusFilter==="archived"){ if(!__arch) return false; }
+    else if(__arch && !restoShowDone){ return false; }   // ✅ 完了済はデフォルト非表示(v1.30.478)
     else if(restoStatusFilter==="todo"){ if(__arch || restoDominantStatus(p)!=="todo") return false; }
     else if(restoStatusFilter==="wip"){ if(__arch || restoDominantStatus(p)!=="wip") return false; }
     // active / all → __arch も残す(下で末尾ソート)
