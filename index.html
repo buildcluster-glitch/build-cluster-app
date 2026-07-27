@@ -886,6 +886,14 @@
   .quick-pop.task-pop .tp-complete-all:active{transform:translateY(1px)}
   .quick-pop.task-pop .tp-bar{height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden;margin:8px 0 4px}
   .quick-pop.task-pop .tp-bar i{display:block;height:100%;transition:width .25s}
+  /* 📋 タスクは横長に(v1.30.480・最上要望「縦長の表記を変えたい」)。
+     420px幅だと文字の入る幅が130px程度しかなく、1タスクが4〜5行に折り返して縦に伸びていた。 */
+  .quick-pop.task-pop{max-width:min(680px, 94vw)}
+  @media(max-width:700px){
+    /* スマホは画面幅で頭打ち→操作パーツを詰めて文字幅を稼ぐ */
+    .quick-pop.task-pop .tp-row{gap:5px;padding:5px 2px}
+    .quick-pop.task-pop .tp-row .tp-prio-sel,.quick-pop.task-pop .tp-row .tp-status-sel{font-size:10px;padding:2px 0}
+  }
   .quick-pop.task-pop .tp-list{display:flex;flex-direction:column;gap:2px;margin-top:4px;max-height:50vh;overflow-y:auto}
   .quick-pop.task-pop .tp-row{display:flex;align-items:flex-start;gap:8px;padding:5px 6px;border-radius:6px}
   .quick-pop.task-pop .tp-row:hover{background:#f8fafc}
@@ -2705,7 +2713,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.479</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.480</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
