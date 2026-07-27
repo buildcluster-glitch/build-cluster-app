@@ -2677,7 +2677,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.468</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.469</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -4455,14 +4455,33 @@ function contractorInfo(name){ return CONTRACTORS.find(c=>c.name===name); }
 //   台帳の元請け表記は揺れる(未設定/正式名/「WRD不動産販売」等)。従来は完全一致＋略称化だけで、
 //   外れると色も名前も出なかった。→ ①そのまま/略称 ②社名を含む(ASCII社名は前後が英数字でない時だけ)
 //   ③それでもダメなら物件マスタ(state.bukken・立会の元請け判定と同じ正本)から物件名で引く。
+//   ⚠台帳の元請けは**正式な取引先名**で入っている(修繕ビューのバッジがそれ)。略称(WRD/HS田中/JA…)とは
+//     文字が全く違うので、対応表が無いと一生一致しない(山田報告 2026-07-27「リエス=WRDなのに拾えない」)。
+//     ここに正式名→略称のキーワード表を持つ。新しい取引先が増えたらこの表に1行足す。
+const MOTOUKE_KEYWORDS = [
+  [/ワールドレジデンシャル|world\s*residential/i, "WRD"],       // ワールドレジデンシャル / 〜東日本
+  [/ハウジングショップ|hs\s*田中/i,              "HS田中"],     // ハウジングショップ田中
+  [/ジェイエイ|ＪＡ|\bJA\b/i,                    "JA"],         // ジェイエイ仙台 泉不動産センター 等
+  [/東北分譲/,                                    "東北分譲"],   // 東北分譲住宅販売
+  [/山一/,                                        "山一"],
+  [/みどり/,                                      "みどり"],
+  [/丸山/,                                        "丸山"],
+  [/JSB/i,                                        "JSB"],
+];
 function motoukeFromText_(text){
   const s = String(text||"").trim();
   if(!s) return null;
-  const direct = contractorInfo(s) || contractorInfo(shortenCompany(s));
+  // 全角/半角・空白のゆれを吸収した版で判定する(「ＷＲＤ」「ＪＡ 仙台」等も拾う)
+  const norm = s.normalize("NFKC").replace(/[\s　]/g, "");
+  const direct = contractorInfo(s) || contractorInfo(norm) || contractorInfo(shortenCompany(s)) || contractorInfo(shortenCompany(norm));
   if(direct) return direct;
+  // 正式名→略称のキーワード表
+  for(const [re, short] of MOTOUKE_KEYWORDS){
+    if(re.test(norm)){ const c = contractorInfo(short); if(c) return c; }
+  }
   return CONTRACTORS.slice().sort((a,b)=>b.name.length-a.name.length).find(c=>{
-    if(/^[A-Za-z0-9]+$/.test(c.name)) return new RegExp(`(^|[^A-Za-z0-9])${c.name}([^A-Za-z0-9]|$)`,"i").test(s);
-    return s.includes(c.name);
+    if(/^[A-Za-z0-9]+$/.test(c.name)) return new RegExp(`(^|[^A-Za-z0-9])${c.name}([^A-Za-z0-9]|$)`,"i").test(norm);
+    return norm.includes(c.name);
   }) || null;
 }
 function resolveMotouke_(rawContractor, bukkenName){
