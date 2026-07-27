@@ -2677,7 +2677,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.467</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.468</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -4451,6 +4451,25 @@ function contractorInfo(name){ return CONTRACTORS.find(c=>c.name===name); }
 // 🏷 チップのバッジ表記(v1.30.467・大村要望): 修繕/立会は「みどり修繕」「WRD立会」のように元請け名を前置。
 //   元請けが分からない時は種別だけ(従来通り)。色は今まで通り元請けカラー。
 //   ※対象は修繕と立会のみ(事前/最確/見積等は種別だけのまま)。
+// 🏢 元請けの解決(v1.30.468・山田「リエスはWRDなんだけど拾えないかな？」):
+//   台帳の元請け表記は揺れる(未設定/正式名/「WRD不動産販売」等)。従来は完全一致＋略称化だけで、
+//   外れると色も名前も出なかった。→ ①そのまま/略称 ②社名を含む(ASCII社名は前後が英数字でない時だけ)
+//   ③それでもダメなら物件マスタ(state.bukken・立会の元請け判定と同じ正本)から物件名で引く。
+function motoukeFromText_(text){
+  const s = String(text||"").trim();
+  if(!s) return null;
+  const direct = contractorInfo(s) || contractorInfo(shortenCompany(s));
+  if(direct) return direct;
+  return CONTRACTORS.slice().sort((a,b)=>b.name.length-a.name.length).find(c=>{
+    if(/^[A-Za-z0-9]+$/.test(c.name)) return new RegExp(`(^|[^A-Za-z0-9])${c.name}([^A-Za-z0-9]|$)`,"i").test(s);
+    return s.includes(c.name);
+  }) || null;
+}
+function resolveMotouke_(rawContractor, bukkenName){
+  return motoukeFromText_(rawContractor)
+      || (bukkenName && typeof taikyoMotouke_==='function' ? motoukeFromText_(taikyoMotouke_(bukkenName)) : null)
+      || null;
+}
 const MOTOUKE_PREFIX_CATS = new Set(["修繕", "立会"]);
 function badgeLabelWithMotouke_(catName, contName){
   const c = String(catName||"").trim();
@@ -13158,7 +13177,7 @@ function renderCalendar(){
           // 終日帯: 背景=作業担当者色(なければ白)、左バー=workflowStatus色、修繕バッジ(色=元請け)
           // r.contractor は "山一地所" など正式名 → shortenCompany で略称化してから lookup
           const contShort = shortenCompany(r.contractor||"");
-          const cont = contractorInfo(contShort) || contractorInfo(r.contractor);
+          const cont = resolveMotouke_(r.contractor, r.name);   // 表記ゆれ・未設定は物件マスタで補完(v1.30.468)
           const tagBg = cont ? cont.color : "#94a3b8";
           const tStr = t ? " "+t : "";
           // バッジ: テキスト="みどり修繕"のように元請け＋種別(v1.30.467・大村要望。元請け不明なら"修繕") / 色=元請けカラー
@@ -13661,7 +13680,9 @@ function renderCalendar(){
         : "";
       const isAnytime = ev.timeMode === "anytime" || ev.timeMode === "am" || ev.timeMode === "pm";
       const __twLabel = ev.timeMode === "am" ? "AM中" : ev.timeMode === "pm" ? "PM中" : null;   // 🌗 v1.30.445
-      const cont = contractorInfo(ev.contractor);
+      // 元請け: ev.contractor が空/表記ゆれでも、修繕・立会はタイトル(物件名)から物件マスタで補完(v1.30.468)
+      const cont = contractorInfo(ev.contractor)
+        || ((cat && MOTOUKE_PREFIX_CATS.has(cat.name)) ? resolveMotouke_(ev.contractor, ev.title) : null);
       // 🚫 事前「行かない(訪問不要)」: グレー化+🚫行かない印(台帳NOで全PC共有)v1.30.131
       const __jizenSkip = isJizenEvent_(ev) && typeof isSkipVisit_==='function' && isSkipVisit_(ev);
       const __skipBadge = __jizenSkip
@@ -13944,7 +13965,7 @@ function renderCalendar(){
         // 修繕バッジ: テキスト="みどり修繕"のように元請け＋種別(v1.30.467) / 色=元請けカラー
         // r.contractor は "山一地所" など正式名 → shortenCompany で略称化してから lookup
         const contShort = shortenCompany(r.contractor||"");
-        const cont = contractorInfo(contShort) || contractorInfo(r.contractor);
+        const cont = resolveMotouke_(r.contractor, r.name);   // 表記ゆれ・未設定は物件マスタで補完(v1.30.468)
         const tagBg = cont ? cont.color : "#94a3b8";
         const tagHtml = `<span class="title-cat" style="background:${tagBg};color:${textColorFor(tagBg)};padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;line-height:14px;height:16px;display:inline-flex;align-items:center;justify-content:center" title="${escapeHtml(r.contractor||'')}">${escapeHtml(badgeLabelWithMotouke_("修繕", cont&&cont.name))}</span>`;
         // ✅ 完了済=「✓完了」カラーバッジ(緑)。取消線/グレーは出さない(v1.30.180)
@@ -14889,7 +14910,7 @@ function showChipTip(ev, mouseX, mouseY){
 function showRepairTip(r, mouseX, mouseY){
   const tip = ensureChipTip();
   const contShort = shortenCompany(r.contractor||"");
-  const cont = contractorInfo(contShort) || contractorInfo(r.contractor);
+  const cont = resolveMotouke_(r.contractor, r.name);   // 表記ゆれ・未設定は物件マスタで補完(v1.30.468)
   const wfBar = (typeof wfBgMap === 'object' && wfBgMap[r.workflowStatus||""]) || "#ec4899";
   const wfLabel = r.workflowStatus || "アポ・手配 未";
   const worker = (r.worker||"").trim();
@@ -15213,7 +15234,7 @@ function showRepairQuickPop(r, anchorEl){
   pop.className = 'quick-pop';
   pop.dataset.repairId = r.id; // どの修繕案件用かのマーク (再ホバーで2重open防止)
   const contShort = shortenCompany(r.contractor||"");
-  const cont = contractorInfo(contShort) || contractorInfo(r.contractor);
+  const cont = resolveMotouke_(r.contractor, r.name);   // 表記ゆれ・未設定は物件マスタで補完(v1.30.468)
   const contBadge = cont ? `<span style="background:${cont.color};color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700">${escapeHtml(cont.name)}</span>` : '';
   const wfBadge = `<span style="background:${wfBgMap[r.workflowStatus||""]||"#ec4899"};color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700">${escapeHtml(r.workflowStatus||"アポ・手配 未")}</span>`;
   // 🛠 外注業者(対応業者)バッジ #76a5af
@@ -20120,7 +20141,7 @@ function openActionList(){
     body.innerHTML = `<div class="al-empty">🎉 要対応（アポ日未設定）の修繕はありません</div>`;
   } else {
     body.innerHTML = list.map(r=>{
-      const cont = contractorInfo(shortenCompany(r.contractor||"")) || contractorInfo(r.contractor);
+      const cont = resolveMotouke_(r.contractor, r.name);   // 表記ゆれ・未設定は物件マスタで補完(v1.30.468)
       const tagBg = cont ? cont.color : "#94a3b8";
       const wfBar = (window.wfBgMap && window.wfBgMap[r.workflowStatus||"アポ・手配 未"]) || "#ec4899";
       const desc = (r.requestDesc || r.requestDescFull || "").trim();
