@@ -112,6 +112,10 @@
   .announce-ack{background:#16a34a;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;white-space:nowrap}
   .announce-ack:hover{background:#15803d}
   .announce-acked{color:#16a34a;font-weight:700;font-size:11px;flex-shrink:0}
+  /* 📢 連絡事項ポップアップ(v1.30.473): スマホの全画面モーダル指定を上書きして「中身の高さの警告ダイアログ」に */
+  #announcePopup{padding:14px}
+  #announcePopup .modal{height:auto !important;max-height:86dvh !important;width:94vw !important;max-width:520px !important;border-radius:14px !important;margin:auto;box-shadow:0 12px 40px rgba(0,0,0,.35)}
+  #announcePopup .modal-body{max-height:62dvh}
   .announce-del{background:transparent;border:none;color:#b45309;cursor:pointer;font-size:13px;flex-shrink:0;opacity:.7}
   .announce-del:hover{opacity:1}
   .announce-edit{background:transparent;border:none;color:#92700e;cursor:pointer;font-size:13px;flex-shrink:0;opacity:.7}
@@ -2689,7 +2693,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.472</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.473</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -8204,7 +8208,60 @@ function editAnnounce_(id, newText){   // 投稿者が本文を編集(v1.30.307)
   newText=String(newText||'').trim(); if(!id||!newText) return;
   mutateAnnounce_(map=>{ (map.items||[]).forEach(it=>{ if(it.id===id){ it.text=newText; it.editedAt=new Date().toISOString(); it.updatedAt=new Date().toISOString(); } }); return map; });
 }
+// 📢 連絡事項ポップアップ(v1.30.473・山田「バーだと気づかない→確認するまで消せないように」)
+//   自分がまだ✓確認していない連絡があれば、画面をふさぐダイアログで出す。
+//   ⚠閉じる手段は「✓確認しました」だけ(背景クリック・Esc・✕では閉じない)。
+//   スマホはバー自体が非表示(v1.30.305)なので、ここが唯一の連絡導線になる。
+function myUnreadAnnounces_(){
+  const me=(typeof getMyself==='function')?getMyself():"";
+  if(!me) return [];
+  return announceActiveItems_().filter(it=> !((it.acked||[]).includes(me)));
+}
+function renderAnnouncePopup_(){
+  const me=(typeof getMyself==='function')?getMyself():"";
+  const unread=myUnreadAnnounces_();
+  const needSelf=!me && announceActiveItems_().length>0;   // 自分未設定だと確認できない→設定を促す
+  let ov=document.getElementById('announcePopup');
+  if(!unread.length && !needSelf){ if(ov) ov.classList.remove('show'); return; }
+  if(!ov){
+    ov=document.createElement('div'); ov.className='modal-overlay'; ov.id='announcePopup';
+    ov.innerHTML=`<div class="modal" style="max-width:520px;width:94vw">
+      <div class="modal-header" style="background:#fef9c3;color:#78350f">📢 全員への連絡事項</div>
+      <div class="modal-body" id="apBody" style="max-height:64vh;overflow:auto"></div>
+      <div class="modal-footer" id="apFoot"></div></div>`;
+    document.body.appendChild(ov);   // ⚠ 背景クリック/Escで閉じるハンドラは意図的に付けない
+  }
+  const body=ov.querySelector('#apBody'), foot=ov.querySelector('#apFoot');
+  const disp=s=>(typeof getStaffDisplayName==='function')?getStaffDisplayName(s):s;
+  if(needSelf){
+    body.innerHTML=`<div style="padding:16px;font-size:15px;line-height:1.8">連絡事項が届いています。<br>確認するには、まず「👤 自分」を設定してください。</div>`;
+    foot.innerHTML=`<button class="btn primary" id="apSetMe">👤 自分を設定</button>`;
+    const sm=foot.querySelector('#apSetMe'); if(sm) sm.onclick=()=>{ if(typeof openMyself==='function') openMyself(); };
+    ov.classList.add('show');
+    return;
+  }
+  body.innerHTML=unread.map(it=>{
+    const d=new Date(it.at); const p=n=>String(n).padStart(2,'0');
+    const dt=isNaN(d)?'':`${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    return `<div class="ap-item" data-aid="${escapeHtml(it.id)}" style="border:2px solid #f59e0b;background:#fffbeb;border-radius:10px;padding:12px 14px;margin-bottom:10px">
+      <div style="font-size:16px;font-weight:800;color:#78350f;white-space:pre-wrap;word-break:break-word;line-height:1.6">${escapeHtml(it.text)}</div>
+      <div style="font-size:11px;color:#92700e;margin-top:6px">${escapeHtml(disp(it.by||''))} ${dt}${it.editedAt?' (編集済)':''}</div>
+      <button class="btn primary" data-ap-ack="${escapeHtml(it.id)}" style="margin-top:10px;width:100%;padding:11px;font-size:15px;font-weight:800;background:#16a34a;border-color:#16a34a">✓ 確認しました</button>
+    </div>`;
+  }).join('');
+  foot.innerHTML=`<span style="font-size:11px;color:var(--muted)">※ 確認するまで閉じられません（全員が確認すると連絡は自動で消えます）</span>`;
+  body.querySelectorAll('[data-ap-ack]').forEach(b=>{
+    b.onclick=()=>{
+      b.disabled=true; b.textContent='確認中…';
+      if(typeof ackAnnounce_==='function') ackAnnounce_(b.dataset.apAck);
+      const card=b.closest('.ap-item'); if(card) card.remove();
+      if(!body.querySelector('.ap-item')) ov.classList.remove('show');   // 全部確認したら閉じる
+    };
+  });
+  ov.classList.add('show');
+}
 function renderAnnounceBar_(){
+  try{ renderAnnouncePopup_(); }catch(_){}   // 📢 未確認があればブロック表示(v1.30.473)
   const bar=document.getElementById('announceBar'); if(!bar) return;
   const me=(typeof getMyself==='function')?getMyself():"";
   // 表示ルール(v1.30.312・山田): ✅した人は自分のバーから消える / 投稿者は全員✅まで残す
