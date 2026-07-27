@@ -1770,7 +1770,11 @@
   .rd-kv .k{color:var(--muted)}
   .rd-kv .v{color:var(--text);font-weight:600}
   /* 🟢 完了ボタン (詳細最下部) */
-  .rd-archive-section{margin:18px 0 12px;padding:12px;text-align:center;border-top:1px dashed var(--border)}
+  /* 完了(緑)の隣に「閉じる」を置いて誤タップを減らす(v1.30.476・山田「まちがって押しそうになる」) */
+  .rd-archive-section{margin:18px 0 12px;padding:12px;display:flex;gap:14px;justify-content:center;align-items:center;flex-wrap:wrap;border-top:1px dashed var(--border)}
+  .rd-close-btn{background:#fff;color:#475569;border:1.5px solid var(--border-strong);border-radius:8px;
+    padding:12px 26px;font-size:15px;font-weight:700;cursor:pointer;transition:all .15s}
+  .rd-close-btn:hover{background:#f1f5f9}
   .rd-archive-btn{background:#16a34a;color:#fff;border:none;border-radius:8px;
     padding:12px 32px;font-size:15px;font-weight:700;cursor:pointer;
     box-shadow:0 2px 6px rgba(22,163,74,.3);transition:all .15s}
@@ -2695,7 +2699,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.475</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.476</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -2992,9 +2996,10 @@
       <div class="rd-group" id="rdAlertGroup">
         <div id="rdAlertSec"></div>
       </div>
-      <!-- 🟢 完了ボタン (一番下・緑) -->
+      <!-- 🟢 完了ボタン (一番下・緑)。誤タップ防止で「閉じる」を隣に置き、ラベルも用途が分かる文言に(v1.30.476・山田) -->
       <div class="rd-archive-section">
-        <button id="rdArchiveBtn" class="rd-archive-btn" title="完全完了→アーカイブ">✓ 完了</button>
+        <button id="rdCloseBtn" class="rd-close-btn" type="button" title="閉じる(何も変更しません)">✕ 閉じる</button>
+        <button id="rdArchiveBtn" class="rd-archive-btn" title="工事が全部終わった時だけ押す(完了→アーカイブ・台帳にも完了日を記録)">✓ 工事完了</button>
       </div>
     </div>
   </div>
@@ -20904,7 +20909,7 @@ function renderRestoDetail(){
   // アーカイブ済み表示
   const archBtn = document.getElementById("rdArchiveBtn");
   const archived = restoIsArchived(p);
-  archBtn.textContent = archived ? "↩ 完了を取消" : "✓ 完了";
+  archBtn.textContent = archived ? "↩ 工事完了を取消" : "✓ 工事完了";
   archBtn.classList.toggle("archived", archived);
   // サマリ
   const c = {todo:0,wip:0,done:0};
@@ -21545,6 +21550,13 @@ document.getElementById("restoBack").onclick = ()=>{
 document.getElementById("restoDialog").onclick = (e)=>{ if(e.target.id==="restoDialog") closeRestoDialog(); };
 document.addEventListener("keydown",(e)=>{ if(e.key==="Escape" && restoDetailAsModal) closeRestoDialog(); });
 document.getElementById("rdArchiveBtn").onclick = restoToggleArchive;
+// ✕ 閉じる(完了の隣・誤タップ対策 v1.30.476): ダイアログなら閉じる/ビュー表示なら一覧へ戻る
+{ const __rdc = document.getElementById("rdCloseBtn");
+  if(__rdc) __rdc.onclick = ()=>{
+    if(restoDetailAsModal){ closeRestoDialog(); return; }
+    restoDetailId = null; renderRestoView();
+  };
+}
 document.getElementById("rdCommentAdd").onclick = restoAddComment;
 // 現場メモ入力を内容に合わせて自動で伸ばす(改行が見えるように)v1.30.316・山田
 (function(){ const ta=document.getElementById("rdCommentInput"); if(ta){ const grow=()=>{ ta.style.height='auto'; ta.style.height=Math.min(200, Math.max(44, ta.scrollHeight))+'px'; }; ta.addEventListener('input', grow); } })();
