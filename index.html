@@ -2705,7 +2705,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.478</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.479</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -2969,6 +2969,20 @@
     <div class="rd-summary" id="rdSummary"></div>
     <div class="rd-filter-bar hide" id="rdFilterBar"></div>
     <div class="rd-scroll">
+      <!-- 💬 現場メモは最上部(v1.30.479・山田): 工事一覧をスクロールしなくても書ける/読める -->
+      <div class="rd-group">
+        <div class="rd-group-head">💬 現場メモ</div>
+        <div class="rd-comment-add">
+          <textarea id="rdCommentInput" rows="2" placeholder="現場メモを追加…（Enterで改行OK・「追加」で確定）" style="resize:vertical;min-height:44px"></textarea>
+          <input type="file" accept="image/*" id="rdCommentPhoto" style="display:none">
+          <img class="photo-preview" id="rdCommentPhotoPreview" style="display:none" src="">
+          <div style="display:flex;gap:6px;margin-top:4px">
+            <button class="nav-btn" id="rdCommentPhotoBtn">📷 写真</button>
+            <button class="nav-btn primary" id="rdCommentAdd">追加</button>
+          </div>
+        </div>
+        <div id="rdCommentList"></div>
+      </div>
       <div class="rd-group rd-group-out">
         <div class="rd-group-head">🏭 外注工事 <span class="rd-group-badge">外注</span> <span class="rd-group-sum" id="rdSumOut"></span></div>
         <div id="rdListOut"></div>
@@ -2988,19 +3002,6 @@
       <div class="rd-group">
         <div class="rd-group-head" style="cursor:pointer" id="rdTrashHead">🗑 ゴミ箱(完了) <span class="rd-group-sum" id="rdSumTrash"></span> <button class="nav-btn" id="rdTrashToggle" style="padding:2px 8px;font-size:11px">▼ 開く</button></div>
         <div id="rdListTrash" class="hide"></div>
-      </div>
-      <div class="rd-group">
-        <div class="rd-group-head">💬 現場メモ</div>
-        <div class="rd-comment-add">
-          <textarea id="rdCommentInput" rows="2" placeholder="現場メモを追加…（Enterで改行OK・「追加」で確定）" style="resize:vertical;min-height:44px"></textarea>
-          <input type="file" accept="image/*" id="rdCommentPhoto" style="display:none">
-          <img class="photo-preview" id="rdCommentPhotoPreview" style="display:none" src="">
-          <div style="display:flex;gap:6px;margin-top:4px">
-            <button class="nav-btn" id="rdCommentPhotoBtn">📷 写真</button>
-            <button class="nav-btn primary" id="rdCommentAdd">追加</button>
-          </div>
-        </div>
-        <div id="rdCommentList"></div>
       </div>
       <!-- ⚠ アラート(常時赤字・全員共有): 現場メモの下(山田 2026-07-15)。入力UIは既存alertInputHtml_を再利用 -->
       <div class="rd-group" id="rdAlertGroup">
