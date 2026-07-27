@@ -1474,9 +1474,11 @@
   .check-card .status-sm.submitted{background:#dbeafe;color:#1d4ed8}
   .check-card .ck-title{font-weight:600;font-size:12px}
   .check-card .ck-memo{font-size:10px;color:var(--muted);word-break:break-word}
+  /* 🏠 入居日は一番見落としたくない情報 → 赤字で大きく(v1.30.474・山田) */
   .check-card .ck-movein{
-    font-size:9px;padding:0 5px;border-radius:3px;
-    background:#e0e7ff;color:#3730a3;white-space:nowrap;line-height:1.4;font-weight:600;
+    font-size:13px;padding:1px 7px;border-radius:4px;
+    background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;
+    white-space:nowrap;line-height:1.5;font-weight:800;
   }
   .check-card .ck-checkdate{
     font-size:9px;padding:0 5px;border-radius:3px;
@@ -2693,7 +2695,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.473</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.474</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
