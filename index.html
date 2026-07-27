@@ -2677,7 +2677,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.466</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.467</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -4448,6 +4448,15 @@ const CONTRACTORS = [
   { name:"東北分譲",   color:"#374151" }, // ダークグレー
 ];
 function contractorInfo(name){ return CONTRACTORS.find(c=>c.name===name); }
+// 🏷 チップのバッジ表記(v1.30.467・大村要望): 修繕/立会は「みどり修繕」「WRD立会」のように元請け名を前置。
+//   元請けが分からない時は種別だけ(従来通り)。色は今まで通り元請けカラー。
+//   ※対象は修繕と立会のみ(事前/最確/見積等は種別だけのまま)。
+const MOTOUKE_PREFIX_CATS = new Set(["修繕", "立会"]);
+function badgeLabelWithMotouke_(catName, contName){
+  const c = String(catName||"").trim();
+  const m = String(contName||"").trim();
+  return (m && MOTOUKE_PREFIX_CATS.has(c)) ? (m + c) : c;
+}
 // 社名を略称化: 既知マッピング → 接尾辞除去 の順で短縮
 const COMPANY_SHORT = {
   "山一地所":"山一","株式会社山一地所":"山一",
@@ -13152,8 +13161,8 @@ function renderCalendar(){
           const cont = contractorInfo(contShort) || contractorInfo(r.contractor);
           const tagBg = cont ? cont.color : "#94a3b8";
           const tStr = t ? " "+t : "";
-          // バッジ: テキスト="修繕"固定 / 色=元請けカラー (山一なら紫、みどりなら緑など)
-          const tagSpan = `<span style="background:${tagBg};color:${textColorFor(tagBg)};padding:0 5px;border-radius:3px;font-size:10px;font-weight:700;margin-right:4px" title="${escapeHtml(r.contractor||'')}">修繕</span>`;
+          // バッジ: テキスト="みどり修繕"のように元請け＋種別(v1.30.467・大村要望。元請け不明なら"修繕") / 色=元請けカラー
+          const tagSpan = `<span style="background:${tagBg};color:${textColorFor(tagBg)};padding:0 5px;border-radius:3px;font-size:10px;font-weight:700;margin-right:4px" title="${escapeHtml(r.contractor||'')}">${escapeHtml(badgeLabelWithMotouke_("修繕", cont&&cont.name))}</span>`;
           // ✅ 完了済=「✓完了」カラーバッジ(緑)。取消線/グレーは出さない(v1.30.180)
           const __doneBadgeB = isRepairDone_(r) ? `<span style="background:#16a34a;color:#fff;padding:0 5px;border-radius:3px;font-size:9px;font-weight:700;margin-right:3px;white-space:nowrap;flex-shrink:0" title="${escapeHtml(r.status||'完了')}">✓完了</span>` : "";
           // 進行ステータスのミニバッジ (v1.30.14): 左バー色だけでは「アポ・手配 未」が読み取れないため明示
@@ -13672,7 +13681,7 @@ function renderCalendar(){
       const catPrefix = (ev.source === "direct-morning")
         ? `<span class="title-cat" title="直行の最終確認" style="background:#7c3aed;color:#fff;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;line-height:14px;height:16px;display:inline-flex;align-items:center;justify-content:center">最終確認</span>`   // 🚗直行マーカーは「最終確認」を紫バッジで(v1.30.242)
         : (cat
-        ? `<span class="title-cat" title="${escapeHtml(badgeTooltip)}" style="background:${catBoxBg||"rgba(255,255,255,.35)"};color:${catBoxFg};padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;line-height:14px;height:16px;display:inline-flex;align-items:center;justify-content:center">${escapeHtml(cat.name)}</span>`
+        ? `<span class="title-cat" title="${escapeHtml(badgeTooltip)}" style="background:${catBoxBg||"rgba(255,255,255,.35)"};color:${catBoxFg};padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;line-height:14px;height:16px;display:inline-flex;align-items:center;justify-content:center">${escapeHtml(badgeLabelWithMotouke_(cat.name, cont&&cont.name))}</span>`
         : "");
       // チップ用: 1行目のみ表示。複数行/メモはホバーで全文表示。
       let titleFirstLine = (ev.title || "").split(/\r?\n/)[0];
@@ -13840,7 +13849,7 @@ function renderCalendar(){
         // 担当別ビュー等の縦長ブロック: タイトル内にカテゴリプレフィクス
         const titleHtmlMulti = taskInfo ? compactTaskHtml : escapeHtml(ev.title || "").replace(/\n/g, "<br>");
         const inlineCatPrefix = cat
-          ? `<span class="title-cat" style="background:rgba(255,255,255,.35);color:${fg};padding:0 4px;border-radius:3px;margin-right:4px;font-size:9px;font-weight:700">${escapeHtml(cat.name)}</span>`
+          ? `<span class="title-cat" style="background:rgba(255,255,255,.35);color:${fg};padding:0 4px;border-radius:3px;margin-right:4px;font-size:9px;font-weight:700">${escapeHtml(badgeLabelWithMotouke_(cat.name, cont&&cont.name))}</span>`
           : "";
         const commuteInline = ev.commute ? ` <span class="chip-commute" style="font-size:9px;padding:0 3px;white-space:nowrap">${commuteLabel_(ev.commute)}</span>` : "";
         el.innerHTML = isShort
@@ -13932,12 +13941,12 @@ function renderCalendar(){
         const wf = r.workflowStatus || "アポ・手配 未";
         const wfBar = wfBgMap[wf] || "#ec4899";
         const timeStr = `${pad(hh)}:${pad(mm)}`;
-        // 修繕バッジ: テキスト="修繕"固定 / 色=元請けカラー
+        // 修繕バッジ: テキスト="みどり修繕"のように元請け＋種別(v1.30.467) / 色=元請けカラー
         // r.contractor は "山一地所" など正式名 → shortenCompany で略称化してから lookup
         const contShort = shortenCompany(r.contractor||"");
         const cont = contractorInfo(contShort) || contractorInfo(r.contractor);
         const tagBg = cont ? cont.color : "#94a3b8";
-        const tagHtml = `<span class="title-cat" style="background:${tagBg};color:${textColorFor(tagBg)};padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;line-height:14px;height:16px;display:inline-flex;align-items:center;justify-content:center" title="${escapeHtml(r.contractor||'')}">修繕</span>`;
+        const tagHtml = `<span class="title-cat" style="background:${tagBg};color:${textColorFor(tagBg)};padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;line-height:14px;height:16px;display:inline-flex;align-items:center;justify-content:center" title="${escapeHtml(r.contractor||'')}">${escapeHtml(badgeLabelWithMotouke_("修繕", cont&&cont.name))}</span>`;
         // ✅ 完了済=「✓完了」カラーバッジ(緑)。取消線/グレーは出さない(v1.30.180)
         const __doneBadge = isRepairDone_(r) ? `<span style="background:#16a34a;color:#fff;padding:0 5px;border-radius:3px;font-size:9px;font-weight:700;white-space:nowrap;flex-shrink:0" title="${escapeHtml(r.status||'完了')}">✓完了</span>` : "";
         // 作業担当者(worker)のみで背景色を決定。未設定=白(空白)。連絡者(contactPerson)へはフォールバックしない v1.30.45
