@@ -2689,7 +2689,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.471</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.472</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -4504,6 +4504,14 @@ function resolveMotouke_(rawContractor, bukkenName){
   return motoukeFromText_(rawContractor)
       || (bukkenName && typeof taikyoMotouke_==='function' ? motoukeFromText_(taikyoMotouke_(bukkenName)) : null)
       || null;
+}
+// 🎨 種別バッジの色は元請けに関係なく固定(v1.30.472・山田): 立会=紫 / 修繕=黄。
+//   元請けは文字(「みどり修繕」等・v1.30.467)で分かるので、色は種別を表すことに統一。
+//   ⚠修繕をカテゴリ色そのまま(#fde047)にすると南部大我のスタッフ色(#fde68a)のチップ上で見分けが付かない
+//     → 一段濃いアンバー(#f59e0b・黒文字)にして薄黄の担当色チップの上でも読めるようにする。
+const CAT_FIXED_BADGE_COLOR = { "立会":"#a855f7", "立会(未定)":"#c084fc", "修繕":"#f59e0b" };
+function catBadgeColor_(catName, fallback){
+  return CAT_FIXED_BADGE_COLOR[String(catName||"").trim()] || fallback || null;
 }
 const MOTOUKE_PREFIX_CATS = new Set(["修繕", "立会"]);
 function badgeLabelWithMotouke_(catName, contName){
@@ -13206,7 +13214,7 @@ function renderCalendar(){
           // r.contractor は "山一地所" など正式名 → shortenCompany で略称化してから lookup
           const contShort = shortenCompany(r.contractor||"");
           const cont = resolveMotouke_(r.contractor, r.name);   // 表記ゆれ・未設定は物件マスタで補完(v1.30.468)
-          const tagBg = cont ? cont.color : "#94a3b8";
+          const tagBg = catBadgeColor_("修繕");   // 修繕は元請けに関係なく黄(v1.30.472)
           const tStr = t ? " "+t : "";
           // バッジ: テキスト="みどり修繕"のように元請け＋種別(v1.30.467・大村要望。元請け不明なら"修繕") / 色=元請けカラー
           const tagSpan = `<span style="background:${tagBg};color:${textColorFor(tagBg)};padding:0 5px;border-radius:3px;font-size:10px;font-weight:700;margin-right:4px" title="${escapeHtml(r.contractor||'')}">${escapeHtml(badgeLabelWithMotouke_("修繕", cont&&cont.name))}</span>`;
@@ -13720,7 +13728,7 @@ function renderCalendar(){
       const chipBg = __jizenSkip ? "#cbd5e1" : (__whiteBg ? "transparent" : (ev.color || STAFF_COLORS[ev.staff]));
       const chipFg = __jizenSkip ? "#475569" : (__whiteBg ? "#0f172a" : textColorFor(chipBg));
       // カテゴリプレフィクスの色 = 元請け色 > カテゴリ色 > 半透明白
-      const catBoxBg = cont ? cont.color : (cat ? cat.color : null);
+      const catBoxBg = catBadgeColor_(cat && cat.name, cont ? cont.color : (cat ? cat.color : null));   // 立会=紫/修繕=黄で固定(v1.30.472)
       const catBoxFg = catBoxBg ? textColorFor(catBoxBg) : chipFg;
       // バッジホバー: 元請＋種別を表示(事前/立会等にカーソルで元請けが分かる)
       const badgeTooltip = cont
@@ -13994,7 +14002,7 @@ function renderCalendar(){
         // r.contractor は "山一地所" など正式名 → shortenCompany で略称化してから lookup
         const contShort = shortenCompany(r.contractor||"");
         const cont = resolveMotouke_(r.contractor, r.name);   // 表記ゆれ・未設定は物件マスタで補完(v1.30.468)
-        const tagBg = cont ? cont.color : "#94a3b8";
+        const tagBg = catBadgeColor_("修繕");   // 修繕は元請けに関係なく黄(v1.30.472)
         const tagHtml = `<span class="title-cat" style="background:${tagBg};color:${textColorFor(tagBg)};padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;line-height:14px;height:16px;display:inline-flex;align-items:center;justify-content:center" title="${escapeHtml(r.contractor||'')}">${escapeHtml(badgeLabelWithMotouke_("修繕", cont&&cont.name))}</span>`;
         // ✅ 完了済=「✓完了」カラーバッジ(緑)。取消線/グレーは出さない(v1.30.180)
         const __doneBadge = isRepairDone_(r) ? `<span style="background:#16a34a;color:#fff;padding:0 5px;border-radius:3px;font-size:9px;font-weight:700;white-space:nowrap;flex-shrink:0" title="${escapeHtml(r.status||'完了')}">✓完了</span>` : "";
@@ -20187,7 +20195,7 @@ function openActionList(){
   } else {
     body.innerHTML = list.map(r=>{
       const cont = resolveMotouke_(r.contractor, r.name);   // 表記ゆれ・未設定は物件マスタで補完(v1.30.468)
-      const tagBg = cont ? cont.color : "#94a3b8";
+      const tagBg = catBadgeColor_("修繕");   // 修繕は元請けに関係なく黄(v1.30.472)
       const wfBar = (window.wfBgMap && window.wfBgMap[r.workflowStatus||"アポ・手配 未"]) || "#ec4899";
       const desc = (r.requestDesc || r.requestDescFull || "").trim();
       const descShort = desc ? (desc.length>46 ? desc.slice(0,46)+"…" : desc) : "";
