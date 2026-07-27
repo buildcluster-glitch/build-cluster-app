@@ -818,6 +818,17 @@
     min-width:320px;max-width:420px;font-size:13px;color:var(--text);
     max-height:80vh;overflow-y:auto;
   }
+  /* 📋 タスクビューに埋め込む「自分のタスク」大画面表示(v1.30.470・鈴木ほか要望)。
+     ポップアップと同じ中身を、浮かせずに画面いっぱいの大きな文字で出す */
+  .quick-pop.task-pop.task-pop-inline{
+    position:static;width:100%;min-width:0;max-width:none;max-height:none;
+    box-shadow:none;border:1px solid var(--border);border-radius:12px;font-size:15px;padding:14px 16px;overflow:visible;
+  }
+  .quick-pop.task-pop.task-pop-inline .qp-title{cursor:default;font-size:17px}
+  .quick-pop.task-pop.task-pop-inline .tp-row{font-size:15px;padding:7px 4px}
+  .quick-pop.task-pop.task-pop-inline .tp-add-input{font-size:15px;padding:9px 10px}
+  .quick-pop.task-pop.task-pop-inline .tp-add-btn{font-size:14px;padding:8px 16px}
+  @media(min-width:900px){ .jt-mine-host{max-width:820px;margin:0 auto} }
   .quick-pop .qp-title{font-weight:700;font-size:14px;margin-bottom:8px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .quick-pop .qp-sec{margin-top:10px;border-top:1px solid #f1f5f9;padding-top:8px}
   .quick-pop .qp-sec:first-of-type{border-top:0;padding-top:0}
@@ -1917,8 +1928,9 @@
     text-align:center;padding:40px;color:var(--muted);font-size:13px;
   }
   /* ===== 📋 事務タスク ボード(タスクビュー) ===== */
-  .jt-bar{display:flex;align-items:center;gap:8px;padding:4px 6px 8px;position:sticky;top:0;background:var(--bg,#fff);z-index:2}
-  .jt-bar .jt-title{font-size:15px;font-weight:800}
+  .jt-bar{display:flex;align-items:center;gap:8px;padding:4px 6px 8px;position:sticky;top:0;background:var(--bg,#fff);z-index:2;flex-wrap:wrap}
+  .jt-bar .jt-title{font-size:15px;font-weight:800;white-space:nowrap}   /* 「自分のタス/ク」と割れないように(v1.30.470) */
+  @media(max-width:520px){ .jt-bar .jt-spacer{flex:0 0 auto} .jt-bar #jtMyselfBtn{margin-left:auto} }
   .jt-bar .jt-spacer{flex:1}
   .jt-board{
     display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;padding:2px 4px;align-items:start;
@@ -2677,7 +2689,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.469</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.470</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -9876,8 +9888,12 @@ function addTaskToStaff_(staff, text, by){
   if(dd||rm){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(_){}
     console.log(`[migrate] 事務タスク重複行排除 ${dd}件 / 空事務イベント削除 ${rm}件`); }
 })();
-function showTaskChecklistPopup(el, ev){
-  document.querySelectorAll(".quick-pop.task-pop").forEach(p=>p.remove());
+// opts.host を渡すと、浮かせず host の中に埋め込んで表示する(タスクビューの「自分のタスク」大画面・v1.30.470)。
+//   位置決め・ドラッグ移動・外側クリックで閉じる はインライン時は無効。中身と操作は完全に同じものを使う。
+function showTaskChecklistPopup(el, ev, opts){
+  opts = opts || {};
+  const inlineHost = opts.host || null;
+  document.querySelectorAll(".quick-pop.task-pop").forEach(p=>{ if(!p.classList.contains("task-pop-inline")) p.remove(); });   // 埋め込み版は消さない
   if(typeof sweepTaskArchive_==='function') sweepTaskArchive_();   // 開く前に7日経過分を自動アーカイブ
   const build = ()=>{
     const cur = (state.events||[]).find(e=>e.id===ev.id) || ev;
@@ -10381,11 +10397,12 @@ function showTaskChecklistPopup(el, ev){
     if(focusAdd){ focusAdd=false; addInput.focus(); }
   };
   renderInner();
-  document.body.appendChild(pop);
+  if(inlineHost){ pop.classList.add("task-pop-inline"); inlineHost.innerHTML = ""; inlineHost.appendChild(pop); pop.style.visibility = "visible"; }
+  else document.body.appendChild(pop);
   // 💬 事務タスクポップを開いたら業務連絡の最新を取得(全員共有・他PCの書込みを即反映)v1.30.203
   if(cur && cur.category==='事務' && typeof fetchJimuMessages_==='function') fetchJimuMessages_({silent:true}).catch(()=>{});
   if(cur && cur.category==='事務' && typeof fetchJimuTaskComments_==='function') fetchJimuTaskComments_({silent:true}).catch(()=>{});   // 💬タスクコメントも最新化 v1.30.286
-  requestAnimationFrame(()=>{
+  if(!inlineHost) requestAnimationFrame(()=>{
     const rc = pop.getBoundingClientRect();
     const vw = window.innerWidth, vh = window.innerHeight, mg=8;
     let top = rect.bottom + 4;
@@ -10395,8 +10412,8 @@ function showTaskChecklistPopup(el, ev){
     if(left < mg) left = mg;
     pop.style.top = top+"px"; pop.style.left = left+"px"; pop.style.visibility = "visible";
   });
-  // 🖐 ドラッグで移動: タイトルバー(qp-title)を掴んでポップを動かす
-  pop.addEventListener("pointerdown", (e)=>{
+  // 🖐 ドラッグで移動: タイトルバー(qp-title)を掴んでポップを動かす(埋め込み時は不要)
+  if(!inlineHost) pop.addEventListener("pointerdown", (e)=>{
     const handle = e.target.closest(".qp-title");
     if(!handle || !pop.contains(handle)) return;
     e.preventDefault();
@@ -10418,7 +10435,7 @@ function showTaskChecklistPopup(el, ev){
     if(e2.target && e2.target.closest && e2.target.closest('.task-cmt-pop, .reaction-picker, .reaction-picker-pop')) return;
     pop.remove(); document.removeEventListener("pointerdown", closeOnOutside, true);
   };
-  setTimeout(()=>document.addEventListener("pointerdown", closeOnOutside, true), 50);
+  if(!inlineHost) setTimeout(()=>document.addEventListener("pointerdown", closeOnOutside, true), 50);   // 埋め込み版は外側クリックで閉じない(v1.30.470)
 }
 // 同一 _jizenSourceId(=台帳NO)で複数イベントが出来てしまった場合の重複統合
 // (複数デバイス/全件PULLで二重insert発生。さらにクラウド送信では _jizenSourceId が
@@ -22219,10 +22236,63 @@ function isFreshDone(t){
 // 📋 タスクビュー = 事務タスクのボード(各担当のチェックリストを一覧。クリックで編集ポップを開く)
 //   旧 state.tasks ベースの一覧は廃止して事務タスクに統合(v1.30.22)。
 //   state.tasks のデータ・関連関数(openTaskModal/renderTaskCard/sortTasks 等)はそのまま温存(非表示)。
+// 📋 タスクビューの表示モード(v1.30.470・要望「全員一覧じゃなく自分のタスクを大画面で見たい」)
+//   'mine' = 自分のタスクを埋め込みで大きく表示(既定) / 'all' = 従来のみんなのタスク一覧
+const TASK_VIEW_MODE_KEY = "buildcluster_task_view_mode";
+function taskViewMode_(){ try{ return localStorage.getItem(TASK_VIEW_MODE_KEY)==="all" ? "all" : "mine"; }catch(_){ return "mine"; } }
+function setTaskViewMode_(m){ try{ localStorage.setItem(TASK_VIEW_MODE_KEY, m==="all"?"all":"mine"); }catch(_){} }
+function taskViewBarHtml_(me, mode){
+  const btn = (m,label)=>`<button class="nav-btn${mode===m?" primary":""}" data-tvmode="${m}">${label}</button>`;
+  return `<div class="jt-bar">
+      <span class="jt-title">${mode==="mine"?"📋 自分のタスク":"📋 みんなのタスク"}</span>
+      <span class="jt-spacer"></span>
+      ${btn("mine","👤 自分")}${btn("all","👥 みんな")}
+      <button class="nav-btn" id="jtMyselfBtn">${me?`👤 ${escapeHtml(me)}`:'👤 自分: 未設定'}</button>
+    </div>`;
+}
 function renderTaskView(){
   const me = getMyself();
   const listEl = document.getElementById("taskList");
   if(!listEl) return;
+  const mode = taskViewMode_();
+  const wireBar = ()=>{
+    listEl.querySelectorAll("[data-tvmode]").forEach(b=>{
+      b.onclick = ()=>{ setTaskViewMode_(b.dataset.tvmode); listEl.innerHTML=""; renderTaskView(); };
+    });
+    const mb = listEl.querySelector("#jtMyselfBtn");
+    if(mb) mb.onclick = ()=>{ if(typeof openMyself==='function') openMyself(); };
+  };
+  if(mode === "mine"){
+    // 👤 自分未設定 → 設定を促すだけ(勝手に他人のタスクは出さない)
+    if(!me || !STAFF.includes(me)){
+      listEl.innerHTML = taskViewBarHtml_(me, mode)
+        + `<div class="jt-empty" style="padding:28px;text-align:center;line-height:1.8">まず「👤 自分」を設定してください。<br><button class="nav-btn primary" id="jtSetMe">👤 自分を設定</button></div>`;
+      wireBar();
+      const sm = listEl.querySelector("#jtSetMe");
+      if(sm) sm.onclick = ()=>{ if(typeof openMyself==='function') openMyself(); };
+      return;
+    }
+    // 骨組みは使い回す(裏の同期で再描画されても入力中の内容・開閉状態を壊さない)
+    let host = listEl.querySelector("#jtMineHost");
+    if(!host){
+      listEl.innerHTML = taskViewBarHtml_(me, mode) + `<div id="jtMineHost" class="jt-mine-host"></div>`;
+      wireBar();
+      host = listEl.querySelector("#jtMineHost");
+    }
+    const ev = (typeof peekStaffJimuEvent_==='function') ? peekStaffJimuEvent_(me) : null;
+    if(!ev){
+      host.innerHTML = `<div class="jt-empty" style="padding:28px;text-align:center;line-height:1.8">まだタスクがありません 🎉<br><button class="nav-btn primary" id="jtCreateMine">＋ タスクを作る</button></div>`;
+      host.removeAttribute("data-ev-id");
+      const cm = host.querySelector("#jtCreateMine");
+      if(cm) cm.onclick = ()=>{ openStaffJimuTasks_(me); listEl.innerHTML=""; renderTaskView(); };
+      return;
+    }
+    // 既に同じタスク表を出しているなら作り直さない(入力中の文字・開閉が飛ぶのを防ぐ)
+    if(host.dataset.evId === ev.id && host.querySelector(".task-pop-inline")) return;
+    host.dataset.evId = ev.id;
+    if(typeof showTaskChecklistPopup==='function') showTaskChecklistPopup(host, ev, {host});
+    return;
+  }
   // 自分→先頭、残りはSTAFF順
   const order = (me && STAFF.includes(me)) ? [me, ...STAFF.filter(s=>s!==me)] : [...STAFF];
   const cards = order.map(staff=>{
@@ -22252,25 +22322,11 @@ function renderTaskView(){
         <div class="jt-foot">＋ タスクを開く / 追加 ›</div>
       </div>`;
   }).join("");
-  listEl.innerHTML = `
-    <div class="jt-bar">
-      <span class="jt-title">📋 みんなのタスク</span>
-      <span class="jt-spacer"></span>
-      <button class="nav-btn" id="jtMyselfBtn">${me?`👤 自分: ${escapeHtml(me)}`:'👤 自分: 未設定'}</button>
-      <button class="nav-btn primary" id="jtAddMine">＋ 自分のタスク</button>
-    </div>
-    <div class="jt-board">${cards}</div>`;
+  listEl.innerHTML = taskViewBarHtml_(me, mode) + `<div class="jt-board">${cards}</div>`;
+  wireBar();
   listEl.querySelectorAll('.jt-card').forEach(card=>{
     card.onclick = ()=> openStaffJimuTasks_(card.dataset.jimuStaff);
   });
-  const myBtn = listEl.querySelector('#jtMyselfBtn');
-  if(myBtn) myBtn.onclick = ()=>{ if(typeof openMyself==='function') openMyself(); };
-  const addMine = listEl.querySelector('#jtAddMine');
-  if(addMine) addMine.onclick = ()=>{
-    const who = me || (STAFF.includes(getMyself())?getMyself():"");
-    if(!who){ if(typeof openMyself==='function') openMyself(); return; }
-    openStaffJimuTasks_(who);
-  };
 }
 
 function sortTasks(list, mode){
