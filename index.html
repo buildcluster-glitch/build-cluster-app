@@ -2272,8 +2272,11 @@
   #inventoryView{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
   #inventoryView .inv-app{max-width:560px;margin:0 auto;min-height:calc(100vh - 60px);
     background:var(--inv-bg);padding-bottom:calc(96px + var(--inv-safe-bottom));position:relative;color:var(--inv-ink);font-size:15px;line-height:1.5}
+  /* 📌 ヘッダーバーは追従(sticky)。履歴が長い品目詳細で下までスクロールすると「←戻る」が画面外に消えて
+     戻れなくなる(最上報告 v1.30.463)。スクロール領域は #inventoryView なので sticky はその中で効く。 */
   #inventoryView .inv-bar{background:#0f172a;color:#fff;
-    padding:14px;display:flex;align-items:center;gap:10px;border-radius:0}
+    padding:14px;display:flex;align-items:center;gap:10px;border-radius:0;
+    position:sticky;top:0;z-index:30}
   #inventoryView .inv-bar .title{font-weight:700;font-size:17px;flex:1;min-width:0}
   #inventoryView .inv-bar .icon-btn{background:rgba(255,255,255,.1);color:#fff;
     width:36px;height:36px;border-radius:10px;display:grid;place-items:center;font-size:16px;position:relative;border:0;cursor:pointer}
@@ -2674,7 +2677,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.462</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.463</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -23868,12 +23871,25 @@ function renderDetail(){
 }
 
 // ---------- navigation ----------
+// 📱 スクロール領域は window ではなく #inventoryView(body が height:100vh+overflow:hidden・v1.30.141)。
+//    そのため従来の window.scrollTo(0,0) は無反応で、消費を記録した後などに深い位置に留まったまま
+//    画面が切り替わり、「←戻る」が画面外・スクロールしても元の位置に戻る状態になっていた(最上報告 v1.30.463)。
+function invScrollTop_(top, smooth){
+  const y = top || 0;
+  const sc = document.getElementById('inventoryView');
+  if(sc && sc.scrollHeight > sc.clientHeight + 1){
+    if(smooth && sc.scrollTo){ try{ sc.scrollTo({top:y, behavior:'smooth'}); return; }catch(_){} }
+    sc.scrollTop = y;
+    return;
+  }
+  try{ window.scrollTo({top:y, behavior: smooth?'smooth':'auto'}); }catch(_){ window.scrollTo(0, y); }
+}
 function showHome(){
   state.ui.view='home';
   $('#inv-view-home').classList.remove('inv-hidden');
   $('#inv-view-detail').classList.add('inv-hidden');
   $('#inv-view-report').classList.add('inv-hidden');
-  window.scrollTo(0,0);
+  invScrollTop_(0);
   renderAll();
 }
 function showDetail(id){
@@ -23882,7 +23898,7 @@ function showDetail(id){
   $('#inv-view-home').classList.add('inv-hidden');
   $('#inv-view-detail').classList.remove('inv-hidden');
   $('#inv-view-report').classList.add('inv-hidden');
-  window.scrollTo(0,0);
+  invScrollTop_(0);
   renderDetail();
 }
 function showReport(){
@@ -23895,7 +23911,7 @@ function showReport(){
   $('#inv-view-home').classList.add('inv-hidden');
   $('#inv-view-detail').classList.add('inv-hidden');
   $('#inv-view-report').classList.remove('inv-hidden');
-  window.scrollTo(0,0);
+  invScrollTop_(0);
   renderReport();
 }
 
@@ -25066,7 +25082,7 @@ function bindEvents(){
     if(e.target.closest('[data-goto-orders]')){
       state.ui.tab = 'orders';
       renderHomeTabs();
-      window.scrollTo(0,0);
+      invScrollTop_(0);
     }
   };
 
@@ -25075,7 +25091,7 @@ function bindEvents(){
     const b = e.target.closest('[data-alert]');
     if(!b) return;
     if(b.dataset.alert==='delayed'){
-      state.ui.tab='orders'; renderHomeTabs(); window.scrollTo(0,0); return;
+      state.ui.tab='orders'; renderHomeTabs(); invScrollTop_(0); return;
     }
     // 🔎 要発注(low)/在庫切れ(zero) → その品目だけに絞り込み(v1.30.145)
     state.ui.tab = 'list';
@@ -25085,7 +25101,7 @@ function bindEvents(){
     const si = $('#inv-search'); if(si) si.value = '';
     state.ui.stockFilter = b.dataset.alert;   // 'low' | 'zero'
     renderHomeTabs();
-    window.scrollTo({top: 200, behavior:'smooth'});
+    invScrollTop_(200, true);
   };
 
   // item card tap (and per-card edit button)
