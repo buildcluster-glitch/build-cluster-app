@@ -1618,6 +1618,12 @@
   .rep-card.wf-mi:hover   {background:#fbcfe8}
   .rep-card.wf-zumi:hover {background:#fef08a}
   .rep-card.wf-taiki:hover{background:#bfdbfe}
+  /* ✅ 完了案件は原状回復カードと同じ見た目に=グレースケール+物件名に取り消し線(v1.30.477・山田)。
+     行色(wf-*)より後に置いて上書き。ホバーで元の色に戻る=中身を確認したい時は読める */
+  .rep-card.rep-done{background:#f1f5f9;border-left-color:#16a34a;opacity:.6;filter:grayscale(.9)}
+  .rep-card.rep-done .rep-name{color:#94a3b8;text-decoration:line-through;text-decoration-thickness:1.5px}
+  .rep-card.rep-done .rep-room{color:#94a3b8}
+  .rep-card.rep-done:hover{opacity:1;filter:grayscale(0);background:#f8fafc}
   /* 1行目: No + 元請けタグ + 物件名 + 進行ピル を左に密集。右の余白は捨てる */
   .rep-row1{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
   /* 物件名+号室は省略せず全部表示(折り返し)v1.30.185 */
@@ -2699,7 +2705,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.476</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.477</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -19921,7 +19927,7 @@ function renderRepairCard(r, i){
     r.creatorMemo ? `\n📝 メモ: ${r.creatorMemo}` : "",
   ].filter(Boolean).join("\n");
   return `
-    <div class="rep-card ${wfBg}" data-id="${r.id}" title="${escapeHtml(cardTip)}">
+    <div class="rep-card ${wfBg}${(typeof isRepairDone_==='function' && isRepairDone_(r))?' rep-done':''}" data-id="${r.id}" title="${escapeHtml(cardTip)}">
       <div class="rep-row1">
         <span class="rep-no">${i+1}</span>
         ${tagShort?`<span class="rep-tag" style="background:${tagBg}">${escapeHtml(tagShort)}</span>`:""}
