@@ -2677,7 +2677,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.464</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.465</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -18827,16 +18827,54 @@ function saveCalReports_(m){ try{ localStorage.setItem(CAL_REPORTS_KEY, JSON.str
 //   対策: 共有に載せる版は安全予算(SHARE_MAX)内に収め、超える分は古い画像から落とす(=画像はローカル保持・hadPhoto印)。
 //   テキスト/コメント/ステータスは必ず共有される。v1.30.270
 const CAL_REPORTS_SHARE_MAX = 200000;   // v1.30.399: 45KB→200KB。共有設定はDrive方式で大容量OK(hatchusho_data 195KB実績)＝画像を剥がさず全端末に届く
+// 📷 複数枚添付(v1.30.465・最上要望): 1報告あたり最大 BR_PHOTO_MAX 枚を photos[] で保持。
+//   旧版の端末でも1枚目だけは見えるよう photo(単数)も必ず同時に書く(後方互換)。
+//   保存形式: photo=1枚目(旧版の端末はこれだけ読む=後方互換) / photosExtra=2枚目以降。
+//   ⚠1枚目を photos[] にも入れる二重持ちにすると共有サイズが倍になる(=載る枚数が半減する)のでしない。
+const BR_PHOTO_MAX = 4;
+function brPhotos_(r){
+  if(!r) return [];
+  const arr = [];
+  if(r.photo) arr.push(r.photo);
+  if(Array.isArray(r.photosExtra)) r.photosExtra.forEach(p=>arr.push(p));
+  else if(Array.isArray(r.photos)) r.photos.forEach(p=>{ if(p !== r.photo) arr.push(p); });   // 保険(初期形式)
+  return arr.filter(p=> typeof p==='string' && /^(data:image\/|https?:\/\/)/.test(p));
+}
+// 画像リストを報告オブジェクトに書き戻す(枚数印 photoCount も更新)
+function brSetPhotos_(obj, list){
+  const ph = (list||[]).filter(Boolean);
+  delete obj.photos;   // 初期形式は残さない
+  if(!ph.length){ delete obj.photo; delete obj.photosExtra; return obj; }
+  obj.photo = ph[0];
+  if(ph.length > 1) obj.photosExtra = ph.slice(1); else delete obj.photosExtra;
+  obj.photoCount = ph.length;
+  return obj;
+}
 function calReportsForShare_(map){
   const out = {};
-  Object.keys(map||{}).forEach(id=>{ if(map[id]) out[id] = Object.assign({}, map[id]); });
+  Object.keys(map||{}).forEach(id=>{
+    if(!map[id]) return;
+    const c = Object.assign({}, map[id]);
+    brSetPhotos_(c, brPhotos_(c));
+    out[id] = c;
+  });
   const sizeOf = ()=> JSON.stringify({reports: out}).length;
-  // 画像付きを新しい順に並べ、超過している間は古い方から photo を外す(hadPhoto印を残す)
-  const withPhoto = Object.keys(out).filter(id=> out[id] && out[id].photo)
-    .sort((a,b)=> String(out[a].at||'').localeCompare(String(out[b].at||'')));  // 古い→新しい
-  for(let i=0; i<withPhoto.length && sizeOf() > CAL_REPORTS_SHARE_MAX; i++){
-    const r = out[withPhoto[i]];
-    delete r.photo; r.hadPhoto = true;
+  // 予算を超えている間、「一番古い画像付き報告」から1枚ずつ落とす(最新の報告の画像を最後まで守る)。
+  //   まとめて全部落とすと予算が余るのに画像が消える→1枚単位で削って枠を使い切る。
+  //   photoCount は残すので他端末には「📷 他N枚（投稿した端末でのみ表示）」と出せる。
+  const oldestWithPhoto = ()=> Object.keys(out)
+    .filter(id=> out[id] && brPhotos_(out[id]).length)
+    .sort((a,b)=> String(out[a].at||'').localeCompare(String(out[b].at||'')))[0];
+  let guard = 0;
+  while(sizeOf() > CAL_REPORTS_SHARE_MAX && guard++ < 500){
+    const id = oldestWithPhoto();
+    if(!id) break;   // もう落とせる画像が無い(本文だけで超過)
+    const r = out[id], ph = brPhotos_(r);
+    ph.pop();        // 末尾(=後から足した枚)から削る
+    const before = r.photoCount;
+    brSetPhotos_(r, ph);
+    r.photoCount = before;                    // 元の枚数は残す(他端末に「他N枚」と出すため)
+    if(!ph.length) r.hadPhoto = true;
   }
   return out;
 }
@@ -18848,9 +18886,15 @@ function mergeCalReports_(a,b){
     const w = (String(y.updatedAt||'')>=String(x.updatedAt||'')) ? y : x;   // 新しい方を採用(LWW)
     const l = (w===y)?x:y;
     const r = Object.assign({}, w);
-    // 📷 画像は共有ストア(セル上限)に載らないため、どちらかが持っていれば必ず残す(取得で自分の画像を失わない)v1.30.270
-    if(!r.photo && (w.photo || l.photo)) r.photo = w.photo || l.photo;
-    if((w.hadPhoto || l.hadPhoto) && !r.photo) r.hadPhoto = true;
+    // 📷 画像は共有ストア(サイズ上限)で削られることがあるため、枚数の多い方を必ず残す
+    //    (取得で自分の端末の画像を失わない)v1.30.270 → 複数枚対応 v1.30.465
+    {
+      const wp = brPhotos_(w), lp = brPhotos_(l);
+      const keep = (lp.length > wp.length) ? lp : wp;
+      brSetPhotos_(r, keep);
+      r.photoCount = Math.max(keep.length, +w.photoCount||0, +l.photoCount||0) || undefined;
+      if((w.hadPhoto || l.hadPhoto) && !keep.length) r.hadPhoto = true;
+    }
     const ids=new Set((w.comments||[]).map(c=>c&&c.id).filter(Boolean));
     const extra=(l.comments||[]).filter(c=>c&&c.id&&!ids.has(c.id));   // 相手にしか無いコメントを救出
     if(extra.length) r.comments=(w.comments||[]).concat(extra).sort((p,q)=>String(p.at||'').localeCompare(String(q.at||'')));
@@ -19003,13 +19047,13 @@ function ensureBugReportModal_(){
           <textarea id="br-text" rows="2" placeholder="内容(例: ○○すると△△になる / ○○が欲しい)" style="flex:1;padding:6px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;resize:vertical"></textarea>
           <button class="btn primary" id="br-post" style="flex-shrink:0">投稿</button>
         </div>
-        <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
-          <input type="file" id="br-photo-file" accept="image/*" style="display:none">
+        <div style="display:flex;gap:8px;margin-bottom:4px;align-items:center;flex-wrap:wrap">
+          <input type="file" id="br-photo-file" accept="image/*" multiple style="display:none">
           <button class="btn" id="br-photo-btn" style="font-size:11px;padding:4px 10px">📷 画像添付</button>
-          <span style="font-size:10px;color:var(--muted)">スクショは Ctrl+V／ドロップでもOK（画像・文面とも全員に共有されます）</span>
-          <img id="br-photo-preview" style="display:none;max-height:56px;max-width:110px;border-radius:6px;border:1px solid var(--border);cursor:pointer" title="クリックで添付取消">
+          <span style="font-size:10px;color:var(--muted)">最大4枚・スクショは Ctrl+V／ドロップでもOK（画像・文面とも全員に共有されます）</span>
           <span id="br-photo-note" style="font-size:10px;color:#16a34a;font-weight:700"></span>
         </div>
+        <div id="br-photo-list" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
         <div id="br-list"></div>
       </div>
       <div class="modal-footer">
@@ -19022,50 +19066,79 @@ function ensureBugReportModal_(){
   ov.querySelector("#br-close").onclick = ()=> ov.classList.remove("show");
   const __brReshare = ov.querySelector("#br-reshare");
   if(__brReshare) __brReshare.onclick = ()=> reshareBugReports_(__brReshare);
-  // 📷 画像添付(v1.30.260): 既存のrestoCompressImageで約40KBに圧縮→共有JSONに載せて全員に見える
+  // 📷 画像添付(v1.30.260 / 複数枚化 v1.30.465・最上要望): 最大4枚。
+  //   元ファイルを持っておき、投稿時に「枚数に応じた目標サイズ」でまとめて圧縮する
+  //   (共有ストアの予算内に収めるため。1〜2枚=各60KB / 3枚=各46KB / 4枚=各35KB)
   const __brFile = ov.querySelector("#br-photo-file");
-  const __brPrev = ov.querySelector("#br-photo-preview");
   const __brNote = ov.querySelector("#br-photo-note");
-  const __brAttach = async (f)=>{
-    if(!f || !/^image\//.test(f.type||"")) return false;
-    __brNote.textContent = "圧縮中…";
-    try{
-      // 🐞バグ報告の画像は送信時にDriveへアップ→URL共有(v1.30.398)。読める画質に(幅1280/目標≈60KB)。Drive不可時のみデータURI保持
-      const dataUrl = await restoCompressImage(f, 60000, 1280);
-      __brPrev.src = dataUrl; __brPrev.style.display = ""; __brPrev.dataset.photo = dataUrl;
-      __brNote.textContent = "添付済(画像クリックで取消)";
-      return true;
-    }catch(e){ __brNote.textContent = "画像の読み込みに失敗"; return false; }
+  const __brThumbs = ov.querySelector("#br-photo-list");
+  const __brDraft = [];   // [{file, url}]
+  const __brRenderThumbs = ()=>{
+    __brThumbs.innerHTML = "";
+    __brDraft.forEach((d,i)=>{
+      const box = document.createElement("div");
+      box.style.cssText = "position:relative;line-height:0";
+      box.innerHTML = `<img src="${d.url}" style="height:56px;max-width:110px;object-fit:cover;border-radius:6px;border:1px solid var(--border)">
+        <button title="この画像を外す" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:1px solid var(--border);background:#fff;color:#dc2626;font-size:11px;font-weight:700;line-height:1;cursor:pointer;padding:0">✕</button>`;
+      box.querySelector("button").onclick = ()=>{
+        try{ URL.revokeObjectURL(d.url); }catch(_){}
+        __brDraft.splice(i,1); __brRenderThumbs();
+      };
+      __brThumbs.appendChild(box);
+    });
+    __brNote.textContent = __brDraft.length ? `添付 ${__brDraft.length}/${BR_PHOTO_MAX}枚` : "";
+  };
+  const __brAttach = async (files)=>{
+    const list = (files && files.length!=null) ? Array.from(files) : (files ? [files] : []);
+    const imgs = list.filter(f=> f && /^image\//.test(f.type||""));
+    if(!imgs.length) return false;
+    let skipped = 0;
+    imgs.forEach(f=>{
+      if(__brDraft.length >= BR_PHOTO_MAX){ skipped++; return; }
+      __brDraft.push({ file:f, url:URL.createObjectURL(f) });
+    });
+    __brRenderThumbs();
+    if(skipped) __brNote.textContent = `添付 ${__brDraft.length}/${BR_PHOTO_MAX}枚（上限のため${skipped}枚は未添付）`;
+    return true;
+  };
+  const __brClearPhoto = ()=>{
+    __brDraft.splice(0).forEach(d=>{ try{ URL.revokeObjectURL(d.url); }catch(_){} });
+    __brRenderThumbs();
+  };
+  // 投稿時に圧縮(枚数で目標サイズを調整)
+  const __brBuildPhotos = async ()=>{
+    if(!__brDraft.length) return [];
+    const target = __brDraft.length <= 2 ? 60000 : (__brDraft.length === 3 ? 46000 : 35000);
+    const outs = [];
+    for(const d of __brDraft){
+      try{ outs.push(await restoCompressImage(d.file, target, 1280)); }catch(_){}
+    }
+    return outs.filter(Boolean);
   };
   ov.querySelector("#br-photo-btn").onclick = ()=> __brFile.click();
   __brFile.onchange = async ()=>{
-    const f = __brFile.files && __brFile.files[0];
-    if(f) await __brAttach(f);
+    if(__brFile.files && __brFile.files.length) await __brAttach(__brFile.files);
     __brFile.value = "";
   };
   // 📋 Ctrl+V貼り付けで添付(v1.30.263・まどかがスクショ貼り付け→無反応だった対策)。モーダル内どこでもOK
+  //    複数枚を一度に貼っても全部拾う(v1.30.465)
   ov.addEventListener("paste", async (e)=>{
     const items = (e.clipboardData && e.clipboardData.items) || [];
+    const files = [];
     for(const it of items){
-      if(it.kind === "file" && /^image\//.test(it.type)){
-        e.preventDefault();
-        await __brAttach(it.getAsFile());
-        return;
-      }
+      if(it.kind === "file" && /^image\//.test(it.type)){ const f = it.getAsFile(); if(f) files.push(f); }
     }
+    if(files.length){ e.preventDefault(); await __brAttach(files); }
   });
-  // 🖱 ドラッグ&ドロップでも添付(v1.30.263)
+  // 🖱 ドラッグ&ドロップでも添付(v1.30.263・複数枚OK v1.30.465)
   ov.addEventListener("dragover", (e)=>{ if(e.dataTransfer && [...e.dataTransfer.types].includes("Files")){ e.preventDefault(); } });
   ov.addEventListener("drop", async (e)=>{
-    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-    if(f && /^image\//.test(f.type||"")){ e.preventDefault(); await __brAttach(f); }
+    const fs = e.dataTransfer && e.dataTransfer.files;
+    if(fs && fs.length){ e.preventDefault(); await __brAttach(fs); }
   });
-  const __brClearPhoto = ()=>{ __brPrev.style.display = "none"; __brPrev.removeAttribute("src"); delete __brPrev.dataset.photo; __brNote.textContent = ""; };
-  __brPrev.onclick = __brClearPhoto;
   ov.querySelector("#br-post").onclick = async ()=>{
     const text = ov.querySelector("#br-text").value.trim();
-    const photo = __brPrev.dataset.photo || null;
-    if(!text && !photo){ alert("内容を入力してください"); return; }
+    if(!text && !__brDraft.length){ alert("内容を入力してください"); return; }
     const ver = (document.querySelector(".app-title span")||{}).textContent || "";
     const btn = ov.querySelector("#br-post");
     const s = (typeof loadGasSettings==='function') ? loadGasSettings() : {};
@@ -19075,10 +19148,13 @@ function ensureBugReportModal_(){
     }
     // 📮 送信結果を必ず見せる(v1.30.464)。以前は投稿ボタンを押した瞬間に入力欄が消えるだけで、
     //    共有に失敗していても本人には成功に見えていた(=「スマホから報告しても反映されない」最上報告の主因)。
-    btn.disabled = true; btn.textContent = "共有中…";
+    btn.disabled = true; btn.textContent = __brDraft.length ? "画像を圧縮中…" : "共有中…";
     // 📷 画像は共有設定(calendar_reports)に直接載せて全端末へ(v1.30.399・上限200KBに拡大したので剥がれない)。Drive依存の30秒待ちは廃止。
-    const r = await mutateCalReport_(uid(), { type: ov.querySelector("#br-type").value, text, status:"open",
-      by: getMyself()||"", at: new Date().toISOString(), appVer: ver, comments: [], photo });
+    //    複数枚は photos[] に。旧版端末でも1枚目が見えるよう photo(単数)も同時に入れる(v1.30.465)
+    const photos = await __brBuildPhotos();
+    btn.textContent = "共有中…";
+    const r = await mutateCalReport_(uid(), brSetPhotos_({ type: ov.querySelector("#br-type").value, text, status:"open",
+      by: getMyself()||"", at: new Date().toISOString(), appVer: ver, comments: [] }, photos));
     btn.disabled = false; btn.textContent = "投稿";
     ov.querySelector("#br-text").value = "";
     __brClearPhoto();
@@ -19205,13 +19281,18 @@ function renderBugReportModal_(){
       ${(r.id===__brEditId)
         ? `<div style="margin-top:5px"><textarea class="br-edit-in" data-eid="${r.id}" rows="3" style="width:100%;box-sizing:border-box;font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;resize:vertical;min-height:60px;line-height:1.4">${escapeHtml(r.text||"")}</textarea><div style="display:flex;gap:6px;margin-top:4px"><button data-br-esave="${r.id}" class="btn primary" style="font-size:11px;padding:3px 12px">保存</button><button data-br-ecancel="${r.id}" class="btn" style="font-size:11px;padding:3px 12px">取消</button></div><div style="font-size:9px;color:var(--muted);margin-top:2px">Ctrl+Enterで保存 / Escで取消</div></div>`
         : `<div style="font-size:13px;margin-top:5px;white-space:pre-wrap;word-break:break-word">${escapeHtml(r.text||"")}${r.editedAt?` <span style="font-size:9px;color:var(--muted)">(編集済)</span>`:""}</div>`}
-      ${(r.photo && /^(data:image\/|https?:\/\/)/.test(r.photo))
-        ? `<img data-br-zoom="${r.id}" src="${escapeHtml(r.photo)}" style="margin-top:5px;max-height:130px;max-width:100%;border-radius:6px;border:1px solid var(--border);cursor:zoom-in" title="クリックで拡大">`
-        : (r.hadPhoto ? `<div style="margin-top:5px;font-size:10px;color:var(--muted)">📷 画像あり（サイズ上限のため投稿した端末でのみ表示）</div>` : "")}
+      ${(()=>{ // 📷 複数枚表示(v1.30.465)
+        const phs = brPhotos_(r);
+        if(!phs.length) return r.hadPhoto ? `<div style="margin-top:5px;font-size:10px;color:var(--muted)">📷 画像あり（サイズ上限のため投稿した端末でのみ表示）</div>` : "";
+        const missing = Math.max(0, (+r.photoCount||phs.length) - phs.length);
+        return `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">${phs.map((p,i)=>
+            `<img data-br-zoom="${r.id}" data-br-idx="${i}" src="${escapeHtml(p)}" style="max-height:130px;max-width:${phs.length>1?'48%':'100%'};border-radius:6px;border:1px solid var(--border);cursor:zoom-in" title="クリックで拡大">`).join("")}</div>`
+          + (missing ? `<div style="margin-top:3px;font-size:10px;color:var(--muted)">📷 他${missing}枚（サイズ上限のため投稿した端末でのみ表示）</div>` : "");
+      })()}
       ${cmts}
       <div style="display:flex;gap:6px;margin-top:5px">
         <button data-br-cmt="${r.id}" class="btn" style="font-size:10px;padding:2px 8px">💬 コメント${(r.comments||[]).length?` (${(r.comments||[]).length})`:""}</button>
-        ${(r.photo && /^(data:image\/|https?:\/\/)/.test(r.photo)) ? `<button data-br-copyimg="${r.id}" class="btn" style="font-size:10px;padding:2px 8px">📋 画像コピー</button>` : ""}
+        ${brPhotos_(r).map((p,i)=>`<button data-br-copyimg="${r.id}" data-br-idx="${i}" class="btn" style="font-size:10px;padding:2px 8px">📋 画像${brPhotos_(r).length>1?(i+1):""}コピー</button>`).join("")}
         ${(r.by===me||!r.by) && r.id!==__brEditId ? `<button data-br-edit="${r.id}" class="btn" style="font-size:10px;padding:2px 8px">✏️ 編集</button>` : ""}
         ${(r.by===me||!r.by) ? `<button data-br-del="${r.id}" class="btn" style="font-size:10px;padding:2px 8px;color:#dc2626">🗑 削除</button>` : ""}
       </div>
@@ -19240,11 +19321,12 @@ function renderBugReportModal_(){
   list.querySelectorAll("[data-br-copyimg]").forEach(b=>{
     b.onclick = async ()=>{
       const r = loadCalReports_()[b.dataset.brCopyimg];
-      if(!r || !r.photo){ return; }
+      const src = brPhotos_(r)[+b.dataset.brIdx || 0];
+      if(!src){ return; }
       const orig = b.textContent;
       b.disabled = true; b.textContent = "⏳ コピー中…";
       try{
-        await copyImageToClipboard_(r.photo);
+        await copyImageToClipboard_(src);
         b.textContent = "✓ コピーしました";
         if(typeof showAutoSyncToast==='function') showAutoSyncToast("📋 画像をクリップボードにコピーしました");
       }catch(e){
