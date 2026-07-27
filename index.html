@@ -2677,7 +2677,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.463</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.464</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -16950,20 +16950,32 @@ function swipeNavigate_(dir){
 }
 // 📱 時間グリッドの横フリック → 日送り。チップ上から始まるフリックは対象外(ドラッグ/長押し優先)
 //   #calGrid は touch-action:pan-y (スマホCSS) なので横ジェスチャはスクロールに食われずここに届く
+//   🤏 2本指(ピンチ拡大縮小)は日送りにしない(v1.30.464・鈴木報告「ズームすると1週間くらい前に遡る」)。
+//     2本目の指も pointerdown → 指を離す時の pointerup で横移動70px以上と判定され、週ビューなら-7日=1週間戻っていた。
 (function setupSwipeNav_(){
-  let sx=0, sy=0, st=0, active=false;
+  let sx=0, sy=0, st=0, active=false, pid=null;
+  const touching = new Set();   // 今画面に触れている指
   document.addEventListener('pointerdown', e=>{
+    if(e.pointerType === 'touch') touching.add(e.pointerId);
+    if(touching.size > 1){ active = false; pid = null; return; }   // 🤏 ピンチ開始→この一連のジェスチャは日送り対象外
     active = false;
     if(e.pointerType !== 'touch') return;
     if(!e.target.closest('#calGrid')) return;
     if(e.target.closest('.event, .month-event, .check-card')) return;
-    sx = e.clientX; sy = e.clientY; st = Date.now(); active = true;
+    sx = e.clientX; sy = e.clientY; st = Date.now(); active = true; pid = e.pointerId;
   }, true);
   document.addEventListener('pointerup', e=>{
-    if(!active) return; active = false;
+    const multi = touching.size > 1;   // 離す瞬間に2本以上触れている=ピンチの片手離し
+    if(e.pointerType === 'touch') touching.delete(e.pointerId);
+    if(!active || multi || (pid !== null && e.pointerId !== pid)) return;
+    active = false; pid = null;
     const dx = e.clientX - sx, dy = e.clientY - sy, dt = Date.now() - st;
     if(dt > 600 || Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy)*2) return;
     swipeNavigate_(dx < 0 ? 1 : -1);  // 左フリック=次へ
+  }, true);
+  document.addEventListener('pointercancel', e=>{
+    if(e.pointerType === 'touch') touching.delete(e.pointerId);
+    active = false; pid = null;
   }, true);
 })();
 // 💴 単価表(スマホ単価表 tanka ページ)をアプリ内モーダルで表示 v1.30.381
@@ -18870,13 +18882,22 @@ async function fetchCalReports_(opts={}){
     const merged = mergeCalReports_(remote, loadCalReports_());   // ⚠await中の投稿を消さないよう「今」のローカルでマージ(スナップショットlocalは使わない)
     saveCalReports_(merged);
     __brFetchState = "ok"; __brFetchErr = "";
+    // 📮 通信できた=このタイミングで未共有の報告を再送(v1.30.464)
+    if(!opts.__noRetry && calReportsPending_()) retryCalReportsPush_();
     updateBugReportBadge_();
     if(opts.render && document.getElementById("bugReportModal")?.classList.contains("show")) renderBugReportModal_();
     return merged;
   }catch(err){ __brFetchState="error"; __brFetchErr=err.message||String(err); if(!opts.silent) console.warn('[calendar_reports] fetch失敗:', err.message); updateBugReportBadge_(); if(opts.render && document.getElementById("bugReportModal")?.classList.contains("show")) renderBugReportModal_(); return local; }
 }
+// 📮 未共有マーカー(v1.30.464・最上報告「スマホから報告しても反映されない」)
+//   投稿は localStorage に即保存 → その後 async で共有push。スマホは投稿直後に画面を閉じる/アプリを切り替えるため
+//   pushが完走せず「自分の端末にしか無い報告」が残っていた(本人には見えるので気付けない)。
+//   → 投稿時に必ず未共有フラグを立て、pushが成功した時だけ消す。残っていれば起動時/復帰時/5分ごとに自動再送。
+const CAL_REPORTS_PENDING_KEY = "buildcluster_calendar_reports_pending";
+function calReportsPending_(){ try{ return localStorage.getItem(CAL_REPORTS_PENDING_KEY)==="1"; }catch(_){ return false; } }
+function setCalReportsPending_(v){ try{ v ? localStorage.setItem(CAL_REPORTS_PENDING_KEY,"1") : localStorage.removeItem(CAL_REPORTS_PENDING_KEY); }catch(_){} }
 async function pushCalReports_(){
-  const s = loadGasSettings(); if(!s.url || !s.token) return;
+  const s = loadGasSettings(); if(!s.url || !s.token) return {ok:false, reason:"nosync"};
   // 最新remote→マージ→push(他人の投稿を消さない)
   let map = loadCalReports_();
   try{
@@ -18893,9 +18914,20 @@ async function pushCalReports_(){
   saveCalReports_(map);
   try{
     const share = calReportsForShare_(map);   // 📷 画像はセル上限内に収める(超過分はローカル保持)v1.30.270
-    await fetch(s.url, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+    const res = await fetch(s.url, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
       body: JSON.stringify({ action:'save-shared-config', key:'calendar_reports', value: JSON.stringify({reports:share, updatedAt:new Date().toISOString()}), token: s.token, savedBy:'calendar-app' }) });
-  }catch(e){ console.warn('[calendar_reports] push失敗:', e.message); if(typeof showAutoSyncToast==='function') showAutoSyncToast('⚠ 報告の共有保存に失敗(この端末には保存済)'); }
+    // ⚠ 以前は fetch の例外しか見ておらず、サーバーが保存を拒否しても「送れたつもり」になっていた(v1.30.464)
+    let ok = !!(res && res.ok), srvMsg = "";
+    try{ const d = await res.json(); if(d){ if(d.ok===false) ok=false; if(d.error){ srvMsg=String(d.error); ok=false; } } }catch(_){}
+    if(!ok) throw new Error(srvMsg || ('サーバーが保存しませんでした(HTTP '+(res?res.status:'?')+')'));
+    setCalReportsPending_(false);   // ✅ ここで初めて「共有済み」
+    return {ok:true};
+  }catch(e){
+    setCalReportsPending_(true);    // 📮 未共有のまま残す→起動時/復帰時/5分ごとに自動再送
+    console.warn('[calendar_reports] push失敗:', e.message);
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast('⚠ 報告の共有保存に失敗(この端末には保存済・後で自動再送します)');
+    return {ok:false, reason:"error", message:e.message||String(e)};
+  }
 }
 // 🔄 手動再共有(スマホにPCの内容が出ない時の修復＋診断) v1.30.287
 //   最新remote取得→ローカルとマージ→軽量版(画像除去・サイズ制限)を保存→サーバー応答を確認→再取得。
@@ -18931,9 +18963,24 @@ function mutateCalReport_(id, patch){
   const cur = map[id] || {};
   map[id] = Object.assign({}, cur, patch, { id, updatedAt:new Date().toISOString() });
   saveCalReports_(map);
+  setCalReportsPending_(true);   // 📮 pushが成功するまでは「未共有」(途中でアプリを閉じても次回自動再送)v1.30.464
   updateBugReportBadge_();
   renderBugReportModal_();
-  pushCalReports_().catch(()=>{});
+  return pushCalReports_().catch(e=>({ok:false, reason:"error", message:e&&e.message}));
+}
+// 📮 未共有の報告が残っていたら再送(起動時/タブ復帰時/5分ごとの取得後に呼ばれる)v1.30.464
+function retryCalReportsPush_(){
+  if(!calReportsPending_()) return Promise.resolve({ok:true, reason:"nothing"});
+  const s = (typeof loadGasSettings==='function') ? loadGasSettings() : {};
+  if(!s.url || !s.token) return Promise.resolve({ok:false, reason:"nosync"});
+  return pushCalReports_().then(r=>{
+    if(r && r.ok){
+      console.log('[calendar_reports] 未共有だった報告を再送しました');
+      if(typeof showAutoSyncToast==='function') showAutoSyncToast('📮 未共有だった🐞報告を全員に送信しました');
+      if(document.getElementById("bugReportModal")?.classList.contains("show")) renderBugReportModal_();
+    }
+    return r;
+  }).catch(e=>({ok:false, reason:"error", message:e&&e.message}));
 }
 const CAL_REPORT_STATUS = [
   {key:"open", label:"🔴 未対応", bg:"#fee2e2", fg:"#991b1b"},
@@ -19015,16 +19062,32 @@ function ensureBugReportModal_(){
   });
   const __brClearPhoto = ()=>{ __brPrev.style.display = "none"; __brPrev.removeAttribute("src"); delete __brPrev.dataset.photo; __brNote.textContent = ""; };
   __brPrev.onclick = __brClearPhoto;
-  ov.querySelector("#br-post").onclick = ()=>{
+  ov.querySelector("#br-post").onclick = async ()=>{
     const text = ov.querySelector("#br-text").value.trim();
     const photo = __brPrev.dataset.photo || null;
     if(!text && !photo){ alert("内容を入力してください"); return; }
     const ver = (document.querySelector(".app-title span")||{}).textContent || "";
+    const btn = ov.querySelector("#br-post");
+    const s = (typeof loadGasSettings==='function') ? loadGasSettings() : {};
+    if(!s.url || !s.token){
+      alert("⚠ この端末はクラウド同期が未設定です。\n投稿はこの端末にしか保存されず、他の人には見えません。\n⚙設定で同期URL/Tokenを入れてから投稿してください。");
+      return;
+    }
+    // 📮 送信結果を必ず見せる(v1.30.464)。以前は投稿ボタンを押した瞬間に入力欄が消えるだけで、
+    //    共有に失敗していても本人には成功に見えていた(=「スマホから報告しても反映されない」最上報告の主因)。
+    btn.disabled = true; btn.textContent = "共有中…";
     // 📷 画像は共有設定(calendar_reports)に直接載せて全端末へ(v1.30.399・上限200KBに拡大したので剥がれない)。Drive依存の30秒待ちは廃止。
-    mutateCalReport_(uid(), { type: ov.querySelector("#br-type").value, text, status:"open",
+    const r = await mutateCalReport_(uid(), { type: ov.querySelector("#br-type").value, text, status:"open",
       by: getMyself()||"", at: new Date().toISOString(), appVer: ver, comments: [], photo });
+    btn.disabled = false; btn.textContent = "投稿";
     ov.querySelector("#br-text").value = "";
     __brClearPhoto();
+    renderBugReportModal_();
+    if(r && r.ok){
+      if(typeof showAutoSyncToast==='function') showAutoSyncToast("✅ 報告を全員に共有しました");
+    }else{
+      alert("⚠ 投稿はこの端末に保存しましたが、全員への共有に失敗しました。\n電波の良い所で🐞を開き直すと自動で再送します（🔄再共有でも送れます）。\n\n" + ((r&&r.message)||""));
+    }
   };
 }
 function openBugReportModal_(){
@@ -19081,6 +19144,31 @@ async function copyImageToClipboard_(src){
 }
 function renderBugReportModal_(){
   const list = document.getElementById("br-list"); if(!list) return;
+  // 📮 未共有バナー(v1.30.464): 「投稿したのに他の人に見えない」状態を本人に見えるようにする
+  {
+    const host = document.getElementById("br-list").parentElement;
+    let bn = document.getElementById("br-pending-banner");
+    if(calReportsPending_()){
+      if(!bn){
+        bn = document.createElement("div");
+        bn.id = "br-pending-banner";
+        bn.style.cssText = "background:#fef3c7;border:1px solid #f59e0b;color:#92400e;font-size:12px;font-weight:700;padding:6px 10px;border-radius:8px;margin-bottom:8px;display:flex;gap:8px;align-items:center";
+        bn.innerHTML = `<span>📮 まだ全員に共有できていない報告があります（この端末にのみ保存）</span><button class="btn" id="br-pending-retry" style="font-size:11px;padding:2px 10px;margin-left:auto">今すぐ送信</button>`;
+        host.insertBefore(bn, list);
+        bn.querySelector("#br-pending-retry").onclick = async (e)=>{
+          const b = e.target; b.disabled = true; b.textContent = "送信中…";
+          const r = await retryCalReportsPush_();
+          b.disabled = false; b.textContent = "今すぐ送信";
+          if(!(r && r.ok)){
+            alert(r && r.reason==="nosync"
+              ? "⚠ この端末はクラウド同期が未設定です。⚙設定で同期URL/Tokenを入れてください。"
+              : "⚠ まだ送信できません（通信状況をご確認ください）。\n" + ((r&&r.message)||""));
+          }
+          renderBugReportModal_();
+        };
+      }
+    }else if(bn){ bn.remove(); }
+  }
   const items = Object.values(loadCalReports_()).filter(r=>r && !r.deleted)
     .sort((a,b)=>String(b.at||'').localeCompare(String(a.at||'')));
   if(!items.length){
@@ -23000,6 +23088,11 @@ setTimeout(()=>{
       if(typeof fetchCalReports_==='function'){
         fetchCalReports_({silent:true}).catch(()=>{});
         setInterval(()=>fetchCalReports_({silent:true, render:true}).catch(()=>{}), 5*60*1000);
+        // 📮 未共有の報告(スマホで投稿直後にアプリを閉じた等)を復帰時にも再送 v1.30.464
+        document.addEventListener("visibilitychange", ()=>{
+          if(document.visibilityState==="visible" && typeof retryCalReportsPush_==='function') retryCalReportsPush_();
+        });
+        window.addEventListener("online", ()=>{ if(typeof retryCalReportsPush_==='function') retryCalReportsPush_(); });
       }
       // 🌤 天気予報(降水確率・仙台既定)=起動時+2時間ごとに取得→日付ヘッダーに反映 v1.30.272
       if(typeof refreshWeather_==='function'){
