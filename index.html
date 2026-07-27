@@ -2689,7 +2689,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.470</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.471</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -4208,6 +4208,10 @@
       <div class="field">
         <label>対象スタッフ *</label>
         <select id="lv-staff"></select>
+        <!-- 👥 全員ぶんまとめて登録(v1.30.471): 日祝の自動休みを廃止したので、会社全体の休みを1回で入れられるように -->
+        <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-weight:600;font-size:12px;color:var(--text)">
+          <input type="checkbox" id="lv-allstaff" style="width:16px;height:16px">👥 全員ぶん登録（日祝・会社の休みはこれで一括）
+        </label>
       </div>
       <div class="field-row">
         <div class="field">
@@ -4222,7 +4226,7 @@
       <div class="field">
         <label>種別</label>
         <select id="lv-type">
-          <option value="会社休日">所定休日 (会社の休み・X/8カウント)</option>
+          <option value="会社休日">所定休日 (会社の休み・日祝もこれ／月の休みにカウント)</option>
           <option value="所定(AM)">午前休・所定 (0.5日)</option>
           <option value="所定(PM)">午後休・所定 (0.5日)</option>
           <option value="有給(AM)">午前休・有給 (0.5日)</option>
@@ -12655,7 +12659,6 @@ function monthlyLeaveStats_(d){
   const HALF_SHOTEI = new Set(["所定(AM)","所定(PM)"]);          // 所定の半休→所定休日(base)に0.5(有給を消費しない)v1.30.356
   const NONREST = new Set(["当番","出張","研修","出社"]);   // 「休みではない」種別(出社=日祝に出勤)
   const lastDay = new Date(year,month,0).getDate();
-  const isNichiShuku_ = (ds)=>{ const dt=parseDate(ds); return !!(dt && !isNaN(dt) && (dt.getDay()===0 || (typeof isHoliday==='function' && isHoliday(dt)))); };
   const perStaff = (s)=>{
     if(s === "山田裕貴") return null;   // 社長(山田)は休みカウント対象外(従来仕様)
     let base = 0, nenkyu = 0, yukyu = 0, hankyu = 0;
@@ -12674,7 +12677,8 @@ function monthlyLeaveStats_(d){
         else base += 1;                                       // 会社休日/振休/別件/体調不良/休暇 等=所定休日扱い
         continue;
       }
-      if(isNichiShuku_(ds)) base += 1;                        // 日祝は自動で全員休み(所定)
+      // 🚫 日祝の自動休みは廃止(v1.30.471・山田)。日祝も普通の休みと同じく「所定休日」を手動で入れる。
+      //    自動で埋めると「入れたつもりが実は自動」で実績が曖昧になるため、レコードのある日だけ数える。
     }
     const taken = (base+nenkyu+yukyu+hankyu) > 0;
     const extraDays = nenkyu + yukyu + hankyu;   // 所定休以外(年休/有給/半休)の合計日数
@@ -12848,24 +12852,12 @@ function renderLeaveBand(){
     l.type !== "当番" && l.type !== "出社" && todayStr >= l.start && todayStr <= l.end
   );
   const offStaff = new Set(todayOff.map(l => l.staff));
-  // 📅 日祝(日曜/祝日)は基本全員休み。出勤扱い(出社/当番/出張/研修)のレコードがある人だけ在席、
-  //    残りは出社メンバー以外=全員自動で休日扱い(v1.30.266)
-  const __ld = (typeof parseDate==='function') ? parseDate(todayStr) : new Date(todayStr);
-  const isNichiShuku = !!(__ld && !isNaN(__ld) && (__ld.getDay()===0 || (typeof isHoliday==='function' && isHoliday(__ld))));
-  const workStaff = new Set(
-    state.leaves.filter(l => (l.type==="出社"||l.type==="当番"||l.type==="出張"||l.type==="研修")
-      && todayStr>=l.start && todayStr<=l.end).map(l=>l.staff)
-  );
-  // 在席 = STAFF にいて今日休みじゃない人。日祝は「出勤レコードのある人」だけ。
-  let present = isNichiShuku
-    ? STAFF.filter(s => workStaff.has(s))
-    : STAFF.filter(s => !offStaff.has(s));
-  // 日祝で明示レコードも出勤レコードも無い人 → 自動休日として「日祝」チップで休暇スタッフに表示
-  const autoOff = isNichiShuku
-    ? STAFF.filter(s => !workStaff.has(s) && !offStaff.has(s))
-        .map(s => ({ id:`auto-nichishuku-${s}`, staff:s, type:"日祝", start:todayStr, end:todayStr, __auto:true }))
-    : [];
-  let todayOffAll = todayOff.concat(autoOff);
+  // 🚫 日祝の自動休み扱いは廃止(v1.30.471・山田「普通の休みみたいに所定休日を手動で入れたい」)。
+  //    旧(v1.30.266)は日曜/祝日を全員自動で休みにし、出勤レコードのある人だけ在席にしていた。
+  //    今は日祝でも平日と同じ=休みレコードのある人だけが休み。日祝に休むなら「所定休日」を入れる。
+  // 在席 = STAFF にいて今日休みじゃない人
+  let present = STAFF.filter(s => !offStaff.has(s));
+  let todayOffAll = todayOff.slice();
   // 👤 ログインユーザーを先頭に(出社・休暇スタッフ両方)v1.30.288
   const __me = (typeof getMyself==='function') ? getMyself() : "";
   if(__me){
@@ -12913,7 +12905,7 @@ function renderLeaveBand(){
   const fracBadge_ = (s, cls)=>{
     const st = __mls && __mls.perStaff(s);
     if(!st) return "";   // 山田(集計対象外)や集計不可は非表示
-    return `<span class="${cls}${st.taken?' taken':''}" title="${escapeHtml(st.tipLine)} (日祝/会社休日/振休=所定。当番/出張/研修/出社は休みに数えない)">${st.fracShort}</span>`;
+    return `<span class="${cls}${st.taken?' taken':''}" title="${escapeHtml(st.tipLine)} (所定休日/振休=所定。当番/出張/研修/出社は休みに数えない。日祝も自動では数えないので休むなら所定休日を登録)">${st.fracShort}</span>`;
   };
   // その人の今日の事務タスク進捗(全チェックリストイベント合算)
   const staffTaskProgress_ = (staff)=>{
@@ -16762,6 +16754,9 @@ function openLeaveModal(lv, defaults){
     defStart = fmtDate(mon);
     defEnd = fmtDate(addDays(mon, 6));
   }
+  // 👥 全員ぶん: 新規登録の時だけ出す(既存の編集では出さない)v1.30.471
+  const __lvAll = document.getElementById("lv-allstaff");
+  if(__lvAll){ __lvAll.checked = false; if(__lvAll.parentElement) __lvAll.parentElement.style.display = lv ? "none" : "flex"; }
   document.getElementById("lv-start").value = lv?.start || defStart;
   document.getElementById("lv-end").value   = lv?.end   || defEnd;
   document.getElementById("lv-type").value  = lv?.type  || defaults?.type || "会社休日"; // 既定=所定休日(X/8カウント)
@@ -16790,14 +16785,28 @@ document.getElementById("lv-save").onclick = ()=>{
   if(!start || !end){ alert("開始日・終了日を入力してください"); return; }
   if(end<start){ alert("終了日は開始日以降にしてください"); return; }
   pushHistory();
-  const data = {
-    id: editingLeaveId || uid(),
-    staff: document.getElementById("lv-staff").value,
-    start, end,
-    type: document.getElementById("lv-type").value,
-    memo: document.getElementById("lv-memo").value,
-    updatedAt: new Date().toISOString(),
-  };
+  const type = document.getElementById("lv-type").value;
+  const memo = document.getElementById("lv-memo").value;
+  const allChk = document.getElementById("lv-allstaff");
+  const allStaff = !editingLeaveId && allChk && allChk.checked;   // 👥 全員ぶん(新規登録時のみ)v1.30.471
+  const mk = (staff)=>({ id: uid(), staff, start, end, type, memo, updatedAt: new Date().toISOString() });
+  if(allStaff){
+    // 同じ人・同じ期間・同じ種別が既にあればスキップ(押し直しで二重にならない)
+    const added = [];
+    STAFF.forEach(s=>{
+      const dup = (state.leaves||[]).some(l=> l.staff===s && l.type===type && l.start===start && l.end===end);
+      if(dup) return;
+      const rec = mk(s);
+      state.leaves.push(rec); added.push(rec);
+    });
+    saveState(); closeLeaveModal(); render();
+    added.forEach(rec=> setLeaveOverlay_(rec).catch(()=>{}));   // 🌴 全端末共有
+    scheduleAttendancePush();
+    scheduleAvailabilityPush();
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast(`🌴 ${added.length}名ぶん登録しました${added.length<STAFF.length?`（${STAFF.length-added.length}名は登録済）`:''}`);
+    return;
+  }
+  const data = Object.assign(mk(document.getElementById("lv-staff").value), { id: editingLeaveId || uid() });
   if(editingLeaveId){
     state.leaves = state.leaves.map(l=>l.id===editingLeaveId?data:l);
   }else{
