@@ -2713,7 +2713,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.482</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.483</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -17640,12 +17640,14 @@ function renderYearStats(year){
     {key:"半休",     color:""},
   ];
   const NENKYU_MANDATORY = 5; // 年休取得義務
+  // 👤 山田(社長)は休みカウント対象外=表からも除外(v1.30.483・山田)。月次のfracバッジ側は従来から除外済
+  const YS_STAFF = STAFF.filter(s=>s!=="山田裕貴");
   let html = `<table class="ys-table"><thead><tr><th class="ys-staff" rowspan="2">月</th>`;
-  STAFF.forEach(s=>{
+  YS_STAFF.forEach(s=>{
     html += `<th colspan="${CATS.length}" style="background:${STAFF_COLORS[s]};color:${textColorFor(STAFF_COLORS[s])}">${s}</th>`;
   });
   html += `</tr><tr>`;
-  STAFF.forEach(()=>{
+  YS_STAFF.forEach(()=>{
     CATS.forEach(c=>{
       const bg = c.color ? `style="background:${c.color}"` : '';
       const title = c.key === '年休' ? 'title="5日取得義務分"' : '';
@@ -17657,13 +17659,13 @@ function renderYearStats(year){
 
   // 月ごとの行
   const totals = {}; // {staff: {category: sum}}
-  STAFF.forEach(s=>{ totals[s]={}; CATS.forEach(c=>{totals[s][c.key]=0;}); });
+  YS_STAFF.forEach(s=>{ totals[s]={}; CATS.forEach(c=>{totals[s][c.key]=0;}); });
 
   months.forEach(m=>{
     // 会社設定休日(参照値)
     const refHoliday = COMPANY_HOLIDAYS[m] || 0;
     html += `<tr><td class="ys-month-label">${m}月<br><span style="font-size:9px;color:var(--muted);font-weight:400">休日${refHoliday}</span></td>`;
-    STAFF.forEach(s=>{
+    YS_STAFF.forEach(s=>{
       CATS.forEach(c=>{
         const v = countLeaveDays(s, year, m, c.key);
         totals[s][c.key] += v;
@@ -17677,7 +17679,7 @@ function renderYearStats(year){
   // 合計行(月ごとの「休日N」と同じ流儀で年間合計も出す・v1.30.481 山田「合計が表示されていない」)
   const __refTotalHol = Object.values(COMPANY_HOLIDAYS).reduce((a,b)=>a+b,0);
   html += `<tr class="ys-sum-row"><td class="ys-month-label">合計<br><span style="font-size:9px;color:#92400e;font-weight:700">休日${__refTotalHol}</span></td>`;
-  STAFF.forEach(s=>{
+  YS_STAFF.forEach(s=>{
     CATS.forEach(c=>{
       const v = totals[s][c.key];
       const bg = c.color && v>0 ? `style="background:${c.color}"` : '';
@@ -17688,7 +17690,7 @@ function renderYearStats(year){
 
   // 🌟 年休5日義務 進捗バー (BC policy)
   html += `<tr class="ys-nenkyu-progress-row" style="background:#fef9c3"><td class="ys-month-label" style="font-weight:700;color:#92400e">年休5日義務</td>`;
-  STAFF.forEach(s=>{
+  YS_STAFF.forEach(s=>{
     const nenkyu = totals[s]["年休"];
     const pct = Math.min(100, (nenkyu / NENKYU_MANDATORY) * 100);
     const achieved = nenkyu >= NENKYU_MANDATORY;
@@ -17707,7 +17709,7 @@ function renderYearStats(year){
 
   // 年間付与日数(編集可)
   html += `<tr class="ys-quota-row"><td class="ys-month-label">年間付与</td>`;
-  STAFF.forEach(s=>{
+  YS_STAFF.forEach(s=>{
     html += `<td colspan="${CATS.length}"><input class="ys-quota-input" data-staff="${s}" type="number" min="0" value="${STAFF_QUOTA[s]||0}">日</td>`;
   });
   html += `</tr>`;
@@ -17715,7 +17717,7 @@ function renderYearStats(year){
   // 残日数 = 付与 - (年休 + 有給 + 半休)
   // BC policy: 年休も付与から差し引き (5日義務分も有給扱い)
   html += `<tr class="ys-remain-row"><td class="ys-month-label">残日数</td>`;
-  STAFF.forEach(s=>{
+  YS_STAFF.forEach(s=>{
     const quota = STAFF_QUOTA[s]||0;
     const used = totals[s]["年休"] + totals[s]["有給"] + totals[s]["半休"];
     const remain = quota - used;
@@ -17726,7 +17728,7 @@ function renderYearStats(year){
 
   // 合計休日数 (会社休日 + 年休 + 有給 + 半休)
   html += `<tr class="ys-sum-row"><td class="ys-month-label">合計休日数</td>`;
-  STAFF.forEach(s=>{
+  YS_STAFF.forEach(s=>{
     const sum = totals[s]["会社休日"] + totals[s]["年休"] + totals[s]["有給"] + totals[s]["半休"];
     html += `<td colspan="${CATS.length}">${sum.toFixed(1).replace(/\.0$/,"")}日</td>`;
   });
