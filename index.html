@@ -62,6 +62,9 @@
     line-height:13px;box-sizing:border-box;pointer-events:none;
   }
   #cloudSyncBadge.hidden{display:none}
+  /* ☁同期がOFF/未設定の端末は赤で「OFF」を常時表示(v1.30.484・山田「スマホで入れた予定がPCに来ない」)。
+     この状態だと予定は端末内にしか残らないので、ひと目で気づけるようにする */
+  #cloudSyncBadge.off{background:#dc2626;font-size:8px;padding:0 3px;min-width:auto}
   header.app-header::-webkit-scrollbar{height:4px}
   header.app-header::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:2px}
   .app-title{font-weight:700;font-size:15px;margin-right:6px;white-space:nowrap;flex-shrink:0}
@@ -2713,7 +2716,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.483</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.484</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -3991,6 +3994,8 @@
     <div class="modal-footer">
       <button class="btn" id="cs-test">🔌 接続テスト</button>
       <button class="btn" id="cs-pull-now" title="サーバーから全データ取得">⬇ 今すぐ取得</button>
+      <!-- 🔁 同期OFFのまま作った予定はキューに乗っていない=ONにしても送られない。手動で送り直す口(v1.30.484) -->
+      <button class="btn" id="cs-push-all" title="この端末にある予定を全部クラウドへ送り直す（同期OFFのまま作った予定の救済）">🔁 この端末の予定を再送信</button>
       <span style="flex:1"></span>
       <button class="btn" id="cs-cancel">キャンセル</button>
       <button class="btn primary" id="cs-save">保存</button>
@@ -18297,7 +18302,15 @@ function updateCloudSyncBadge(){
   const n = (state.cloudPending||[]).length;
   const badge = document.getElementById('cloudSyncBadge');
   if(!badge) return;
-  if(n>0){ badge.textContent = n; badge.classList.remove('hidden'); }
+  // ⚠ 同期OFF/未設定 = 予定がこの端末にしか残らない → 赤「OFF」を常時表示(v1.30.484)
+  const off = !cloudSync.url || !cloudSync.autoSync;
+  badge.classList.toggle('off', off && n===0);
+  if(off && n===0){
+    badge.textContent = 'OFF'; badge.classList.remove('hidden');
+    const btn = document.getElementById('cloudSyncBtn');
+    if(btn) btn.title = '⚠ クラウド同期がOFF/未設定です。この端末で作った予定は他の端末に反映されません（⚙設定でURL/自動同期を確認）';
+  }
+  else if(n>0){ badge.textContent = n; badge.classList.remove('hidden'); }
   else { badge.classList.add('hidden'); }
   // 設定モーダル開いてれば反映
   const pInfo = document.getElementById('cs-pending');
@@ -18507,6 +18520,27 @@ document.getElementById('cs-test').onclick = async ()=>{
     alert('接続失敗: ' + err.message);
   } finally {
     cloudSync.url = prev;
+  }
+};
+// 🔁 この端末の予定を全部クラウドへ送り直す(v1.30.484・山田「スマホで入れた予定がPCに来ない」)
+//   同期OFF/未設定のまま作った予定は cloudPending に乗らないため、後からONにしても永久に送られない。
+//   仮想予定(立会/事前などsource付き・_readOnly)と、削除済み(tombstone)は対象外。
+document.getElementById('cs-push-all').onclick = async ()=>{
+  if(!cloudSync.url){ alert('先に同期URLを保存してください'); return; }
+  const del = (typeof loadEventDeletions_==='function') ? loadEventDeletions_() : {};
+  const targets = (state.events||[]).filter(e=> e && e.id && !e._readOnly && !e.source && !del[e.id]);
+  if(!targets.length){ alert('送信対象の予定がありません'); return; }
+  if(!confirm(`この端末にある予定 ${targets.length}件 をクラウドへ送り直します。\n\n・他の端末にも同じ予定が反映されます\n・同じ予定が既にサーバーにある場合は上書き(同じid)されます\n\n続行しますか？`)) return;
+  targets.forEach(e=>{ try{ queueCloudOp('upsertEvent', denormalizeEventForCloud_(e)); }catch(_){} });
+  try{
+    setCloudSyncIcon('syncing');
+    await cloudSyncFullSilent();
+    setCloudSyncIcon('ok');
+    alert(`${targets.length}件を送信しました。他の端末で☁を押すと反映されます。`);
+    openCloudSyncModal();
+  }catch(err){
+    setCloudSyncIcon('err');
+    alert('送信に失敗しました: ' + err.message + '\n\n未送信として残っているので、電波の良い所で☁を押すと再送されます。');
   }
 };
 document.getElementById('cs-pull-now').onclick = async ()=>{
@@ -18811,7 +18845,19 @@ document.addEventListener('visibilitychange', ()=>{
 function cloudQueueEventChange(ev, mode){
   // 🗑 削除は全端末伝播のため tombstone を立てる(cloudSync未設定でもDrive GAS側に記録) v1.30.66
   if(mode === 'delete' && ev && ev.id && typeof addEventDeletion_==='function'){ try{ addEventDeletion_(ev.id); }catch(_){} }
-  if(!cloudSync.url || !cloudSync.autoSync) return;
+  // ⚠ 同期OFF/未設定のまま予定を作ると、その端末にしか残らない=他の端末には一生出ない。
+  //    黙って捨てずに警告する(10分に1回まで)v1.30.484・山田「スマホで入れた8月の予定がPCに来ていない」
+  if(!cloudSync.url || !cloudSync.autoSync){
+    try{
+      const last = +(localStorage.getItem('bc_cloudoff_warned_at')||0);
+      if(Date.now() - last > 10*60*1000){
+        localStorage.setItem('bc_cloudoff_warned_at', String(Date.now()));
+        if(typeof showAutoSyncToast==='function') showAutoSyncToast('⚠ この端末はクラウド同期OFF：予定が他の端末に反映されません（⚙設定を確認）');
+      }
+    }catch(_){}
+    updateCloudSyncBadge();
+    return;
+  }
   if(mode === 'delete'){
     queueCloudOp('deleteEvent', { id: ev.id });
   } else {
