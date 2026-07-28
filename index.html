@@ -2716,7 +2716,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.485</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.486</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -3994,8 +3994,6 @@
     <div class="modal-footer">
       <button class="btn" id="cs-test">🔌 接続テスト</button>
       <button class="btn" id="cs-pull-now" title="サーバーから全データ取得">⬇ 今すぐ取得</button>
-      <!-- 🔁 同期OFFのまま作った予定はキューに乗っていない=ONにしても送られない。手動で送り直す口(v1.30.484) -->
-      <button class="btn" id="cs-push-all" title="この端末にある予定を全部クラウドへ送り直す（同期OFFのまま作った予定の救済）">🔁 この端末の予定を再送信</button>
       <span style="flex:1"></span>
       <button class="btn" id="cs-cancel">キャンセル</button>
       <button class="btn primary" id="cs-save">保存</button>
@@ -4057,9 +4055,12 @@
         </div>
         <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
           <button class="btn" id="all-cs-pull-replace" style="background:#3b82f6;color:#fff;font-weight:700;padding:6px 12px;font-size:12px">📥 強制PULL(ローカル置換)</button>
+          <!-- 🔁 この端末にしか無い予定を送る(v1.30.486・山田「スマホで入れた予定がPCに来ない」) -->
+          <button class="btn" id="all-cs-push-missing" style="background:#16a34a;color:#fff;font-weight:700;padding:6px 12px;font-size:12px" title="サーバーに無い/古い予定だけを送ります。他端末の新しい予定は上書きしません">🔁 未送信の予定を送る</button>
         </div>
         <div style="font-size:10px;color:var(--muted);margin-top:4px">
           📥PULL: サーバー値でローカルを完全置換(他端末からの全件取り込み)<br>
+          🔁未送信: サーバーと突き合わせて<b>この端末にしか無い予定・この端末の方が新しい予定だけ</b>を送信(同期OFFのまま作った予定の救済)<br>
           ※「全件強制PUSH」は他端末の予定を一括上書きする危険があるため廃止しました(v1.30.1)。通常の自動同期で十分です
         </div>
       </fieldset>
@@ -18524,27 +18525,6 @@ document.getElementById('cs-test').onclick = async ()=>{
     cloudSync.url = prev;
   }
 };
-// 🔁 この端末の予定を全部クラウドへ送り直す(v1.30.484・山田「スマホで入れた予定がPCに来ない」)
-//   同期OFF/未設定のまま作った予定は cloudPending に乗らないため、後からONにしても永久に送られない。
-//   仮想予定(立会/事前などsource付き・_readOnly)と、削除済み(tombstone)は対象外。
-document.getElementById('cs-push-all').onclick = async ()=>{
-  if(!cloudSync.url){ alert('先に同期URLを保存してください'); return; }
-  const del = (typeof loadEventDeletions_==='function') ? loadEventDeletions_() : {};
-  const targets = (state.events||[]).filter(e=> e && e.id && !e._readOnly && !e.source && !del[e.id]);
-  if(!targets.length){ alert('送信対象の予定がありません'); return; }
-  if(!confirm(`この端末にある予定 ${targets.length}件 をクラウドへ送り直します。\n\n・他の端末にも同じ予定が反映されます\n・同じ予定が既にサーバーにある場合は上書き(同じid)されます\n\n続行しますか？`)) return;
-  targets.forEach(e=>{ try{ queueCloudOp('upsertEvent', denormalizeEventForCloud_(e)); }catch(_){} });
-  try{
-    setCloudSyncIcon('syncing');
-    await cloudSyncFullSilent();
-    setCloudSyncIcon('ok');
-    alert(`${targets.length}件を送信しました。他の端末で☁を押すと反映されます。`);
-    openCloudSyncModal();
-  }catch(err){
-    setCloudSyncIcon('err');
-    alert('送信に失敗しました: ' + err.message + '\n\n未送信として残っているので、電波の良い所で☁を押すと再送されます。');
-  }
-};
 document.getElementById('cs-pull-now').onclick = async ()=>{
   if(!cloudSync.url){ alert('URLを保存してから取得してください'); return; }
   if(!confirm('サーバーから全データを取得します(ローカルに上書きマージ)。続行しますか？')) return;
@@ -18685,6 +18665,47 @@ document.getElementById('all-srv-snap-restore').onclick = ()=>{
 };
 
 // 📤 全件強制PUSH は v1.30.1 で廃止 (他端末の予定を一括上書きする事故リスクのため。通常の自動同期で十分)
+// 🔁 未送信の予定を送る(v1.30.486・山田「スマホで入れた8/3の予定がPCに来ない」)
+//   同期OFF/未設定のまま作った予定は cloudPending に積まれず、後からONにしても永久に送られない。
+//   全件PUSH(廃止済)と違い、**サーバーと突き合わせて「サーバーに無い」「この端末の方が新しい」予定だけ**を送るので
+//   他端末の新しい編集を潰さない。仮想予定(立会/事前など source/_readOnly)と削除tombstoneは対象外。
+document.getElementById('all-cs-push-missing').onclick = async ()=>{
+  if(!cloudSync.url){ alert("Cloud Sync URL が未設定です"); return; }
+  const btn = document.getElementById('all-cs-push-missing');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = "🔁 照合中…";
+  try{
+    const res = await fetch(cloudSync.url, { cache:'no-store' });
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json();
+    if(data.error) throw new Error(data.error);
+    const srv = new Map((data.events||[]).map(e=>[e.id, e]));
+    const del = (typeof loadEventDeletions_==='function') ? loadEventDeletions_() : {};
+    const targets = (state.events||[]).filter(e=>{
+      if(!e || !e.id || e._readOnly || e.source || del[e.id]) return false;
+      const s = srv.get(e.id);
+      if(!s) return true;                                   // サーバーに無い=この端末だけの予定
+      return String(e.updatedAt||'') > String(s.updatedAt||'');   // この端末の方が新しい
+    });
+    if(!targets.length){
+      alert('未送信の予定はありません（サーバーと一致しています）');
+      return;
+    }
+    const sample = targets.slice(0,8).map(e=>`・${e.date} ${String(e.title||'').split('\n')[0].slice(0,24)}`).join('\n');
+    if(!confirm(`この端末にしか無い/新しい予定 ${targets.length}件 を送信します。\n\n${sample}${targets.length>8?`\n…他${targets.length-8}件`:''}\n\n続行しますか？`)) return;
+    btn.textContent = "🔁 送信中…";
+    targets.forEach(e=>{ try{ queueCloudOp('upsertEvent', denormalizeEventForCloud_(e)); }catch(_){} });
+    await cloudSyncFullSilent();
+    setCloudSyncIcon('ok');
+    alert(`${targets.length}件を送信しました。他の端末で☁を押すと反映されます。`);
+  }catch(err){
+    setCloudSyncIcon('err');
+    alert('送信に失敗しました: ' + err.message + '\n\n未送信として残っているので、電波の良い所で☁を押すと再送されます。');
+  }finally{
+    btn.disabled = false; btn.textContent = orig;
+    updateCloudSyncBadge();
+  }
+};
 
 // 📥 強制PULL(ローカル置換): サーバー値で local を完全置換
 document.getElementById('all-cs-pull-replace').onclick = async ()=>{
