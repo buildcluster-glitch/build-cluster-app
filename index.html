@@ -2716,7 +2716,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.486</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.487</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -15373,6 +15373,9 @@ function showRepairQuickPop(r, anchorEl){
   const __wlist = parseWorkers_(r.worker);   // 複数可
   const __vOn = __wlist.includes(VENDOR_WORKER) ? 'on' : '';
   const vendorWorkerBtn = `<button data-worker="${VENDOR_WORKER}" class="${__vOn}" style="${__vOn?`background:${VENDOR_WORKER_COLOR}22;border-color:${VENDOR_WORKER_COLOR}`:''}"><span class="qp-dot" style="background:${VENDOR_WORKER_COLOR}"></span>🛠${VENDOR_WORKER}</button>`;
+  // ✖ 失注(グレー)も作業担当と同じ枠で選べるように(v1.30.487・山田)。予定の担当ピッカー(v1.30.466)と同じ流儀
+  const __lOn = __wlist.includes(LOST_STAFF) ? 'on' : '';
+  const lostWorkerBtn = `<button data-worker="${LOST_STAFF}" class="${__lOn}" title="失注した案件。選ぶとチップがグレーになります" style="${__lOn?`background:${LOST_STAFF_COLOR}22;border-color:${LOST_STAFF_COLOR}`:''}"><span class="qp-dot" style="background:${LOST_STAFF_COLOR}"></span>✖${LOST_STAFF}</button>`;
   // 未設定時はどのチップも選択しない=空白(「未設定」ボタンは選択解除/クリア用に常に非ハイライト) v1.30.45
   const workerBtns = ['<button data-worker="" class=""><span class="qp-dot" style="background:#cbd5e1"></span>未設定</button>']
     .concat(STAFF.map(s=>{
@@ -15380,7 +15383,7 @@ function showRepairQuickPop(r, anchorEl){
       const on = __wlist.includes(s) ? 'on' : '';
       return `<button data-worker="${escapeHtml(s)}" class="${on}" style="${on?`background:${STAFF_COLORS[s]}22;border-color:${STAFF_COLORS[s]}`:''}"><span class="qp-dot" style="background:${STAFF_COLORS[s]}"></span>${escapeHtml(display)}</button>`;
     }))
-    .concat([vendorWorkerBtn]).join('');
+    .concat([vendorWorkerBtn, lostWorkerBtn]).join('');
 
   // comments rendering
   const renderComments = ()=>{
