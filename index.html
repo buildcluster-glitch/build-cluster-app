@@ -2716,7 +2716,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.487</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.488</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -2748,7 +2748,7 @@
   <button class="nav-btn" id="cloudSyncBtn" title="☁ 全同期 — クラウド(予定/休暇) + Drive(最終確認・立会・事前など) をまとめて今すぐ同期。設定は⚙"><span id="cloudSyncIcon">☁</span><span id="cloudSyncBadge" class="hidden"></span></button>
   <button class="nav-btn icon-only" id="gasSettingsBtnHeader" title="⚙ 設定 (GAS URL/Token)">⚙</button>
   <!-- 🚫 リセット(⟳ 全データ消去)ボタンは誤爆事故防止で撤去(山田 v1.30.222)。データ消去が必要なら Console で localStorage.removeItem("buildcluster_schedule_v1") -->
-  <button class="nav-btn" id="announceBtn" title="📢 全員への連絡事項を追加(全員が確認したら消えます)">📢 連絡</button>
+  <button class="nav-btn" id="announceBtn" title="📢 連絡事項を出す(全員 or 個別宛・宛先の全員が確認したら消えます)">📢 連絡</button>
   <button class="nav-btn" id="addLeaveBtn" title="有給・休暇・別件を追加">＋休</button>
   <button class="nav-btn primary" id="addBtn">＋予定</button>
 </header>
@@ -8180,9 +8180,23 @@ const ANNOUNCE_CACHE_KEY = "bc_announce_cache";
 function loadAnnounceMap_(){ try{ const o=JSON.parse(localStorage.getItem(ANNOUNCE_CACHE_KEY)||"null"); return (o&&Array.isArray(o.items))?o:{items:[]}; }catch(e){ return {items:[]}; } }
 function saveAnnounceMap_(m){ try{ localStorage.setItem(ANNOUNCE_CACHE_KEY, JSON.stringify(m||{items:[]})); }catch(e){} }
 function announceStaffAll_(){ return (typeof STAFF!=='undefined' && Array.isArray(STAFF)) ? STAFF : []; }
-function announceActiveItems_(){
+// 🎯 宛先(v1.30.488・山田「個別宛に出したい時もある」): it.to が空/未定義なら全員。
+//    確認完了の判定・未確認バッジ・ポップアップ表示は、すべてこの宛先ベースで動く。
+function announceTargets_(it){
   const all=announceStaffAll_();
-  return (loadAnnounceMap_().items||[]).filter(it=> it && !it.deleted && !(all.length && all.every(s=> (it.acked||[]).includes(s))));
+  const to=(it && Array.isArray(it.to)) ? it.to.filter(s=>all.includes(s)) : [];
+  return to.length ? to : all;
+}
+function announceIsForMe_(it, me){
+  if(!me) return false;
+  return announceTargets_(it).includes(me);
+}
+function announceActiveItems_(){
+  return (loadAnnounceMap_().items||[]).filter(it=>{
+    if(!it || it.deleted) return false;
+    const tg=announceTargets_(it);
+    return !(tg.length && tg.every(s=> (it.acked||[]).includes(s)));
+  });
 }
 function mergeAnnounce_(a,b){
   const out={}; const A=(a&&a.items)||[], B=(b&&b.items)||[];
@@ -8225,11 +8239,12 @@ async function mutateAnnounce_(mutator){
   return map;
 }
 const ANNOUNCE_MAX = 3;   // 📢 表示中の連絡事項は最大3件(v1.30.304・山田)
-function addAnnounce_(text){
+function addAnnounce_(text, to){
   text=String(text||'').trim(); if(!text) return;
   if(announceActiveItems_().length >= ANNOUNCE_MAX) return;   // 上限ガード(ボタン側でもチェック)
   const me=(typeof getMyself==='function')?getMyself():"";
-  const it={ id:uid(), text, by:me, at:new Date().toISOString(), acked: me?[me]:[], deleted:false, updatedAt:new Date().toISOString() };   // 投稿者は自動で確認済み
+  const __to=(Array.isArray(to)?to:[]).filter(s=>announceStaffAll_().includes(s));   // 🎯 空=全員(v1.30.488)
+  const it={ id:uid(), text, to:__to, by:me, at:new Date().toISOString(), acked: me?[me]:[], deleted:false, updatedAt:new Date().toISOString() };   // 投稿者は自動で確認済み
   mutateAnnounce_(map=>{ map.items=(map.items||[]).concat([it]); return map; });
 }
 function ackAnnounce_(id){
@@ -8250,7 +8265,8 @@ function editAnnounce_(id, newText){   // 投稿者が本文を編集(v1.30.307)
 function myUnreadAnnounces_(){
   const me=(typeof getMyself==='function')?getMyself():"";
   if(!me) return [];
-  return announceActiveItems_().filter(it=> !((it.acked||[]).includes(me)));
+  // 🎯 宛先に自分が入っているものだけ(個別宛は無関係な人をブロックしない)v1.30.488
+  return announceActiveItems_().filter(it=> announceIsForMe_(it, me) && !((it.acked||[]).includes(me)));
 }
 function renderAnnouncePopup_(){
   const me=(typeof getMyself==='function')?getMyself():"";
@@ -8301,7 +8317,12 @@ function renderAnnounceBar_(){
   const me=(typeof getMyself==='function')?getMyself():"";
   // 表示ルール(v1.30.312・山田): ✅した人は自分のバーから消える / 投稿者は全員✅まで残す
   //   (全員✅で完全に消えるのは announceActiveItems_ が既に除外)。自分=投稿者 or まだ✅してない 時だけ表示。
-  const items=announceActiveItems_().filter(it=> (me && it.by===me) || !(me && (it.acked||[]).includes(me)));
+  //   🎯 個別宛(v1.30.488): 宛先に自分が入っている連絡だけ表示。自分が出した連絡は宛先に関係なく残す(確認状況の確認用)
+  const items=announceActiveItems_().filter(it=>{
+    if(me && it.by===me) return true;
+    if(!announceIsForMe_(it, me)) return false;
+    return !(me && (it.acked||[]).includes(me));
+  });
   if(!items.length){ bar.style.display='none'; bar.innerHTML=''; return; }
   const all=announceStaffAll_();
   const disp=s=>(typeof getStaffDisplayName==='function')?getStaffDisplayName(s):s;
@@ -8309,15 +8330,20 @@ function renderAnnounceBar_(){
   const collapsed = localStorage.getItem('bc_announce_collapsed')==='1';   // 折りたたみ状態(この端末のみ)v1.30.305
   const myUnread = me ? items.filter(it=>!(it.acked||[]).includes(me)).length : 0;
   const itemsHtml = items.map(it=>{
-    const acked=it.acked||[]; const ackN=all.filter(a=>acked.includes(a)).length;
-    const notYet=all.filter(s=>!acked.includes(s));
+    const acked=it.acked||[];
+    const tg=announceTargets_(it);                                  // 🎯 宛先(空=全員)v1.30.488
+    const ackN=tg.filter(a=>acked.includes(a)).length;
+    const notYet=tg.filter(s=>!acked.includes(s));
+    const isPersonal=Array.isArray(it.to) && it.to.length>0;
+    const toTag=isPersonal ? `<span class="announce-badge" title="宛先: ${escapeHtml(tg.join('・'))}" style="background:#ede9fe;border-color:#a78bfa;color:#5b21b6">🎯${tg.map(s=>escapeHtml(surnameOf_(s))).join('・')}宛</span>` : '';
     const iAcked=me && acked.includes(me);
     const mine=me && it.by===me;
     const d=new Date(it.at); const p=n=>String(n).padStart(2,'0'); const dt=isNaN(d)?'':`${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
     return `<div class="announce-item" data-aid="${it.id}">
       <span class="announce-icon">📢</span>
+      ${toTag}
       <span class="announce-text">${escapeHtml(it.text)}</span>
-      <span class="announce-meta">${escapeHtml(disp(it.by||''))} ${dt}${it.editedAt?' (編集済)':''} ・ 確認 ${ackN}/${all.length}</span>
+      <span class="announce-meta">${escapeHtml(disp(it.by||''))} ${dt}${it.editedAt?' (編集済)':''} ・ 確認 ${ackN}/${tg.length}</span>
       ${notYet.length?`<span class="announce-notyet-wrap">未:${notYet.map(s=>`<span class="announce-badge" title="${escapeHtml(disp(s))} 未確認">${escapeHtml(surnameOf_(s))}</span>`).join('')}</span>`:''}
       ${iAcked ? `<span class="announce-acked">✓確認済</span>` : `<button class="announce-ack" data-aid="${it.id}">✓ 確認</button>`}
       ${mine ? `<button class="announce-edit" data-aid="${it.id}" title="編集">✎</button>` : ''}
@@ -16875,13 +16901,74 @@ function closeLeaveModal(){ leaveModal.classList.remove("show"); editingLeaveId=
 document.getElementById("lv-cancel").onclick = closeLeaveModal;
 document.getElementById("addLeaveBtn").onclick = ()=>openLeaveModal(null);
 // 📢 全員への連絡事項を追加(v1.30.302)
-(function(){ const ab=document.getElementById("announceBtn"); if(!ab) return; ab.onclick = ()=>{
+// 📢 連絡事項の作成ダイアログ(v1.30.488・山田「個別宛に出したい時もある」)
+//   prompt()だと宛先を選べないため専用モーダルに。宛先=全員(既定) or 選んだ人だけ。
+//   宛先の人が全員✓すると自動で消えるのは従来どおり(判定はitem.toベース)。
+function openAnnounceCompose_(){
   const me=(typeof getMyself==='function')?getMyself():"";
   if(!me){ alert('先に「👤 自分」を設定してください(👤マイ)'); return; }
-  if(typeof announceActiveItems_==='function' && announceActiveItems_().length>=3){ alert('📢 連絡事項は最大3件までです。\n古い連絡が全員に確認されるか、🗑で削除してから追加してください。'); return; }
-  const t=prompt('📢 全員への連絡事項を入力してください。\n(全員が「確認」を押すと自動で消えます・最大3件)');
-  if(t && t.trim() && typeof addAnnounce_==='function') addAnnounce_(t.trim());
-}; })();
+  if(typeof announceActiveItems_==='function' && announceActiveItems_().length>=ANNOUNCE_MAX){
+    alert(`📢 連絡事項は最大${ANNOUNCE_MAX}件までです。\n古い連絡が確認されるか、🗑で削除してから追加してください。`); return;
+  }
+  let ov=document.getElementById('announceComposeModal');
+  if(!ov){
+    ov=document.createElement('div'); ov.className='modal-overlay'; ov.id='announceComposeModal';
+    ov.innerHTML=`<div class="modal" style="max-width:520px;width:94vw">
+      <div class="modal-header" style="background:#fef9c3;color:#78350f">📢 連絡事項を出す</div>
+      <div class="modal-body">
+        <div class="field">
+          <label>本文</label>
+          <textarea id="ac-text" rows="3" placeholder="例: 明日は8時集合です" style="width:100%;box-sizing:border-box;font-size:14px;padding:8px;border:1px solid var(--border-strong);border-radius:8px;resize:vertical"></textarea>
+        </div>
+        <div class="field">
+          <label>宛先 <span style="font-weight:400;color:var(--muted);font-size:11px">(選んだ人だけに出ます／未選択=全員)</span></label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+            <button class="btn" id="ac-all" style="font-size:12px;padding:4px 12px">👥 全員</button>
+            <button class="btn" id="ac-clear" style="font-size:12px;padding:4px 12px">選択解除</button>
+          </div>
+          <div id="ac-staff" class="qp-worker-pick" style="display:flex;gap:5px;flex-wrap:wrap"></div>
+        </div>
+        <div id="ac-note" style="font-size:11px;color:#92400e;font-weight:700;margin-top:6px"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="ac-cancel">キャンセル</button>
+        <button class="btn primary" id="ac-post">📢 出す</button>
+      </div></div>`;
+    document.body.appendChild(ov);
+    ov.onclick=e=>{ if(e.target===ov) ov.classList.remove('show'); };
+    ov.querySelector('#ac-cancel').onclick=()=>ov.classList.remove('show');
+  }
+  const sel=new Set();
+  const staffBox=ov.querySelector('#ac-staff');
+  const note=ov.querySelector('#ac-note');
+  const paint=()=>{
+    staffBox.querySelectorAll('[data-ac-staff]').forEach(b=>{
+      const on=sel.has(b.dataset.acStaff);
+      b.classList.toggle('on', on);
+      const c=STAFF_COLORS[b.dataset.acStaff]||'#cbd5e1';
+      b.style.background = on ? c : '#f1f5f9';
+      b.style.color = on ? textColorFor(c) : '#64748b';
+    });
+    note.textContent = sel.size ? `→ ${[...sel].join('・')} の${sel.size}名にだけ出ます` : '→ 全員に出ます';
+  };
+  staffBox.innerHTML = STAFF.map(s=>`<button data-ac-staff="${escapeHtml(s)}" style="border:2px solid transparent;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer">${escapeHtml(s)}</button>`).join('');
+  staffBox.querySelectorAll('[data-ac-staff]').forEach(b=>{
+    b.onclick=()=>{ const s=b.dataset.acStaff; sel.has(s)?sel.delete(s):sel.add(s); paint(); };
+  });
+  ov.querySelector('#ac-all').onclick=()=>{ sel.clear(); paint(); };
+  ov.querySelector('#ac-clear').onclick=()=>{ sel.clear(); paint(); };
+  ov.querySelector('#ac-text').value='';
+  paint();
+  ov.querySelector('#ac-post').onclick=()=>{
+    const t=(ov.querySelector('#ac-text').value||'').trim();
+    if(!t){ alert('本文を入力してください'); return; }
+    if(typeof addAnnounce_==='function') addAnnounce_(t, [...sel]);
+    ov.classList.remove('show');
+  };
+  ov.classList.add('show');
+  setTimeout(()=>{ const ta=ov.querySelector('#ac-text'); if(ta) ta.focus(); }, 50);
+}
+(function(){ const ab=document.getElementById("announceBtn"); if(!ab) return; ab.onclick = openAnnounceCompose_; })();
 document.getElementById("lv-save").onclick = ()=>{
   const start = document.getElementById("lv-start").value;
   const end   = document.getElementById("lv-end").value;
