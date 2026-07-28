@@ -2713,7 +2713,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.481</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.482</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -4433,7 +4433,10 @@ const STAFF_QUOTA = {
   "松尾"    :0,
 };
 // 会社の年間休日カレンダー（月別日数）
-const COMPANY_HOLIDAYS = {1:11, 2:9, 3:8, 4:8, 5:12, 6:8, 7:9, 8:11, 9:10, 10:9, 11:10, 12:10};
+// 📅 会社の年間休日(月別・各自の「X/N」の分母)。2026年版=年間117日(v1.30.482・山田確定)
+//   1〜7月=実績。8〜12月=「毎週2日は休める」配分(日曜+祝日+夏休8/9-16+冬休12/29-1/6 に、
+//   日曜しかない週へ1日ずつ足した数)。8月は夏休みで1週潰れるため14日と多め。
+const COMPANY_HOLIDAYS = {1:11, 2:9, 3:8, 4:8, 5:12, 6:8, 7:9, 8:14, 9:9, 10:9, 11:9, 12:11};
 // 休暇種別の表示名(値は会社休日のまま=集計互換、表示だけ所定休日)
 function leaveTypeLabel_(t){
   if(t==="会社休日") return "所定休日";
