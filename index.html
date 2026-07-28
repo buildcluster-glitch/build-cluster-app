@@ -2716,7 +2716,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.491</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.492</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -8018,13 +8018,17 @@ function pruneChlog_(arr){
   return a;
 }
 let __chlogPushT = null, __chlogPending = [];
-function logChange_(kind, action, label, detail){
+// fixedId(v1.30.492): 同じ出来事を全端末が同じidで記録する用(id union なので📜が同じ行で1本にまとまる)。
+//   例=同期での件数減少。5台が同時に気づいても記録は1行。
+function logChange_(kind, action, label, detail, fixedId){
   try{
     const by = (typeof getMyself==='function' ? getMyself() : '') || '';
-    const e = { id:(typeof uid==='function'?uid():String(Date.now())+Math.random().toString(36).slice(2)),
+    let a = loadChlog_();
+    if(fixedId && a.some(x=>x&&x.id===fixedId)) return;   // 同一idは二重記録しない
+    const e = { id: fixedId || (typeof uid==='function'?uid():String(Date.now())+Math.random().toString(36).slice(2)),
       at:new Date().toISOString(), by, kind:String(kind||''), action:String(action||''),
       label:String(label||'').slice(0,80), detail:String(detail||'').slice(0,140) };
-    let a = loadChlog_(); a.push(e); a = pruneChlog_(a); saveChlog_(a);
+    a.push(e); a = pruneChlog_(a); saveChlog_(a);
     __chlogPending.push(e);
     if(document.getElementById('changelogModal') && document.getElementById('changelogModal').classList.contains('show')) renderChangelog_();
     if(__chlogPushT) clearTimeout(__chlogPushT);
@@ -11802,6 +11806,62 @@ function extractRestorations(properties, existing){
   return out;
 }
 
+// ===== 🚨 同期見張り番(v1.30.492・山田要望) =====
+//   事故(2026-07-29): 台帳で最終確認日を変更→カレンダーに正しく反映→その後その予定が黙って消えた。
+//   スタッフが日程を覚えていて行き忘れは無かったが、忘れていれば重大事故。
+//   二度と「黙って」消えないよう、同期のたびに件数を記録し、減っていたら
+//   ①右下トーストで即知らせる ②📜変更の記録に「何が消えたか(物件名)」を残す。
+const SYNCCNT_KEY = "buildcluster_sync_counts";
+function __syncCounts_(){
+  return {
+    checks:       (state.checks||[]).filter(c=>c && c.source==="gas-sync").length,
+    repairs:      (state.repairs||[]).length,
+    restorations: (state.restorations||[]).length,
+  };
+}
+// 最終確認カードの一覧(id→カード)。id="gas-"+driveFileId で1台帳=1枚
+function __syncCheckMap_(){
+  const m = new Map();
+  (state.checks||[]).forEach(c=>{ if(c && c.source==="gas-sync") m.set(c.id, c); });
+  return m;
+}
+function __recordSyncCounts_(rec){
+  try{
+    let a = JSON.parse(localStorage.getItem(SYNCCNT_KEY)||"[]"); if(!Array.isArray(a)) a=[];
+    a.push(rec); while(a.length>72) a.shift();          // 直近72回ぶん(=数日分)
+    localStorage.setItem(SYNCCNT_KEY, JSON.stringify(a));
+  }catch(_){}
+}
+// 同期前後を突き合わせ、減っていたら警告。before=__syncCounts_() / beforeMap=__syncCheckMap_()
+function __warnIfSyncShrunk_(before, beforeMap, mode){
+  try{
+    const after = __syncCounts_();
+    __recordSyncCounts_({ at:new Date().toISOString(), mode, ...after });
+    const dChk = before.checks - after.checks;
+    const dRep = before.repairs - after.repairs;
+    const dRes = before.restorations - after.restorations;
+    if(dChk<=0 && dRep<=0 && dRes<=0) return;           // 減っていない=正常
+    // 何が消えたのか(物件名)を特定する。「何が消えたか分からない」のが一番怖い
+    const afterMap = __syncCheckMap_();
+    const gone = [];
+    beforeMap.forEach((c,id)=>{ if(!afterMap.has(id)) gone.push((c.title||"(名称不明)") + (c.checkDate?` ${c.checkDate}`:"")); });
+    const parts = [];
+    if(dChk>0) parts.push(`最終確認 ${dChk}件`);
+    if(dRep>0) parts.push(`修繕 ${dRep}件`);
+    if(dRes>0) parts.push(`原状回復 ${dRes}件`);
+    const goneTxt = gone.length ? `: ${gone.slice(0,3).join(" / ")}${gone.length>3?` 他${gone.length-3}件`:""}` : "";
+    const msg = `⚠ 同期後に ${parts.join(" / ")} 減りました${goneTxt}`;
+    console.warn("[sync-watch]", msg, { mode, before, after, gone });
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast(msg + "（台帳で消したのでなければ🔄で再同期してください）");
+    if(typeof logChange_==='function'){
+      // 全端末で同じidになるようにして📜が同じ行で1本にまとまるようにする(時間は「日+時」まで)
+      const stamp = new Date().toISOString().slice(0,13);
+      const fid = "vanish_" + stamp + "_" + (gone.slice(0,3).join("|") || `${mode}_${dChk}_${dRep}_${dRes}`);
+      logChange_("同期", "件数が減少", parts.join(" / "), (gone.slice(0,5).join(" / ") || `${mode}同期`), fid);
+    }
+  }catch(e){ console.warn("[sync-watch] 失敗", e); }
+}
+
 async function syncChecksFromGAS(opts){
   opts = opts || {};
   try{ if(typeof __idbReadyPromise!=='undefined') await __idbReadyPromise; }catch(_){}   // 🗃 IDB管理コレクションのロード完了を待つ(上書き競合防止)v1.30.396
@@ -11965,17 +12025,42 @@ async function syncChecksFromGAS(opts){
     if(__partial){ properties.forEach(p=>{ if(p&&p.driveFileId) __changedFids.add(p.driveFileId); if(p&&p.estimateId) __changedFids.add(p.estimateId); }); }
     const __allIdSet = (__partial && __allIds) ? new Set(__allIds) : null;
     const __isChanged = it => !!it && ((it.extDriveFileId && __changedFids.has(it.extDriveFileId)) || (it.extEstimateId && __changedFids.has(it.extEstimateId)));
-    const __fileGone  = it => !!__allIdSet && !!it && !!it.extDriveFileId && !__allIdSet.has(it.extDriveFileId);
-    const __keepOld   = it => !__isChanged(it) && !__fileGone(it);   // 変更分は差替・消えた台帳はprune・それ以外は温存
+    // 🚨 v1.30.492【予定消失事故の根治】差分同期での prune(allIdsに無い=削除とみなして即消す)を廃止。
+    //   allIds は GAS 側で「直近 maxMonths(=3) ヶ月の月フォルダを実際にDrive走査した現存ID」。
+    //   ・台帳の月フォルダは meta.date で決まり、保存のたびに別月へ moveTo されうる
+    //   ・月フォルダが期間外(先の月フォルダが1つ出来ただけでも窓がずれる)に落ちれば allIds から消える
+    //   ・走査が一時的に取りこぼしても allIds から消える
+    //   …のに、1回でも欠けたら問答無用に予定を消していた(=山田報告の消失事故と症状が完全一致)。
+    //   → 削除の反映は「フル同期(全件置換・手動🔄/初回/1時間ごと)」に一本化。差分では絶対に消さない。
+    //     ⚠台帳から最終確認日を消した場合は、その台帳が差分に載る→__isChangedで差替→カードは正しく消える。
+    //       差分で待たされるのは「台帳ファイルごと削除された」場合だけで、最大1時間で追いつく。
+    const __wouldPrune = (__allIdSet ? (state.checks||[]).filter(c=>c && c.source==="gas-sync" && c.extDriveFileId && !__allIdSet.has(c.extDriveFileId)) : []);
+    if(__wouldPrune.length){
+      console.warn(`[task-sync] 差分allIdsに無い最終確認 ${__wouldPrune.length}件 → v1.30.492では消さずに温存(フル同期で照合):`,
+        __wouldPrune.map(c=>c.title+" "+(c.checkDate||"")));
+    }
+    const __keepOld   = it => !__isChanged(it);   // 変更分だけ差替・それ以外は温存(差分では消さない)
 
     if(!silent) pushHistory();
+    // 同期前の件数と最終確認カード一覧を控える(減っていたら後で警告する v1.30.492)
+    const __cntBefore = __syncCounts_();
+    const __mapBefore = __syncCheckMap_();
+    // 🛟 v1.30.492: フル同期が0件を返した時に全部消さない安全弁。
+    //   フルは「全件置換」なので、GAS側の一時不調/権限エラー/空応答をそのまま信じると全予定が消える。
+    //   前回まで有ったのに今回0件=異常とみなし、置換せず温存して警告する(正しく0件になることは実運用上ない)。
+    const __fullWipeRisk = !__partial && properties.length===0
+                        && (__cntBefore.checks>0 || __cntBefore.repairs>0 || __cntBefore.restorations>0);
+    if(__fullWipeRisk){
+      console.warn("[task-sync] フル同期が0件応答 → 全消しせず前回データを温存(v1.30.492)");
+      if(typeof showAutoSyncToast==='function') showAutoSyncToast("⚠ 台帳が0件で返ってきたため、前回のデータを残しました（消していません）。しばらく後に🔄で再同期してください");
+    }
     // 既存の gas-sync 由来を入れ替え。手動追加(source未設定)は保持。差分時は「変更/消えた分」だけ入れ替え
-    state.checks = __partial
+    state.checks = __fullWipeRisk ? state.checks : (__partial
       ? state.checks.filter(c => c.source !== "gas-sync" || __keepOld(c)).concat(imported)
-      : state.checks.filter(c => c.source !== "gas-sync").concat(imported);
-    state.repairs = __partial
+      : state.checks.filter(c => c.source !== "gas-sync").concat(imported));
+    state.repairs = __fullWipeRisk ? (state.repairs||[]) : (__partial
       ? (state.repairs||[]).filter(__keepOld).concat(repairs)
-      : repairs;
+      : repairs);
     if(typeof applyRepairOverridesToState_==='function') applyRepairOverridesToState_();  // 全員共有の作業担当を反映(v1.30.55・キャッシュ即適用)
     if(typeof applyRepairCommentsToState_==='function') applyRepairCommentsToState_();  // 💬 全員共有の進捗チャットを反映(v1.30.184)
     if(typeof applyJimuMessagesToState_==='function') applyJimuMessagesToState_();  // 💬 全員共有の業務連絡を反映(v1.30.203)
@@ -12001,9 +12086,11 @@ async function syncChecksFromGAS(opts){
     if(typeof fetchRepairPos_==='function') fetchRepairPos_({silent:true}).catch(()=>{});
     // 🌴 再同期時は休暇も最新を取りに行く→他PCの休日設定が即反映(v1.30.94)
     if(typeof fetchLeaves_==='function') fetchLeaves_({silent:true}).catch(()=>{});
-    state.restorations = __partial
+    state.restorations = __fullWipeRisk ? (state.restorations||[]) : (__partial
       ? (state.restorations||[]).filter(__keepOld).concat(restorations)
-      : restorations;
+      : restorations);
+    // 🚨 減っていたら気づけるように(v1.30.492)。saveStateの前に見る=消えた状態を保存する前に検知
+    __warnIfSyncShrunk_(__cntBefore, __mapBefore, __partial ? "差分" : "フル");
     saveState();
     localStorage.setItem("buildcluster_gas_synced_at", new Date().toISOString());
     // 🔁 差分同期: 次回の since 用にサーバー基準時刻を保存。フル同期した時刻も別途記録(1時間ごとの再照合判定用)
