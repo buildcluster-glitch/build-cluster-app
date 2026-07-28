@@ -2716,7 +2716,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.488</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.489</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -8243,8 +8243,15 @@ function addAnnounce_(text, to){
   text=String(text||'').trim(); if(!text) return;
   if(announceActiveItems_().length >= ANNOUNCE_MAX) return;   // 上限ガード(ボタン側でもチェック)
   const me=(typeof getMyself==='function')?getMyself():"";
-  const __to=(Array.isArray(to)?to:[]).filter(s=>announceStaffAll_().includes(s));   // 🎯 空=全員(v1.30.488)
-  const it={ id:uid(), text, to:__to, by:me, at:new Date().toISOString(), acked: me?[me]:[], deleted:false, updatedAt:new Date().toISOString() };   // 投稿者は自動で確認済み
+  const __all=announceStaffAll_();
+  const __to=(Array.isArray(to)?to:[]).filter(s=>__all.includes(s));   // 🎯 空=全員(v1.30.488)
+  // 🔙 旧版端末への後方互換(v1.30.489・山田「個別宛なのにみんなに出てしまう」):
+  //    旧版は it.to を知らないので全員に表示してしまう。→ **宛先“以外”の人を最初から確認済みにしておく**と、
+  //    旧版でも「自分は確認済み=表示しない/ポップアップも出さない」と判定され、宛先の人にだけ出る。
+  //    新版の集計(確認 n/N・自動消滅)は announceTargets_ ベースなのでこの先行acked は影響しない。
+  const __preAcked = __to.length ? __all.filter(s=> !__to.includes(s)) : [];
+  const acked = Array.from(new Set([...(me?[me]:[]), ...__preAcked]));
+  const it={ id:uid(), text, to:__to, by:me, at:new Date().toISOString(), acked, deleted:false, updatedAt:new Date().toISOString() };   // 投稿者は自動で確認済み
   mutateAnnounce_(map=>{ map.items=(map.items||[]).concat([it]); return map; });
 }
 function ackAnnounce_(id){
