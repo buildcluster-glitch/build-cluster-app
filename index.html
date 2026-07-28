@@ -2716,7 +2716,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.490</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.491</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -2748,7 +2748,7 @@
   <button class="nav-btn" id="cloudSyncBtn" title="☁ 全同期 — クラウド(予定/休暇) + Drive(最終確認・立会・事前など) をまとめて今すぐ同期。設定は⚙"><span id="cloudSyncIcon">☁</span><span id="cloudSyncBadge" class="hidden"></span></button>
   <button class="nav-btn icon-only" id="gasSettingsBtnHeader" title="⚙ 設定 (GAS URL/Token)">⚙</button>
   <!-- 🚫 リセット(⟳ 全データ消去)ボタンは誤爆事故防止で撤去(山田 v1.30.222)。データ消去が必要なら Console で localStorage.removeItem("buildcluster_schedule_v1") -->
-  <button class="nav-btn" id="announceBtn" title="📢 連絡事項を出す(全員 or 個別宛・宛先の全員が確認したら消えます)">📢 連絡</button>
+  <button class="nav-btn" id="announceBtn" title="📢 連絡事項を出す(全員 or 個別宛・確認状況を見て出した本人が🗑で消します)">📢 連絡</button>
   <button class="nav-btn" id="addLeaveBtn" title="有給・休暇・別件を追加">＋休</button>
   <button class="nav-btn primary" id="addBtn">＋予定</button>
 </header>
@@ -8191,12 +8191,14 @@ function announceIsForMe_(it, me){
   if(!me) return false;
   return announceTargets_(it).includes(me);
 }
+// 🗑 自動消滅は廃止(v1.30.491・山田「最後の人が本当に確認を押したか分からないので、出した本人が消したい」)。
+//    宛先全員が✓しても消さず、投稿者が🗑を押すまで残す。確認済みの人の画面からは消える(バー側でフィルタ)。
+function announceAllAcked_(it){
+  const tg=announceTargets_(it), acked=(it&&it.acked)||[];
+  return tg.length>0 && tg.every(s=> acked.includes(s));
+}
 function announceActiveItems_(){
-  return (loadAnnounceMap_().items||[]).filter(it=>{
-    if(!it || it.deleted) return false;
-    const tg=announceTargets_(it);
-    return !(tg.length && tg.every(s=> (it.acked||[]).includes(s)));
-  });
+  return (loadAnnounceMap_().items||[]).filter(it=> it && !it.deleted);
 }
 function mergeAnnounce_(a,b){
   const out={}; const A=(a&&a.items)||[], B=(b&&b.items)||[];
@@ -8307,7 +8309,7 @@ function renderAnnouncePopup_(){
       <button class="btn primary" data-ap-ack="${escapeHtml(it.id)}" style="margin-top:10px;width:100%;padding:11px;font-size:15px;font-weight:800;background:#16a34a;border-color:#16a34a">✓ 確認しました</button>
     </div>`;
   }).join('');
-  foot.innerHTML=`<span style="font-size:11px;color:var(--muted)">※ 確認するまで閉じられません（全員が確認すると連絡は自動で消えます）</span>`;
+  foot.innerHTML=`<span style="font-size:11px;color:var(--muted)">※ 確認するまで閉じられません（確認すると自分の画面からは消えます）</span>`;
   body.querySelectorAll('[data-ap-ack]').forEach(b=>{
     b.onclick=()=>{
       b.disabled=true; b.textContent='確認中…';
@@ -8351,6 +8353,7 @@ function renderAnnounceBar_(){
       ${toTag}
       <span class="announce-text">${escapeHtml(it.text)}</span>
       <span class="announce-meta">${escapeHtml(disp(it.by||''))} ${dt}${it.editedAt?' (編集済)':''} ・ 確認 ${ackN}/${tg.length}</span>
+      ${announceAllAcked_(it) ? `<span class="announce-acked" style="background:#dcfce7;color:#166534;padding:1px 8px;border-radius:8px" title="宛先全員が確認しました。🗑で消してください">✅ 全員確認済み → 🗑で消す</span>` : ''}
       ${notYet.length?`<span class="announce-notyet-wrap">未:${notYet.map(s=>`<span class="announce-badge" title="${escapeHtml(disp(s))} 未確認">${escapeHtml(surnameOf_(s))}</span>`).join('')}</span>`:''}
       ${iAcked ? `<span class="announce-acked">✓確認済</span>` : `<button class="announce-ack" data-aid="${it.id}">✓ 確認</button>`}
       ${mine ? `<button class="announce-edit" data-aid="${it.id}" title="編集">✎</button>` : ''}
@@ -16915,7 +16918,7 @@ function openAnnounceCompose_(){
   const me=(typeof getMyself==='function')?getMyself():"";
   if(!me){ alert('先に「👤 自分」を設定してください(👤マイ)'); return; }
   if(typeof announceActiveItems_==='function' && announceActiveItems_().length>=ANNOUNCE_MAX){
-    alert(`📢 連絡事項は最大${ANNOUNCE_MAX}件までです。\n古い連絡が確認されるか、🗑で削除してから追加してください。`); return;
+    alert(`📢 連絡事項は最大${ANNOUNCE_MAX}件までです。\n確認が済んだ連絡を🗑で消してから追加してください。`); return;
   }
   let ov=document.getElementById('announceComposeModal');
   if(!ov){
