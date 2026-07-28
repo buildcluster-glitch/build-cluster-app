@@ -2716,7 +2716,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.484</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.485</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -17947,7 +17947,9 @@ async function runCloudOpenSync(opts={}){
         if((state.cloudPending||[]).length) await cloudSyncPush();
         await cloudSyncPull({ replace:false, signal: __ac && __ac.signal });
       })(),
-      new Promise((_,rej)=>{ __to = setTimeout(()=>{ try{ __ac && __ac.abort(); }catch(_){} rej(new Error('sync timeout(25s)')); }, 25000); })
+      // ⏱ 25秒→60秒(v1.30.485): logs肥大でGASの応答が16秒超になり、回線が細いと25秒で毎回打ち切られて
+      //    「他端末の予定が一生届かない」状態だった。サーバー側のlogs掃除までの保険として余裕を持たせる。
+      new Promise((_,rej)=>{ __to = setTimeout(()=>{ try{ __ac && __ac.abort(); }catch(_){} rej(new Error('sync timeout(60s)')); }, 60000); })
     ]);
     render();
     setCloudSyncIcon('ok');
@@ -18863,16 +18865,10 @@ function cloudQueueEventChange(ev, mode){
   } else {
     queueCloudOp('upsertEvent', denormalizeEventForCloud_(ev));
   }
-  // 監査ログ(任意)
-  const log = {
-    id: 'l_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,5),
-    type: mode==='delete' ? 'delete' : 'upsert',
-    eventId: ev.id,
-    member: getMyself() || '',
-    datetime: new Date().toISOString(),
-    note: mode==='delete' ? '予定削除' : '予定保存',
-  };
-  queueCloudOp('appendLog', log);
+  // 🚫 監査ログのクラウド送信は廃止(v1.30.485・山田報告の同期タイムアウト対策)。
+  //   logsシートが18,000行まで肥大し、doGetの応答が3MB/16秒に。PC/スマホが25秒で打ち切られて
+  //   「他端末の予定が受け取れない」原因になっていた。アプリ側でcloudLogsは表示に使っておらず
+  //   (受信時も直近80件に切り捨て)、送る意味が無いのでやめる。誰がいつ変えたかは📜変更の記録(chlog)が持つ。
 }
 
 // 🧹 退去立会ゴーストイベント掃除 (v1.29.2)
