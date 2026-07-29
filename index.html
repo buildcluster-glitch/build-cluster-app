@@ -2777,7 +2777,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.505</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.506</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -17353,6 +17353,23 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
   //   → ページ全体がズーム＋visual viewport が動くので、カレンダーが数日ぶん横にずれたように見えていた。
   //   Safari では下の touch 経路を使わず、gesturestart/change/end 経路(preventDefaultが効く)で処理する。
   const IOS_GESTURE = ('ongesturestart' in window);
+  // 🧊 v1.30.506: ピンチ中はスクローラーを凍結(overflow:hidden)。
+  //   「日付をまたいでピンチすると飛ぶ」(山田)=指2本が別の日付列に横並び→Safariがピンチではなく
+  //   「2本指の横スクロール」と解釈し、指を離した瞬間に慣性フリング(数千px滑る)を発動していた。
+  //   慣性は小刻みなscrollイベントの連続で「1回900px」の網に掛からない=「飛ぶのにトーストも出ない」の正体。
+  //   凍結中ブラウザは一切スクロールできない(プログラムのscrollLeft書込は効く=アンカー補正は生きる)。
+  //   解除は最後の指が離れて150ms後=フリング発動判定の瞬間はまだ凍結中→慣性が生まれない。
+  let __ovFrozen = false, __ovPrev = "", __ovT = null;
+  const freeze_ = ()=>{
+    if(__ovT){ clearTimeout(__ovT); __ovT = null; }
+    if(__ovFrozen) return;
+    __ovFrozen = true; __ovPrev = body.style.overflow; body.style.overflow = "hidden";
+  };
+  const unfreeze_ = ()=>{
+    if(!__ovFrozen) return;
+    if(__ovT) clearTimeout(__ovT);
+    __ovT = setTimeout(()=>{ __ovT = null; body.style.overflow = __ovPrev; __ovFrozen = false; }, 150);
+  };
   const beginPinch_ = (cx, cy, z0)=>{
     // 🚨 v1.30.499【「ピンチすると1週間前にずれる」の真犯人】
     //   起動時の「今日へ自動スクロール」は 50〜4500ms に8連発のリトライを仕込んでいる。
@@ -17361,6 +17378,7 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
     //   (実測: 起動直後のピンチ=横2164px≒7.2列ズレ / 起動67秒後の同じ操作=0.2px)
     //   山田は「アプリを開く→すぐピンチして確認」を繰り返していたので毎回この窓に当たっていた。
     try{ if(typeof _cancelScrollToToday==='function') _cancelScrollToToday(); }catch(_){}
+    freeze_();   // 🧊 ピンチ中はブラウザにスクロールさせない(v1.30.506)
     // 🛡 v1.30.505: ピンチ開始時点の位置を期待位置として登録→開始直後のSafari介入も自動復帰の対象に
     window.__lastScrollCause = { name:"ピンチ開始", at:Date.now(), intentional:true };
     window.__expectedScroll = { v: body.scrollLeft, at: Date.now() };
@@ -17405,6 +17423,10 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
     document.addEventListener("gestureend", (e)=>{ e.preventDefault(); if(pinching) endPinch(); }, {passive:false});
   }
   body.addEventListener("touchstart", (e)=>{
+    // 🧟 詰まったピンチ状態の後始末: 1本指で触り直したら強制終了(凍結の解除も含む)v1.30.506
+    if(e.touches.length === 1 && pinching) endPinch();
+    // 🧊 2本指が着いた瞬間に凍結(gesturestartより早く届く=Safariがスクロール解釈を始める前に止める)v1.30.506
+    if(e.touches.length === 2) freeze_();
     if(IOS_GESTURE) return;                       // iOSは gesture 経路で処理(二重ズーム防止)
     if(e.touches.length !== 2) return;
     try{ e.preventDefault(); }catch(_){}          // ②ブラウザのスクロール開始を止める
@@ -17434,14 +17456,20 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
     window.__expectedScroll = { v: body.scrollLeft, at: Date.now() };   // 🛡自動復帰用(v1.30.503)
     // 🛡 v1.30.505: 指を離した直後にSafariが遅れて位置調整してくることがある→次の2フレームで確定位置を書き直す
     //   (900px未満の小さなズレはセンサーの網に掛からないため、ここで無条件に打ち消す)
+    const __raT0 = Date.now();
     requestAnimationFrame(()=>requestAnimationFrame(()=>{ try{
+      if(Date.now() - __raT0 > 500) return;   // ⏳ 遅延しすぎた再アサートは捨てる(タブ非表示明けに古い位置を書き戻さない)v1.30.506
       window.__lastScrollCause = { name:"ピンチ確定", at:Date.now(), intentional:true };
       body.scrollLeft = sl; body.scrollTop = st;
       window.__expectedScroll = { v: body.scrollLeft, at: Date.now() };
     }catch(_){} }));
+    unfreeze_();   // 🧊 解除は150ms後=フリング発動判定の瞬間はまだ凍結中(v1.30.506)
   };
   body.addEventListener("touchend", endPinch, {passive:true});
   body.addEventListener("touchcancel", endPinch, {passive:true});
+  // 🧊 安全弁: ピンチ扱いにならないまま凍結だけ残るケース(gesturestartが#calBody外扱い等)→全指離れたら必ず解除
+  body.addEventListener("touchend",    (e)=>{ if(!e.touches || e.touches.length===0) unfreeze_(); }, {passive:true});
+  body.addEventListener("touchcancel", (e)=>{ if(!e.touches || e.touches.length===0) unfreeze_(); }, {passive:true});
 })();
 
 // 🕵 横ジャンプ検出センサー(v1.30.500): 画面が勝手に大きく横へ飛んだ瞬間、原因の名前をトーストに出す。
@@ -17457,8 +17485,23 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
   const healToast_ = (msg)=>{ if(Date.now()-healToastAt < 3000) return; healToastAt = Date.now(); if(typeof showAutoSyncToast==='function') showAutoSyncToast(msg); };
   body.addEventListener("scroll", ()=>{
     const sl = body.scrollLeft, d = sl - last, prev = last; last = sl;
-    if(Math.abs(d) < 900) return;
     const now = Date.now();
+    // 🧮 v1.30.506 累積ドリフト検知: 慣性フリングは小刻みなscrollイベントの連続で「1回900px」の網に
+    //   掛からない(=「飛ぶのにトーストも出ない」の正体)。ピンチ中/直後に正しいブラウザスクロールは
+    //   存在しないので、期待位置から合計300px以上流れたら即復帰する。
+    {
+      const e0 = window.__expectedScroll;
+      if(typeof isPinchGesture_==='function' && isPinchGesture_()
+         && e0 && (now - e0.at) < 2500 && Math.abs(sl - e0.v) > 300){
+        window.__lastScrollCause = { name:"自動復帰", at:now, intentional:true };
+        body.scrollLeft = e0.v; last = body.scrollLeft;
+        window.__expectedScroll = { v: body.scrollLeft, at: now };
+        console.warn("[jump-watch] ピンチ中の累積ドリフト", Math.round(sl - e0.v), "px → 期待位置へ自動復帰");
+        healToast_("🛡 ブラウザが画面を流そうとしたので元の位置に戻しました");
+        return;
+      }
+    }
+    if(Math.abs(d) < 900) return;
     const c = window.__lastScrollCause;
     const fresh = c && (now - c.at) < 2500;
     const exp = window.__expectedScroll;
