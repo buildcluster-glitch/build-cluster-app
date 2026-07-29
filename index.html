@@ -2777,7 +2777,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.508</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.509</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -17292,7 +17292,25 @@ function stepCalZoom_(dir){
   CAL_ZOOM_STEPS.forEach((s,k)=>{ const d = Math.abs(s-cur); if(d < best){ best = d; i = k; } });
   i = Math.min(CAL_ZOOM_STEPS.length-1, Math.max(0, i + dir));
   try{ localStorage.setItem(calZoomKey_(), String(CAL_ZOOM_STEPS[i])); }catch(_){}
+  applyCalZoomKeepingView_();
+}
+// 🔒 v1.30.509: 倍率を変えても「今見ている日付」を動かさない。
+//   iOSは中身の寸法が変わるとスクロール位置を勝手に巻き戻す(ピンチが飛んだのと同じ原因)。
+//   ボタン操作は寸法変化が1回だけなので、前後の位置を保存→復元＋0.8秒の押さえ込みで完全に抑えられる。
+//   scrollLeftはzoomの内側の座標系(内容の座標)なので、同じ値を戻せば同じ日付が左端に来る。
+function applyCalZoomKeepingView_(){
+  const body = document.getElementById("calBody");
+  const sl = body ? body.scrollLeft : 0, st = body ? body.scrollTop : 0;
   applyCalZoom_();
+  if(!body) return;
+  body.scrollLeft = sl; body.scrollTop = st;
+  window.__lastScrollCause = { name:"倍率変更", at:Date.now(), intentional:true };
+  window.__expectedScroll = { v: body.scrollLeft, at: Date.now() };
+  window.__pinchHold = { x: body.scrollLeft, y: body.scrollTop, until: Date.now() + 800 };   // 遅れて来る巻き戻しも封じる
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{ try{
+    body.scrollLeft = sl; body.scrollTop = st;
+    window.__expectedScroll = { v: body.scrollLeft, at: Date.now() };
+  }catch(_){} }));
 }
 {
   const cz = document.getElementById("calZoomMobile");
@@ -17301,7 +17319,7 @@ function stepCalZoom_(dir){
       b.onclick = ()=> stepCalZoom_(parseInt(b.dataset.zstep,10) || 0);
     });
     const lb = cz.querySelector("span");
-    if(lb) lb.onclick = ()=>{ try{ localStorage.setItem(calZoomKey_(), "1"); }catch(_){} applyCalZoom_(); };   // %タップで100%に戻す
+    if(lb) lb.onclick = ()=>{ try{ localStorage.setItem(calZoomKey_(), "1"); }catch(_){} applyCalZoomKeepingView_(); };   // %タップで100%に戻す(見ている日付は動かさない v1.30.509)
   }
 }
 document.querySelectorAll("#calZoomSwitch button").forEach(b=>{
@@ -17427,24 +17445,28 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
     //   カレンダー外で1回でもページがズームすると visual viewport がずれ、
     //   戻したつもりでも表示位置が動いたまま=「ずれる」の温床になるため。
     //   ズーム動作をするのはカレンダー本体(#calBody)を摘まんだ時だけ。
-    // 🔄 v1.30.502: iPhoneのピンチズーム復活(gesture経路)。
-    //   500で切り分けのため停止→「ピンチできない」(山田)。停止中は飛びの報告なし=手がかり。
-    //   499までの対策(アンカー補正/自動スクロールキャンセル/日送りガード)は全部入りのまま再有効化。
-    //   もし飛びが再発しても🕵センサーが犯人名をトーストに出す(起動時ノイズは501で除外済み=次に出たら本物)。
-    const gxy = (e)=>[ (typeof e.clientX==='number' ? e.clientX : midX), (typeof e.clientY==='number' ? e.clientY : midY) ];
+    // 🍎 v1.30.509【iPhone/iPadは倍率ボタン方式に確定】
+    //   山田の実機検証で決着: **Androidは正常・iPhoneはChromeでも同じくダメ**。
+    //   iOSのブラウザは全部WebKit(Chrome/Edgeも中身はSafariと同じ)なので、どれでも同じ症状になる。
+    //   494〜508で対策を重ねても直らず、唯一飛ばなかったのが v500(=倍率を変えなかった時)。
+    //   つまりiOSは「zoomで中身の寸法が変わる」こと自体に耐えられず、スクロール位置を巻き戻す。
+    //   →iOSではアプリ側のピンチズームを行わない(ページ全体ズームの抑止だけ続ける)。
+    //     拡大縮小はヘッダーの − 100% ＋ ボタンで(v1.30.497で新設済み・こちらは寸法変化が
+    //     ユーザー操作の直後1回だけなので慣性や巻き戻しと衝突しない)。
+    //   ※Android等の非WebKitは従来どおりピンチが効く(下のtouch経路)。
+    let hintAt = 0;
+    const hintIOS_ = ()=>{
+      if(Date.now() - hintAt < 20000) return;   // 何度もピンチされても20秒に1回だけ
+      hintAt = Date.now();
+      if(typeof showAutoSyncToast==='function') showAutoSyncToast("🔍 iPhoneでは上の − ＋ ボタンで拡大・縮小してください");
+    };
+    const stopGesture_ = (e)=>{ try{ e.preventDefault(); }catch(_){} };   // ページ全体ズームは引き続き抑止
     document.addEventListener("gesturestart", (e)=>{
-      e.preventDefault();   // どこをピンチされてもSafariのページ全体ズームは止める
-      if(!e.target || !e.target.closest || !e.target.closest("#calBody")) return;
-      const p = gxy(e);
-      beginPinch_(p[0], p[1], calZoomVal_());
+      stopGesture_(e);
+      if(e.target && e.target.closest && e.target.closest("#calBody")) hintIOS_();
     }, {passive:false});
-    document.addEventListener("gesturechange", (e)=>{
-      e.preventDefault();
-      if(!pinching) return;
-      const p = gxy(e);
-      movePinch_(p[0], p[1], startZ * (e.scale || 1));
-    }, {passive:false});
-    document.addEventListener("gestureend", (e)=>{ e.preventDefault(); if(pinching) endPinch(); }, {passive:false});
+    document.addEventListener("gesturechange", stopGesture_, {passive:false});
+    document.addEventListener("gestureend",    stopGesture_, {passive:false});
   }
   body.addEventListener("touchstart", (e)=>{
     // 🧟 詰まったピンチ状態の後始末: 1本指で触り直したら強制終了(凍結の解除も含む)v1.30.506
