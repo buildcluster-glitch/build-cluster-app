@@ -2777,7 +2777,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.511</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.512</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -14048,12 +14048,15 @@ function renderCalendar(){
       // 事前はデフォ白背景(担当色で着色しない・手動色は尊重)。点線枠は付けない(担当はある)
       // 事前も担当者が付けば担当色で着色(担当変更で色が変わる)。担当無し(noLeader)のみ白(v1.30.88)
       // 👥 v1.30.511(山田): 複数人の予定は白背景。1人の色で塗ると「その人の予定」に見えてしまうため。
-      //   誰が出るかは下の担当バッジ(色付き)で分かる。手動で色を付けた予定(ev.color)はその指定を尊重。
-      const __multiStaff = (typeof eventStaffList==='function' ? eventStaffList(ev).length : 1) >= 2;
-      const __multiWhite = __multiStaff && !ev.color;
+      //   誰が出るかは下の担当バッジ(色付き)で分かる。
+      //   v1.30.512(山田「手動でつけたやつも白でいいよ」): 手動色(ev.color)より複数人の白を優先する。
+      // ✖ 失注は何より優先してグレー(v1.30.512・山田)。担当と併記(=複数人)でも白にせずグレーのまま。
+      const __evStaffs = (typeof eventStaffList==='function') ? eventStaffList(ev) : [];
+      const __isLost = __evStaffs.includes(LOST_STAFF);
+      const __multiWhite = !__isLost && __evStaffs.length >= 2;
       const __whiteBg = noLeader || __multiWhite;
-      const bg = __multiWhite ? "#ffffff" : (__whiteBg ? "transparent" : (ev.color || STAFF_COLORS[ev.staff]));
-      const fg = __whiteBg ? "#0f172a" : textColorFor(bg);
+      const bg = __isLost ? LOST_STAFF_COLOR : (__multiWhite ? "#ffffff" : (__whiteBg ? "transparent" : (ev.color || STAFF_COLORS[ev.staff])));
+      const fg = __isLost ? textColorFor(LOST_STAFF_COLOR) : (__whiteBg ? "#0f172a" : textColorFor(bg));
       el.style.background = bg;
       el.style.color = fg;
       if(noLeader){
@@ -14086,8 +14089,8 @@ function renderCalendar(){
       const __skipBadge = __jizenSkip
         ? `<span class="chip-skip" style="flex-shrink:0;background:#9ca3af;color:#fff;font-size:9px;font-weight:700;padding:0 5px;border-radius:3px;margin-left:4px;white-space:nowrap" title="軽い工事で訪問不要">🚫行かない</span>`
         : "";
-      // チップ背景 = 行かない=グレー > 手動色 > リーダー色(ev.staff) > 透明(リーダー未指定 or 事前デフォ)
-      const chipBg = __jizenSkip ? "#cbd5e1" : (__multiWhite ? "#ffffff" : (__whiteBg ? "transparent" : (ev.color || STAFF_COLORS[ev.staff])));
+      // チップ背景 = 行かない=グレー > ✖失注=グレー > 複数人=白 > 手動色 > リーダー色 > 透明(未指定)v1.30.512
+      const chipBg = __jizenSkip ? "#cbd5e1" : (__isLost ? LOST_STAFF_COLOR : (__multiWhite ? "#ffffff" : (__whiteBg ? "transparent" : (ev.color || STAFF_COLORS[ev.staff]))));
       const chipFg = __jizenSkip ? "#475569" : (__whiteBg ? "#0f172a" : textColorFor(chipBg));
       // カテゴリプレフィクスの色 = 元請け色 > カテゴリ色 > 半透明白
       const catBoxBg = catBadgeColor_(cat && cat.name, cont ? cont.color : (cat ? cat.color : null));   // 立会=紫/修繕=黄で固定(v1.30.472)
@@ -14949,10 +14952,12 @@ function renderMonth(){
       const noLeader = !ev.color && !STAFF_COLORS[ev.staff];
       // 事前も担当者が付けば担当色で着色(担当変更で色が変わる)。担当無し(noLeader)のみ白(v1.30.88)
       const staffList = eventStaffList(ev);
-      const __multiWhite = staffList.length >= 2 && !ev.color;   // 👥複数人は白背景(v1.30.511・山田)
+      // ✖失注=グレー > 👥複数人=白(手動色より優先) > 手動色 > 担当色 (v1.30.511-512・山田)
+      const __isLost = staffList.includes(LOST_STAFF);
+      const __multiWhite = !__isLost && staffList.length >= 2;
       const __whiteBg = noLeader || __multiWhite;
-      const bg = __multiWhite ? "#ffffff" : (__whiteBg ? "transparent" : (ev.color || STAFF_COLORS[ev.staff]));
-      const fg = __whiteBg ? "#0f172a" : textColorFor(bg);
+      const bg = __isLost ? LOST_STAFF_COLOR : (__multiWhite ? "#ffffff" : (__whiteBg ? "transparent" : (ev.color || STAFF_COLORS[ev.staff])));
+      const fg = __isLost ? textColorFor(LOST_STAFF_COLOR) : (__whiteBg ? "#0f172a" : textColorFor(bg));
       const extraStyle = noLeader ? "border:1px dashed #94a3b8;" : (__multiWhite ? "border:1px solid #cbd5e1;" : "");
       const badge = staffList.length>=2 ? ` 👥${staffList.length}` : "";
       const tooltipStaff = staffList.join("/") || "未指定";
