@@ -2773,7 +2773,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.497</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.499</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -17242,7 +17242,7 @@ document.getElementById("todayBtn").onclick = ()=>{
   currentView = "month";
   currentDate = new Date();
   render();
-  scrollToToday();
+  scrollToToday(true);   // 明示操作なので必ず動かす(v1.30.499)
 };
 // 👤 マイ ボタン: 左クリックで設定モーダルを開く (フィルタON/OFFはモーダル内で操作)
 document.getElementById("myEventsBtn").onclick = ()=>openMyself();
@@ -17279,6 +17279,7 @@ function setZoomLabel_(z){
   if(el) el.textContent = Math.round((z||1)*100) + "%";
 }
 function stepCalZoom_(dir){
+  try{ if(typeof _cancelScrollToToday==='function') _cancelScrollToToday(); }catch(_){}   // 倍率操作でも自動スクロールを止める(v1.30.499)
   const cur = calZoomVal_();
   let i = 0, best = Infinity;
   CAL_ZOOM_STEPS.forEach((s,k)=>{ const d = Math.abs(s-cur); if(d < best){ best = d; i = k; } });
@@ -17343,6 +17344,13 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
   //   Safari では下の touch 経路を使わず、gesturestart/change/end 経路(preventDefaultが効く)で処理する。
   const IOS_GESTURE = ('ongesturestart' in window);
   const beginPinch_ = (cx, cy, z0)=>{
+    // 🚨 v1.30.499【「ピンチすると1週間前にずれる」の真犯人】
+    //   起動時の「今日へ自動スクロール」は 50〜4500ms に8連発のリトライを仕込んでいる。
+    //   その最中にピンチすると倍率変更で列幅が変わり、割り込んだ自動スクロールが
+    //   見ていた場所から「今日の列」へ引き戻す=数日〜1週間ぶん飛ぶ。
+    //   (実測: 起動直後のピンチ=横2164px≒7.2列ズレ / 起動67秒後の同じ操作=0.2px)
+    //   山田は「アプリを開く→すぐピンチして確認」を繰り返していたので毎回この窓に当たっていた。
+    try{ if(typeof _cancelScrollToToday==='function') _cancelScrollToToday(); }catch(_){}
     pinching = true; startZ = curZ = z0;
     const zs = wrap.style.zoom, hs = wrap.style.height;
     wrap.style.zoom = ""; wrap.style.height = "";
@@ -17360,17 +17368,24 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
     if(!raf){ raf = requestAnimationFrame(()=>{ raf = 0; applyZ_(curZ); anchor_(curZ); }); }
   };
   if(IOS_GESTURE){
+    // ⚠ iOSでは「どこをピンチされても」ページ全体ズームを止める(v1.30.498)。
+    //   カレンダー外で1回でもページがズームすると visual viewport がずれ、
+    //   戻したつもりでも表示位置が動いたまま=「ずれる」の温床になるため。
+    //   ズーム動作をするのはカレンダー本体(#calBody)を摘まんだ時だけ。
+    const gxy = (e)=>[ (typeof e.clientX==='number' ? e.clientX : midX), (typeof e.clientY==='number' ? e.clientY : midY) ];
     document.addEventListener("gesturestart", (e)=>{
-      if(!e.target || !e.target.closest || !e.target.closest("#calBody")) return;
       e.preventDefault();   // ← これだけが iOS のページ全体ズームを止められる
-      beginPinch_(e.clientX, e.clientY, calZoomVal_());
+      if(!e.target || !e.target.closest || !e.target.closest("#calBody")) return;
+      const p = gxy(e);
+      beginPinch_(p[0], p[1], calZoomVal_());
     }, {passive:false});
     document.addEventListener("gesturechange", (e)=>{
-      if(!pinching) return;
       e.preventDefault();
-      movePinch_(e.clientX, e.clientY, startZ * (e.scale || 1));
+      if(!pinching) return;
+      const p = gxy(e);
+      movePinch_(p[0], p[1], startZ * (e.scale || 1));
     }, {passive:false});
-    document.addEventListener("gestureend", (e)=>{ if(pinching){ e.preventDefault(); endPinch(); } }, {passive:false});
+    document.addEventListener("gestureend", (e)=>{ e.preventDefault(); if(pinching) endPinch(); }, {passive:false});
   }
   body.addEventListener("touchstart", (e)=>{
     if(IOS_GESTURE) return;                       // iOSは gesture 経路で処理(二重ズーム防止)
@@ -17381,6 +17396,9 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
     beginPinch_(m[0], m[1], calZoomVal_());
   }, {passive:false});
   body.addEventListener("touchmove", (e)=>{
+    // 🍏 iOSはズーム自体をgesture経路で行う。ここでは2本指の時に「スクロールだけ」を止める(v1.30.498)。
+    //   touch-action:pan-y のせいで、ピンチ中も縦スクロールが同時に走って余計にずれていたため。
+    if(IOS_GESTURE){ if(e.touches.length === 2){ try{ e.preventDefault(); }catch(_){} } return; }
     if(!pinching || e.touches.length !== 2) return;
     e.preventDefault();   // ブラウザのページ全体ズーム/スクロールを抑止(カレンダーだけズーム)
     const m = mid(e.touches);   // 中点が動けば一緒に動く(2本指のパンも効く)
@@ -17401,9 +17419,24 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
 })();
 
 // 「今日」位置にスクロール（垂直=現在時刻付近、水平=月ビューで今日の列）
-function scrollToToday(){
+// 👆 カレンダーに一度でも触れたか(v1.30.499)。触れた後は自動スクロールを一切しない。
+//   起動直後の「今日へ自動スクロール」は8連発(50〜4500ms)で仕込まれており、
+//   その最中にピンチ/スクロールすると見ていた場所から「今日の列」へ引き戻され、
+//   1週間ぶん飛んだように見える事故になっていた(実測7.2列)。
+//   自動スクロールは"ユーザーが触る前"だけの機能でよい。「今日」ボタンは force=true で明示的に通す。
+let __calTouched = false;
+(function trackCalTouched_(){
+  const mark = e=>{ try{ if(e.target && e.target.closest && e.target.closest("#calBody")) __calTouched = true; }catch(_){} };
+  document.addEventListener("touchstart", mark, {capture:true, passive:true});
+  document.addEventListener("wheel",      mark, {capture:true, passive:true});
+})();
+function scrollToToday(force){
   const body = document.getElementById("calBody");
   if(!body) return;
+  if(!force){
+    if(__calTouched) return;                                                   // 触った後は横取りしない
+    if(typeof isPinchGesture_==='function' && isPinchGesture_()) return;        // ピンチ中/直後も動かさない
+  }
   const now = new Date();
   // 垂直: デフォルトは 9時(グリッド先頭)固定 (HOUR_START=9 → scrollTop 0)
   body.scrollTop = 0;
@@ -17451,6 +17484,7 @@ function scrollToTodayRobust(){
   function detach(){
     if(!body) return;
     body.removeEventListener("wheel", onUserScroll);
+    body.removeEventListener("touchstart", onUserScroll);
     body.removeEventListener("touchmove", onUserScroll);
     window.removeEventListener("keydown", onUserScrollKey);
   }
@@ -17460,6 +17494,9 @@ function scrollToTodayRobust(){
   }
   if(body){
     body.addEventListener("wheel", onUserScroll, {passive:true});
+    // 👆 触った時点で中止(v1.30.499)。touchmoveだけだと、指を置いた直後に自動スクロールが割り込む隙があり、
+    //    ピンチ中に「今日の列」へ引き戻される事故(=1週間ずれる)の窓になっていた。
+    body.addEventListener("touchstart", onUserScroll, {passive:true});
     body.addEventListener("touchmove", onUserScroll, {passive:true});
     window.addEventListener("keydown", onUserScrollKey);
   }
