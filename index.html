@@ -2773,7 +2773,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.500</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.501</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -17467,8 +17467,11 @@ function scrollToToday(force){
     if(__calTouched) return;                                                   // 触った後は横取りしない
     if(typeof isPinchGesture_==='function' && isPinchGesture_()) return;        // ピンチ中/直後も動かさない
   }
-  // 🕵 ジャンプ検出用の名乗り(v1.30.500): 自動スクロールが動いた事実を横ジャンプ検出センサーに残す
-  window.__lastScrollCause = { name: force ? "今日ボタン" : "今日へ自動スクロール", at: Date.now(), intentional: !!force };
+  // 🕵 ジャンプ検出用の名乗り(v1.30.500)。
+  //   v1.30.501: 起動時の自動スクロール(左端→今日の列=約14列4200px)は正常動作なのに毎回トーストが出ていた
+  //   (山田の実機スクショで確認・4192px=過去14日窓と完全一致)。上のガードで「触った後」はここに来られない
+  //   =この名乗りは常に起動時の正常スクロール→silent化。もし実機で飛びが再発すれば「不明(アプリ外)」等が出る。
+  window.__lastScrollCause = { name: force ? "今日ボタン" : "今日へ自動スクロール(起動時)", at: Date.now(), intentional: true };
   const now = new Date();
   // 垂直: デフォルトは 9時(グリッド先頭)固定 (HOUR_START=9 → scrollTop 0)
   body.scrollTop = 0;
