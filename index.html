@@ -2777,7 +2777,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.506</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.507</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -17365,11 +17365,35 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
     if(__ovFrozen) return;
     __ovFrozen = true; __ovPrev = body.style.overflow; body.style.overflow = "hidden";
   };
-  const unfreeze_ = ()=>{
+  const unfreeze_ = (delay)=>{
     if(!__ovFrozen) return;
-    if(__ovT) clearTimeout(__ovT);
-    __ovT = setTimeout(()=>{ __ovT = null; body.style.overflow = __ovPrev; __ovFrozen = false; }, 150);
+    if(__ovT){ clearTimeout(__ovT); __ovT = null; }
+    const run = ()=>{ __ovT = null; body.style.overflow = __ovPrev; __ovFrozen = false; };
+    if(delay > 0) __ovT = setTimeout(run, delay); else run();
   };
+  // 🧲 v1.30.507【押さえ込み】指を離した後も位置を固定し続ける。
+  //   山田報告(506)「🛡トーストは出るのに、やっぱり飛ぶ」の理由:
+  //   iOSの慣性フリングは指を離してから1〜2秒続くのに、こちらの復帰は「指が離れて500ms」で切れていた。
+  //   →前半だけ戻して(=トーストが出て)、残りの慣性が最後まで運び切っていた。
+  //   慣性より長く(1.2秒)毎フレーム位置を書き戻し続けて、慣性を握り潰す。
+  //   ユーザーが自分で触ったら即解除するので、操作を邪魔しない。
+  let holdPos = null, holdUntil = 0, holdRaf = 0;
+  const tickHold_ = ()=>{
+    holdRaf = 0;
+    if(!holdPos || Date.now() > holdUntil){ holdPos = null; return; }
+    if(Math.abs(body.scrollLeft - holdPos.x) > 2 || Math.abs(body.scrollTop - holdPos.y) > 2){
+      window.__lastScrollCause = { name:"ピンチ後の押さえ込み", at:Date.now(), intentional:true };
+      body.scrollLeft = holdPos.x; body.scrollTop = holdPos.y;
+      window.__expectedScroll = { v: body.scrollLeft, at: Date.now() };
+    }
+    holdRaf = requestAnimationFrame(tickHold_);
+  };
+  const startHold_ = (x, y, ms)=>{
+    holdPos = { x, y }; holdUntil = Date.now() + ms;
+    window.__pinchHold = { x, y, until: holdUntil };   // 🕵センサー側から即時に押さえ込むための共有情報
+    if(!holdRaf) holdRaf = requestAnimationFrame(tickHold_);
+  };
+  const cancelHold_ = ()=>{ holdPos = null; holdUntil = 0; window.__pinchHold = null; };
   const beginPinch_ = (cx, cy, z0)=>{
     // 🚨 v1.30.499【「ピンチすると1週間前にずれる」の真犯人】
     //   起動時の「今日へ自動スクロール」は 50〜4500ms に8連発のリトライを仕込んでいる。
@@ -17425,6 +17449,8 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
   body.addEventListener("touchstart", (e)=>{
     // 🧟 詰まったピンチ状態の後始末: 1本指で触り直したら強制終了(凍結の解除も含む)v1.30.506
     if(e.touches.length === 1 && pinching) endPinch();
+    // 🧲 自分で触ったら押さえ込みは即解除=操作の邪魔をしない(v1.30.507)
+    if(e.touches.length === 1){ cancelHold_(); unfreeze_(0); }
     // 🧊 2本指が着いた瞬間に凍結(gesturestartより早く届く=Safariがスクロール解釈を始める前に止める)v1.30.506
     if(e.touches.length === 2) freeze_();
     if(IOS_GESTURE) return;                       // iOSは gesture 経路で処理(二重ズーム防止)
@@ -17463,13 +17489,21 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
       body.scrollLeft = sl; body.scrollTop = st;
       window.__expectedScroll = { v: body.scrollLeft, at: Date.now() };
     }catch(_){} }));
-    unfreeze_();   // 🧊 解除は150ms後=フリング発動判定の瞬間はまだ凍結中(v1.30.506)
+    // 🧲 v1.30.507: iOSの慣性(1〜2秒続く)を握り潰すため、1.2秒は位置を固定し凍結も維持する。
+    //   自分で触れば即解除(上のtouchstart)。506は500msで手を離していたので慣性の後半に運ばれていた。
+    startHold_(sl, st, 1200);
+    unfreeze_(1200);
   };
   body.addEventListener("touchend", endPinch, {passive:true});
   body.addEventListener("touchcancel", endPinch, {passive:true});
-  // 🧊 安全弁: ピンチ扱いにならないまま凍結だけ残るケース(gesturestartが#calBody外扱い等)→全指離れたら必ず解除
-  body.addEventListener("touchend",    (e)=>{ if(!e.touches || e.touches.length===0) unfreeze_(); }, {passive:true});
-  body.addEventListener("touchcancel", (e)=>{ if(!e.touches || e.touches.length===0) unfreeze_(); }, {passive:true});
+  // 🧊 安全弁: ピンチ扱いにならないまま凍結だけ残るケース(gesturestartが#calBody外扱い等)→全指離れたら必ず解除。
+  //   v1.30.507: この経路も慣性を握り潰したいので、凍結解除は1.2秒後＋その間は位置を押さえ込む。
+  const __safetyEnd = (e)=>{
+    if(e.touches && e.touches.length !== 0) return;
+    if(__ovFrozen){ startHold_(body.scrollLeft, body.scrollTop, 1200); unfreeze_(1200); }
+  };
+  body.addEventListener("touchend",    __safetyEnd, {passive:true});
+  body.addEventListener("touchcancel", __safetyEnd, {passive:true});
 })();
 
 // 🕵 横ジャンプ検出センサー(v1.30.500): 画面が勝手に大きく横へ飛んだ瞬間、原因の名前をトーストに出す。
@@ -17486,6 +17520,17 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
   body.addEventListener("scroll", ()=>{
     const sl = body.scrollLeft, d = sl - last, prev = last; last = sl;
     const now = Date.now();
+    // 🧲 v1.30.507 押さえ込み中は、その場(scrollイベントの中)で即座に引き戻す。
+    //   rAFを待つと1フレーム分ガクッと見えるため。慣性が終わるまで何度でも握り潰す。
+    const h = window.__pinchHold;
+    if(h && now < h.until){
+      if(Math.abs(sl - h.x) > 2){
+        window.__lastScrollCause = { name:"ピンチ後の押さえ込み", at:now, intentional:true };
+        body.scrollLeft = h.x; last = body.scrollLeft;
+        window.__expectedScroll = { v: body.scrollLeft, at: now };
+      }
+      return;
+    }
     // 🧮 v1.30.506 累積ドリフト検知: 慣性フリングは小刻みなscrollイベントの連続で「1回900px」の網に
     //   掛からない(=「飛ぶのにトーストも出ない」の正体)。ピンチ中/直後に正しいブラウザスクロールは
     //   存在しないので、期待位置から合計300px以上流れたら即復帰する。
