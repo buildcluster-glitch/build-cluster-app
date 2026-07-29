@@ -382,6 +382,10 @@
     /* Firefox 用 */
     scrollbar-color:#4b5563 #d1d5db;
     scrollbar-width:auto;
+    /* 🍏 v1.30.503: ブラウザの「スクロール位置の自動調整(scroll anchoring)」を無効化。
+       iPhone実機で判明: ピンチでzoomが変わった瞬間、Safariが勝手にscrollLeftを動かして(実測3194px)
+       アプリの位置補正と喧嘩し「1週間前に飛ぶ」ように見えていた(🕵センサー「原因:不明(アプリ外)」で確定) */
+    overflow-anchor:none;
   }
   /* スクロールバー(Webkit) - 太く濃く */
   .calendar-body::-webkit-scrollbar{
@@ -2773,7 +2777,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.502</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.503</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -17259,6 +17263,8 @@ function calZoomVal_(){
 function applyCalZoom_(zOverride){
   const wrap = document.getElementById("calendarWrap") || document.querySelector(".calendar-wrap");
   if(!wrap) return;
+  // 🕵名乗り(v1.30.503): 倍率変更でブラウザがscrollLeftをクランプしても誤検出しない
+  window.__lastScrollCause = { name:"倍率変更", at:Date.now(), intentional:true };
   const z = (zOverride != null) ? zOverride : calZoomVal_();
   // 一旦解除して素の見た目高さを測る→同じ見た目高さになるよう1/zで補正(PC/スマホ両方のCSS高さ計算に追従)
   wrap.style.zoom = ""; wrap.style.height = "";
@@ -17335,8 +17341,11 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
   //   scrollLeft/Top は zoom の内側の座標系(内容の座標)なので、画面px→内側pxは /z で換算する。
   const anchor_ = (z)=>{
     const r = body.getBoundingClientRect();
+    window.__lastScrollCause = { name:"ピンチ位置補正", at:Date.now(), intentional:true };   // 🕵名乗り(v1.30.503)
     body.scrollLeft = Math.max(0, ancX - (midX - r.left)/z);
     body.scrollTop  = Math.max(0, ancY - (midY - r.top )/z);
+    // 🛡 自動復帰用: 「アプリが望んだ位置」を記録(読み返し=クランプ後の実値)。ブラウザが勝手に動かしたらここへ戻す
+    window.__expectedScroll = { v: body.scrollLeft, at: Date.now() };
   };
   // 🍏 iOS Safari 対策(v1.30.497・山田「496でもピンチした瞬間に1週間前にずれる感じになる」):
   //   iOS は viewport の user-scalable=no を無視してページ全体をピンチズームする。しかも
@@ -17416,8 +17425,10 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
     try{ localStorage.setItem(calZoomKey_(), String(curZ)); }catch(_){}
     // applyCalZoom_ は zoom を一度解除して測り直す=スクロールが動くので、見ている位置を復元してから確定
     const sl = body.scrollLeft, st = body.scrollTop;
+    window.__lastScrollCause = { name:"ピンチ確定", at:Date.now(), intentional:true };   // 🕵名乗り(v1.30.503)
     applyCalZoom_();
     body.scrollLeft = sl; body.scrollTop = st;
+    window.__expectedScroll = { v: body.scrollLeft, at: Date.now() };   // 🛡自動復帰用(v1.30.503)
   };
   body.addEventListener("touchend", endPinch, {passive:true});
   body.addEventListener("touchcancel", endPinch, {passive:true});
@@ -17432,15 +17443,39 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
   const body = document.getElementById("calBody");
   if(!body) return;
   let last = body.scrollLeft;
+  let healToastAt = 0;
+  const healToast_ = (msg)=>{ if(Date.now()-healToastAt < 3000) return; healToastAt = Date.now(); if(typeof showAutoSyncToast==='function') showAutoSyncToast(msg); };
   body.addEventListener("scroll", ()=>{
-    const sl = body.scrollLeft, d = sl - last; last = sl;
+    const sl = body.scrollLeft, d = sl - last, prev = last; last = sl;
     if(Math.abs(d) < 900) return;
+    const now = Date.now();
     const c = window.__lastScrollCause;
-    const fresh = c && (Date.now() - c.at) < 1500;
-    const name = fresh ? c.name : "不明(アプリ外=ブラウザ/OS側)";
-    console.warn("[jump-watch] 横ジャンプ", Math.round(d), "px 原因:", name);
-    if(fresh && c.intentional) return;   // ‹›/月タブ/今日ボタン等の意図的ジャンプは黙る
-    if(typeof showAutoSyncToast==='function') showAutoSyncToast(`⚠ 画面が横に${Math.round(Math.abs(d))}px飛びました（原因: ${name}）`);
+    const fresh = c && (now - c.at) < 2500;
+    const exp = window.__expectedScroll;
+    const expFresh = exp && (now - exp.at) < 2500;
+    if(expFresh && Math.abs(sl - exp.v) <= 40) return;               // アプリが書いた値が届いただけ=正常
+    const pinch = (typeof isPinchGesture_==='function' && isPinchGesture_());
+    if(fresh && c.intentional && !pinch) return;                     // ‹›/月タブ/今日ボタン等の意図的ジャンプは黙る
+    // 🛡 v1.30.503 自動復帰: ブラウザ/OSが勝手に動かした(名乗りが無い or 期待位置と違う)→即その場で戻す。
+    //   iPhone実機で確定(山田報告): ピンチ中にscrollLeftが3194px飛び、原因の名乗りなし=Safariのスクロール自動調整。
+    if(pinch && expFresh){
+      window.__lastScrollCause = { name:"自動復帰", at:now, intentional:true };
+      body.scrollLeft = exp.v; last = body.scrollLeft;
+      window.__expectedScroll = { v: body.scrollLeft, at: now };
+      console.warn("[jump-watch] ピンチ中のブラウザ介入", Math.round(d), "px → 期待位置へ自動復帰");
+      healToast_("🛡 ブラウザが画面を飛ばそうとしたので元の位置に戻しました");
+      return;
+    }
+    if(!fresh){
+      window.__lastScrollCause = { name:"自動復帰", at:now, intentional:true };
+      body.scrollLeft = prev; last = body.scrollLeft;
+      console.warn("[jump-watch] 原因不明ジャンプ", Math.round(d), "px → 直前位置へ自動復帰");
+      healToast_(`🛡 画面が横に${Math.round(Math.abs(d))}px飛んだため、元の位置に戻しました`);
+      return;
+    }
+    // アプリ内の名乗りあり(意図的でない)ジャンプ=犯人名を表示(復帰はしない・挙動を観察する)
+    console.warn("[jump-watch] 横ジャンプ", Math.round(d), "px 原因:", c.name);
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast(`⚠ 画面が横に${Math.round(Math.abs(d))}px飛びました（原因: ${c.name}）`);
   }, {passive:true});
   // 🍏 Safariのページ全体ズーム検出: これが出たら「アプリの外」のズームが犯人と確定する
   if(window.visualViewport){
