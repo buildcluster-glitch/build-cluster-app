@@ -2777,7 +2777,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.509</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.510</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -10043,10 +10043,23 @@ function getOrConsolidateJimuEvent_(staff){
 }
 // 🔁 全スタッフの事務イベントをID違いでも1人1個に自動統合(クラウド同期のたびに実行)v1.30.162
 //   PCとスマホで別IDの事務表ができて分裂する問題の根本対策。タスク行はユニオン(消えない)・空の重複は削除。
+// 📋 これは「事務タスクの箱」か？(v1.30.510)
+//   ⚠ 統合(consolidateAllJimu_)は箱を1人1個にまとめ、余りを削除する。カテゴリが事務というだけで
+//   箱とみなしていたため、普通の予定「事務作業」(カテゴリ=事務)が同期のたびに吸収・削除されていた
+//   (山田報告「同期が走ると消える」)。箱の条件を厳密にする:
+//     ・箇条書き行(・- ● など)を持つ複数行 = タスクリストの箱
+//     ・タイトルがちょうど「事務」= 作りたてで中身が空の箱
+//   これ以外(=ただの予定)は絶対に統合・削除しない。
+function isJimuTaskBox_(e){
+  if(!e || e.category !== '事務' || !e.title) return false;
+  const t = String(e.title);
+  if(t.trim() === '事務') return true;                       // 空の箱
+  return t.split(/\r?\n/).some(ln => /^\s*[・･\-●▪◦*]/.test(ln));   // 箇条書きを持つ=タスクの箱
+}
 function consolidateAllJimu_(){
   try{
     const byStaff={};
-    (state.events||[]).forEach(e=>{ if(e&&e.category==='事務'&&e.staff&&e.title){ (byStaff[e.staff]=byStaff[e.staff]||[]).push(e); } });
+    (state.events||[]).forEach(e=>{ if(e&&e.staff&&isJimuTaskBox_(e)){ (byStaff[e.staff]=byStaff[e.staff]||[]).push(e); } });
     let changed=false;
     const lineCount=e=>String(e.title||'').split(/\r?\n/).filter(l=>/[・･\-●▪◦*]/.test(l)).length;
     Object.keys(byStaff).forEach(staff=>{
@@ -10143,7 +10156,10 @@ function addTaskToStaff_(staff, text, by){
   });
   const rmSet = new Set();
   state.events.forEach(e=>{
-    if(e && e.category==='事務' && !getTaskInfo_(e)){
+    // ⚠ v1.30.510: 「空の箱」だけを掃除する。以前はカテゴリが事務なら何でも対象だったため、
+    //   1行タイトルの普通の予定(例「事務作業」)が起動のたびに削除され、しかもクラウドへ
+    //   delete が飛んで全端末から消えていた(山田報告「同期が走ると消える」の主犯)。
+    if(e && isJimuTaskBox_(e) && !getTaskInfo_(e)){
       const body = String(e.title||'').split(/\r?\n/).slice(1).filter(l=>l.trim());
       if(body.length===0) rmSet.add(e.id);
     }
@@ -14083,7 +14099,9 @@ function renderCalendar(){
       // チップ用: 1行目のみ表示。複数行/メモはホバーで全文表示。
       let titleFirstLine = (ev.title || "").split(/\r?\n/)[0];
       // カテゴリバッジ(事前等)と同じ語がタイトル先頭にあれば重複なので除去(「事前 事前 物件」→「物件」)v1.30.100
-      if(cat && cat.name){ const __cre = new RegExp("^\\s*"+cat.name.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"[\\s　]*"); titleFirstLine = titleFirstLine.replace(__cre, ""); }
+      //   ⚠ v1.30.510: 区切り(空白 or 行末)が続く時だけ剥がす。区切り無しで剥がしていたため
+      //     「事務作業」(カテゴリ=事務)が「作業」と表示されていた(山田報告)。単語の一部は消さない。
+      if(cat && cat.name){ const __cre = new RegExp("^\\s*"+cat.name.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"(?=$|[\\s　])[\\s　]*"); titleFirstLine = titleFirstLine.replace(__cre, ""); }
       // 🏠 号室を分離してピン留め(建物名だけ省略・号室+ボリューム+担当バッジは常に見える)v1.30.101
       let __nameMain = titleFirstLine, __roomTail = "";
       const __rm = (__progResto && __progResto.room) ? String(__progResto.room).trim() : "";
