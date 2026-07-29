@@ -67,7 +67,7 @@
   #cloudSyncBadge.off{background:#dc2626;font-size:8px;padding:0 3px;min-width:auto}
   header.app-header::-webkit-scrollbar{height:4px}
   header.app-header::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:2px}
-  .app-title{font-weight:700;font-size:15px;margin-right:6px;white-space:nowrap;flex-shrink:0}
+  .app-title{font-weight:700;font-size:15px;margin-right:6px;white-space:nowrap;flex-shrink:0;display:none}  /* PCは非表示・📱のみ表示(v1.30.496) */
   .nav-btn{
     border:1px solid var(--border-strong);background:#fff;border-radius:6px;
     padding:5px 9px;color:var(--text);font-size:13px;white-space:nowrap;flex-shrink:0;
@@ -2131,7 +2131,16 @@
     .nav-btn{min-height:36px;padding:6px 10px;font-size:13px;flex-shrink:0}
     .nav-btn.icon-only{min-width:36px;padding:6px}
     /* 📱 ☁同期ボタンをヘッダー先頭(タイトルの隣)へ。flex orderで前出し=横スクロールせず最初から見える */
-    .app-title{order:-2}
+    /* 📱 版番号チップ(v1.30.496・山田「スマホだと現在のバージョンが分からない」):
+       スマホはタブ名(=版番号を入れてある)が見えない。ヘッダー先頭に小さく常時表示し、
+       タップで「今の版の確認＋最新に更新」ができるようにする */
+    .app-title{
+      display:flex;align-items:center;order:-2;
+      border:1px solid var(--border);border-radius:6px;background:#fff;
+      padding:4px 6px;min-height:34px;cursor:pointer;
+    }
+    .app-title span{font-size:10px !important;color:#64748b !important;letter-spacing:-.2px}
+    .app-title:active{background:#e2e8f0}
     .nav-btn#cloudSyncBtn{order:-1;font-size:17px;min-width:44px;min-height:38px}
     /* 🚫 リセットボタンは誤タップ事故防止でスマホ非表示(全データ消去のため) */
     #resetBtn{display:none}
@@ -2750,8 +2759,9 @@
 <body>
 
 <header class="app-header">
-  <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.495</span></div>
+  <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
+       ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.496</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -19945,6 +19955,28 @@ function renderBugReportModal_(){
 }
 document.getElementById("bugReportBtn").onclick = openBugReportModal_;
 { const __clb=document.getElementById("changelogBtn"); if(__clb) __clb.onclick = ()=>{ try{ openChangelog_(); }catch(_){} }; }   // 📜変更の記録(v1.30.337)
+// 📱 版番号チップ(v1.30.496・山田「スマホだと現在のバージョンが分からない」)
+//   スマホはタブ名(版番号入り)が見えない=自分が最新版を使えているか確認できなかった。
+//   ヘッダー先頭に常時表示＋タップで「今の版の確認 → 最新に更新(キャッシュ削除して再読込)」まで完結させる。
+function appVersion_(){ return ((document.querySelector(".app-title span")||{}).textContent||"").trim(); }
+async function forceUpdateApp_(){
+  if(navigator.onLine === false){ alert("⚠ オフラインです。ネットに繋がってから更新してください。"); return; }
+  try{ if(window.caches){ const ks = await caches.keys(); await Promise.all(ks.map(k=>caches.delete(k))); } }catch(_){}
+  try{
+    if(navigator.serviceWorker && navigator.serviceWorker.getRegistrations){
+      const rs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(rs.map(r=>r.update().catch(()=>{})));
+    }
+  }catch(_){}
+  location.reload();
+}
+{ const __avc = document.getElementById("appVerChip");
+  if(__avc){
+    __avc.title = "バージョン確認・最新に更新";
+    __avc.onclick = ()=>{
+      if(confirm(`いま使っているバージョン\n\n　${appVersion_()}\n\n最新版に更新しますか？\n(読み込み直すだけです。予定・タスクなどのデータは消えません)`)) forceUpdateApp_();
+    };
+  } }
 
 // ===== 📚 過去アーカイブ閲覧 (年ごと・読取専用・Excel(CSV)保存) v1.30.202 =====
 //   普段の修繕/原状回復ビューは3ヶ月で軽いまま、ここだけ年を指定して台帳から広く取得して見る。
