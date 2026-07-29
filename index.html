@@ -2751,7 +2751,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.493</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.494</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -17256,32 +17256,68 @@ window.addEventListener("resize", ()=>{ if(typeof applyCalZoom_==='function') ap
 window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
 // 📱 ピンチイン/アウトでカレンダーを拡大縮小(スマホ・v1.30.258・山田)。2本指の距離比→zoom(0.5〜1.5・100%付近スナップ)。
 //   離した時に記憶(次回起動も同じ倍率)。1本指のスクロール/ドラッグには影響しない(2本指の時だけ発動)。
+//   🤏 v1.30.494(鈴木報告「2本指で拡大しようとするとやっぱりずれる」)= 拡大中に見ている場所が動く問題の解消:
+//     ① 指の中点の下にある「日付/時刻」を掴んだまま拡大縮小する(アンカー補正)。
+//        CSS zoom を変えても calBody の scrollLeft/scrollTop は据え置かれるので、倍率を変えるほど
+//        見ている位置が左上へ流れていた ＝ これが「ずれる」の正体。指の中点を基準に毎フレーム補正する。
+//     ② 2本指が着いた瞬間に preventDefault してブラウザ側のスクロールが始まるのを止める
+//        (#calGrid は touch-action:pan-y なので、ピンチ中に縦スクロールが同時に走って余計にずれていた)。
+//     ③ 拡大中は素の高さを測り直さない(毎フレームの「zoom解除→測定→再適用」が揺れの原因だった)。
 (function setupCalPinchZoom_(){
   const body = document.getElementById("calBody");
-  if(!body) return;
-  let pinching = false, startDist = 0, startZ = 1, curZ = 1, raf = 0;
+  const wrap = document.getElementById("calendarWrap") || document.querySelector(".calendar-wrap");
+  if(!body || !wrap) return;
+  let pinching = false, startDist = 0, startZ = 1, curZ = 1, raf = 0, baseH = 0;
+  let ancX = 0, ancY = 0, midX = 0, midY = 0;
   const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  const mid  = t => [ (t[0].clientX + t[1].clientX)/2, (t[0].clientY + t[1].clientY)/2 ];
+  // 倍率だけ当てる(素の高さは baseH のキャッシュを使い、測り直さない=③)
+  const applyZ_ = (z)=>{
+    if(Math.abs(z - 1) <= 0.01){ wrap.style.zoom = ""; wrap.style.height = ""; }
+    else { wrap.style.zoom = String(z); if(baseH > 0) wrap.style.height = Math.max(200, Math.round(baseH / z)) + "px"; }
+  };
+  // 掴んだ内容が指の中点に居続けるようスクロール位置を補正(=①)。
+  //   scrollLeft/Top は zoom の内側の座標系(内容の座標)なので、画面px→内側pxは /z で換算する。
+  const anchor_ = (z)=>{
+    const r = body.getBoundingClientRect();
+    body.scrollLeft = Math.max(0, ancX - (midX - r.left)/z);
+    body.scrollTop  = Math.max(0, ancY - (midY - r.top )/z);
+  };
   body.addEventListener("touchstart", (e)=>{
-    if(e.touches.length === 2){
-      pinching = true;
-      startDist = dist(e.touches) || 1;
-      startZ = curZ = calZoomVal_();
-    }
-  }, {passive:true});
+    if(e.touches.length !== 2) return;
+    try{ e.preventDefault(); }catch(_){}          // ②ブラウザのスクロール開始を止める
+    pinching = true;
+    startDist = dist(e.touches) || 1;
+    startZ = curZ = calZoomVal_();
+    // 素の高さはこのピンチ中ずっと使い回す(③)
+    const zs = wrap.style.zoom, hs = wrap.style.height;
+    wrap.style.zoom = ""; wrap.style.height = "";
+    baseH = wrap.getBoundingClientRect().height;
+    wrap.style.zoom = zs; wrap.style.height = hs;
+    const m = mid(e.touches); midX = m[0]; midY = m[1];
+    const r = body.getBoundingClientRect();
+    ancX = body.scrollLeft + (midX - r.left)/startZ;   // 指の中点の下にある内容の座標
+    ancY = body.scrollTop  + (midY - r.top )/startZ;
+  }, {passive:false});
   body.addEventListener("touchmove", (e)=>{
     if(!pinching || e.touches.length !== 2) return;
-    e.preventDefault();   // ブラウザのページ全体ズームを抑止(カレンダーだけズーム)
+    e.preventDefault();   // ブラウザのページ全体ズーム/スクロールを抑止(カレンダーだけズーム)
     let z = startZ * (dist(e.touches) / startDist);
     z = Math.min(1.5, Math.max(0.5, z));
     if(Math.abs(z - 1) <= 0.06) z = 1;   // 100%付近はスナップ
     curZ = z;
-    if(!raf){ raf = requestAnimationFrame(()=>{ raf = 0; applyCalZoom_(curZ); }); }
+    const m = mid(e.touches); midX = m[0]; midY = m[1];   // 中点が動けば一緒に動く(2本指のパンも効く)
+    if(!raf){ raf = requestAnimationFrame(()=>{ raf = 0; applyZ_(curZ); anchor_(curZ); }); }
   }, {passive:false});
   const endPinch = ()=>{
     if(!pinching) return;
     pinching = false;
+    if(raf){ cancelAnimationFrame(raf); raf = 0; }
     try{ localStorage.setItem(calZoomKey_(), String(curZ)); }catch(_){}
+    // applyCalZoom_ は zoom を一度解除して測り直す=スクロールが動くので、見ている位置を復元してから確定
+    const sl = body.scrollLeft, st = body.scrollTop;
     applyCalZoom_();
+    body.scrollLeft = sl; body.scrollTop = st;
   };
   body.addEventListener("touchend", endPinch, {passive:true});
   body.addEventListener("touchcancel", endPinch, {passive:true});
