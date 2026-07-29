@@ -2773,7 +2773,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.499</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.500</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -5617,6 +5617,7 @@ function renderMonthTabs(){
 }
 // タブから月へジャンプ。‹›(navigate)と同じく「その月の1日」へ移動しスクロール位置も戻す
 function gotoMonthTab_(y, mo){
+  window.__lastScrollCause = { name:"月タブ", at:Date.now(), intentional:true };   // 🕵 ジャンプ検出用の名乗り(v1.30.500)
   currentDate = new Date(y, mo, 1);
   render();
   const body = document.getElementById("calBody");
@@ -17372,20 +17373,16 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
     //   カレンダー外で1回でもページがズームすると visual viewport がずれ、
     //   戻したつもりでも表示位置が動いたまま=「ずれる」の温床になるため。
     //   ズーム動作をするのはカレンダー本体(#calBody)を摘まんだ時だけ。
-    const gxy = (e)=>[ (typeof e.clientX==='number' ? e.clientX : midX), (typeof e.clientY==='number' ? e.clientY : midY) ];
-    document.addEventListener("gesturestart", (e)=>{
-      e.preventDefault();   // ← これだけが iOS のページ全体ズームを止められる
-      if(!e.target || !e.target.closest || !e.target.closest("#calBody")) return;
-      const p = gxy(e);
-      beginPinch_(p[0], p[1], calZoomVal_());
-    }, {passive:false});
-    document.addEventListener("gesturechange", (e)=>{
-      e.preventDefault();
-      if(!pinching) return;
-      const p = gxy(e);
-      movePinch_(p[0], p[1], startZ * (e.scale || 1));
-    }, {passive:false});
-    document.addEventListener("gestureend", (e)=>{ e.preventDefault(); if(pinching) endPinch(); }, {passive:false});
+    // 🛑 v1.30.500: iPhoneではアプリ内ピンチズームを一旦停止(ピンチしても何も起きない)。
+    //   494〜499の対策(アンカー補正/日送り誤爆/自動スクロール横取り)を全部入れても
+    //   実機で「1週間前へ飛ぶ」が再発(山田・499確認済)。Macでは再現不能のため、
+    //   ズームを動かすこと自体を止めて切り分ける。拡大縮小はヘッダーの − 100% ＋ ボタンで。
+    //   preventDefault は維持=Safariのページ全体ズーム(残る容疑者)は引き続き抑止。
+    //   誰が飛ばしたかは下の「🕵横ジャンプ検出」がその場でトーストに出す。
+    const stop = (e)=>{ try{ e.preventDefault(); }catch(_){} };
+    document.addEventListener("gesturestart",  stop, {passive:false});
+    document.addEventListener("gesturechange", stop, {passive:false});
+    document.addEventListener("gestureend",    stop, {passive:false});
   }
   body.addEventListener("touchstart", (e)=>{
     if(IOS_GESTURE) return;                       // iOSは gesture 経路で処理(二重ズーム防止)
@@ -17418,6 +17415,39 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
   body.addEventListener("touchcancel", endPinch, {passive:true});
 })();
 
+// 🕵 横ジャンプ検出センサー(v1.30.500): 画面が勝手に大きく横へ飛んだ瞬間、原因の名前をトーストに出す。
+//   Macで再現できない実機の「1週間前へ飛ぶ」を、その場で犯人特定するための常設センサー。
+//   仕組み: プログラムからスクロールを動かす関数は直前に window.__lastScrollCause に名乗りを上げる。
+//   1回のscrollイベントで900px以上動いたら(指のスクロールでは物理的に出ない値)、直近の名乗りを表示。
+//   名乗りが無い/古い=アプリ外(ブラウザ/OS)の仕業と分かる。意図的な操作(‹›・月タブ等)は表示しない。
+(function jumpWatch_(){
+  const body = document.getElementById("calBody");
+  if(!body) return;
+  let last = body.scrollLeft;
+  body.addEventListener("scroll", ()=>{
+    const sl = body.scrollLeft, d = sl - last; last = sl;
+    if(Math.abs(d) < 900) return;
+    const c = window.__lastScrollCause;
+    const fresh = c && (Date.now() - c.at) < 1500;
+    const name = fresh ? c.name : "不明(アプリ外=ブラウザ/OS側)";
+    console.warn("[jump-watch] 横ジャンプ", Math.round(d), "px 原因:", name);
+    if(fresh && c.intentional) return;   // ‹›/月タブ/今日ボタン等の意図的ジャンプは黙る
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast(`⚠ 画面が横に${Math.round(Math.abs(d))}px飛びました（原因: ${name}）`);
+  }, {passive:true});
+  // 🍏 Safariのページ全体ズーム検出: これが出たら「アプリの外」のズームが犯人と確定する
+  if(window.visualViewport){
+    let warnedAt = 0;
+    window.visualViewport.addEventListener("resize", ()=>{
+      const s = window.visualViewport.scale || 1;
+      if(s > 1.02 && Date.now() - warnedAt > 4000){
+        warnedAt = Date.now();
+        console.warn("[jump-watch] ページ全体ズーム検出 scale=", s);
+        if(typeof showAutoSyncToast==='function') showAutoSyncToast(`⚠ ブラウザのページ全体ズームが動いています(scale=${s.toFixed(2)})`);
+      }
+    });
+  }
+})();
+
 // 「今日」位置にスクロール（垂直=現在時刻付近、水平=月ビューで今日の列）
 // 👆 カレンダーに一度でも触れたか(v1.30.499)。触れた後は自動スクロールを一切しない。
 //   起動直後の「今日へ自動スクロール」は8連発(50〜4500ms)で仕込まれており、
@@ -17437,6 +17467,8 @@ function scrollToToday(force){
     if(__calTouched) return;                                                   // 触った後は横取りしない
     if(typeof isPinchGesture_==='function' && isPinchGesture_()) return;        // ピンチ中/直後も動かさない
   }
+  // 🕵 ジャンプ検出用の名乗り(v1.30.500): 自動スクロールが動いた事実を横ジャンプ検出センサーに残す
+  window.__lastScrollCause = { name: force ? "今日ボタン" : "今日へ自動スクロール", at: Date.now(), intentional: !!force };
   const now = new Date();
   // 垂直: デフォルトは 9時(グリッド先頭)固定 (HOUR_START=9 → scrollTop 0)
   body.scrollTop = 0;
@@ -17509,6 +17541,7 @@ function scrollToTodayRobust(){
 }
 function navigate(dir){
   if(currentView==="task" || currentView==="repair" || currentView==="resto") return; // タスク/修繕/原状回復ビューでは日付ナビ無効
+  window.__lastScrollCause = { name:"‹›ボタン", at:Date.now(), intentional:true };   // 🕵 ジャンプ検出用の名乗り(v1.30.500)
   if(currentView==="month" && window.innerWidth <= 700){
     // 📱 ローリング30日表示: ‹›で±30日
     currentDate = addDays(currentDate, dir*30);
@@ -17570,6 +17603,8 @@ function isPinchGesture_(){ return __mtActive || (Date.now() - __mtEndedAt) < 50
 function swipeNavigate_(dir){
   if(isPinchGesture_()) return;   // 🤏 ピンチ中/直後は絶対に日送りしない(v1.30.495・最後の砦)
   if(["task","repair","resto","inventory"].includes(currentView)) return;
+  // 🕵 名乗り(v1.30.500)。あえて intentional:false = もし誤爆でここが動いたらトーストに「フリック日送り」と出て犯人と分かる
+  window.__lastScrollCause = { name:"フリック日送り", at:Date.now(), intentional:false };
   if(currentView === "month"){
     // 📱 月(30日)ビュー: 横フリックでレンダ済み30日ウィンドウを横スクロール(再描画なし・滑らか)。
     //   ウィンドウ外(30日超)へは ‹› (±30日) で移動。v1.30.178
@@ -17993,6 +18028,7 @@ function jumpToScheduleItem_(idx){
   requestAnimationFrame(()=>{
     const cols = document.querySelectorAll(`[data-col-key="date-${it.date}"]`);
     if(cols.length){
+      window.__lastScrollCause = { name:"検索ジャンプ", at:Date.now(), intentional:true };   // 🕵(v1.30.500)
       try{ cols[0].scrollIntoView({behavior:'smooth', inline:'center', block:'nearest'}); }catch(_){ cols[0].scrollIntoView(); }
       cols.forEach(c=>{ c.classList.add('col-flash'); setTimeout(()=>c.classList.remove('col-flash'), 1500); });
     }
