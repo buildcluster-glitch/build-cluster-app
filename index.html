@@ -2777,7 +2777,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.507</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.508</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -17491,8 +17491,8 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
     }catch(_){} }));
     // 🧲 v1.30.507: iOSの慣性(1〜2秒続く)を握り潰すため、1.2秒は位置を固定し凍結も維持する。
     //   自分で触れば即解除(上のtouchstart)。506は500msで手を離していたので慣性の後半に運ばれていた。
-    startHold_(sl, st, 1200);
-    unfreeze_(1200);
+    startHold_(sl, st, 1600);
+    unfreeze_(1600);
   };
   body.addEventListener("touchend", endPinch, {passive:true});
   body.addEventListener("touchcancel", endPinch, {passive:true});
@@ -17500,7 +17500,7 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
   //   v1.30.507: この経路も慣性を握り潰したいので、凍結解除は1.2秒後＋その間は位置を押さえ込む。
   const __safetyEnd = (e)=>{
     if(e.touches && e.touches.length !== 0) return;
-    if(__ovFrozen){ startHold_(body.scrollLeft, body.scrollTop, 1200); unfreeze_(1200); }
+    if(__ovFrozen){ startHold_(body.scrollLeft, body.scrollTop, 1600); unfreeze_(1600); }
   };
   body.addEventListener("touchend",    __safetyEnd, {passive:true});
   body.addEventListener("touchcancel", __safetyEnd, {passive:true});
@@ -17515,8 +17515,17 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
   const body = document.getElementById("calBody");
   if(!body) return;
   let last = body.scrollLeft;
+  // 🔇 v1.30.508: 復帰トーストは黙らせる(山田「戻そうとしたので戻しました…ってまたなるなら」)。
+  //   犯人(Safariの慣性フリング)はもう特定済み=毎回報告する意味がない。直すのはアプリの仕事で、
+  //   ユーザーに見せるものではない。記録はconsoleに残す。
+  //   再調査したくなったら Console で localStorage.setItem('bc_jump_debug','1') → リロードで復活。
   let healToastAt = 0;
-  const healToast_ = (msg)=>{ if(Date.now()-healToastAt < 3000) return; healToastAt = Date.now(); if(typeof showAutoSyncToast==='function') showAutoSyncToast(msg); };
+  const JUMP_DEBUG = (()=>{ try{ return localStorage.getItem('bc_jump_debug')==='1'; }catch(_){ return false; } })();
+  const healToast_ = (msg)=>{
+    if(!JUMP_DEBUG) return;
+    if(Date.now()-healToastAt < 3000) return; healToastAt = Date.now();
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast(msg);
+  };
   body.addEventListener("scroll", ()=>{
     const sl = body.scrollLeft, d = sl - last, prev = last; last = sl;
     const now = Date.now();
@@ -17578,9 +17587,9 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
       healToast_(`🛡 画面が横に${Math.round(Math.abs(d))}px飛んだため、元の位置に戻しました`);
       return;
     }
-    // アプリ内の名乗りあり(意図的でない)ジャンプ=犯人名を表示(復帰はしない・挙動を観察する)
+    // アプリ内の名乗りあり(意図的でない)ジャンプ=犯人名を記録(復帰はしない・挙動を観察する)
     console.warn("[jump-watch] 横ジャンプ", Math.round(d), "px 原因:", c.name);
-    if(typeof showAutoSyncToast==='function') showAutoSyncToast(`⚠ 画面が横に${Math.round(Math.abs(d))}px飛びました（原因: ${c.name}）`);
+    healToast_(`⚠ 画面が横に${Math.round(Math.abs(d))}px飛びました（原因: ${c.name}）`);   // 🔇通常は黙る(v1.30.508)
   }, {passive:true});
   // 🍏 Safariのページ全体ズーム検出: これが出たら「アプリの外」のズームが犯人と確定する
   if(window.visualViewport){
@@ -17590,7 +17599,7 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
       if(s > 1.02 && Date.now() - warnedAt > 4000){
         warnedAt = Date.now();
         console.warn("[jump-watch] ページ全体ズーム検出 scale=", s);
-        if(typeof showAutoSyncToast==='function') showAutoSyncToast(`⚠ ブラウザのページ全体ズームが動いています(scale=${s.toFixed(2)})`);
+        healToast_(`⚠ ブラウザのページ全体ズームが動いています(scale=${s.toFixed(2)})`);   // 🔇通常は黙る(v1.30.508)
       }
     });
   }
