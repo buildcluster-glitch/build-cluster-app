@@ -2777,7 +2777,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.512</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.513</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -13590,7 +13590,7 @@ function renderCalendar(){
           const contactPerson = (r.contactPerson||"").trim();
           // 作業担当者(worker)のみで背景色を決定。未設定=白(空白)。連絡者(contactPerson)へはフォールバックしない v1.30.45
           const wKey = firstWorker_(worker);
-          const wColor = repairWorkerColor_(wKey);
+          const wColor = repairChipColor_(worker);   // ✖失注=グレー/👥複数人=白(v1.30.513)
           const wFg = wColor === "#fff" ? "#0f172a" : textColorFor(wColor);
           // v1.30.157: 1行1件(幅いっぱい)になったので、時刻(調整中等)も末尾に表示して詳細を出す
           const label = `🔧 ${r.name}${r.room?" "+r.room:""}${t?`  ${t}`:""}`;
@@ -14377,7 +14377,7 @@ function renderCalendar(){
         const worker = (r.worker||"").trim();
         const contactPerson = (r.contactPerson||"").trim();
         const wKey = firstWorker_(worker);
-        const wColor = repairWorkerColor_(wKey);
+        const wColor = repairChipColor_(worker);   // ✖失注=グレー/👥複数人=白(v1.30.513)
         const wFg = wColor === "#fff" ? "#0f172a" : textColorFor(wColor);
         const __desc = (r.requestDesc || r.requestDescFull || "").trim();
         const __descShort = __desc ? (__desc.length>34 ? __desc.slice(0,34)+"…" : __desc) : "";
@@ -19740,6 +19740,18 @@ const VENDOR_WORKER_COLOR = "#76a5af";
 function repairWorkerColor_(wKey){
   if(wKey === VENDOR_WORKER) return VENDOR_WORKER_COLOR;
   return (typeof STAFF_COLORS!=='undefined' && STAFF_COLORS[wKey]) ? STAFF_COLORS[wKey] : "#fff";
+}
+// 🎨 修繕チップの背景色(v1.30.513・山田「GRANDIA510 しろくなってない」)
+//   修繕は予定(state.events)とは別描画で、色は「作業担当」から決めている。
+//   予定チップ(v1.30.511-512)と同じルールに揃える:
+//     ✖失注=グレー > 👥作業担当が2人以上=白 > 1人=その人の色 > 未設定=白
+function repairChipColor_(workerStr){
+  const list = (typeof parseWorkers_==='function')
+    ? parseWorkers_(workerStr||"")
+    : String(workerStr||"").split(/[,、\/／]/).map(s=>s.trim()).filter(Boolean);
+  if(typeof LOST_STAFF!=='undefined' && list.includes(LOST_STAFF)) return LOST_STAFF_COLOR;   // ✖失注
+  if(list.length >= 2) return "#fff";                                                          // 👥複数人
+  return repairWorkerColor_((typeof firstWorker_==='function') ? firstWorker_(workerStr||"") : (list[0]||""));
 }
 // 作業担当は複数可(カンマ区切り保存)。
 function parseWorkers_(w){ return String(w||"").split(/[,、]/).map(s=>s.trim()).filter(Boolean); }
