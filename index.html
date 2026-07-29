@@ -68,6 +68,17 @@
   header.app-header::-webkit-scrollbar{height:4px}
   header.app-header::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:2px}
   .app-title{font-weight:700;font-size:15px;margin-right:6px;white-space:nowrap;flex-shrink:0;display:none}  /* PCは非表示・📱のみ表示(v1.30.496) */
+  /* 📱 表示倍率ボタン(スマホのみ・v1.30.497)。PCは #calZoomSwitch(70/85/100%)があるので非表示 */
+  .cal-zoom-mobile{display:none;align-items:center;gap:0;flex-shrink:0;border:1px solid var(--border);border-radius:6px;background:#fff;overflow:hidden}
+  .cal-zoom-mobile button{
+    border:0;background:transparent;color:#334155;font-size:17px;font-weight:800;line-height:1;
+    padding:0 9px;min-height:34px;cursor:pointer;font-family:inherit;
+  }
+  .cal-zoom-mobile button:active{background:#dbeafe}
+  .cal-zoom-mobile span{
+    font-size:10px;font-weight:700;color:#64748b;min-width:34px;text-align:center;cursor:pointer;
+    border-left:1px solid var(--border);border-right:1px solid var(--border);padding:0 2px;line-height:34px;
+  }
   .nav-btn{
     border:1px solid var(--border-strong);background:#fff;border-radius:6px;
     padding:5px 9px;color:var(--text);font-size:13px;white-space:nowrap;flex-shrink:0;
@@ -2141,6 +2152,7 @@
     }
     .app-title span{font-size:10px !important;color:#64748b !important;letter-spacing:-.2px}
     .app-title:active{background:#e2e8f0}
+    .cal-zoom-mobile{display:flex;order:-2}   /* 版番号の隣(先頭)に置く=横スクロールせず届く */
     .nav-btn#cloudSyncBtn{order:-1;font-size:17px;min-width:44px;min-height:38px}
     /* 🚫 リセットボタンは誤タップ事故防止でスマホ非表示(全データ消去のため) */
     #resetBtn{display:none}
@@ -2761,7 +2773,11 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.496</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.497</span></div>
+  <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
+  <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
+    <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
+  </div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -17253,6 +17269,32 @@ function applyCalZoom_(zOverride){
   document.querySelectorAll("#calZoomSwitch button").forEach(b=>{
     b.classList.toggle("active", Math.abs(parseFloat(b.dataset.z) - z) < 0.01);
   });
+  setZoomLabel_(z);
+}
+// 📱 表示倍率ボタン(v1.30.497・山田): ピンチが効かない/ずれる端末でも確実に拡大縮小できる手段。
+//   ピンチと同じ値(calZoomKey_)を共有するので、どちらで変えても次回起動に引き継がれる。
+const CAL_ZOOM_STEPS = [0.7, 0.85, 1, 1.15, 1.3, 1.5];
+function setZoomLabel_(z){
+  const el = document.getElementById("calZoomLabel");
+  if(el) el.textContent = Math.round((z||1)*100) + "%";
+}
+function stepCalZoom_(dir){
+  const cur = calZoomVal_();
+  let i = 0, best = Infinity;
+  CAL_ZOOM_STEPS.forEach((s,k)=>{ const d = Math.abs(s-cur); if(d < best){ best = d; i = k; } });
+  i = Math.min(CAL_ZOOM_STEPS.length-1, Math.max(0, i + dir));
+  try{ localStorage.setItem(calZoomKey_(), String(CAL_ZOOM_STEPS[i])); }catch(_){}
+  applyCalZoom_();
+}
+{
+  const cz = document.getElementById("calZoomMobile");
+  if(cz){
+    cz.querySelectorAll("button").forEach(b=>{
+      b.onclick = ()=> stepCalZoom_(parseInt(b.dataset.zstep,10) || 0);
+    });
+    const lb = cz.querySelector("span");
+    if(lb) lb.onclick = ()=>{ try{ localStorage.setItem(calZoomKey_(), "1"); }catch(_){} applyCalZoom_(); };   // %タップで100%に戻す
+  }
 }
 document.querySelectorAll("#calZoomSwitch button").forEach(b=>{
   b.onclick = ()=>{
@@ -17285,6 +17327,7 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
   const applyZ_ = (z)=>{
     if(Math.abs(z - 1) <= 0.01){ wrap.style.zoom = ""; wrap.style.height = ""; }
     else { wrap.style.zoom = String(z); if(baseH > 0) wrap.style.height = Math.max(200, Math.round(baseH / z)) + "px"; }
+    if(typeof setZoomLabel_==='function') setZoomLabel_(z);   // 倍率表示をピンチにも追従(v1.30.497)
   };
   // 掴んだ内容が指の中点に居続けるようスクロール位置を補正(=①)。
   //   scrollLeft/Top は zoom の内側の座標系(内容の座標)なので、画面px→内側pxは /z で換算する。
@@ -17293,31 +17336,55 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
     body.scrollLeft = Math.max(0, ancX - (midX - r.left)/z);
     body.scrollTop  = Math.max(0, ancY - (midY - r.top )/z);
   };
-  body.addEventListener("touchstart", (e)=>{
-    if(e.touches.length !== 2) return;
-    try{ e.preventDefault(); }catch(_){}          // ②ブラウザのスクロール開始を止める
-    pinching = true;
-    startDist = dist(e.touches) || 1;
-    startZ = curZ = calZoomVal_();
-    // 素の高さはこのピンチ中ずっと使い回す(③)
+  // 🍏 iOS Safari 対策(v1.30.497・山田「496でもピンチした瞬間に1週間前にずれる感じになる」):
+  //   iOS は viewport の user-scalable=no を無視してページ全体をピンチズームする。しかも
+  //   touchstart/touchmove の preventDefault では止まらない(Safari独自の gesture 系でしか止まらない)。
+  //   → ページ全体がズーム＋visual viewport が動くので、カレンダーが数日ぶん横にずれたように見えていた。
+  //   Safari では下の touch 経路を使わず、gesturestart/change/end 経路(preventDefaultが効く)で処理する。
+  const IOS_GESTURE = ('ongesturestart' in window);
+  const beginPinch_ = (cx, cy, z0)=>{
+    pinching = true; startZ = curZ = z0;
     const zs = wrap.style.zoom, hs = wrap.style.height;
     wrap.style.zoom = ""; wrap.style.height = "";
-    baseH = wrap.getBoundingClientRect().height;
+    baseH = wrap.getBoundingClientRect().height;   // 素の高さはこのピンチ中ずっと使い回す(③)
     wrap.style.zoom = zs; wrap.style.height = hs;
-    const m = mid(e.touches); midX = m[0]; midY = m[1];
+    midX = cx; midY = cy;
     const r = body.getBoundingClientRect();
     ancX = body.scrollLeft + (midX - r.left)/startZ;   // 指の中点の下にある内容の座標
     ancY = body.scrollTop  + (midY - r.top )/startZ;
+  };
+  const movePinch_ = (cx, cy, z)=>{
+    z = Math.min(1.5, Math.max(0.5, z));
+    if(Math.abs(z - 1) <= 0.06) z = 1;   // 100%付近はスナップ
+    curZ = z; midX = cx; midY = cy;
+    if(!raf){ raf = requestAnimationFrame(()=>{ raf = 0; applyZ_(curZ); anchor_(curZ); }); }
+  };
+  if(IOS_GESTURE){
+    document.addEventListener("gesturestart", (e)=>{
+      if(!e.target || !e.target.closest || !e.target.closest("#calBody")) return;
+      e.preventDefault();   // ← これだけが iOS のページ全体ズームを止められる
+      beginPinch_(e.clientX, e.clientY, calZoomVal_());
+    }, {passive:false});
+    document.addEventListener("gesturechange", (e)=>{
+      if(!pinching) return;
+      e.preventDefault();
+      movePinch_(e.clientX, e.clientY, startZ * (e.scale || 1));
+    }, {passive:false});
+    document.addEventListener("gestureend", (e)=>{ if(pinching){ e.preventDefault(); endPinch(); } }, {passive:false});
+  }
+  body.addEventListener("touchstart", (e)=>{
+    if(IOS_GESTURE) return;                       // iOSは gesture 経路で処理(二重ズーム防止)
+    if(e.touches.length !== 2) return;
+    try{ e.preventDefault(); }catch(_){}          // ②ブラウザのスクロール開始を止める
+    startDist = dist(e.touches) || 1;
+    const m = mid(e.touches);
+    beginPinch_(m[0], m[1], calZoomVal_());
   }, {passive:false});
   body.addEventListener("touchmove", (e)=>{
     if(!pinching || e.touches.length !== 2) return;
     e.preventDefault();   // ブラウザのページ全体ズーム/スクロールを抑止(カレンダーだけズーム)
-    let z = startZ * (dist(e.touches) / startDist);
-    z = Math.min(1.5, Math.max(0.5, z));
-    if(Math.abs(z - 1) <= 0.06) z = 1;   // 100%付近はスナップ
-    curZ = z;
-    const m = mid(e.touches); midX = m[0]; midY = m[1];   // 中点が動けば一緒に動く(2本指のパンも効く)
-    if(!raf){ raf = requestAnimationFrame(()=>{ raf = 0; applyZ_(curZ); anchor_(curZ); }); }
+    const m = mid(e.touches);   // 中点が動けば一緒に動く(2本指のパンも効く)
+    movePinch_(m[0], m[1], startZ * (dist(e.touches) / startDist));
   }, {passive:false});
   const endPinch = ()=>{
     if(!pinching) return;
