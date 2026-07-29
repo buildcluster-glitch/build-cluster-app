@@ -2751,7 +2751,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.494</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.495</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -17434,8 +17434,27 @@ document.getElementById("nextBtn").onclick = ()=>navigate(1);
   if(m) m.onclick = (e)=>{ if(e.target===m && typeof closeActionList==='function') closeActionList(); };
 })();
 
+// 🤏 マルチタッチ(ピンチ)の真値検出 v1.30.495
+//   pointerdown/pointerup を数える方式(v1.30.464)では、2本目の pointerdown が届かない端末で
+//   「1本指の横フリック」と誤認され、ピンチ拡大したのに週ビューで -7日=1週間戻る事故が続いていた
+//   (鈴木報告→山田再現「1週間前くらいに戻った状態で拡大されちゃう」)。
+//   TouchEvent の e.touches.length は"今画面に触れている指の本数そのもの"なので、これを真値にする。
+//   ・2本以上触れた瞬間から「ピンチ中」
+//   ・全部の指が離れて 500ms 経つまでは日送りしない(片手ずつ離す時の誤爆・離した直後の暴発を防ぐ)
+let __mtActive = false, __mtEndedAt = 0;
+(function trackMultiTouch_(){
+  const mark = e=>{ if(e.touches && e.touches.length > 1) __mtActive = true; };
+  const end  = e=>{ if(e.touches && e.touches.length === 0){ if(__mtActive) __mtEndedAt = Date.now(); __mtActive = false; } };
+  document.addEventListener('touchstart',  mark, {capture:true, passive:true});
+  document.addEventListener('touchmove',   mark, {capture:true, passive:true});
+  document.addEventListener('touchend',    end,  {capture:true, passive:true});
+  document.addEventListener('touchcancel', end,  {capture:true, passive:true});
+})();
+function isPinchGesture_(){ return __mtActive || (Date.now() - __mtEndedAt) < 500; }
+
 // 📱 スワイプ日送り: ビューの表示スパン分だけ移動 (‹›の月ジャンプとは別・細かい送り)
 function swipeNavigate_(dir){
+  if(isPinchGesture_()) return;   // 🤏 ピンチ中/直後は絶対に日送りしない(v1.30.495・最後の砦)
   if(["task","repair","resto","inventory"].includes(currentView)) return;
   if(currentView === "month"){
     // 📱 月(30日)ビュー: 横フリックでレンダ済み30日ウィンドウを横スクロール(再描画なし・滑らか)。
@@ -17457,7 +17476,7 @@ function swipeNavigate_(dir){
   const touching = new Set();   // 今画面に触れている指
   document.addEventListener('pointerdown', e=>{
     if(e.pointerType === 'touch') touching.add(e.pointerId);
-    if(touching.size > 1){ active = false; pid = null; return; }   // 🤏 ピンチ開始→この一連のジェスチャは日送り対象外
+    if(touching.size > 1 || isPinchGesture_()){ active = false; pid = null; return; }   // 🤏 ピンチ開始→この一連のジェスチャは日送り対象外
     active = false;
     if(e.pointerType !== 'touch') return;
     if(!e.target.closest('#calGrid')) return;
@@ -17465,7 +17484,8 @@ function swipeNavigate_(dir){
     sx = e.clientX; sy = e.clientY; st = Date.now(); active = true; pid = e.pointerId;
   }, true);
   document.addEventListener('pointerup', e=>{
-    const multi = touching.size > 1;   // 離す瞬間に2本以上触れている=ピンチの片手離し
+    // 離す瞬間に2本以上触れている=ピンチの片手離し。__mtActive(実指数)も見る=pointerdown取りこぼし対策(v1.30.495)
+    const multi = touching.size > 1 || isPinchGesture_();
     if(e.pointerType === 'touch') touching.delete(e.pointerId);
     if(!active || multi || (pid !== null && e.pointerId !== pid)) return;
     active = false; pid = null;
