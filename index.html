@@ -2777,7 +2777,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.503</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.504</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -17455,7 +17455,11 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
     const expFresh = exp && (now - exp.at) < 2500;
     if(expFresh && Math.abs(sl - exp.v) <= 40) return;               // アプリが書いた値が届いただけ=正常
     const pinch = (typeof isPinchGesture_==='function' && isPinchGesture_());
-    if(fresh && c.intentional && !pinch) return;                     // ‹›/月タブ/今日ボタン等の意図的ジャンプは黙る
+    // v1.30.504: 意図的操作(今日ボタン/‹›/月タブ等)は「ピンチ中でも」黙る。
+    //   503は !pinch 条件付きだったため、ピンチ判定が残った状態で今日ボタンを押すと
+    //   正常なジャンプに警告が出た(山田報告)。ブラウザの介入は名乗りが無いので、
+    //   この緩和後も下の自動復帰でちゃんと捕まる(ピンチ中はanchor_が毎フレーム位置を書き直すため二重に安全)。
+    if(fresh && c.intentional) return;
     // 🛡 v1.30.503 自動復帰: ブラウザ/OSが勝手に動かした(名乗りが無い or 期待位置と違う)→即その場で戻す。
     //   iPhone実機で確定(山田報告): ピンチ中にscrollLeftが3194px飛び、原因の名乗りなし=Safariのスクロール自動調整。
     if(pinch && expFresh){
@@ -17636,8 +17640,14 @@ document.getElementById("nextBtn").onclick = ()=>navigate(1);
 //   ・全部の指が離れて 500ms 経つまでは日送りしない(片手ずつ離す時の誤爆・離した直後の暴発を防ぐ)
 let __mtActive = false, __mtEndedAt = 0;
 (function trackMultiTouch_(){
-  const mark = e=>{ if(e.touches && e.touches.length > 1) __mtActive = true; };
-  const end  = e=>{ if(e.touches && e.touches.length === 0){ if(__mtActive) __mtEndedAt = Date.now(); __mtActive = false; } };
+  // 🔧 v1.30.504: 「立てっぱなし」の自己修復。旧実装は touches.length===0 のイベントを1回でも
+  //   取りこぼすと__mtActiveが永久にtrue(iOSはgesture系preventDefault中にtouchendが欠落しうる)
+  //   →今日ボタンの正常ジャンプまで「ピンチ中」と誤判定して警告(山田の実機トースト「原因:今日ボタン」の正体)。
+  //   毎イベントで実指数から再計算=どんな取りこぼしも次のタッチで自動的に正しい状態へ戻る。
+  const mark = e=>{ const multi = !!(e.touches && e.touches.length > 1);
+    if(__mtActive && !multi) __mtEndedAt = Date.now();
+    __mtActive = multi; };
+  const end  = mark;
   document.addEventListener('touchstart',  mark, {capture:true, passive:true});
   document.addEventListener('touchmove',   mark, {capture:true, passive:true});
   document.addEventListener('touchend',    end,  {capture:true, passive:true});
