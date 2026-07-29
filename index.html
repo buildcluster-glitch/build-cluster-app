@@ -331,6 +331,41 @@
     display:grid;border-bottom:1px solid var(--border-strong);
     background:#e2e8f0;min-width:max-content;  /* 横スクロールで左固定ヘッダーが消えないよう全列幅に(v1.30.39) */
   }
+  /* 📑 月切替タブ(スプシ風・カレンダー最下部) v1.30.493 — 鈴木要望
+     「横スクロールバーが下にあるから、月の切替タブも下にあると操作しやすい」
+     .calendar-wrap の最後の子＝カレンダー本体の横スクロールバーのさらに下に出る */
+  .month-tabs{
+    display:flex;align-items:stretch;gap:2px;flex-shrink:0;
+    border-top:1px solid var(--border-strong);background:#f1f5f9;
+    padding:3px 6px 0;overflow-x:auto;overflow-y:hidden;
+    scrollbar-width:thin;
+  }
+  .month-tabs::-webkit-scrollbar{height:7px}
+  .month-tabs::-webkit-scrollbar-thumb{background:#94a3b8;border-radius:4px;border:none}
+  .month-tabs::-webkit-scrollbar-track{background:transparent}
+  .month-tabs .mt-btn{
+    flex:0 0 auto;border:1px solid var(--border);border-bottom:none;background:#e2e8f0;color:#475569;
+    font-size:12px;font-weight:700;padding:4px 13px 5px;border-radius:7px 7px 0 0;cursor:pointer;
+    white-space:nowrap;line-height:1.2;font-family:inherit;
+  }
+  .month-tabs .mt-btn:hover{background:#dbeafe;color:#1d4ed8}
+  .month-tabs .mt-btn.active{background:#fff;color:#0f172a;border-color:var(--border-strong);box-shadow:inset 0 -3px 0 #2563eb}
+  .month-tabs .mt-btn.is-today{color:#1d4ed8}
+  .month-tabs .mt-btn.is-today::before{content:"●";font-size:7px;margin-right:4px;vertical-align:2px}
+  /* 年の区切り(2027年 …) */
+  .month-tabs .mt-year{
+    flex:0 0 auto;align-self:flex-end;font-size:10px;font-weight:800;color:var(--muted);
+    padding:0 6px 6px 4px;white-space:nowrap;
+  }
+  .month-tabs .mt-today{
+    /* タブが横スクロールしても「今日」は左に居残る(下だけで操作が完結するように) */
+    position:sticky;left:0;z-index:2;
+    flex:0 0 auto;align-self:flex-end;margin-right:6px;margin-bottom:4px;
+    box-shadow:6px 0 6px -4px rgba(241,245,249,.95);
+    border:1px solid var(--border-strong);background:#fff;color:#334155;border-radius:5px;
+    font-size:11px;font-weight:700;padding:3px 9px;cursor:pointer;white-space:nowrap;font-family:inherit;
+  }
+  .month-tabs .mt-today:hover{background:#dbeafe;color:#1d4ed8}
   .calendar-body{
     flex:1;overflow:scroll;position:relative;
     /* Firefox 用 */
@@ -2716,7 +2751,7 @@
 
 <header class="app-header">
   <!-- ナビ上の📅v表示は非表示(邪魔・山田)。版番号はspanに保持(バグ報告が読む)＋タブ名に反映(下のscript)v1.30.364 -->
-  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.492</span></div>
+  <div class="app-title" style="display:none">📅 <span style="font-size:9px;color:#94a3b8;font-weight:400;vertical-align:super">v1.30.493</span></div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -2801,6 +2836,8 @@
     <div class="month-head" id="monthHead"></div>
     <div class="month-grid" id="monthGrid"></div>
   </div>
+  <!-- 📑 月切替タブ(スプシ風・最下部) v1.30.493 鈴木要望 -->
+  <div class="month-tabs" id="monthTabs" style="display:none"></div>
 </div>
 
 <!-- タスクマネージャービュー -->
@@ -5504,6 +5541,62 @@ function refreshWeather_(opts={}){
 }
 
 // ===== レンダリング =====
+// ===== 📑 月切替タブ(カレンダー最下部・スプシ風) v1.30.493 =====
+//   要望(鈴木悠平 7/29): カレンダー最下部に月切り替えタブが欲しい。スプシみたいにしたい。
+//   横スクロールバーが下にあるので、月の切替も下にあった方が操作しやすい。
+//   ・表示範囲=「今月の6ヶ月前 〜 12ヶ月後」。‹›で範囲外へ行った場合はその月まで自動で伸ばす
+//   ・年が変わる位置に「2027年」の区切りを差し込む(スプシのシート並びと同じ感覚)
+//   ・📱スマホは下部ナビ＋30日ローリング表示があるので出さない(PC専用)
+const MT_BACK = 6, MT_FWD = 12;
+function renderMonthTabs(){
+  const bar = document.getElementById("monthTabs");
+  if(!bar) return;
+  const isCalView = !["task","repair","resto","inventory"].includes(currentView);
+  if(!isCalView || window.innerWidth <= 700){ bar.style.display = "none"; return; }
+  bar.style.display = "flex";
+  const ymOf = d => d.getFullYear()*12 + d.getMonth();
+  const today = new Date();
+  const cur = ymOf(currentDate), tod = ymOf(today);
+  const from = Math.min(tod - MT_BACK, cur - 2);
+  const to   = Math.max(tod + MT_FWD, cur + 2);
+  const sig  = `${from}_${to}_${cur}_${tod}`;
+  if(bar.dataset.sig === sig) return;   // 中身が同じなら作り直さない(renderは頻繁に呼ばれる)
+  bar.dataset.sig = sig;
+  bar.innerHTML = "";
+  // 「今日」= 今月へ一発で戻る(下だけで完結させる。ヘッダーの今日ボタンと同じ動き)
+  const tb = document.createElement("button");
+  tb.type = "button"; tb.className = "mt-today"; tb.textContent = "今日";
+  tb.title = "今月に戻る";
+  tb.onclick = ()=>{ const t=new Date(); gotoMonthTab_(t.getFullYear(), t.getMonth()); };
+  bar.appendChild(tb);
+  let lastYear = null, activeEl = null;
+  for(let m=from; m<=to; m++){
+    const y = Math.floor(m/12), mo = m - y*12;
+    if(y !== lastYear){
+      const ys = document.createElement("span");
+      ys.className = "mt-year"; ys.textContent = y + "年";
+      bar.appendChild(ys); lastYear = y;
+    }
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "mt-btn" + (m===cur ? " active" : "") + (m===tod ? " is-today" : "");
+    b.textContent = (mo+1) + "月";
+    b.title = `${y}年${mo+1}月を表示` + (m===tod ? "（今月）" : "");
+    b.onclick = ()=> gotoMonthTab_(y, mo);
+    bar.appendChild(b);
+    if(m===cur) activeEl = b;
+  }
+  // 選択中の月が見える位置へ(タブが多いので端に隠れないように中央寄せ)
+  if(activeEl) requestAnimationFrame(()=>{ try{ activeEl.scrollIntoView({inline:"center", block:"nearest"}); }catch(_){} });
+}
+// タブから月へジャンプ。‹›(navigate)と同じく「その月の1日」へ移動しスクロール位置も戻す
+function gotoMonthTab_(y, mo){
+  currentDate = new Date(y, mo, 1);
+  render();
+  const body = document.getElementById("calBody");
+  if(body){ body.scrollTop = 0; body.scrollLeft = 0; }
+}
+
 function render(){
   if(typeof bumpTaikyoEpoch_==='function') bumpTaikyoEpoch_();  // 立会仮想イベントのフレームキャッシュを更新(v1.30.46)
   try{ localStorage.setItem(VIEW_STORAGE_KEY, currentView); }catch(_){}  // 📱 ビュー記憶
@@ -5518,6 +5611,7 @@ function render(){
   const __cg = document.getElementById('calGrid');
   if(__cg) __cg.classList.toggle('tswipe', true);
   renderHeader();
+  renderMonthTabs();   // 📑 月切替タブ(最下部・v1.30.493)
   renderStaffLegend();
   if(typeof renderYamaichiCloseAlert_==='function') renderYamaichiCloseAlert_();  // 📋 山一 請求締めアラート(全ビュー共通)v1.30.448
   if(typeof updateActionListCount_==='function') updateActionListCount_();  // 🗓 要対応バッジ件数更新(v1.30.183)
@@ -17158,6 +17252,8 @@ document.querySelectorAll("#calZoomSwitch button").forEach(b=>{
 });
 applyCalZoom_();   // 起動時に前回の縮小率を復元
 window.addEventListener("resize", ()=>{ if(typeof applyCalZoom_==='function') applyCalZoom_(); });
+// 📑 月切替タブ: PC↔スマホ幅をまたいだ時に出し分けを追従(v1.30.493)
+window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
 // 📱 ピンチイン/アウトでカレンダーを拡大縮小(スマホ・v1.30.258・山田)。2本指の距離比→zoom(0.5〜1.5・100%付近スナップ)。
 //   離した時に記憶(次回起動も同じ倍率)。1本指のスクロール/ドラッグには影響しない(2本指の時だけ発動)。
 (function setupCalPinchZoom_(){
