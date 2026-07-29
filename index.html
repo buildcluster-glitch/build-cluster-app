@@ -2777,7 +2777,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.504</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.505</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -17361,6 +17361,9 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
     //   (実測: 起動直後のピンチ=横2164px≒7.2列ズレ / 起動67秒後の同じ操作=0.2px)
     //   山田は「アプリを開く→すぐピンチして確認」を繰り返していたので毎回この窓に当たっていた。
     try{ if(typeof _cancelScrollToToday==='function') _cancelScrollToToday(); }catch(_){}
+    // 🛡 v1.30.505: ピンチ開始時点の位置を期待位置として登録→開始直後のSafari介入も自動復帰の対象に
+    window.__lastScrollCause = { name:"ピンチ開始", at:Date.now(), intentional:true };
+    window.__expectedScroll = { v: body.scrollLeft, at: Date.now() };
     pinching = true; startZ = curZ = z0;
     const zs = wrap.style.zoom, hs = wrap.style.height;
     wrap.style.zoom = ""; wrap.style.height = "";
@@ -17429,6 +17432,13 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
     applyCalZoom_();
     body.scrollLeft = sl; body.scrollTop = st;
     window.__expectedScroll = { v: body.scrollLeft, at: Date.now() };   // 🛡自動復帰用(v1.30.503)
+    // 🛡 v1.30.505: 指を離した直後にSafariが遅れて位置調整してくることがある→次の2フレームで確定位置を書き直す
+    //   (900px未満の小さなズレはセンサーの網に掛からないため、ここで無条件に打ち消す)
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{ try{
+      window.__lastScrollCause = { name:"ピンチ確定", at:Date.now(), intentional:true };
+      body.scrollLeft = sl; body.scrollTop = st;
+      window.__expectedScroll = { v: body.scrollLeft, at: Date.now() };
+    }catch(_){} }));
   };
   body.addEventListener("touchend", endPinch, {passive:true});
   body.addEventListener("touchcancel", endPinch, {passive:true});
@@ -17455,14 +17465,17 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
     const expFresh = exp && (now - exp.at) < 2500;
     if(expFresh && Math.abs(sl - exp.v) <= 40) return;               // アプリが書いた値が届いただけ=正常
     const pinch = (typeof isPinchGesture_==='function' && isPinchGesture_());
-    // v1.30.504: 意図的操作(今日ボタン/‹›/月タブ等)は「ピンチ中でも」黙る。
-    //   503は !pinch 条件付きだったため、ピンチ判定が残った状態で今日ボタンを押すと
-    //   正常なジャンプに警告が出た(山田報告)。ブラウザの介入は名乗りが無いので、
-    //   この緩和後も下の自動復帰でちゃんと捕まる(ピンチ中はanchor_が毎フレーム位置を書き直すため二重に安全)。
-    if(fresh && c.intentional) return;
+    // v1.30.505: 名乗りを2種類に区別(504の反省)。
+    //   ・明示操作(今日ボタン/‹›/月タブ/検索/倍率変更…)=無条件で黙る(504の誤警告修正は維持)
+    //   ・ピンチ系の内部書込(ピンチ開始/位置補正/確定)=期待位置と一致した時だけ正常(上の第1チェックで済)。
+    //     不一致でここまで来た=Safariの介入がピンチ書込の名乗りに隠れている→黙らず自動復帰へ。
+    //   504はピンチ系も無条件で黙らせたため、anchor_の名乗りが毎フレーム更新され続け、
+    //   Safari介入が完全に素通り=「飛ぶのにトーストも復帰も無し」(山田報告)になっていた。
+    const pinchWrite = fresh && (c.name==="ピンチ開始" || c.name==="ピンチ位置補正" || c.name==="ピンチ確定");
+    if(fresh && c.intentional && !pinchWrite) return;
     // 🛡 v1.30.503 自動復帰: ブラウザ/OSが勝手に動かした(名乗りが無い or 期待位置と違う)→即その場で戻す。
     //   iPhone実機で確定(山田報告): ピンチ中にscrollLeftが3194px飛び、原因の名乗りなし=Safariのスクロール自動調整。
-    if(pinch && expFresh){
+    if((pinch || pinchWrite) && expFresh){
       window.__lastScrollCause = { name:"自動復帰", at:now, intentional:true };
       body.scrollLeft = exp.v; last = body.scrollLeft;
       window.__expectedScroll = { v: body.scrollLeft, at: now };
@@ -17470,7 +17483,7 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
       healToast_("🛡 ブラウザが画面を飛ばそうとしたので元の位置に戻しました");
       return;
     }
-    if(!fresh){
+    if(!fresh || pinchWrite){   // 名乗りなし or ピンチ書込を装った不一致(期待位置が古い場合)→直前位置へ(v1.30.505)
       window.__lastScrollCause = { name:"自動復帰", at:now, intentional:true };
       body.scrollLeft = prev; last = body.scrollLeft;
       console.warn("[jump-watch] 原因不明ジャンプ", Math.round(d), "px → 直前位置へ自動復帰");
