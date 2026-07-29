@@ -2773,7 +2773,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.501</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.502</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -17373,16 +17373,24 @@ window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
     //   カレンダー外で1回でもページがズームすると visual viewport がずれ、
     //   戻したつもりでも表示位置が動いたまま=「ずれる」の温床になるため。
     //   ズーム動作をするのはカレンダー本体(#calBody)を摘まんだ時だけ。
-    // 🛑 v1.30.500: iPhoneではアプリ内ピンチズームを一旦停止(ピンチしても何も起きない)。
-    //   494〜499の対策(アンカー補正/日送り誤爆/自動スクロール横取り)を全部入れても
-    //   実機で「1週間前へ飛ぶ」が再発(山田・499確認済)。Macでは再現不能のため、
-    //   ズームを動かすこと自体を止めて切り分ける。拡大縮小はヘッダーの − 100% ＋ ボタンで。
-    //   preventDefault は維持=Safariのページ全体ズーム(残る容疑者)は引き続き抑止。
-    //   誰が飛ばしたかは下の「🕵横ジャンプ検出」がその場でトーストに出す。
-    const stop = (e)=>{ try{ e.preventDefault(); }catch(_){} };
-    document.addEventListener("gesturestart",  stop, {passive:false});
-    document.addEventListener("gesturechange", stop, {passive:false});
-    document.addEventListener("gestureend",    stop, {passive:false});
+    // 🔄 v1.30.502: iPhoneのピンチズーム復活(gesture経路)。
+    //   500で切り分けのため停止→「ピンチできない」(山田)。停止中は飛びの報告なし=手がかり。
+    //   499までの対策(アンカー補正/自動スクロールキャンセル/日送りガード)は全部入りのまま再有効化。
+    //   もし飛びが再発しても🕵センサーが犯人名をトーストに出す(起動時ノイズは501で除外済み=次に出たら本物)。
+    const gxy = (e)=>[ (typeof e.clientX==='number' ? e.clientX : midX), (typeof e.clientY==='number' ? e.clientY : midY) ];
+    document.addEventListener("gesturestart", (e)=>{
+      e.preventDefault();   // どこをピンチされてもSafariのページ全体ズームは止める
+      if(!e.target || !e.target.closest || !e.target.closest("#calBody")) return;
+      const p = gxy(e);
+      beginPinch_(p[0], p[1], calZoomVal_());
+    }, {passive:false});
+    document.addEventListener("gesturechange", (e)=>{
+      e.preventDefault();
+      if(!pinching) return;
+      const p = gxy(e);
+      movePinch_(p[0], p[1], startZ * (e.scale || 1));
+    }, {passive:false});
+    document.addEventListener("gestureend", (e)=>{ e.preventDefault(); if(pinching) endPinch(); }, {passive:false});
   }
   body.addEventListener("touchstart", (e)=>{
     if(IOS_GESTURE) return;                       // iOSは gesture 経路で処理(二重ズーム防止)
