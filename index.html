@@ -2778,7 +2778,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.515</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.516</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4926,7 +4926,7 @@ const SNAP_SLOTS = [9, 13, 18];
 //   原状回復/物件マスタ/立会/修繕/最終確認はクラウド/Driveから再取得できるのでバックアップに含めない。
 //   軽くなったので保持期間・件数を元に戻す(2週間×3枠ぶん)。
 const SNAP_KEEP_DAYS = 7;    // v1.30.291: 14→7(予定が増え1個≒86KBに肥大→枠を絞る)
-const SNAP_MAX_COUNT = 10;   // v1.30.291: 24→10。1個≒86KB(予定増で40→86KBに)×24=約2MBが容量圧迫の主因だった→10個(約0.9MB)に。⏪復元は直近10世代+☁サーバーバックアップ14世代で足りる
+const SNAP_MAX_COUNT = 5;    // v1.30.516: 10→5。予定351件で1個≒170KBまで肥大し8個で約1.4MB=localStorage(上限5MB)の3割を占めていた(山田の実測)。⏪復元は直近5世代+☁サーバーバックアップ14世代で足りる
 // 🪶 軽量バックアップの中身: ローカル編集で失うと困るデータだけ(events に事務タスクも含まれる)
 function buildLightSnap_(){
   return JSON.stringify({
@@ -19872,6 +19872,22 @@ function updateBugReportBadge_(){
   const n = Object.values(loadCalReports_()).filter(r=>r && !r.deleted && r.status==="open").length;
   if(n>0){ b.textContent = n; b.style.display = ""; } else { b.style.display = "none"; }
 }
+// 🧹 v1.30.516: 削除済み報告の添付画像をローカルキャッシュから外す(山田の実測で
+//   buildcluster_calendar_reports が1.1MB=localStorage最大の占有源だった)。
+//   削除済みは画面に出ないので画像を持つ意味がない。tombstone(id/deleted/updatedAt)は
+//   削除を全端末へ伝えるために必ず残す。生きている報告の画像には一切触らない。
+function pruneDeletedReportPhotos_(){
+  try{
+    const map = loadCalReports_(); let freed = 0, n = 0;
+    Object.values(map).forEach(r=>{
+      if(!r || !r.deleted) return;
+      ["photo","photosExtra","photos"].forEach(k=>{
+        if(r[k]){ freed += JSON.stringify(r[k]).length; delete r[k]; n++; }
+      });
+    });
+    if(n){ saveCalReports_(map); console.log(`[reports] 削除済み報告の画像を整理: ${n}件 / 約${Math.round(freed/1024)}KB 解放`); }
+  }catch(e){ console.warn("[reports] 整理失敗", e && e.message); }
+}
 let __brFetchState = "idle";   // idle | loading | ok | error | nosync — 空表示の理由を出し分けるため(v1.30.269)
 let __brFetchErr = "";
 async function fetchCalReports_(opts={}){
@@ -24234,8 +24250,11 @@ setTimeout(()=>{
       }
       // 🐞 バグ・要望の報告(全員共有)=起動時+5分ごとに取得(ヘッダーの未対応バッジ更新)v1.30.257
       if(typeof fetchCalReports_==='function'){
+        if(typeof pruneDeletedReportPhotos_==='function') pruneDeletedReportPhotos_();   // 🧹削除済み報告の画像を整理(v1.30.516)
         fetchCalReports_({silent:true}).catch(()=>{});
-        setInterval(()=>fetchCalReports_({silent:true, render:true}).catch(()=>{}), 5*60*1000);
+        // ⏱ v1.30.516: 5分→15分。画像込みで1MB級を全端末が5分ごとに取り直していた(通信量の無駄)。
+        //   未対応バッジの鮮度は15分で十分。🐞を開いた時は即取得するので見るときは常に最新。
+        setInterval(()=>fetchCalReports_({silent:true, render:true}).catch(()=>{}), 15*60*1000);
         // 📮 未共有の報告(スマホで投稿直後にアプリを閉じた等)を復帰時にも再送 v1.30.464
         document.addEventListener("visibilitychange", ()=>{
           if(document.visibilityState==="visible" && typeof retryCalReportsPush_==='function') retryCalReportsPush_();
