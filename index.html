@@ -345,10 +345,11 @@
   /* 📑 月切替タブ(スプシ風・カレンダー最下部) v1.30.493 — 鈴木要望
      「横スクロールバーが下にあるから、月の切替タブも下にあると操作しやすい」
      .calendar-wrap の最後の子＝カレンダー本体の横スクロールバーのさらに下に出る */
+  /* v1.30.514(山田「月がつめつめすぎ」): タブの間隔・幅・高さを広げて押しやすくした */
   .month-tabs{
-    display:flex;align-items:stretch;gap:2px;flex-shrink:0;
+    display:flex;align-items:stretch;gap:6px;flex-shrink:0;
     border-top:1px solid var(--border-strong);background:#f1f5f9;
-    padding:3px 6px 0;overflow-x:auto;overflow-y:hidden;
+    padding:5px 10px 0;overflow-x:auto;overflow-y:hidden;
     scrollbar-width:thin;
   }
   .month-tabs::-webkit-scrollbar{height:7px}
@@ -356,8 +357,8 @@
   .month-tabs::-webkit-scrollbar-track{background:transparent}
   .month-tabs .mt-btn{
     flex:0 0 auto;border:1px solid var(--border);border-bottom:none;background:#e2e8f0;color:#475569;
-    font-size:12px;font-weight:700;padding:4px 13px 5px;border-radius:7px 7px 0 0;cursor:pointer;
-    white-space:nowrap;line-height:1.2;font-family:inherit;
+    font-size:13px;font-weight:700;padding:6px 18px 7px;border-radius:8px 8px 0 0;cursor:pointer;
+    white-space:nowrap;line-height:1.2;font-family:inherit;min-width:52px;
   }
   .month-tabs .mt-btn:hover{background:#dbeafe;color:#1d4ed8}
   .month-tabs .mt-btn.active{background:#fff;color:#0f172a;border-color:var(--border-strong);box-shadow:inset 0 -3px 0 #2563eb}
@@ -365,16 +366,16 @@
   .month-tabs .mt-btn.is-today::before{content:"●";font-size:7px;margin-right:4px;vertical-align:2px}
   /* 年の区切り(2027年 …) */
   .month-tabs .mt-year{
-    flex:0 0 auto;align-self:flex-end;font-size:10px;font-weight:800;color:var(--muted);
-    padding:0 6px 6px 4px;white-space:nowrap;
+    flex:0 0 auto;align-self:flex-end;font-size:11px;font-weight:800;color:var(--muted);
+    padding:0 10px 8px 6px;white-space:nowrap;
   }
   .month-tabs .mt-today{
     /* タブが横スクロールしても「今日」は左に居残る(下だけで操作が完結するように) */
     position:sticky;left:0;z-index:2;
-    flex:0 0 auto;align-self:flex-end;margin-right:6px;margin-bottom:4px;
-    box-shadow:6px 0 6px -4px rgba(241,245,249,.95);
-    border:1px solid var(--border-strong);background:#fff;color:#334155;border-radius:5px;
-    font-size:11px;font-weight:700;padding:3px 9px;cursor:pointer;white-space:nowrap;font-family:inherit;
+    flex:0 0 auto;align-self:flex-end;margin-right:10px;margin-bottom:5px;
+    box-shadow:8px 0 8px -4px rgba(241,245,249,.95);
+    border:1px solid var(--border-strong);background:#fff;color:#334155;border-radius:6px;
+    font-size:12px;font-weight:700;padding:5px 13px;cursor:pointer;white-space:nowrap;font-family:inherit;
   }
   .month-tabs .mt-today:hover{background:#dbeafe;color:#1d4ed8}
   .calendar-body{
@@ -2777,7 +2778,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.513</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.514</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
