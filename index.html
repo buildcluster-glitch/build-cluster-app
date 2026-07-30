@@ -2778,7 +2778,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.516</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.517</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -21982,7 +21982,9 @@ function renderRestoTaskRow(t, cat){
       const when = l.at ? restoFmtDateTime(l.at) : escapeHtml(l.date||"");
       const who = l.by ? `<span class="by">${escapeHtml(l.by)}</span>` : "";
       const photoHtml = l.photo ? `<img class="rt-log-img" src="${escapeHtml(l.photo)}" data-role="photo-zoom" alt="写真">` : "";
-      return `<div class="rt-log"><span class="d">${when}</span>${who}<span class="text">${escapeHtml(l.text||"")}</span><button class="rm" data-log-idx="${idx}" title="削除">×</button>${photoHtml}</div>`;
+      // ✎ v1.30.517(山田): 投稿後も編集できるように。本文をタップ→その場で書き換え(Enter確定/Escで取り消し)
+      const edited = l.editedAt ? `<span class="d" title="${escapeHtml(l.editedBy||"")} が修正">(修正済)</span>` : "";
+      return `<div class="rt-log"><span class="d">${when}</span>${who}<span class="text" data-log-edit="${idx}" title="タップで編集">${escapeHtml(l.text||"")}</span>${edited}<button class="rm" data-log-idx="${idx}" title="削除">×</button>${photoHtml}</div>`;
     }).join("");
     // ログは折り畳み: 既存ログがあれば最初から開く、無ければ閉じる
     const collapsed = logCount === 0;
@@ -22011,13 +22013,13 @@ function renderRestoTaskRow(t, cat){
             ${t.extraId?`<span class="rt-extra" data-role="extra-edit" title="カレンダーから登録した追加工事${t.addedBy?` (${escapeHtml(t.addedBy)})`:""} — タップで編集・削除">＋追加</span>`:""}
             ${t.room?`<span class="rt-room">${escapeHtml(t.room)}</span>`:""}
             <span class="rt-name">${escapeHtml(dispName)}</span>
+            ${extraBtnHtml}${logBtnHtml}
             ${qtyStr?`<span class="rt-qty">${escapeHtml(qtyStr)}</span>`:""}
             ${sub.length?`<span class="rt-sub" style="margin:0">${sub.join(" · ")}</span>`:""}
           </div>
           ${t.statusBy?`<div class="rt-sub" style="font-size:10px">${escapeHtml(RESTO_STATUS_LABEL[t.status]||t.status)} : ${escapeHtml(t.statusBy)} ${restoFmtDateTime(t.statusAt)}</div>`:""}
           ${noteHtml}
         </div>
-        ${extraBtnHtml}${logBtnHtml}
       </div>
       ${logsHtml}
     </div>`;
@@ -22079,6 +22081,36 @@ function wireRestoTaskRows(el){
     }
     row.querySelectorAll('.rt-log .rm[data-log-idx]').forEach(btn=>{
       btn.onclick = e=>{ e.stopPropagation(); restoRemoveLog(id, parseInt(btn.dataset.logIdx,10)); };
+    });
+    // ✎ 投稿済み作業ログの編集(v1.30.517・山田「投稿後も編集できるようにしたい」)
+    //   本文タップ→その場で入力欄に変わる。Enter/フォーカスが外れたら保存、Escで取り消し。
+    row.querySelectorAll('.rt-log .text[data-log-edit]').forEach(sp=>{
+      sp.onclick = e=>{
+        e.stopPropagation();
+        if(sp.dataset.editing) return;
+        sp.dataset.editing = "1";
+        const idx = parseInt(sp.dataset.logEdit,10);
+        const before = sp.textContent;
+        const inp = document.createElement("input");
+        inp.type = "text"; inp.value = before; inp.className = "rt-log-edit";
+        inp.style.cssText = "flex:1;min-width:120px;font-size:12px;padding:2px 6px;border:1px solid #2563eb;border-radius:5px;font-family:inherit";
+        let done = false;
+        const finish = (save)=>{
+          if(done) return; done = true;
+          const v = inp.value.trim();
+          if(save && v && v !== before) restoEditLog(id, idx, v);
+          else renderRestoDetail();   // 取り消し=元の表示に戻す
+        };
+        inp.onclick = ev=>ev.stopPropagation();
+        inp.onkeydown = ev=>{
+          ev.stopPropagation();
+          if(ev.key==="Enter" && !ev.isComposing && ev.keyCode!==229){ ev.preventDefault(); finish(true); }
+          else if(ev.key==="Escape"){ ev.preventDefault(); finish(false); }
+        };
+        inp.onblur = ()=>finish(true);
+        sp.replaceWith(inp);
+        inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length);
+      };
     });
     row.querySelectorAll('[data-role="photo-zoom"]').forEach(img=>{
       img.onclick = e=>{ e.stopPropagation(); restoShowPhotoZoom(img.src); };
@@ -22234,6 +22266,16 @@ function restoAddLog(taskId, text, photo){
   const t = p.tasks.find(x=>x.id===taskId);
   t.logs = t.logs || [];
   t.logs.push({text, date:fmtDate(new Date()), by:getMyself()||"", at:Date.now(), photo:photo||null});
+  restoSave(); renderRestoDetail();
+}
+// ✎ 投稿済み作業ログの本文を書き換え(v1.30.517・山田)。誰がいつ直したかを残す(編集の隠蔽をしない)
+function restoEditLog(taskId, idx, text){
+  const p = state.restorations.find(x=>x.id===restoDetailId);
+  const t = p && p.tasks.find(x=>x.id===taskId);
+  if(!t || !t.logs || !t.logs[idx]) return;
+  t.logs[idx].text = text;
+  t.logs[idx].editedAt = Date.now();
+  t.logs[idx].editedBy = getMyself()||"";
   restoSave(); renderRestoDetail();
 }
 function restoRemoveLog(taskId, idx){
