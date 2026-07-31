@@ -2784,7 +2784,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.519</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.520</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -17947,6 +17947,13 @@ document.querySelectorAll(".view-switch button").forEach(b=>{
 });
 // 📱 予定クイック追加シート (v1.30.19): スマホはフルモーダルだと大変なので最低限(タイトル/日付/時刻/担当)だけで登録。
 //   「✏️詳細」で従来モーダルへ引き継ぎ。PCは従来通りフルモーダル
+// 📋 テンプレ予定(v1.30.520・山田): 「＋予定」でよく入れるものをプルダウンから一発で入れる。
+//   増やす時はここに1行足すだけ。title は必須、category / time は省略可(省略=触らない)。
+//     category: カテゴリボタンの値("" = 未分類 / "立会" "修繕" "事務" 等)
+//     time    : "" = 時間未定 / "__am__" = AM中 / "__pm__" = PM中 / "09:00" のような時刻
+const QUICK_TEMPLATES = [
+  { id:"souko", label:"🏭 倉庫番", title:"倉庫番", time:"" },
+];
 function showQuickAddSheet_(defaults={}, editEv=null){
   document.querySelectorAll('.quick-add-sheet-backdrop').forEach(x=>x.remove());
   const me = getMyself();
@@ -17986,6 +17993,10 @@ function showQuickAddSheet_(defaults={}, editEv=null){
   bd.className = 'quick-add-sheet-backdrop';
   bd.innerHTML = `<div class="quick-add-sheet">
     <h3>${isEdit?'✏️ 予定を編集':'＋ 予定を追加'} <span style="font-weight:400;font-size:11px;color:var(--muted)">${isEdit?'簡易編集。細かい設定は✏️詳細から':'最低限だけ。細かい設定は✏️詳細から'}</span></h3>
+    ${isEdit?'':`<div class="qa-row"><select id="qa-template" style="width:100%">
+      <option value="">📋 テンプレから選ぶ…</option>
+      ${QUICK_TEMPLATES.map(t=>`<option value="${escapeHtml(t.id)}">${escapeHtml(t.label)}</option>`).join('')}
+    </select></div>`}
     <div class="qa-row"><textarea id="qa-title" rows="2" placeholder="タイトル (例: 〇〇 立会)  ※Enterで改行・2行まで" autocomplete="off">${escapeHtml(titleV)}</textarea></div>
     <div class="qa-row">
       <input type="date" id="qa-date" value="${escapeHtml(dateV)}">
@@ -18031,6 +18042,24 @@ function showQuickAddSheet_(defaults={}, editEv=null){
       bd.querySelectorAll('.qa-cat button').forEach(x=>x.classList.toggle('on', x.dataset.cat===selCat));
     };
   });
+  // 📋 テンプレ予定(v1.30.520・山田): よく入れる予定をプルダウンから一発で。
+  //   選ぶとタイトル(+指定があればカテゴリ/時間)が入る。あとは普通に編集できる。
+  {
+    const tplSel = bd.querySelector('#qa-template');
+    if(tplSel) tplSel.onchange = ()=>{
+      const t = QUICK_TEMPLATES.find(x=>x.id===tplSel.value);
+      tplSel.value = "";                     // 選び直せるように戻す
+      if(!t) return;
+      const ta = bd.querySelector('#qa-title');
+      if(ta){ ta.value = t.title; ta.dispatchEvent(new Event('input')); }
+      if(t.category !== undefined){
+        const cb = bd.querySelector(`.qa-cat button[data-cat="${t.category}"]`);
+        if(cb) cb.click();                   // 既存の選択処理をそのまま使う(状態がずれない)
+      }
+      if(t.time !== undefined){ const ts = bd.querySelector('#qa-time'); if(ts) ts.value = t.time; }
+      if(ta) ta.focus();
+    };
+  }
   // 🚗 直行/直帰 トグル(両方on=直行直帰)
   bd.querySelectorAll('#qa-commute button').forEach(b=>{
     b.onclick = ()=>{
