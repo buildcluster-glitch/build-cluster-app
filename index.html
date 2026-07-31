@@ -2784,7 +2784,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.520</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.521</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -7505,6 +7505,7 @@ function applyEventDeletionsToState_(){
   state.events = (state.events||[]).filter(ev=>{
     const dAt = map[ev.id];
     if(!dAt) return true;
+    if(!evDeletionTrusted_(ev, dAt)) return true;   // 🛡 旧版の自動削除の巻き添えは無視(v1.30.521)
     const u = String(ev.updatedAt||'');
     if(u && u > String(dAt)) return true;   // 削除後に再作成/編集 → 残す(誤消し防止)
     n++; return false;                       // 削除トゥームストーンが有効 → 除去
@@ -7542,10 +7543,17 @@ async function fetchEventDeletions_(opts={}){
   }catch(err){ if(!opts.silent) console.warn('[event_deletions] fetch失敗:', err.message); applyEventDeletionsToState_(); return local; }
 }
 // 予定削除時に呼ぶ: tombstone を立ててローカル除去＋全端末へpush
+// 🏷 v1.30.521: 削除記録に「意図的な削除」の印(|u)を付ける。
+//   旧版(≤v1.30.509)は「カテゴリ事務の予定は何でもタスクの箱」とみなして起動時に自動削除し、
+//   その削除を全端末へ伝播していた(山田報告「事務にすると消える」)。当端末を直しても、
+//   更新していない端末が1台でも残っていると、そこが消して全員から消える。
+//   → これ以降の削除には印を付け、印の無い削除で「事務のただの予定」が消されるのは無視する。
+//   ※値は文字列のまま(先頭はISO時刻)なので、旧版との比較・マージ互換は保たれる。
+const EVDEL_USER_MARK = "|u";
 function addEventDeletion_(eventId){
   if(!eventId) return;
   const map = loadEventDeletions_();
-  map[eventId] = new Date().toISOString();
+  map[eventId] = new Date().toISOString() + EVDEL_USER_MARK;
   saveEventDeletions_(map);
   applyEventDeletionsToState_();
   // 🛡 v1.30.247: 旧実装はローカル控えを丸ごと上書きpush→古い控えの端末が後からpushすると
@@ -7602,10 +7610,20 @@ function removeEventDeletion_(eventId){
   })();
 }
 // 復活防止: サーバー由来の予定で、tombstone(削除時刻)が予定のupdatedAtより新しいものは取り込まない
+// 🛡 v1.30.521: その削除記録を信用してよいか。
+//   印(|u)の無い削除で「カテゴリ事務の"ただの予定"」が消されるのは、旧版(≤509)の
+//   自動削除バグの巻き添え→無視する。事務タスクの箱・他カテゴリは従来どおり削除を尊重。
+function evDeletionTrusted_(ev, dAt){
+  if(String(dAt||"").indexOf(EVDEL_USER_MARK) >= 0) return true;      // 意図的な削除=尊重
+  if(!ev || ev.category !== '事務') return true;                       // 事務以外は従来どおり
+  if(typeof isJimuTaskBox_==='function' && isJimuTaskBox_(ev)) return true;  // タスクの箱は従来どおり
+  return false;                                                        // 事務のただの予定 × 印なし = 旧版の巻き添え
+}
 function isEventTombstoned_(ev){
   if(!ev || !ev.id) return false;
   const dAt = loadEventDeletions_()[ev.id];
   if(!dAt) return false;
+  if(!evDeletionTrusted_(ev, dAt)) return false;
   const u = String(ev.updatedAt||'');
   return !(u && u > String(dAt));
 }
