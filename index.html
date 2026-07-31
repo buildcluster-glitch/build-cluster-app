@@ -2784,7 +2784,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.521</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.522</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -5281,6 +5281,10 @@ function uid(){
   return Date.now().toString(36) + Math.random().toString(36).slice(2,7);
 }
 
+// 📅 月ビューの前後はみ出し日数(v1.30.522・山田): 月末に翌月1週間ぶん / 月初に前月3日ぶん。
+//   日祝・会社休日は数えない(=働く日で数える)。増減したくなったらこの2つを変えるだけ。
+const MONTH_VIEW_PAD_BEFORE = 3;   // 月初より前に何営業日ぶん見せるか
+const MONTH_VIEW_PAD_AFTER  = 7;   // 月末より後に何営業日ぶん見せるか
 function visibleDates(){
   if(currentView==="day" || currentView==="staff") return [new Date(currentDate)];
   if(currentView==="3day"){
@@ -5293,11 +5297,31 @@ function visibleDates(){
     if(window.innerWidth <= 700){
       return Array.from({length:44}, (_,i)=>addDays(currentDate, i-14));
     }
-    // 月の1日〜末日（時間グリッドで横スクロール）
+    // 月の1日〜末日 ＋ 前後にはみ出し表示(v1.30.522・山田)
+    //   「月末に翌月1週間ぶんの予定が見たい / 月初は3日前まで見たい」。
+    //   ⚠日数は"働く日"で数える(日祝・会社休日はカウントしない)。休みの日も表示はする=間が飛ばない。
     const first = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
     const last  = new Date(currentDate.getFullYear(), currentDate.getMonth()+1, 0);
+    const isOffDay_ = (d)=>{
+      const s = fmtDate(d);
+      if(d.getDay()===0) return true;                                   // 日曜
+      if(typeof isHoliday==='function' && isHoliday(d)) return true;     // 祝日
+      if(typeof companyHolidayFor_==='function' && companyHolidayFor_(s)) return true;   // 会社休日(お盆/GW等)
+      return false;
+    };
+    // 起点から dir 方向へ、休みを飛ばして count 日ぶん伸ばした端の日付を返す
+    const extend_ = (from, count, dir)=>{
+      let d = new Date(from), got = 0, guard = 0;
+      while(got < count && guard++ < 60){
+        d = addDays(d, dir);
+        if(!isOffDay_(d)) got++;
+      }
+      return d;
+    };
+    const start = extend_(first, MONTH_VIEW_PAD_BEFORE, -1);
+    const end   = extend_(last,  MONTH_VIEW_PAD_AFTER,  +1);
     const days = [];
-    for(let d=new Date(first); d<=last; d=addDays(d,1)) days.push(new Date(d));
+    for(let d=new Date(start); d<=end; d=addDays(d,1)) days.push(new Date(d));
     return days;
   }
   const start = startOfWeek(currentDate);
