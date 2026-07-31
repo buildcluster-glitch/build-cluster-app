@@ -1881,6 +1881,13 @@
   .rd-group{margin-bottom:8px}
   /* 🏭外注工事 / 🔨自社工事 を色テーマで強く区別(v1.30.318・山田「もっとつよく」) */
   .rd-group-out{border:2px solid #6366f1;border-left-width:7px;border-radius:10px;padding:0 6px 6px;margin-bottom:16px;background:#eef2ff}
+  /* 💬 現場メモの欄ごと黄色で囲む(v1.30.523・山田「なおってない」)。
+     v1.30.518では投稿済みメモ1件ずつを黄色にしたが、メモが無い物件では何も変わらず
+     「欄そのものが埋もれる」問題が残っていた。外注/自社と同じ"色で囲む"作りに揃える。 */
+  .rd-group-memo{border:2px solid #f59e0b;border-left-width:7px;border-radius:10px;padding:0 6px 6px;margin-bottom:16px;background:#fffbeb}
+  /* 見出しは"塗りつぶし"にしない: 自社工事(濃いオレンジ)と紛らわしいため、
+     うすい黄色地＋濃い茶文字にして「囲みは黄色・中身はメモ」と一目で分かるようにする */
+  .rd-group-memo > .rd-group-head{background:#fde68a;color:#78350f;padding:7px 12px;border-radius:0 0 8px 8px;margin:0 -6px 6px;font-size:13.5px;border-bottom:1px solid #f59e0b}
   .rd-group-out > .rd-group-head{background:#4f46e5;color:#fff;padding:7px 12px;border-radius:0 0 8px 8px;margin:0 -6px 6px;font-size:13.5px;box-shadow:0 2px 5px rgba(79,70,229,.3)}
   .rd-group-in{border:2px solid #f59e0b;border-left-width:7px;border-radius:10px;padding:0 6px 6px;margin-bottom:16px;background:#fffbeb}
   .rd-group-in > .rd-group-head{background:#d97706;color:#fff;padding:7px 12px;border-radius:0 0 8px 8px;margin:0 -6px 6px;font-size:13.5px;box-shadow:0 2px 5px rgba(217,119,6,.3)}
@@ -2784,7 +2791,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.522</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.523</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -3055,7 +3062,7 @@
     <div class="rd-filter-bar hide" id="rdFilterBar"></div>
     <div class="rd-scroll">
       <!-- 💬 現場メモは最上部(v1.30.479・山田): 工事一覧をスクロールしなくても書ける/読める -->
-      <div class="rd-group">
+      <div class="rd-group rd-group-memo">
         <div class="rd-group-head">💬 現場メモ</div>
         <div class="rd-comment-add">
           <textarea id="rdCommentInput" rows="2" placeholder="現場メモを追加…（Enterで改行OK・「追加」で確定）" style="resize:vertical;min-height:44px"></textarea>
