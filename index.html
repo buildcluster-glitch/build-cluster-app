@@ -2266,8 +2266,11 @@
     /* iOSは100vhがブラウザUI込みで実際の表示域より大きい → dvh(動的ビューポート)優先 */
     .calendar-wrap{height:calc(100vh - 188px);height:calc(100dvh - 188px)}
     .task-view{height:calc(100vh - 158px);height:calc(100dvh - 158px)}
-    /* 最終確認セクションの末尾に下部ナビ分の余白 → 最後のカードまでスクロールで見える(v1.30.401: 70→120px。下部フッター(約62px)に最後のカードが見切れる報告・山田) */
-    .checks-section{padding-bottom:calc(120px + env(safe-area-inset-bottom,0))}
+    /* 最終確認セクションの末尾に下部ナビ分の余白 → 最後のカードまでスクロールで見える(v1.30.401: 70→120px。下部フッター(約62px)に最後のカードが見切れる報告・山田)
+       ⚠v1.30.524: この余白はズームの内側にあるため、縮小すると物理的な余白も一緒に痩せる
+       (70%で約12px・40%では不足)。一方で下部ナビの高さは縮小と無関係に一定。
+       → applyCalZoom_ が倍率に応じて --checks-pad-bottom を 1/z 倍して補正する。 */
+    .checks-section{padding-bottom:calc(var(--checks-pad-bottom, 120px) + env(safe-area-inset-bottom,0))}
     .repair-view, .resto-view{padding-bottom:calc(110px + env(safe-area-inset-bottom,0))}
     .repair-list{padding-bottom:140px}
     #inventoryView .inv-app{padding-bottom:140px}
@@ -2791,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.523</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.524</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -17364,6 +17367,13 @@ function applyCalZoom_(zOverride){
   document.querySelectorAll("#calZoomSwitch button").forEach(b=>{
     b.classList.toggle("active", Math.abs(parseFloat(b.dataset.z) - z) < 0.01);
   });
+  // 📏 v1.30.524(山田「下部見切れ」): 最終確認の下の余白はズームの内側にあるため、
+  //   縮小すると物理的な余白まで痩せる(70%で約12px)。下部ナビ+同期トーストの高さは
+  //   縮小と無関係に一定なので、倍率で割って"物理150px相当"を常に確保する。
+  try{
+    const pad = Math.round(150 / Math.max(0.2, z));
+    document.documentElement.style.setProperty("--checks-pad-bottom", pad + "px");
+  }catch(_){}
   setZoomLabel_(z);
 }
 // 📱 表示倍率ボタン(v1.30.497・山田): ピンチが効かない/ずれる端末でも確実に拡大縮小できる手段。
