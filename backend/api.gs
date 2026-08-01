@@ -53,25 +53,42 @@ const JSON_ARRAY_KEYS = new Set(['participants','importance','comments']);
 const DATE_KEYS = new Set(['date']);
 // 日時 (yyyy-MM-ddTHH:mm で返す)
 const DATETIME_KEYS = new Set(['datetime','createdAt','updatedAt']);
-// 時刻のみ (HH:mm で返す) — Sheetsが時刻を 1899-12-30 ベースの日付に変換するのを吸収
-const TIME_KEYS = new Set(['startTime','endTime']);
 
 // ===== エンドポイント =====
 
 function doGet(e) {
   try {
+    const p = (e && e.parameter) || {};
+    // 窓GET: from/to (yyyy-MM-dd) が両方揃っているときだけ events を期間で絞る。
+    // 無指定なら従来どおり全件返す = 旧アプリと完全互換。
+    const from = String(p.from || '').slice(0, 10);
+    const to   = String(p.to   || '').slice(0, 10);
+    const useWindow = isYmd_(from) && isYmd_(to);
+    const probe = String(p.probe || '') === '1';
+    const t = {}; let t0 = Date.now();
+
     const data = {};
-    Object.keys(API_SHEETS).forEach(name => { data[name] = readSheet_(name); });
+    Object.keys(API_SHEETS).forEach(name => {
+      data[name] = (useWindow && name === 'events')
+        ? readEventsWindow_(from, to)
+        : readSheet_(name);
+      if (probe) { t[name] = Date.now() - t0; t0 = Date.now(); }
+    });
     // config は key-value 連想配列に変換
     const cfg = {};
     (data.config || []).forEach(r => { if (r.key) cfg[r.key] = r.value; });
     data.config = cfg;
     data.serverTime = new Date().toISOString();
+    // 窓を返す = アプリ側が「絞られた応答」だと判別できる（prune誤爆の防止に使う）
+    if (useWindow) data.window = { from: from, to: to };
+    if (probe) data.probe = t;
     return jsonResponse_(data);
   } catch (err) {
     return jsonResponse_({ error: String(err), stack: err.stack });
   }
 }
+
+function isYmd_(s) { return /^\d{4}-\d{2}-\d{2}$/.test(s); }
 
 function doPost(e) {
   try {
@@ -174,6 +191,32 @@ function readSheet_(name) {
   return values.map(row => rowToObject_(row, headers)).filter(o => o.id || o.name || o.key);
 }
 
+// events を date で絞ってから変換する。窓外の行は rowToObject_ を通さないぶん速い。
+function readEventsWindow_(from, to) {
+  const sh = SpreadsheetApp.getActive().getSheetByName('events');
+  if (!sh) return [];
+  const last = sh.getLastRow();
+  if (last < 2) return [];
+  const headers = API_SHEETS.events;
+  const values = sh.getRange(2, 1, last - 1, headers.length).getValues();
+  const dateIdx = headers.indexOf('date');
+  const out = [];
+  for (let i = 0; i < values.length; i++) {
+    const d = ymdOfCell_(values[i][dateIdx]);
+    // 日付が読めない行は落とさず必ず返す（消失事故の予防。件数はごく少数）
+    if (d && (d < from || d > to)) continue;
+    const o = rowToObject_(values[i], headers);
+    if (o.id) out.push(o);
+  }
+  return out;
+}
+
+function ymdOfCell_(v) {
+  if (v instanceof Date) return fmtDateOnly_(v);
+  const m = String(v == null ? '' : v).match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : '';
+}
+
 function rowToObject_(row, headers) {
   const o = {};
   headers.forEach((h, i) => {
@@ -186,11 +229,9 @@ function rowToObject_(row, headers) {
       return;
     }
     if (v instanceof Date) {
-      const fmt = TIME_KEYS.has(h) ? 'HH:mm'
-                : DATE_KEYS.has(h) ? 'yyyy-MM-dd'
-                : DATETIME_KEYS.has(h) ? "yyyy-MM-dd'T'HH:mm"
-                : "yyyy-MM-dd'T'HH:mm";
-      v = Utilities.formatDate(v, 'Asia/Tokyo', fmt);
+      // Utilities.formatDate は1回あたり数ms。1行3回×数百行で数秒になるので手組みに置換。
+      // appsscript.json の timeZone が Asia/Tokyo なので Date のゲッターと同じ結果になる。
+      v = DATE_KEYS.has(h) ? fmtDateOnly_(v) : fmtDateTime_(v);
     }
     if (NUMERIC_KEYS.has(h)) { const n = Number(v); o[h] = isNaN(n) ? null : n; return; }
     if (BOOL_KEYS.has(h)) { o[h] = (v === true || String(v).toUpperCase() === 'TRUE'); return; }
@@ -205,14 +246,6 @@ function rowToObject_(row, headers) {
       const s = String(v);
       const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
       o[h] = m ? m[1] : s;
-      return;
-    }
-    if (TIME_KEYS.has(h)) {
-      // string で "1899-12-30T10:00" 等が来た場合も HH:mm 抽出
-      const s = String(v);
-      if (/^\d{1,2}:\d{2}$/.test(s)) { o[h] = s; return; }
-      const m = s.match(/T(\d{2}:\d{2})/);
-      o[h] = m ? m[1] : '';
       return;
     }
     o[h] = String(v);
@@ -317,6 +350,14 @@ function generateId_(name) {
 }
 
 // ===== ユーティリティ =====
+
+function pad2_(n) { return n < 10 ? '0' + n : '' + n; }
+function fmtDateOnly_(d) {
+  return d.getFullYear() + '-' + pad2_(d.getMonth() + 1) + '-' + pad2_(d.getDate());
+}
+function fmtDateTime_(d) {
+  return fmtDateOnly_(d) + 'T' + pad2_(d.getHours()) + ':' + pad2_(d.getMinutes());
+}
 
 function jsonResponse_(obj) {
   return ContentService

@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.527</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.528</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -18675,7 +18675,9 @@ function renderInventoryView(){
 
 const CLOUD_SYNC_KEY = 'calendar_sync_v1';
 const CLOUD_SYNC_DEBOUNCE_MS = 1500;
-const CLOUD_SYNC_POLL_MS = 30000;
+// v1.30.528: 30秒→60秒。GAS側を高速化(1回3秒台)したので、30秒間隔だと
+// 前の同期が終わりきらないうちに次が飛びやすい。60秒でも体感は変わらない。
+const CLOUD_SYNC_POLL_MS = 60000;
 const CLOUD_SYNC_ACTIONS_EVENT = ['upsertEvent','deleteEvent','setEventStatus'];
 const CLOUD_SYNC_ACTIONS_PROPERTY = ['upsertProperty','deleteProperty'];
 const CLOUD_SYNC_ACTIONS_LOG = ['appendLog','deleteLog'];
