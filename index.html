@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.530</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.531</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -22519,41 +22519,28 @@ function restoShowPhotoZoom(src){
   document.getElementById("photoZoomImg").src = src;
   document.getElementById("photoZoom").classList.add("on");
 }
-// Drive アップロード (iframe Bridge / TM uploadToDrive 相当)
-let _restoUploadIframe = null, _restoUploadReady = false, _restoUploadCallbacks = {}, _restoUploadQueue = [];
-function restoInitUploadBridge(){
-  if(_restoUploadIframe) return;
-  const s = loadGasSettings();
-  if(!s.url) return;
-  _restoUploadIframe = document.createElement("iframe");
-  _restoUploadIframe.style.display = "none";
-  _restoUploadIframe.src = s.url + "?action=uploadPage";
-  document.body.appendChild(_restoUploadIframe);
-  window.addEventListener("message", e=>{
-    if(!e.data) return;
-    if(e.data.type==="uploadReady"){
-      _restoUploadReady = true;
-      _restoUploadQueue.forEach(q=>_restoUploadIframe.contentWindow.postMessage(q,"*"));
-      _restoUploadQueue = [];
-    }
-    if(e.data.type==="uploadResult"){
-      const cb = _restoUploadCallbacks[e.data.id];
-      if(cb){ cb(e.data.result); delete _restoUploadCallbacks[e.data.id]; }
-    }
-  });
-}
-function restoUploadToDrive(base64Data, propName, roomNo){
-  return new Promise(resolve=>{
+// Drive アップロード v1.30.531
+//   旧iframe橋(?action=uploadPage)は master_sync に受け口が存在せず【常に30秒タイムアウト】
+//   →全写真が28KBサムネイル劣化 or base64のまま進捗共有(_task_progress.json)に直載りしていた(task-sync 4.9MBの主因)。
+//   他の同期と同じ text/plain POST(action:"upload-image")で直接Driveへ。返りは無認証表示URL。
+async function restoUploadToDrive(base64Data, propName, roomNo){
+  try{
     const s = loadGasSettings();
-    if(!s.url){ resolve({ok:false, error:"GAS URL未設定"}); return; }
-    restoInitUploadBridge();
-    const id = uid();
-    const msg = {action:"upload", id, propertyName:propName||"", roomNumber:roomNo||"", fileName:"photo_"+id+".jpg", mimeType:"image/jpeg", data:base64Data};
-    _restoUploadCallbacks[id] = resolve;
-    if(_restoUploadReady && _restoUploadIframe){ _restoUploadIframe.contentWindow.postMessage(msg,"*"); }
-    else { _restoUploadQueue.push(msg); }
-    setTimeout(()=>{ if(_restoUploadCallbacks[id]){ resolve({ok:false,error:"タイムアウト(30秒)"}); delete _restoUploadCallbacks[id]; } }, 30000);
-  });
+    if(!s.url) return {ok:false, error:"GAS URL未設定"};
+    const name = "進捗_" + String(propName||"") + "_" + String(roomNo||"") + "_" + uid() + ".jpg";
+    const ctrl = (typeof AbortController!=='undefined') ? new AbortController() : null;
+    const to = ctrl ? setTimeout(()=>{ try{ ctrl.abort(); }catch(_){} }, 30000) : null;
+    const res = await fetch(s.url, {
+      method:"POST", redirect:"follow",
+      headers:{"Content-Type":"text/plain;charset=utf-8"}, // GASでCORSプリフライト回避
+      signal: ctrl ? ctrl.signal : undefined,
+      body: JSON.stringify({action:"upload-image", token:s.token, name, dataUrl:base64Data}),
+    });
+    if(to) clearTimeout(to);
+    const d = await res.json().catch(()=>null);
+    if(d && d.ok && d.driveId) return {ok:true, url:"https://lh3.googleusercontent.com/d/" + d.driveId + "=w1600"};
+    return {ok:false, error:(d && d.error) || "upload-image応答不正"};
+  }catch(e){ return {ok:false, error:String((e && e.message) || e)}; }
 }
 // 📷 データURLを更に縮小(データURLを受け取り再エンコード)。Drive失敗時のローカル保持用サムネイル生成 v1.30.393
 function restoShrinkDataUrl_(dataUrl, maxBytes, maxDim){
