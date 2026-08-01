@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.525</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.526</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4390,7 +4390,10 @@
   if (window._gcBatchInstalled) return; window._gcBatchInstalled = true;
   var _origFetch = window.fetch.bind(window);
   // ⚠ hatchusho_data(発注書・149KB)はバッチから除外(v1.30.212): バッチ1回が149KB込みで重くなり、軽いキーまで待たされるため。発注書は別途(単発/必要時)取得。
-  var GC_KEYS = ['staffMaster','staffAvailability','taikyo_tachiai_schedule','taikyo_overrides','taikyo_comments','taikyo_shiryo_ready','repair_overrides','repair_comments','repair_pos','check_workers','phone_duty','toban_done','alerts','skip_visit','staff_leaves','event_deletions','jimu_messages','jizen_schedule','calendar_reminders','reschedule_traces'];
+  //   v1.30.526: 小さいのに単発で往復していた5キーをバッチへ追加(山田「読み込みが重い」の実測対応)。
+  //   起動時に同じGASへ10本近い並列リクエストが集中し、一部が404/60秒タイムアウトしていた。
+  //   ⚠ calendar_reports(画像込み1.1MB)と hatchusho_data(149KB)は重いので今後もバッチに入れない。
+  var GC_KEYS = ['staffMaster','staffAvailability','taikyo_tachiai_schedule','taikyo_overrides','taikyo_comments','taikyo_shiryo_ready','repair_overrides','repair_comments','repair_pos','check_workers','phone_duty','toban_done','alerts','skip_visit','staff_leaves','event_deletions','jimu_messages','jizen_schedule','calendar_reminders','reschedule_traces','jimu_task_comments','jimu_task_tombstones','calendar_changelog','event_done','sanpai'];
   var TTL = 45000; // 起動バーストを束ねる窓(45秒)
   var _cache = null, _cacheAt = 0, _inflight = null, _unsupported = false;
   // 🔄 手動全同期で「今すぐ最新」を取るため、45秒キャッシュを外から無効化できるようにする(v1.30.224)
@@ -24388,7 +24391,10 @@ setTimeout(()=>{
       // 🐞 バグ・要望の報告(全員共有)=起動時+5分ごとに取得(ヘッダーの未対応バッジ更新)v1.30.257
       if(typeof fetchCalReports_==='function'){
         if(typeof pruneDeletedReportPhotos_==='function') pruneDeletedReportPhotos_();   // 🧹削除済み報告の画像を整理(v1.30.516)
-        fetchCalReports_({silent:true}).catch(()=>{});
+        // ⏳ v1.30.526: 起動直後の混雑を避けて9秒後に取得。画像込み1MB級で、台帳同期や物件マスタと
+        //   同時に走るとGASが詰まり404/タイムアウトの一因になっていた(山田のコンソールで確認)。
+        //   バッジの初期表示はローカルキャッシュで足りるので遅らせても実害なし。
+        setTimeout(()=>fetchCalReports_({silent:true}).catch(()=>{}), 9000);
         // ⏱ v1.30.516: 5分→15分。画像込みで1MB級を全端末が5分ごとに取り直していた(通信量の無駄)。
         //   未対応バッジの鮮度は15分で十分。🐞を開いた時は即取得するので見るときは常に最新。
         setInterval(()=>fetchCalReports_({silent:true, render:true}).catch(()=>{}), 15*60*1000);
@@ -24428,7 +24434,8 @@ setTimeout(()=>{
     fetchJizenSchedule({silent:true});
     setInterval(()=>fetchJizenSchedule({silent:true}).catch(()=>{}), 5*60*1000);
     // 📄 発注書データ (見積アプリ「発注確定」→shared-config) 取得・以後5分ごと
-    fetchHatchushoData({silent:true});
+    // ⏳ v1.30.526: 149KB級なので起動直後の混雑を外して6秒後に(発注書は開いた時に使うもの=初速に不要)
+    setTimeout(()=>fetchHatchushoData({silent:true}).catch(()=>{}), 6000);
     setInterval(()=>fetchHatchushoData({silent:true}).catch(()=>{}), 5*60*1000);
     // 📷 品番サムネ画像ライブラリ (見積アプリ→shared-config) 取得・以後30分ごと(更新頻度低いので長め)v1.30.324
     if(typeof fetchNaisoThumbs_==='function'){
