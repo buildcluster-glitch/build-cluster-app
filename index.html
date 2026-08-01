@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.529</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.530</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -19370,10 +19370,16 @@ document.getElementById('cs-pull-now').onclick = async ()=>{
 };
 // ☁ = 全同期ボタン (v1.29.9): クラウド(予定/休暇DB) + Drive(master_sync: 最終確認・立会・事前等) をまとめて実行
 //   設定モーダルは ⚙ から (以前は☁=設定を開くだけだった)
-document.getElementById('cloudSyncBtn').onclick = ()=>{
+document.getElementById('cloudSyncBtn').onclick = async ()=>{
   // 🔄 手動全同期=今すぐ最新。45秒バッチキャッシュを無効化してから取りに行く(v1.30.224)
   if(typeof window.__gcBatchInvalidate==='function') window.__gcBatchInvalidate();
-  runCloudOpenSync({manual:true});   // クラウド同期 (push pending + pull) 予定/休暇
+  // ⏱ v1.30.530(山田「☁を押しても右下が未同期のまま」): 予定の同期だけ先に"待って"終わらせる。
+  //   従来はここから下の重い取得を同時に投げていた。ブラウザは同じホスト(script.google.com)へ
+  //   同時6本までしか繋がないので、Drive同期(実測4.9MB/19秒)＋立会系6本に枠を奪われ、
+  //   いちばん小さくて速いはずの予定同期(2〜3秒)が最後まで順番待ちさせられていた。
+  //   予定=右下ピルの判定元なので、これが遅れると「押したのに未同期」に見える。
+  try{ await runCloudOpenSync({manual:true}); }catch(_){}   // クラウド同期 (push pending + pull) 予定/休暇
+  try{ updateSyncFreshness_(); }catch(_){}
   syncChecksFromGAS();               // Drive同期 (最終確認/修繕/原状回復・未設定なら設定誘導confirm)
   // 🗓 立会も今すぐ最新に(従来は起動時+5分ごとのみ→手動☁でも強制取得。ボタン説明文どおりの動きに)v1.30.224
   if(typeof fetchTaikyoSchedule==='function')   fetchTaikyoSchedule({force:true, silent:true}).catch(()=>{});      // 立会 本体
