@@ -65,30 +65,35 @@ function doGet(e) {
     const to   = String(p.to   || '').slice(0, 10);
     const useWindow = isYmd_(from) && isYmd_(to);
     const probe = String(p.probe || '') === '1';
-    const t = {}; let t0 = Date.now();
-
-    const data = {};
-    Object.keys(API_SHEETS).forEach(name => {
-      data[name] = (useWindow && name === 'events')
-        ? readEventsWindow_(from, to)
-        : readSheet_(name);
-      if (probe) { t[name] = Date.now() - t0; t0 = Date.now(); }
-    });
-    // config は key-value 連想配列に変換
-    const cfg = {};
-    (data.config || []).forEach(r => { if (r.key) cfg[r.key] = r.value; });
-    data.config = cfg;
-    data.serverTime = new Date().toISOString();
-    // 窓を返す = アプリ側が「絞られた応答」だと判別できる（prune誤爆の防止に使う）
-    if (useWindow) data.window = { from: from, to: to };
-    if (probe) data.probe = t;
-    return jsonResponse_(data);
+    return jsonResponse_(buildSnapshot_(useWindow ? from : '', useWindow ? to : '', probe));
   } catch (err) {
     return jsonResponse_({ error: String(err), stack: err.stack });
   }
 }
 
 function isYmd_(s) { return /^\d{4}-\d{2}-\d{2}$/.test(s); }
+
+// GET の応答一式を作る。doPost の withPull からも使う（1往復で書き込み＋取得を済ませるため）
+function buildSnapshot_(from, to, probe) {
+  const useWindow = isYmd_(from) && isYmd_(to);
+  const t = {}; let t0 = Date.now();
+  const data = {};
+  Object.keys(API_SHEETS).forEach(name => {
+    data[name] = (useWindow && name === 'events')
+      ? readEventsWindow_(from, to)
+      : readSheet_(name);
+    if (probe) { t[name] = Date.now() - t0; t0 = Date.now(); }
+  });
+  // config は key-value 連想配列に変換
+  const cfg = {};
+  (data.config || []).forEach(r => { if (r.key) cfg[r.key] = r.value; });
+  data.config = cfg;
+  data.serverTime = new Date().toISOString();
+  // 窓を返す = アプリ側が「絞られた応答」だと判別できる（prune誤爆の防止に使う）
+  if (useWindow) data.window = { from: from, to: to };
+  if (probe) data.probe = t;
+  return data;
+}
 
 function doPost(e) {
   try {
@@ -98,7 +103,14 @@ function doPost(e) {
     const result = dispatch_(action, data);
     // lastSyncAt を更新
     upsertConfig_('lastSyncAt', new Date().toISOString());
-    return jsonResponse_({ ok: true, action, result });
+    const out = { ok: true, action, result };
+    // withPull: 書き込み直後の取得を同じ往復で返す。GASは1回の呼び出しに2〜3秒の
+    // 固定オーバーヘッドがあるので、push→pullの2往復を1往復にできる効果が大きい。
+    // 指定が無ければ従来どおり結果だけ返す = 旧アプリ互換。
+    if (body.withPull) {
+      out.snapshot = buildSnapshot_(String(body.from || ''), String(body.to || ''), false);
+    }
+    return jsonResponse_(out);
   } catch (err) {
     return jsonResponse_({ ok: false, error: String(err), stack: err.stack });
   }
@@ -113,6 +125,16 @@ function dispatch_(action, data) {
   const lock = LockService.getScriptLock();
   lock.waitLock(10000); // 10秒、同時書き込み待機
   try {
+    return dispatchInner_(action, data);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ロックは呼び出し元(dispatch_)が1回だけ取る。bulkSync_ から1件ずつ呼ぶときに
+// 毎回ロックを取り直すと、その隙間で他端末の書き込みが割り込める＝バッチが分断される。
+function dispatchInner_(action, data) {
+  {
     // 冪等性: 指定アクションは opId 重複時にスキップ（再送による二重適用防止）
     if (data && data.opId && IDEMPOTENT_ACTIONS.has(action)) {
       if (isOpIdSeen_(data.opId)) {
@@ -136,8 +158,6 @@ function dispatch_(action, data) {
       markOpIdSeen_(data.opId);
     }
     return result;
-  } finally {
-    lock.releaseLock();
   }
 }
 
@@ -172,8 +192,9 @@ function setEventStatus_(eventId, newStatus){
 
 function bulkSync_(ops) {
   if (!Array.isArray(ops)) throw new Error('bulkSync: data must be array');
+  // dispatch_ ではなく dispatchInner_ を呼ぶ。ロックは既にこのバッチ全体で握っている。
   const results = ops.map(op => {
-    try { return { ok: true, action: op.action, result: dispatch_(op.action, op.data) }; }
+    try { return { ok: true, action: op.action, result: dispatchInner_(op.action, op.data) }; }
     catch (e) { return { ok: false, action: op.action, error: String(e) }; }
   });
   return results;
