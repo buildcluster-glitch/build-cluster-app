@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.537</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.538</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -16084,6 +16084,7 @@ function scheduleAvailabilityPush(){
   if(__availPushTimer) clearTimeout(__availPushTimer);
   __availPushTimer = setTimeout(pushStaffAvailability_, 1500);
 }
+let __availPushRetried = false;   // 🔁 休暇push失敗の再送は1回だけ(v1.30.538)
 async function pushStaffAvailability_(){
   __availPushTimer = null;
   const s = loadGasSettings();
@@ -16130,8 +16131,17 @@ async function pushStaffAvailability_(){
     console.log('[availability] response:', data);
     if(!data.ok && data.ok !== undefined) throw new Error(data.error||'save失敗');
     console.log(`[availability] push成功: ${filtered.length}件の休暇`);
+    __availPushRetried = false;   // 🔁 成功したら再送権を回復(v1.30.538)
   }catch(err){
     console.warn('[availability] push失敗:', err.message);
+    // 🔁 v1.30.538: デプロイ切替直後はGASが数分間 401/404 を混ぜて返すことがある(実測済)。
+    //   この便は起動時1回きりで、失敗するとクラ助が次の起動まで古い休暇を見る。
+    //   10秒後に1回だけ再送(既存デバウンスタイマー使用=多重送信しない)。
+    if(!__availPushRetried && !__availPushTimer){
+      __availPushRetried = true;
+      __availPushTimer = setTimeout(pushStaffAvailability_, 10000);
+      console.log('[availability] 10秒後に再送します(1回だけ)');
+    }
   }
 }
 
