@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.535</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.536</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -11672,7 +11672,14 @@ function normalizeDate(d){
     return `${y}-${pad(mo)}-${pad(dd)}`;
   }
   // それ以外は受け付けない (デバッグログだけ出す)
-  console.warn("[normalizeDate] unparsed date input:", JSON.stringify(d), "type:", typeof d);
+  // 🔇 v1.30.536: 「未定」「7/6迄」等の自由入力は仕様どおり素通し。毎同期数十行の警告は
+  //   本物の異常を埋めるノイズなので、同じ値は起動中1回だけ出す。
+  if(!window.__ndWarned) window.__ndWarned = new Set();
+  const __ndKey = String(d);
+  if(!window.__ndWarned.has(__ndKey)){
+    window.__ndWarned.add(__ndKey);
+    console.warn("[normalizeDate] unparsed date input:", JSON.stringify(d), "type:", typeof d);
+  }
   return "";
 }
 
@@ -18794,6 +18801,7 @@ async function cloudSyncFullSilent(){
 //   → 予定同期が終わる(成功/失敗問わず)まで台帳同期を待たせる関所。上限10秒の保険つき
 //   (予定同期が設定されていない端末や異常時でも台帳同期が永遠に止まらない)。
 let __openSyncSettled = false;
+let __openSyncRetryN = 0;   // 🔁 open-sync失敗の即リトライ回数(v1.30.536)
 function afterOpenSync_(fn, capMs){
   const t0 = Date.now();
   (function w(){
@@ -18828,6 +18836,7 @@ async function runCloudOpenSync(opts={}){
     render();
     setCloudSyncIcon('ok');
     __syncFailed = false;
+    __openSyncRetryN = 0;   // 🔁 成功したらリトライ回数をリセット(v1.30.536)
     if(typeof updateSyncFreshness_==='function') updateSyncFreshness_();
     setTimeout(()=>{ if(!cloudSyncInFlight) setCloudSyncIcon(''); }, 2000);
   }catch(err){
@@ -18836,6 +18845,15 @@ async function runCloudOpenSync(opts={}){
     __syncFailed = true;
     if(typeof updateSyncFreshness_==='function') updateSyncFreshness_();
     setTimeout(()=>{ if(!cloudSyncInFlight) setCloudSyncIcon(''); }, 2500);   // 赤も自動で消す(次のポーリングで再試行)
+    // 🔁 v1.30.536(山田「2,3時間ぶりの起動が遅い」): GASのecho 404/一時ハングは数秒後の再試行で
+    //   ほぼ通るのに、従来は次の60秒ポーリングまで黙って待っていた=起動が1分待ちに見える正体。
+    //   3秒→10秒の2回だけ即リトライ(成功でリセット・可視タブのみ)。
+    if(__openSyncRetryN < 2 && cloudSync.url && cloudSync.autoSync && document.visibilityState==='visible'){
+      const wait = (__openSyncRetryN === 0) ? 3000 : 10000;
+      __openSyncRetryN++;
+      console.log('[cloud-sync] '+ (wait/1000) +'秒後に再試行 ('+__openSyncRetryN+'/2)');
+      setTimeout(()=>{ if(!cloudSyncInFlight) runCloudOpenSync(); }, wait);
+    }
   }finally{
     if(__to) clearTimeout(__to);
     cloudSyncInFlight = false;
@@ -24365,10 +24383,12 @@ setTimeout(()=>{
     afterOpenSync_(()=>syncChecksFromGAS({silent:true, fromAuto:true}));
   }
 }, 1000);
-// 起動2秒後に出勤者データを Drive 自動保存
-setTimeout(()=>scheduleAttendancePush(), 2000);
+// 起動2秒後に出勤者データを Drive 自動保存 (📵 v1.30.536: 予定同期を先に通す)
+setTimeout(()=>afterOpenSync_(()=>scheduleAttendancePush()), 2000);
 // 起動3秒後に物件マスタを自動取得（キャッシュ有効ならスキップ）
-setTimeout(()=>{
+// 📵 v1.30.536: この一斉便(立会/上書き/共有マップ等〜20本)も予定同期の完了後に発車。
+//   2,3時間ぶりの起動はフル台帳(1.2MB)と重なりGAS衝突(echo404)の温床だった。
+setTimeout(()=>afterOpenSync_(()=>{
   const s = loadGasSettings();
   if(s.url && s.token){
     fetchBukkenMaster({silent:true});
@@ -24549,7 +24569,7 @@ setTimeout(()=>{
   // 🗂 完了タスクの自動アーカイブ(7日経過)を起動時+1時間ごとに掃除
   try{ if(typeof sweepTaskArchive_==='function' && sweepTaskArchive_() && typeof render==='function') render(); }catch(e){}
   setInterval(()=>{ try{ if(typeof sweepTaskArchive_==='function' && sweepTaskArchive_() && typeof render==='function') render(); }catch(e){} }, 60*60*1000);
-}, 3000);
+}), 3000);
 
 // ========== Service Worker 登録 (PWA: オフラインキャッシュ + ホーム画面追加) ==========
 if('serviceWorker' in navigator){
