@@ -693,7 +693,7 @@
     border-radius:8px;padding:10px 12px;
     font-size:12px;line-height:1.55;
     box-shadow:0 8px 24px rgba(0,0,0,.32);
-    max-width:420px;min-width:200px;
+    max-width:min(420px, calc(100vw - 16px));min-width:200px;   /* 📱 スマホは画面からはみ出さない(v1.30.534) */
     pointer-events:none;
     border-left:4px solid #3b82f6;
     opacity:0;transform:translateY(-4px);
@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.533</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.534</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -15188,6 +15188,10 @@ function ensureChipTip(){
   return __chipTipEl;
 }
 function cancelHideChipTip(){ if(__chipTipHideTimer){ clearTimeout(__chipTipHideTimer); __chipTipHideTimer=null; } }
+// 📱 吹き出しの外をタップ/クリックしたら閉じる(v1.30.534・スマホ1タップ表示の閉じ口。PCでも自然な挙動)
+document.addEventListener('pointerdown', (e)=>{
+  if(__chipTipEl && __chipTipEl.classList.contains('is-show') && !__chipTipEl.contains(e.target)) hideChipTip(true);
+}, true);
 function scheduleHideChipTip(){ cancelHideChipTip(); __chipTipHideTimer = setTimeout(()=>hideChipTip(), 300); }
 function hideChipTip(force){
   // ✍️ 吹き出し内の入力欄で入力中(フォーカスあり)は自動では消さない=打ってる途中で消える対策(まどか報告 v1.30.389)。
@@ -15386,6 +15390,9 @@ function showChipTip(ev, mouseX, mouseY){
   if(y + rect.height > window.innerHeight - 8) y = mouseY - rect.height - margin;
   if(x < 8) x = 8;
   if(y < 8) y = 8;
+  // 📱 最終クランプ(v1.30.534): 座標が異常でも必ず画面内に収める(はみ出すくらいなら左/上に寄せる)
+  x = Math.min(x, Math.max(8, window.innerWidth  - rect.width  - 8));
+  y = Math.min(y, Math.max(8, window.innerHeight - rect.height - 8));
   tip.style.left = x + "px";
   tip.style.top  = y + "px";
 }
@@ -16208,6 +16215,8 @@ function attachDragOrClick(el, ev){
     e.stopPropagation();
     // 事前予定の「1クリック→進捗ダイアログ」待機タイマーがあれば取消(ダブルクリック優先)
     if(el._jizenClickTimer){ clearTimeout(el._jizenClickTimer); el._jizenClickTimer = null; }
+    // 📱 1タップ→コメント吹き出しの待機タイマーも取消(ダブルタップ=担当ピッカー優先)v1.30.534
+    if(el.__tapTipT){ clearTimeout(el.__tapTipT); el.__tapTipT = null; }
     if(ev.source === "direct-morning"){   // 🚗 直行マーカーは編集不可。変更は最終確認カードの勤怠から(v1.30.240)
       if(typeof showAutoSyncToast==='function') showAutoSyncToast('🚗 直行の目印です。変更は最終確認カードの🚗勤怠から');
       return;
@@ -16228,6 +16237,22 @@ function attachDragOrClick(el, ev){
   // 直前のクリック時刻 (ダブルクリック保護用)
   let __lastClickAt = 0;
   el.addEventListener('click', ()=>{ __lastClickAt = Date.now(); });
+  // 📱 v1.30.534(山田「スマホで予定を1タップするとコメント表示されるようにしたい」):
+  //   スマホの素タップは今まで何もしなかった(ダブルタップ=担当ピッカー)ので、そこに
+  //   PCホバーと同じコメント吹き出し(閲覧+送信+リアクション)を割り当てる。
+  //   1タップの仕事を既に持つ予定は除外: 事前=進捗ダイアログ/チェックリスト=専用ポップ/
+  //   直行マーカー・再アポ跡=対象外。時刻バッジは従来どおりステッパー。
+  //   ダブルタップと両立するため250ms遅延・dblclickで取消(既存の事前1クリックと同じ型)。
+  el.addEventListener('click', (e)=>{
+    if(!__lastInputWasTouch) return;
+    if(ev.source === 'direct-morning' || ev.source === 'reschedule-trace') return;
+    if(typeof isJizenEvent_==='function' && isJizenEvent_(ev)) return;
+    if(typeof getTaskInfo_==='function' && getTaskInfo_(ev)) return;
+    if(e.target.closest && e.target.closest('.chip-time, .time')) return;
+    const x=e.clientX, y=e.clientY;
+    clearTimeout(el.__tapTipT);
+    el.__tapTipT = setTimeout(()=>{ el.__tapTipT=null; showChipTip(ev, x, y); }, 250);
+  });
   el.onpointerdown = (pdEv)=>{
     // 時刻バッジクリック → ステッパー表示 (ドラッグはしない)
     const timeAnchor = pdEv.target.closest('.chip-time, .time');
