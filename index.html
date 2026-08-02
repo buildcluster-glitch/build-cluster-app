@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.534</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.535</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -11936,7 +11936,10 @@ function extractRestorations(properties, existing){
     //   従来ここで「原状回復工事」以外を弾いて工程を捨てていた=進捗ダイアログを開く先が無かった。
     //   ⚠ _repairResto 印を付け 🏠原状回復タブの一覧/件数からは除外する(タブは従来どおり=山田の指定)。
     const isRealResto = p.isRestoration || koji === "原状回復工事";
-    const isRepairResto = !isRealResto && Array.isArray(p.tasks) && p.tasks.length >= REPAIR_RESTO_MIN_TASKS;
+    // 🪶 v1.30.535: light応答(完了案件)はtasksが省かれて来るのでtasksCount(サーバーが残す件数)で判定。
+    //   これが無いと完了済みの「工程持ち修繕」がフル同期のたびに一覧から消えてしまう。
+    const __tcount = Array.isArray(p.tasks) ? p.tasks.length : (p._light ? (p.tasksCount || 0) : 0);
+    const isRepairResto = !isRealResto && __tcount >= REPAIR_RESTO_MIN_TASKS;
     if(!isRealResto && !isRepairResto) return;
     const id = "resto-" + (p.driveFileId || p.estimateId || p.no || (p.name+"|"+(p.room||"")));
     const prev = exById.get(id);
@@ -12002,6 +12005,7 @@ function extractRestorations(properties, existing){
       })() || prev?.keyChangeDate || "",
       tasks: prev ? prev.tasks : [],
       comments: prev ? prev.comments : [],
+      _light: !!p._light,   // 🪶 明細が省かれた応答か(詳細を開く時のオンデマンド取得の合図)v1.30.535
     };
     // タスク明細マージ
     prop.tasks = restoSyncTasks(prop.tasks, p.tasks || []);
@@ -12118,6 +12122,8 @@ async function syncChecksFromGAS(opts){
         kojiFilter:"all",
         maxMonths: s.maxMonths || 3,
         since: __since,   // 空=フル / ISO時刻=その時刻以降の更新分だけ(GAS差分)
+        light: 1,         // 🪶 v1.30.535: 完了/キャンセル案件は重い欄(明細/進捗)を省いて受け取る(GAS ver74)。
+                          //   行は全件来る=消えない。詳細は開いた時にtask-detailでオンデマンド取得。
       })
     });
     if(__syncTO) clearTimeout(__syncTO);   // 応答が来た→タイマー解除
@@ -21564,9 +21570,37 @@ function restoSave(){
 // === 原状回復 詳細を「カレンダー上のダイアログ」として表示 ===
 // 詳細ビュー(#restoDetailMode)をダイアログ内へ移設して再利用する(編集/写真/進捗プッシュはそのまま動く)
 let restoDetailAsModal = false;
+// 🪶 light応答で明細(tasks)が手元に無い完了案件を開く時、その1件だけGASから取得(v1.30.535)。
+//   手元に明細がある(以前のフル同期で受け取り済み)場合は取りに行かない=従来と同じ速さ。
+async function fetchRestoDetailOnDemand_(rec){
+  const s = loadGasSettings();
+  if(!s.url || !s.token || !rec || !rec.extDriveFileId) return false;
+  try{
+    const res = await fetch(s.url, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ action:'task-detail', token:s.token, fileId:rec.extDriveFileId }) });
+    const d = await res.json();
+    if(!d.ok || !d.property) return false;
+    const p = d.property;
+    rec.tasks = restoSyncTasks(rec.tasks || [], p.tasks || []);
+    if(p.progress) restoApplyProgress(rec, p.progress);
+    if(p.workloadStatus){ rec.workloadStatus = p.workloadStatus; rec.workVolume = p.workloadStatus.level || rec.workVolume; }
+    rec._light = false;   // 取得済み=以後は取りに行かない
+    saveState();
+    return true;
+  }catch(e){ console.warn('[task-detail] 取得失敗:', e.message); return false; }
+}
 function openRestoDialog(id){
   restoDetailId = id;
   restoTaskStatusFilter = null;
+  // 🪶 完了案件で明細が無い→先に開いてから裏で1件取得し、届いたら描き直す(待たせない)
+  try{
+    const rec = (state.restorations||[]).find(r=>r.id===id);
+    if(rec && rec._light && !(rec.tasks||[]).length && rec.extDriveFileId){
+      fetchRestoDetailOnDemand_(rec).then(ok=>{
+        if(ok && restoDetailId===id){ renderRestoDetail(); if(typeof showAutoSyncToast==='function') showAutoSyncToast('📄 完了案件の明細を読み込みました'); }
+      });
+    }
+  }catch(_){}
   restoDetailAsModal = true;
   const dm = document.getElementById("restoDetailMode");
   document.getElementById("restoDialogHost").appendChild(dm);
