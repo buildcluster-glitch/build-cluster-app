@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.536</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.537</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24732,6 +24732,7 @@ async function syncFullSilent(){
 }
 
 // 起動時 / フォーカス復帰時の同期: pending送信 → サーバーの最新取得
+let __invRetryN = 0;   // 🔁 在庫open-sync失敗の即リトライ回数(v1.30.537)
 async function runOpenSync(){
   if(!sync.url || !sync.autoSync) return;
   if(syncInFlight) return;
@@ -24743,10 +24744,17 @@ async function runOpenSync(){
     renderAll();
     if(state.ui.view==='detail') renderDetail();
     setSyncIcon('ok');
+    __invRetryN = 0;
     setTimeout(()=>{ if(!syncInFlight) setSyncIcon(''); }, 2000);
   }catch(err){
-    console.warn('open-sync failed:', err.message);
+    console.warn('[在庫] open-sync failed:', err.message);   // 🏷 どの同期の失敗か名乗る(v1.30.537・予定側と混同したため)
     setSyncIcon('err');
+    // 🔁 v1.30.537: echo404/一時ハングは数秒後に通る。予定側(v536)と同じ3秒→10秒の2回だけ再試行
+    if(__invRetryN < 2 && sync.url && sync.autoSync && document.visibilityState==='visible'){
+      const wait = (__invRetryN === 0) ? 3000 : 10000;
+      __invRetryN++;
+      setTimeout(()=>{ if(!syncInFlight) runOpenSync(); }, wait);
+    }
   }finally{
     syncInFlight = false;
   }
@@ -26922,8 +26930,9 @@ function stopPolling(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null;
   try{ updateSyncBadge(); }catch(e){ console.error('[inv init] updateSyncBadge failed', e); }
   try{ showHome(); }catch(e){ console.error('[inv init] showHome failed', e); }
   // 起動時自動同期: pending送信 + サーバー最新取得
+  // 📵 v1.30.537: 予定同期を先に通してから発車(起動直後のGAS衝突=echo404の温床を減らす)
   if(sync.url && sync.autoSync){
-    setTimeout(runOpenSync, 200);
+    setTimeout(()=>{ (typeof afterOpenSync_==='function') ? afterOpenSync_(runOpenSync) : runOpenSync(); }, 200);
     startPolling();
   }
   // タブ復帰時にも同期
