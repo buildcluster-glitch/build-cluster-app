@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.531</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.532</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -12341,7 +12341,9 @@ function setupAutoSync(){
   const tryAuto = ()=>{
     if(document.visibilityState !== "visible") return;
     if(Date.now() - lastAutoSyncAt < 30*1000) return; // 30秒スロットル
-    syncChecksFromGAS({silent:true, fromAuto:true});
+    // 📵 v1.30.532: 予定同期を先に通す(スマホ回線で2MBの台帳が予定の帯域を食うため)。
+    //   定常時は関所が開きっぱなしなので即実行=従来と同じ。
+    afterOpenSync_(()=>syncChecksFromGAS({silent:true, fromAuto:true}));
   };
   if(!_autoSyncBound){
     window.addEventListener("focus", tryAuto);
@@ -18746,6 +18748,21 @@ async function cloudSyncFullSilent(){
   return { push, pull };
 }
 
+// 📵 v1.30.532(山田「スマホは開いてから緑まで1分以上」): スマホ回線では起動直後の
+//   台帳task-sync(約2MB)が帯域を占領し、予定同期(約200KB)が押し出されて60秒タイムアウト
+//   →次のポーリングでやっと緑、が「1分以上」の正体。☁ボタンはv530で予定を先に待つ形に
+//   したが、起動時とバックグラウンド復帰の経路が手つかずだった。
+//   → 予定同期が終わる(成功/失敗問わず)まで台帳同期を待たせる関所。上限10秒の保険つき
+//   (予定同期が設定されていない端末や異常時でも台帳同期が永遠に止まらない)。
+let __openSyncSettled = false;
+function afterOpenSync_(fn, capMs){
+  const t0 = Date.now();
+  (function w(){
+    if(__openSyncSettled || Date.now() - t0 > (capMs || 10000)) fn();
+    else setTimeout(w, 250);
+  })();
+}
+
 async function runCloudOpenSync(opts={}){
   if(!cloudSync.url || (!cloudSync.autoSync && !opts.manual)) return;  // manual=☁ボタンからはautoSync OFFでも実行
   if(cloudSyncInFlight) return;
@@ -18783,6 +18800,7 @@ async function runCloudOpenSync(opts={}){
   }finally{
     if(__to) clearTimeout(__to);
     cloudSyncInFlight = false;
+    __openSyncSettled = true;   // 📵 成否問わず関所を開ける(台帳同期が待っている)v1.30.532
   }
 }
 
@@ -19685,6 +19703,7 @@ function stopCloudPolling(){
 document.addEventListener('visibilitychange', ()=>{
   if(document.visibilityState === 'visible'){
     if(cloudSync.url && cloudSync.autoSync){
+      __openSyncSettled = false;   // 📵 復帰時も予定同期を先に通す関所を閉め直す(v1.30.532)
       runCloudOpenSync();
       startCloudPolling();
     }
@@ -19752,6 +19771,8 @@ updateCloudSyncBadge();
 if(cloudSync.url && cloudSync.autoSync){
   setTimeout(runCloudOpenSync, 300);
   startCloudPolling();
+} else {
+  __openSyncSettled = true;   // 📵 予定同期を使わない端末は関所を素通し(台帳同期を10秒待たせない)v1.30.532
 }
 // 🔎 同期の見える化ピル: 起動時＋30秒ごとに更新。オフライン↔復帰も即反映(復帰時は即全同期)v1.30.336
 try{ updateSyncFreshness_(); }catch(_){}
@@ -24272,7 +24293,9 @@ setupAutoSync();
 setTimeout(()=>{
   const s = loadGasSettings();
   if(s.url && s.token && s.autoRefreshEnabled !== false){
-    syncChecksFromGAS({silent:true, fromAuto:true});
+    // 📵 v1.30.532: 起動時も予定同期(300ms発火・約200KB)を先に通してから台帳(約2MB)を取る。
+    //   スマホ回線で右下ピルが1分以上赤のままだった対策。上限10秒の保険つき。
+    afterOpenSync_(()=>syncChecksFromGAS({silent:true, fromAuto:true}));
   }
 }, 1000);
 // 起動2秒後に出勤者データを Drive 自動保存
