@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.538</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.539</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -12318,6 +12318,7 @@ async function syncChecksFromGAS(opts){
     localStorage.setItem("buildcluster_drive_synced_at", __syncedAt);
     if(!__partial) localStorage.setItem("buildcluster_drive_full_at", String(Date.now()));
     lastAutoSyncAt = Date.now();
+    __drvRetryN = 0;   // 🔁 成功したらリトライ回数リセット(v1.30.539)
     render();
     if(silent){
       if(_drvSilentShown) hideSyncIndicator("success", "ドライブ同期完了");   // 遅延表示してたら閉じる(✅はhideSyncIndicatorが付与)
@@ -12334,6 +12335,14 @@ async function syncChecksFromGAS(opts){
     const __emsg = __syncTimedOut ? "サーバー応答なし(75秒でタイムアウト)。もう一度お試しください" : ("同期失敗: " + e.message);
     if(!silent) hideSyncIndicator("error", __emsg);
     else if(_drvSilentShown) hideSyncIndicator("error", "ドライブ同期失敗");
+    // 🔁 v1.30.539: 台帳同期もecho404/一時失敗は数秒後に通る(予定v536/在庫v537と同型)。
+    //   従来は次の5分ポーリングまで台帳が古いままだった。3秒→10秒の2回だけ再試行。
+    if(__drvRetryN < 2 && document.visibilityState==='visible'){
+      const wait = (__drvRetryN === 0) ? 3000 : 10000;
+      __drvRetryN++;
+      console.log('[task-sync] '+(wait/1000)+'秒後に再試行 ('+__drvRetryN+'/2)');
+      setTimeout(()=>{ syncChecksFromGAS({silent:true, fromAuto:true}); }, wait);
+    }
   }finally{
     if(__syncTO) clearTimeout(__syncTO);
     if(_drvSilentTimer) clearTimeout(_drvSilentTimer);
@@ -12343,6 +12352,7 @@ async function syncChecksFromGAS(opts){
 
 // ===== 自動同期セットアップ（focus / visibility / 5分ポーリング） =====
 let lastAutoSyncAt = 0;
+let __drvRetryN = 0;   // 🔁 台帳同期失敗の即リトライ回数(v1.30.539)
 let _autoSyncTimer = null;
 let _autoSyncBound = false;
 function setupAutoSync(){
