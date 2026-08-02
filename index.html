@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.532</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.533</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -15179,7 +15179,11 @@ function ensureChipTip(){
     __chipTipEl.addEventListener("mouseleave", scheduleHideChipTip);
     // ✍️ コメント入力/編集中(吹き出し内にフォーカス)は消さない。フォーカスが外へ出た時だけ遅延hide(まどか報告 v1.30.389)
     __chipTipEl.addEventListener("focusin", cancelHideChipTip);
-    __chipTipEl.addEventListener("focusout", (e)=>{ if(!__chipTipEl.contains(e.relatedTarget)) scheduleHideChipTip(); });
+    // 🪳 v1.30.533(大村報告「リアクションしようとするとコメント表示が消えちゃう」):
+    //   +ボタンをクリック→rerenderのinnerHTML総入れ替えで「フォーカス中のボタン」がDOMごと消え、
+    //   focusoutが誤発火(relatedTarget=null)→300ms後に吹き出しごと消えていた。
+    //   マウスがまだ吹き出しの上にあるなら閉じない(マウス退出はmouseleave側が担当している)。
+    __chipTipEl.addEventListener("focusout", (e)=>{ if(!__chipTipEl.contains(e.relatedTarget) && !__chipTipEl.matches(':hover')) scheduleHideChipTip(); });
   }
   return __chipTipEl;
 }
@@ -15219,6 +15223,10 @@ function buildTipChat_(tip, headHtml, api){
     return `<div style="margin-top:5px;border-top:1px solid rgba(255,255,255,.08);padding-top:5px">${head}<div style="font-size:11px;line-height:1.35;color:#f3f4f6;white-space:pre-wrap;word-break:break-word;margin-top:1px">${escapeHtml(c.text||'')}</div><div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;align-items:center">${reacts}<button class="reaction-add" data-ra="${escapeHtml(c.id)}" style="font-size:14px;line-height:1;padding:1px 7px">+</button></div>${picker}</div>`;
   }).join('') : '<div style="font-size:11px;color:#94a3b8;margin-top:2px">まだコメント無し</div>';
   tip.innerHTML = (headHtml||"") + `<div class="tt-memo" style="margin-top:6px"><b style="font-size:11px">💬 コメント ${cs.length}件</b>${cmtHtml}</div><div style="display:flex;gap:5px;margin-top:6px;align-items:flex-end"><textarea class="cht-in" rows="2" placeholder="コメント（Enterで改行 / Ctrl+Enterで送信）" style="flex:1;font-size:13.5px;padding:7px 9px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#fff;resize:vertical;min-height:40px;line-height:1.4"></textarea><button class="cht-send" style="background:#2563eb;color:#fff;border:0;border-radius:6px;font-size:12px;font-weight:700;padding:8px 12px;cursor:pointer;flex-shrink:0">送信</button></div>`;
+  // 🪳 v1.30.533: 直前のinnerHTML置換が「フォーカス中の要素の消滅→focusout誤発火→遅延hide」を
+  //   仕掛けた場合に備え、再描画直後にタイマーを解除(自分の再描画で自分が消えない)。
+  //   rerenderは吹き出し内のクリックからしか起きないため、正規のmouseleave由来hideを誤殺しない。
+  cancelHideChipTip();
   tip.querySelectorAll('[data-tr]').forEach(b=>b.onclick=()=>{ api.openIdx.v=null; api.onToggle(b.dataset.cid, b.dataset.tr, rerender); });
   tip.querySelectorAll('[data-ra]').forEach(b=>b.onclick=()=>{ api.openIdx.v=(api.openIdx.v===b.dataset.ra)?null:b.dataset.ra; rerender(); });
   tip.querySelectorAll('[data-rae]').forEach(b=>b.onclick=()=>{ api.openIdx.v=null; api.onAddReact(b.dataset.rae, b.dataset.em, rerender); });
