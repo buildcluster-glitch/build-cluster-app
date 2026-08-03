@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.550</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.551</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -14975,6 +14975,7 @@ function renderCalendar(){
         el.style.color = wFg;
         el.style.borderLeft = `5px solid ${wfBar}`;
         el.dataset.repairId = r.id;
+        el.dataset.startMin = String(hh*60 + mm - HOUR_START*60);   // 📍 分位置レイアウト用(layoutHourCellByMinutes_・v1.30.551)
         el.title = tipLines;
         // 説明概要(電球交換 等)は残す。全面着色なので背景になじむよう半透明白の小行で表示(v1.30.52)
         const __descLine = __descShort
@@ -15133,8 +15134,13 @@ function renderCalendar(){
     // hour-cell スクロール式に移行したため fixChipOverlaps は不要
     // 📏 サブ行チップの下余白刈り取り(v1.30.415)→autoGrowより先(縮小後の高さで行高を計算させる)
     if(typeof trimSubrowChips_==='function') trimSubrowChips_(grid);
+    // 📍 チップを開始分に比例した縦位置へ(自動上詰めしない・v1.30.551)→trim後(実高さ確定後)・autoGrow前
+    if(typeof layoutHourCellByMinutes_==='function') layoutHourCellByMinutes_(grid);
     // 📏 予定が多い時間は行を自動で広げて全部見せる(v1.30.250)→広げ切れない分だけ▼バッジ
-    if(typeof autoGrowHourRows_==='function') autoGrowHourRows_(grid);
+    //   行高が伸びたら分位置レイアウトを伸びた高さでやり直す(混んだ時間帯でも分位置が効く・v1.30.551)
+    if(typeof autoGrowHourRows_==='function' && autoGrowHourRows_(grid) === true){
+      if(typeof layoutHourCellByMinutes_==='function') layoutHourCellByMinutes_(grid);
+    }
     // 🔻 セル内スクロールで隠れた予定の見落とし防止バッジ(v1.30.249)
     if(typeof updateCellOverflowBadges_==='function') updateCellOverflowBadges_();
   }
@@ -15166,6 +15172,61 @@ function trimSubrowChips_(grid){
   plans.forEach(([chip, h])=>{ chip.style.height = h + "px"; });
 }
 
+// 📍 hour-cell内のチップを「開始分に比例した縦位置」に配置する(v1.30.551・鈴木要望「時間帯の中で自由に配置したい・自動上詰めしない」)
+//   D&Dは既に15分刻みで時刻を変えている(pointToMinInCol_)のに、表示はflex上詰めでドロップ位置を無視していた。
+//   → セル内を分順に並べ替え、位置が足りない分だけmargin-topで下げる。前のチップと重なる時は詰める(=従来どおり)。
+//   同時刻のチップ同士は従来の縦積みのまま。データ/同期は無変更(縦位置=開始時刻そのもの=全端末で同じ見え方)。
+//   root には grid か単一の .hour-cell を渡せる(単一セルはD&D楽観表示用)。
+function layoutHourCellByMinutes_(root){
+  if(!root) return;
+  const cells = (root.classList && root.classList.contains("hour-cell")) ? [root] : root.querySelectorAll(".hour-cell");
+  const GAP = 3;   // .hour-cell の flex gap:3px と一致させること
+  const PAD_TOP = 2, PAD_BOTTOM = 2; // .hour-cell の padding
+  // read→write の2段でレイアウトスラッシング回避(trimSubrowChips_と同じ型)
+  const plans = [];
+  cells.forEach(cell=>{
+    const chips = [...cell.children].filter(k=>k.classList && k.classList.contains("event-chip"));
+    if(!chips.length) return;
+    const cellH = parseFloat(cell.style.height) || cell.clientHeight || HOUR_PX;
+    const addBtn = cell.querySelector(".cell-add-btn");
+    const addH = addBtn ? (addBtn.offsetHeight + GAP) : 0;   // ＋追加帯のぶんは下端から確保
+    // セル内0〜59分に正規化して昇順ソート(同分は現在のDOM順=従来の積み順を維持する安定ソート)
+    const items = chips.map((chip,i)=>{
+      const abs = HOUR_START*60 + (parseFloat(chip.dataset.startMin)||0);
+      return { chip, i, min: ((abs%60)+60)%60, h: chip.offsetHeight };
+    }).sort((a,b)=> a.min - b.min || a.i - b.i);
+    plans.push({ cell, items, cellH, addH, reordered: items.some((it,idx)=> it.i !== idx) });
+  });
+  plans.forEach(({cell, items, cellH, addH, reordered})=>{
+    if(reordered){
+      const addBtn = cell.querySelector(".cell-add-btn");   // ＋追加帯は常に最後尾を保つ(無ければ末尾append)
+      items.forEach(it=> cell.insertBefore(it.chip, addBtn));
+    }
+    const n = items.length;
+    // ① 前から: 分位置(希望)と積み順の下限(前のチップの直後)の大きい方
+    const packed = [], tops = [];
+    let py = PAD_TOP, fy = PAD_TOP;
+    items.forEach((it,idx)=>{
+      packed[idx] = py; py += it.h + GAP;
+      tops[idx] = Math.max(fy, it.min/60*cellH);
+      fy = tops[idx] + it.h + GAP;
+    });
+    // ② 後ろから: セルに入り切らない分は詰めて圧縮(packedより上には潰さない=詰め切れない分は従来どおりセル内スクロール)
+    let allow = Math.max(cellH - PAD_BOTTOM - addH, py - GAP + PAD_BOTTOM);
+    for(let idx=n-1; idx>=0; idx--){
+      allow -= items[idx].h;
+      tops[idx] = Math.max(Math.min(tops[idx], allow), packed[idx]);
+      allow = tops[idx] - GAP;
+    }
+    // ③ margin-top に変換(flex縦積み: top = 前のチップ下端 + GAP + margin)
+    items.forEach((it,idx)=>{
+      const base = idx===0 ? PAD_TOP : (tops[idx-1] + items[idx-1].h + GAP);
+      const mt = Math.max(0, Math.round(tops[idx] - base));
+      it.chip.style.marginTop = mt ? mt+"px" : "";
+    });
+  });
+}
+
 // 📏 予定が多い時間帯は行高を自動で広げて全部見せる(v1.30.250・山田「行が勝手に追加されるってことはできる？」)
 //   月ビュー限定。各時間の必要高さ(セルscrollHeight)の最大値まで行を伸ばし、時刻ラベル/罫線/セルを累積オフセットで再配置。
 //   上限=HOUR_PX×3(暴走防止・超えた分は従来のセル内スクロール+▼あとN件バッジ)。⚙設定でOFF=従来の固定行高に戻せる(端末ごと)。
@@ -15183,7 +15244,7 @@ function autoGrowHourRows_(grid){
     if(!rowH[h] || need > rowH[h]) rowH[h] = need;
     if(need > HOUR_PX) changed = true;
   });
-  if(!changed) return;   // あふれ無し=固定行高のまま(何もしない)
+  if(!changed) return false;   // あふれ無し=固定行高のまま(何もしない)
   // 2) 累積オフセット
   const tops = {}; let y = 0;
   for(let h=HOUR_START; h<HOUR_END; h++){ tops[h] = y; y += (rowH[h] || HOUR_PX); }
@@ -15214,6 +15275,7 @@ function autoGrowHourRows_(grid){
       el2.style.top = (tops[h] + (rowH[h] || HOUR_PX) * ((q%4)/4)) + "px";
     }
   });
+  return true;   // 行高が変わった=分位置レイアウトのやり直しが要る(v1.30.551)
 }
 // 🔻 あふれた hour-cell に「▼あとN件」赤バッジ(v1.30.249・山田「スクロールだと見落とし発生しそう」)
 //   セル内スクロールで下に隠れている予定の件数を常時表示。タップでセル内を下へスクロール。
@@ -16971,7 +17033,12 @@ function attachDragOrClick(el, ev){
         if(destCol){
           if(currentView==='month'){
             const cell = destCol.querySelector('.hour-cell[data-hour="'+Math.floor(startMin/60)+'"]');
-            if(cell){ el.style.top=''; el.style.left=''; el.style.right=''; el.style.marginTop=''; cell.appendChild(el); }
+            if(cell){
+              el.style.top=''; el.style.left=''; el.style.right=''; el.style.marginTop=''; cell.appendChild(el);
+              // 📍 楽観表示もドロップした分位置に置く(直後のrender()で正式再配置・v1.30.551)
+              el.dataset.startMin = String(startMin - HOUR_START*60);
+              if(typeof layoutHourCellByMinutes_==='function') layoutHourCellByMinutes_(cell);
+            }
           }else{
             const sc = destCol.querySelector('.sub-col');
             if(sc){ el.style.top=((startMin-HOUR_START*60)/60*HOUR_PX)+'px'; el.style.left='2px'; el.style.right='2px'; sc.appendChild(el); }
