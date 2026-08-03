@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.546</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.547</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8575,14 +8575,13 @@ function __matRenderCands_(){
   let gen;
   if(cat && MAT_CATS[cat]) gen=MAT_CATS[cat].map(n=>({n,c:cat}));
   else if(cat && MAT_INV2GEN[cat]) gen=MAT_INV2GEN[cat].flatMap(k=>(MAT_CATS[k]||[]).map(n=>({n,c:k})));
-  else if(dest==='在庫') gen=[];   // 在庫用でカテゴリ未選択→在庫品目だけ見せる(ゴチャつき防止)
-  else gen=Object.entries(MAT_CATS).flatMap(([k,arr])=>arr.map(n=>({n,c:k})));
+  else gen=[];   // カテゴリ未選択→一般候補は出さない(90個のチップ壁になるため・山田「w」v1.30.547)。在庫用は在庫品目だけ表示
   html+=gen.map(({n,c})=>{
     const col=__matCatColor_(c); const on=inDraft.has(n);
     return `<span class="mchip ${on?'on':''}" data-cand="${escapeHtml(n)}" data-candcat="${escapeHtml(c)}" style="${on?`background:${col};`:''}border-color:${col}55"><span class="dot" style="background:${on?'#fff':col}"></span>${escapeHtml(n)}</span>`;
   }).join('');
   const host=bk.querySelector('#mat-cands');
-  host.innerHTML=html||'<span style="font-size:11px;color:var(--muted)">カテゴリを選ぶと候補が出ます</span>';
+  host.innerHTML=html||'<span style="font-size:11px;color:var(--muted)">👆 カテゴリをタップすると商品ボタンが出ます(リストに無い物は下の欄に入力)</span>';
   host.querySelectorAll('[data-cand]').forEach(ch=>ch.onclick=()=>{ __matDraftAdd_(ch.dataset.cand, ch.dataset.candcat, ch.dataset.candsku||''); });
 }
 function __matDraftAdd_(name, cat, sku){
