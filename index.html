@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.552</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.553</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -9371,6 +9371,7 @@ function showTaikyoStaffPicker(el, ev){
           const on = __tklist.includes(s);
           return `<button data-staff="${escapeHtml(s)}" class="${on?"on":""}" style="background:${sc};color:${textColorFor(sc)}"><span class="qp-dot" style="background:${textColorFor(sc)==='#ffffff'?'rgba(255,255,255,.6)':'rgba(0,0,0,.3)'}"></span>${escapeHtml(s)}</button>`;
         }).join("")}
+        ${(function(){ const sc=LOST_STAFF_COLOR; const on=__tklist.includes(LOST_STAFF); return `<button data-staff="${LOST_STAFF}" class="${on?"on":""}" style="background:${sc};color:${textColorFor(sc)}" title="キャンセル/失注した立会。選ぶとチップがグレーになります(予定クイックポップの✖失注と同じ・v1.30.553)"><span class="qp-dot" style="background:${textColorFor(sc)==='#ffffff'?'rgba(255,255,255,.6)':'rgba(0,0,0,.3)'}"></span>✖${LOST_STAFF}</button>`; })()}
       </div>
       <div style="font-size:10px;color:var(--muted);margin-top:4px">※ 担当変更はカレンダー側のみ。見積アプリには反映しません</div>
     </div>
