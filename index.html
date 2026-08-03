@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.545</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.546</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -2817,8 +2817,8 @@
     <button data-view="repair">🔧 修繕</button>
     <button data-view="resto">🏠 原状回復</button>
     <button data-view="inventory">📦 在庫管理</button>
-    <button data-view="__tanka__" id="tankaBtn" title="💴 単価表 — スマホ単価表と同じ内容(検索・元請切替)をアプリ内で開く">💴 単価表</button>
     <button data-view="__material__" id="materialBtn" title="🧾 材料注文の報告 — 注文した材料を全員で共有(LINE WORKS掲示板の引っ越し先)">🧾 材料</button>
+    <button data-view="__tanka__" id="tankaBtn" title="💴 単価表 — スマホ単価表と同じ内容(検索・元請切替)をアプリ内で開く">💴 単価表</button>
     <button data-view="__gantt__" id="ganttBtn" title="📊 工事進捗ガント — 見積アプリの工事進捗タブ(Web閲覧版・表示のみ)をアプリ内で開く">📊 進捗</button>
   </div>
   <button class="nav-btn" id="myEventsBtn" title="👤 自分の設定・フィルタON/OFF">👤 マイ</button>
@@ -2870,8 +2870,8 @@
   <button data-mnav="repair">🔧<span>修繕</span></button>
   <button data-mnav="resto">🏠<span>原状回復</span></button>
   <button data-mnav="inventory">📦<span>在庫</span></button>
-  <button data-mnav="tanka">💴<span>単価</span></button>
   <button data-mnav="material">🧾<span>材料</span></button>
+  <button data-mnav="tanka">💴<span>単価</span></button>
   <button data-mnav="gantt">📊<span>進捗</span></button>
 </nav>
 
@@ -8567,7 +8567,8 @@ function __matRenderCands_(){
       if(cat && (window.__invCats_?window.__invCats_():[]).includes(cat)) inv=inv.filter(i=>i.cat===cat);
       html+=inv.map(i=>{
         const col=__matCatColor_(i.cat); const on=inDraft.has(i.name);
-        return `<span class="mchip ${on?'on':''}" data-cand="${escapeHtml(i.name)}" data-candcat="${escapeHtml(i.cat)}" style="${on?`background:${col};`:''}border-color:${col}66" title="📦在庫品目(在庫連携が効きます)"><span class="dot" style="background:${on?'#fff':col}"></span>📦${escapeHtml(i.name)}</span>`;
+        const sku=i.sku?`<span style="font-size:9.5px;opacity:.75;font-weight:400">${escapeHtml(i.sku)}</span>`:'';
+        return `<span class="mchip ${on?'on':''}" data-cand="${escapeHtml(i.name)}" data-candcat="${escapeHtml(i.cat)}" data-candsku="${escapeHtml(i.sku||'')}" style="${on?`background:${col};`:''}border-color:${col}66" title="📦在庫品目(在庫連携が効きます)"><span class="dot" style="background:${on?'#fff':col}"></span>📦${escapeHtml(i.name)}${sku}</span>`;
       }).join('');
     }catch(_){}
   }
@@ -8582,12 +8583,12 @@ function __matRenderCands_(){
   }).join('');
   const host=bk.querySelector('#mat-cands');
   host.innerHTML=html||'<span style="font-size:11px;color:var(--muted)">カテゴリを選ぶと候補が出ます</span>';
-  host.querySelectorAll('[data-cand]').forEach(ch=>ch.onclick=()=>{ __matDraftAdd_(ch.dataset.cand, ch.dataset.candcat); });
+  host.querySelectorAll('[data-cand]').forEach(ch=>ch.onclick=()=>{ __matDraftAdd_(ch.dataset.cand, ch.dataset.candcat, ch.dataset.candsku||''); });
 }
-function __matDraftAdd_(name, cat){
+function __matDraftAdd_(name, cat, sku){
   const ex=__matDraft.find(d=>d.name===name);
   if(ex){ ex.qty=String((Number(ex.qty)||1)+1); }
-  else __matDraft.push({cat:cat||'', name, qty:'1', forStock:false});
+  else __matDraft.push({cat:cat||'', name, sku:sku||'', qty:'1', forStock:false});
   __matRenderDraft_(); __matRenderCands_();
 }
 function __matRenderDraft_(){
@@ -8597,7 +8598,7 @@ function __matRenderDraft_(){
   host.innerHTML=__matDraft.map((d,i)=>{
     const col=__matCatColor_(d.cat);
     return `<div class="mdraft-card" style="border-left-color:${col}">
-      <span style="flex:1;font-size:12.5px;font-weight:600;word-break:break-word">${escapeHtml(d.name)}</span>
+      <span style="flex:1;font-size:12.5px;font-weight:600;word-break:break-word">${escapeHtml(d.name)}${d.sku?` <span style="font-size:10px;color:var(--muted);font-weight:400">${escapeHtml(d.sku)}</span>`:''}</span>
       ${dest==='物件'?`<span class="mstock-badge ${d.forStock?'on':''}" data-dstock="${i}" title="この行は在庫用">📦在庫${d.forStock?'✓':''}</span>`:''}
       <span class="mstep"><button data-dminus="${i}">−</button><input data-dqty="${i}" value="${escapeHtml(String(d.qty))}" inputmode="numeric"><button data-dplus="${i}">＋</button></span>
       <button data-ddel="${i}" style="border:0;background:transparent;color:#cbd5e1;cursor:pointer;font-size:15px;padding:0 2px">✕</button>
@@ -8659,7 +8660,7 @@ function __matResetForm_(){
   bk.querySelector('#mat-dest-name').value=''; bk.querySelector('#mat-dest-room').value='';
   bk.querySelector('#mat-vendor-other').value=''; bk.querySelector('#mat-vendor-other').style.display='none';
   bk.querySelector('#mat-memo').value=''; bk.querySelector('#mat-free').value='';
-  __matSetDest_(''); __matSetInvMode_('order'); __matRenderVendorChips_();
+  __matSetDest_(''); __matSetInvMode_('stock'); __matRenderVendorChips_();   // 既定=📦即+(山田指定 v1.30.546)
   __matSyncComposer_();
 }
 function __matFillForm_(p){
@@ -8672,7 +8673,7 @@ function __matFillForm_(p){
   else if(p.vendor){ bk.querySelector('#mat-form').dataset.vendor='その他'; bk.querySelector('#mat-vendor-other').style.display=''; bk.querySelector('#mat-vendor-other').value=p.vendor; }
   __matRenderVendorChips_();
   bk.querySelector('#mat-memo').value=p.memo||'';
-  __matDraft=(p.items||[]).map(it=>({cat:it.cat||'',name:it.name,qty:String(it.qty||'1'),forStock:!!it.forStock}));
+  __matDraft=(p.items||[]).map(it=>({cat:it.cat||'',name:it.name,sku:it.sku||'',qty:String(it.qty||'1'),forStock:!!it.forStock}));
   __matRenderDraft_(); __matRenderCands_(); __matSyncInvSeg_();
   __matSyncComposer_();
 }
@@ -8690,7 +8691,7 @@ async function __matSubmit_(){
   // 入力途中の自由入力を拾う(書いたのに＋を押し忘れる事故防止)
   const freeLeft=bk.querySelector('#mat-free').value.trim();
   if(freeLeft){ __matDraftAdd_(freeLeft, __matSelCat); bk.querySelector('#mat-free').value=''; }
-  const items=__matDraft.map(d=>({cat:d.cat||'',name:d.name,qty:String(d.qty||'1'),forStock:(dest==='在庫')||!!d.forStock})).filter(it=>it.name);
+  const items=__matDraft.map(d=>({cat:d.cat||'',name:d.name,sku:d.sku||'',qty:String(d.qty||'1'),forStock:(dest==='在庫')||!!d.forStock})).filter(it=>it.name);
   if(!dest){ alert('用途(物件用/在庫用/作業)を選んでください'); return; }
   if(dest==='物件' && !destName){ alert('物件名を入れてください'); return; }
   if(!vendor){ alert('購入先を選んでください'); return; }
@@ -8703,7 +8704,7 @@ async function __matSubmit_(){
     const fn=(invMode==='stock')?window.__invAddStockFromMaterial_:window.__invCreateOrdersFromMaterial_;
     if(typeof fn==='function'){
       try{
-        const res=fn(stockItems.map(it=>({name:it.name, qty:it.qty, supplier:vendor, member:me, note:(invMode==='stock')?'🧾材料注文(即+)':'🧾材料注文から'})));
+        const res=fn(stockItems.map(it=>({name:it.name, sku:it.sku||'', qty:it.qty, supplier:vendor, member:me, note:(invMode==='stock')?'🧾材料注文(即+)':'🧾材料注文から'})));
         window.__matInvDoneOnce=true;
         const mark=(invMode==='stock')?'stock':'order';
         items.forEach(it=>{ if(it.forStock && res.created.some(n=>n.normalize('NFKC').replace(/\s+/g,'').toLowerCase()===it.name.normalize('NFKC').replace(/\s+/g,'').toLowerCase())) it.inv=mark; });
@@ -8733,7 +8734,7 @@ function __matSyncComposer_(){
   bk.querySelector('#mat-me').textContent=me||'(自分未設定)';
 }
 function __matSearchText_(p){
-  if(p.v===2) return [p.author,p.dest,p.destName,p.destRoom,p.vendor,p.memo,...(p.items||[]).map(i=>i.name+' '+i.cat)].join(' ');
+  if(p.v===2) return [p.author,p.dest,p.destName,p.destRoom,p.vendor,p.memo,...(p.items||[]).map(i=>i.name+' '+i.cat+' '+(i.sku||''))].join(' ');
   return (p.text||'')+' '+(p.author||'');
 }
 function renderMaterialList_(){
@@ -8765,7 +8766,7 @@ function renderMaterialList_(){
       const itemsHtml=(p.items||[]).map(i=>{
         const col=__matCatColor_(i.cat);
         const invChip=i.inv?` <span style="background:${i.inv==='stock'?'#eff6ff':'#ecfdf5'};color:${i.inv==='stock'?'#1d4ed8':'#047857'};border-radius:8px;padding:0 6px;font-size:9.5px;font-weight:700">${i.inv==='stock'?'📦在庫+':'📋発注台帳'}</span>`:(i.forStock&&p.dest==='物件'?` <span style="background:#f1f5f9;color:#64748b;border-radius:8px;padding:0 6px;font-size:9.5px;font-weight:700">📦在庫分</span>`:'');
-        return `<div style="font-size:12.5px;line-height:1.6;display:flex;align-items:center;gap:5px;flex-wrap:wrap"><span style="width:7px;height:7px;border-radius:50%;background:${col};flex-shrink:0"></span><span>${escapeHtml(i.name)}</span>${i.qty?`<b>×${escapeHtml(String(i.qty))}</b>`:''}${invChip}</div>`;
+        return `<div style="font-size:12.5px;line-height:1.6;display:flex;align-items:center;gap:5px;flex-wrap:wrap"><span style="width:7px;height:7px;border-radius:50%;background:${col};flex-shrink:0"></span><span>${escapeHtml(i.name)}</span>${i.sku?`<span style="font-size:10px;color:var(--muted)">${escapeHtml(i.sku)}</span>`:''}${i.qty?`<b>×${escapeHtml(String(i.qty))}</b>`:''}${invChip}</div>`;
       }).join('');
       const memoHtml=p.memo?`<div style="font-size:11px;color:var(--muted);margin-top:2px">📝 ${escapeHtml(p.memo)}</div>`:'';
       body=`<div style="display:flex;gap:5px;flex-wrap:wrap;margin:2px 0 4px">${destChip}${vendorChip}</div>${itemsHtml}${memoHtml}`;
@@ -27419,13 +27420,13 @@ window.__invItemCount = ()=> (Array.isArray(state.items) ? state.items.filter(i=
 //   「注文で即+」は在庫が嘘をつくので、正しい流れ=発注台帳に登録(実効在庫に反映)→📥入荷で在庫+。
 //   既存のsubmitOrderと同じ形でorders/logs/pendingに積む=既存の同期・入荷UIがそのまま使える。
 window.__invItemNames_ = ()=> (Array.isArray(state.items)?state.items:[]).filter(i=>i.active).map(i=>i.name);
-window.__invItems_ = ()=> (Array.isArray(state.items)?state.items:[]).filter(i=>i.active).map(i=>({name:i.name, cat:i.category||'その他'}));
+window.__invItems_ = ()=> (Array.isArray(state.items)?state.items:[]).filter(i=>i.active).map(i=>({name:i.name, cat:i.category||'その他', sku:i.sku||''}));
 window.__invCats_ = ()=> CATEGORIES.slice();
 window.__invCreateOrdersFromMaterial_ = (entries)=>{
   const norm=s2=>String(s2||'').normalize('NFKC').replace(/\s+/g,'').toLowerCase();
   const res={created:[], unmatched:[]};
   (entries||[]).forEach(e=>{
-    const item=(state.items||[]).find(i=>i.active && norm(i.name)===norm(e.name));
+    const item=(state.items||[]).find(i=>i.active && (norm(i.name)===norm(e.name) || (i.sku && (norm(i.sku)===norm(e.name) || (e.sku && norm(i.sku)===norm(e.sku))))));
     if(!item){ res.unmatched.push(e.name); return; }
     const saved={ id:uid(), itemId:item.id, qty:Math.max(1,Math.floor(Number(e.qty)||1)), receivedQty:0,
       orderDate:todayISO(), expectedDate:'', supplier:String(e.supplier||''), member:String(e.member||''),
@@ -27445,7 +27446,7 @@ window.__invAddStockFromMaterial_ = (entries)=>{
   const norm=s2=>String(s2||'').normalize('NFKC').replace(/\s+/g,'').toLowerCase();
   const res={created:[], unmatched:[]};
   (entries||[]).forEach(e=>{
-    const item=(state.items||[]).find(i=>i.active && norm(i.name)===norm(e.name));
+    const item=(state.items||[]).find(i=>i.active && (norm(i.name)===norm(e.name) || (i.sku && (norm(i.sku)===norm(e.name) || (e.sku && norm(i.sku)===norm(e.sku))))));
     if(!item){ res.unmatched.push(e.name); return; }
     const qty=Math.max(1,Math.floor(Number(e.qty)||1));
     const log={ id:uid(), type:'in', itemId:item.id, qty, member:String(e.member||state.currentUser||''),
