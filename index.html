@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.548</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.549</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8431,8 +8431,8 @@ function ensureMaterialModal_(){
       #materialModal .mchip{display:inline-flex;align-items:center;gap:4px;border-radius:14px;padding:4px 11px;font-size:12px;cursor:pointer;border:1.5px solid var(--border);background:#fff;color:#334155;white-space:nowrap;user-select:none}
       #materialModal .mchip.on{color:#fff;border-color:transparent;font-weight:700}
       #materialModal .mchip .dot{width:8px;height:8px;border-radius:50%}
-      #materialModal .mrow-scroll{display:flex;gap:5px;overflow-x:auto;padding:2px 0;-webkit-overflow-scrolling:touch;scrollbar-width:none}
-      #materialModal .mrow-scroll::-webkit-scrollbar{display:none}
+      /* v1.30.549(山田「みきれ」): 横スクロール式はPCで続きに気づけない→折り返しに変更 */
+      #materialModal .mrow-scroll{display:flex;flex-wrap:wrap;gap:5px;padding:2px 0}
       #materialModal .mcand{display:flex;flex-wrap:wrap;gap:5px;max-height:118px;overflow-y:auto;padding:4px 0}
       #materialModal .mdraft-card{display:flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--border);border-left:4px solid #94a3b8;border-radius:9px;padding:6px 8px;margin-top:5px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
       #materialModal .mstep{display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:8px;overflow:hidden}
