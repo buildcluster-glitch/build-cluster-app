@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.547</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.548</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8576,6 +8576,16 @@ function __matRenderCands_(){
   if(cat && MAT_CATS[cat]) gen=MAT_CATS[cat].map(n=>({n,c:cat}));
   else if(cat && MAT_INV2GEN[cat]) gen=MAT_INV2GEN[cat].flatMap(k=>(MAT_CATS[k]||[]).map(n=>({n,c:k})));
   else gen=[];   // カテゴリ未選択→一般候補は出さない(90個のチップ壁になるため・山田「w」v1.30.547)。在庫用は在庫品目だけ表示
+  // 🧹 v1.30.548(山田「在庫にあるやつが物件用に混ざってる」): 在庫管理の登録品目と重複する
+  //   一般候補は出さない(在庫にある物は在庫から出す/在庫用チップから選ぶ)。表記ゆれを吸収するため
+  //   LED/メーカー名/括弧を落として双方向の部分一致で判定。在庫に品目を足せば自動で候補からも消える。
+  if(gen.length && typeof window.__invItems_==='function'){
+    try{
+      const strip=t=>String(t||'').normalize('NFKC').toLowerCase().replace(/[\s()（）]/g,'').replace(/led|odelic|パナソニック|アイリスオーヤマ/g,'');
+      const invN=window.__invItems_().map(i=>strip(i.name)).filter(t=>t.length>=2);
+      gen=gen.filter(({n})=>{ const g=strip(n); return !invN.some(v=>v.includes(g)||g.includes(v)); });
+    }catch(_){}
+  }
   html+=gen.map(({n,c})=>{
     const col=__matCatColor_(c); const on=inDraft.has(n);
     return `<span class="mchip ${on?'on':''}" data-cand="${escapeHtml(n)}" data-candcat="${escapeHtml(c)}" style="${on?`background:${col};`:''}border-color:${col}55"><span class="dot" style="background:${on?'#fff':col}"></span>${escapeHtml(n)}</span>`;
