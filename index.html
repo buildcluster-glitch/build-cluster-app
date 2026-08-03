@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.540</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.541</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8408,71 +8408,189 @@ async function __matWrite_(mutator){
   return true;
 }
 function __matFmtT_(iso){ const d=new Date(iso); if(isNaN(d))return''; const p=n=>String(n).padStart(2,'0'); return `${d.getMonth()+1}/${d.getDate()}(${DOW_JA[d.getDay()]}) ${p(d.getHours())}:${p(d.getMinutes())}`; }
+// 掲示板955件の頻出パターンから棚卸しした購入先とカテゴリ別よくある商品(v1.30.541)
+const MAT_VENDORS=['Amazon','楽天','モノタロウ','小泉','XPRICE','ヨドバシ','日進化成','RESTA','メルカリ','その他'];
+const MAT_VENDOR_COLORS={'Amazon':'#f59e0b','楽天':'#bf0000','モノタロウ':'#b91c1c','小泉':'#0284c7','XPRICE':'#7c3aed','ヨドバシ':'#dc2626','日進化成':'#059669'};
+const MAT_CATS={
+ '照明・電球':['LED電球 E26 40W 電球色','LED電球 E26 40W 昼光色','LED電球 E17 40W','LEDクリプトン 電球色','LEDクリプトン 昼光色','スリム電球 電球色','スパイラル電球','FHT24W','ミニシーリングライト','6畳シーリングライト','20Wベースライト','8畳ペンダントライト','吊元灯 ワイド','吊元灯 ヒモ(幅狭)','浴室照明器具','スポットライト','ダウンライト','照明リモコン'],
+ '水まわり':['ボールタップ','フロートゴム(パカパカ)','フロートカップ','洗浄便座','普通便座','シャワーホース','浴室ヘアキャッチャー','洗面台ヘアキャッチャー','排水キク大','排水キク小','トラップエルボ','偏心管','防臭キャップ','洗濯機トラップ','洗濯エルボ','流し台排水ホース','化粧台排水トラップ','壁付水栓','ワンホール水栓','浴室鏡','ゴム栓','スピンドル'],
+ '換気・フィルター':['台所換気扇 FY-25PM5','プロペラ換気扇','浴室パイプファン','単室換気扇','レジスター大','レジスター小','レジスター延長リング','レジスターフィルター','スロットフィルタ','浴室乾燥機フィルター','レンジフードフィルター','給気口'],
+ '電気・電材':['神保コンセントプレート','神保コンセント(アース付)','コスモコンセント','スイッチプレート','操作盤(片切)','TVコンセント','TVドアホン','IHクッキングヒーター','単1電池','単2電池','単3電池','単4電池','デジタルキー電池'],
+ '建具・シート':['ダイノックシート','ドアクローザー','ドアノブ','レバーハンドル','引手','戸車','戸当たりパッキン','網戸','網戸外れ止め','ランドリーパイプ','房掛け','郵便受け','クレセント'],
+ '防災・消耗品':['火災警報器(熱式)','ガス警報器','鳩ネット','鳩ネットベース','シーリング材 ホワイト','シーリング材 アイボリー','包丁差し','黄タオル','マスキングテープ','結束バンド','木口テープ','マスク・フィルター'],
+};
+function __matAllItems_(){ return Object.values(MAT_CATS).flat(); }
+function __matUpdateDl_(cat){
+  const dl=document.getElementById('matItemsDl'); if(!dl) return;
+  const items=(cat&&MAT_CATS[cat])?MAT_CATS[cat]:__matAllItems_();
+  dl.innerHTML=items.map(n=>`<option value="${escapeHtml(n)}">`).join('');
+}
+function __matRowHtml_(it={}){
+  const cats=Object.keys(MAT_CATS);
+  return `<div class="mat-row" style="display:flex;gap:4px;margin-top:4px;align-items:center">
+    <select class="mr-cat" style="font-size:11.5px;padding:4px 2px;border:1px solid var(--border);border-radius:6px;max-width:104px;color:${it.cat?'inherit':'var(--muted)'}">
+      <option value="">カテゴリ▼</option>${cats.map(c=>`<option ${it.cat===c?'selected':''}>${c}</option>`).join('')}
+    </select>
+    <input class="mr-name" list="matItemsDl" placeholder="商品名(選ぶ or 入力)" value="${escapeHtml(it.name||'')}" style="flex:1;min-width:90px;font-size:12.5px;padding:5px 7px;border:1px solid var(--border);border-radius:6px">
+    <span style="font-size:11px;color:var(--muted)">×</span>
+    <input class="mr-qty" type="text" inputmode="numeric" placeholder="数" value="${escapeHtml(String(it.qty||''))}" style="width:42px;font-size:12.5px;padding:5px 3px;border:1px solid var(--border);border-radius:6px;text-align:center">
+    <button class="mr-del" title="行を削除" style="border:0;background:transparent;color:#cbd5e1;cursor:pointer;font-size:14px;padding:0 2px">✕</button>
+  </div>`;
+}
 function ensureMaterialModal_(){
   let bk=document.getElementById('materialModal');
   if(bk) return bk;
   bk=document.createElement('div');
-  bk.className='modal-overlay'; bk.id='materialModal';   // アプリ標準のオーバーレイ(.show=display:flexで中央寄せ)
-  bk.innerHTML=`<div class="modal" style="max-width:640px;width:96vw;max-height:88vh;display:flex;flex-direction:column">
+  bk.className='modal-overlay'; bk.id='materialModal';
+  bk.innerHTML=`<div class="modal" style="max-width:660px;width:96vw;max-height:90vh;display:flex;flex-direction:column">
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <b style="font-size:15px">🧾 材料注文の報告</b>
       <span id="mat-count" style="font-size:11px;color:var(--muted)"></span>
-      <input id="mat-search" type="text" placeholder="🔍 品名・物件・購入先・名前" style="flex:1;min-width:140px;font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px">
+      <input id="mat-search" type="text" placeholder="🔍 品名・物件・購入先・名前" style="flex:1;min-width:130px;font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px">
       <button class="btn" id="mat-reload" title="最新を取得" style="font-size:12px;padding:5px 9px">🔄</button>
       <button class="btn" id="mat-close" style="font-size:12px;padding:5px 9px">✕</button>
     </div>
-    <div style="display:flex;gap:6px;margin-top:8px;align-items:flex-end">
-      <textarea id="mat-input" rows="3" placeholder="例: ◯◯マンション101用&#10;・浴室鏡 305×435 ×1 楽天&#10;(在庫用はその旨を・Enter=改行 / Ctrl+Enter=送信)" style="flex:1;font-size:13px;padding:7px 9px;border:1px solid var(--border);border-radius:6px;resize:vertical;min-height:56px;line-height:1.45"></textarea>
-      <div style="display:flex;flex-direction:column;gap:4px">
-        <button class="btn primary" id="mat-send" style="font-size:12.5px;font-weight:700;padding:8px 14px">投稿</button>
+    <datalist id="matItemsDl"></datalist>
+    <div id="mat-form" style="border:1px solid var(--border);border-radius:8px;padding:8px 9px;margin-top:8px;background:var(--panel,#f8fafc)">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <div id="mat-dest-seg" style="display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+          <button data-dest="物件" style="border:0;padding:5px 10px;font-size:12px;cursor:pointer;background:transparent">🏠 物件用</button>
+          <button data-dest="在庫" style="border:0;padding:5px 10px;font-size:12px;cursor:pointer;background:transparent">📦 在庫用</button>
+          <button data-dest="作業" style="border:0;padding:5px 10px;font-size:12px;cursor:pointer;background:transparent">🔧 作業/他</button>
+        </div>
+        <input id="mat-dest-name" list="bukkenDatalist" placeholder="物件名" style="display:none;flex:1;min-width:120px;font-size:12.5px;padding:5px 7px;border:1px solid var(--border);border-radius:6px">
+        <input id="mat-dest-room" placeholder="号室" style="display:none;width:56px;font-size:12.5px;padding:5px 5px;border:1px solid var(--border);border-radius:6px">
+        <select id="mat-vendor" style="font-size:12px;padding:5px 4px;border:1px solid var(--border);border-radius:6px">
+          <option value="">購入先▼</option>${MAT_VENDORS.map(v=>`<option>${v}</option>`).join('')}
+        </select>
+        <input id="mat-vendor-other" placeholder="購入先を入力" style="display:none;width:110px;font-size:12px;padding:5px 7px;border:1px solid var(--border);border-radius:6px">
+      </div>
+      <div id="mat-rows"></div>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <button class="btn" id="mat-add-row" style="font-size:11.5px;padding:3px 9px">＋ 行を追加</button>
+        <input id="mat-memo" placeholder="メモ(納期・品番・代替品の事情など任意)" style="flex:1;font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px">
+        <button class="btn primary" id="mat-send" style="font-size:12.5px;font-weight:700;padding:6px 14px">投稿</button>
         <button class="btn" id="mat-cancel-edit" style="display:none;font-size:11px;padding:4px 8px">取消</button>
       </div>
+      <div style="font-size:10px;color:var(--muted);margin-top:3px">投稿者「<span id="mat-me">(自分未設定)</span>」・編集✎/削除✕は本人のみ・全員に共有。購入先が複数の時は購入先ごとに投稿してください</div>
     </div>
-    <div style="font-size:10px;color:var(--muted);margin-top:3px">投稿者は「<span id="mat-me">(自分未設定)</span>」・編集✎/削除✕は本人のみ・全員に共有されます</div>
-    <div id="mat-list" style="overflow-y:auto;margin-top:8px;flex:1;min-height:120px"></div>
+    <div id="mat-list" style="overflow-y:auto;margin-top:8px;flex:1;min-height:110px"></div>
   </div>`;
   document.body.appendChild(bk);
+  const form=bk.querySelector('#mat-form');
+  form.dataset.dest='';
   bk.onclick=e=>{ if(e.target===bk) closeMaterialModal_(); };
   bk.querySelector('#mat-close').onclick=closeMaterialModal_;
   bk.querySelector('#mat-reload').onclick=()=>{ fetchMaterialOrders_({toast:true}); };
   bk.querySelector('#mat-search').oninput=e=>{ __matSearch=(e.target.value||'').trim(); renderMaterialList_(); };
-  const ta=bk.querySelector('#mat-input');
-  ta.onkeydown=e=>{ if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)&&!e.isComposing&&e.keyCode!==229){ e.preventDefault(); bk.querySelector('#mat-send').click(); } };
-  bk.querySelector('#mat-cancel-edit').onclick=()=>{ __matEditing=null; ta.value=''; __matSyncComposer_(); };
-  bk.querySelector('#mat-send').onclick=async ()=>{
-    const me=(typeof getMyself==='function')?getMyself():'';
-    if(!me){ alert('先に「👤 マイ」で自分を設定してください'); return; }
-    const text=(ta.value||'').trim();
-    if(!text) return;
-    const btn=bk.querySelector('#mat-send'); btn.disabled=true; btn.textContent='送信中…';
-    try{
-      if(__matEditing){
-        const id=__matEditing;
-        await __matWrite_(posts=>posts.map(x=>(x.id===id&&x.author===me)?Object.assign({},x,{text,editedAt:new Date().toISOString()}):x));
-      }else{
-        await __matWrite_(posts=>{ posts.push({id:'m_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),author:me,text,at:new Date().toISOString()}); return posts; });
-      }
-      __matEditing=null; ta.value='';
-      renderMaterialList_();
-      if(typeof showAutoSyncToast==='function') showAutoSyncToast('🧾 投稿しました(全員に共有)');
-    }catch(err){
-      alert('送信失敗: '+err.message+'\n(本文は消していません。少し待ってもう一度押してください)');
-    }finally{ btn.disabled=false; __matSyncComposer_(); }
-  };
+  // 用途セグメント
+  bk.querySelectorAll('#mat-dest-seg [data-dest]').forEach(b=>b.onclick=()=>{ __matSetDest_(b.dataset.dest); });
+  // 購入先「その他」→自由入力
+  bk.querySelector('#mat-vendor').onchange=e=>{ bk.querySelector('#mat-vendor-other').style.display=(e.target.value==='その他')?'':'none'; };
+  // 品目行: 追加/削除/カテゴリ→datalist切替(委譲)
+  bk.querySelector('#mat-add-row').onclick=()=>{ __matAddRow_(); };
+  const rows=bk.querySelector('#mat-rows');
+  rows.addEventListener('focusin',e=>{ const r=e.target.closest('.mat-row'); if(r&&e.target.classList.contains('mr-name')) __matUpdateDl_(r.querySelector('.mr-cat').value); });
+  rows.addEventListener('change',e=>{ const r=e.target.closest('.mat-row'); if(r&&e.target.classList.contains('mr-cat')){ e.target.style.color=e.target.value?'inherit':'var(--muted)'; __matUpdateDl_(e.target.value); } });
+  rows.addEventListener('click',e=>{ const d=e.target.closest('.mr-del'); if(!d) return; const all=rows.querySelectorAll('.mat-row'); if(all.length<=1){ d.closest('.mat-row').querySelectorAll('input').forEach(i=>i.value=''); return; } d.closest('.mat-row').remove(); });
+  bk.querySelector('#mat-cancel-edit').onclick=()=>{ __matEditing=null; __matResetForm_(); };
+  bk.querySelector('#mat-send').onclick=__matSubmit_;
+  __matResetForm_();
   return bk;
+}
+function __matSetDest_(v){
+  const bk=document.getElementById('materialModal'); if(!bk) return;
+  const form=bk.querySelector('#mat-form'); form.dataset.dest=v;
+  bk.querySelectorAll('#mat-dest-seg [data-dest]').forEach(b=>{
+    const on=b.dataset.dest===v;
+    b.style.background=on?'var(--accent,#2563eb)':'transparent';
+    b.style.color=on?'#fff':'inherit';
+    b.style.fontWeight=on?'700':'400';
+  });
+  bk.querySelector('#mat-dest-name').style.display=(v==='物件')?'':'none';
+  bk.querySelector('#mat-dest-room').style.display=(v==='物件')?'':'none';
+}
+function __matAddRow_(it){
+  const rows=document.getElementById('mat-rows'); if(!rows) return;
+  const tmp=document.createElement('div'); tmp.innerHTML=__matRowHtml_(it||{});
+  rows.appendChild(tmp.firstElementChild);
+}
+function __matResetForm_(){
+  const bk=document.getElementById('materialModal'); if(!bk) return;
+  __matSetDest_('');
+  bk.querySelector('#mat-dest-name').value=''; bk.querySelector('#mat-dest-room').value='';
+  bk.querySelector('#mat-vendor').value=''; bk.querySelector('#mat-vendor-other').value='';
+  bk.querySelector('#mat-vendor-other').style.display='none';
+  bk.querySelector('#mat-memo').value='';
+  bk.querySelector('#mat-rows').innerHTML=''; __matAddRow_();
+  __matUpdateDl_('');
+  __matSyncComposer_();
+}
+function __matFillForm_(p){
+  const bk=document.getElementById('materialModal'); if(!bk) return;
+  __matResetForm_();
+  __matSetDest_(p.dest||'');
+  bk.querySelector('#mat-dest-name').value=p.destName||'';
+  bk.querySelector('#mat-dest-room').value=p.destRoom||'';
+  if(p.vendor && MAT_VENDORS.includes(p.vendor)){ bk.querySelector('#mat-vendor').value=p.vendor; }
+  else if(p.vendor){ bk.querySelector('#mat-vendor').value='その他'; bk.querySelector('#mat-vendor-other').style.display=''; bk.querySelector('#mat-vendor-other').value=p.vendor; }
+  bk.querySelector('#mat-memo').value=p.memo||'';
+  const rows=bk.querySelector('#mat-rows'); rows.innerHTML='';
+  (p.items&&p.items.length?p.items:[{}]).forEach(it=>__matAddRow_(it));
+  __matSyncComposer_();
+}
+async function __matSubmit_(){
+  const bk=document.getElementById('materialModal'); if(!bk) return;
+  const me=(typeof getMyself==='function')?getMyself():'';
+  if(!me){ alert('先に「👤 マイ」で自分を設定してください'); return; }
+  const form=bk.querySelector('#mat-form');
+  const dest=form.dataset.dest||'';
+  const destName=bk.querySelector('#mat-dest-name').value.trim();
+  const destRoom=bk.querySelector('#mat-dest-room').value.trim();
+  let vendor=bk.querySelector('#mat-vendor').value;
+  if(vendor==='その他') vendor=bk.querySelector('#mat-vendor-other').value.trim()||'その他';
+  const memo=bk.querySelector('#mat-memo').value.trim();
+  const items=[...bk.querySelectorAll('#mat-rows .mat-row')].map(r=>({
+    cat:r.querySelector('.mr-cat').value||'',
+    name:r.querySelector('.mr-name').value.trim(),
+    qty:r.querySelector('.mr-qty').value.trim(),
+  })).filter(it=>it.name);
+  if(!dest){ alert('用途(物件用/在庫用/作業)を選んでください'); return; }
+  if(dest==='物件' && !destName){ alert('物件名を入れてください'); return; }
+  if(!vendor){ alert('購入先を選んでください'); return; }
+  if(!items.length){ alert('商品名を1つ以上入れてください'); return; }
+  const btn=bk.querySelector('#mat-send'); btn.disabled=true; btn.textContent='送信中…';
+  try{
+    if(__matEditing){
+      const id=__matEditing;
+      await __matWrite_(posts=>posts.map(x=>(x.id===id&&x.author===me)?Object.assign({},x,{v:2,dest,destName,destRoom,vendor,items,memo,editedAt:new Date().toISOString()}):x));
+    }else{
+      await __matWrite_(posts=>{ posts.push({id:'m_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),v:2,author:me,at:new Date().toISOString(),dest,destName,destRoom,vendor,items,memo}); return posts; });
+    }
+    __matEditing=null; __matResetForm_();
+    renderMaterialList_();
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast('🧾 投稿しました(全員に共有)');
+  }catch(err){
+    alert('送信失敗: '+err.message+'\n(入力内容は消していません。少し待ってもう一度押してください)');
+  }finally{ btn.disabled=false; __matSyncComposer_(); }
 }
 function __matSyncComposer_(){
   const bk=document.getElementById('materialModal'); if(!bk) return;
   bk.querySelector('#mat-send').textContent=__matEditing?'保存':'投稿';
   bk.querySelector('#mat-cancel-edit').style.display=__matEditing?'':'none';
+  const me=(typeof getMyself==='function')?getMyself():'';
+  bk.querySelector('#mat-me').textContent=me||'(自分未設定)';
+}
+function __matSearchText_(p){
+  if(p.v===2) return [p.author,p.dest,p.destName,p.destRoom,p.vendor,p.memo,...(p.items||[]).map(i=>i.name+' '+i.cat)].join(' ');
+  return (p.text||'')+' '+(p.author||'');
 }
 function renderMaterialList_(){
   const bk=document.getElementById('materialModal'); if(!bk) return;
   const me=(typeof getMyself==='function')?getMyself():'';
-  bk.querySelector('#mat-me').textContent=me||'(自分未設定)';
   const all=(__matPosts||[]).slice().sort((a,b)=>String(b.at||'').localeCompare(String(a.at||'')));
   const q=__matSearch.toLowerCase();
-  const list=q?all.filter(p=>((p.text||'')+(p.author||'')).toLowerCase().includes(q)):all;
+  const list=q?all.filter(p=>__matSearchText_(p).toLowerCase().includes(q)):all;
   bk.querySelector('#mat-count').textContent=q?`${list.length}/${all.length}件`:`${all.length}件`;
   const host=bk.querySelector('#mat-list');
   if(!list.length){ host.innerHTML=`<div style="color:var(--muted);font-size:12px;padding:18px 4px;text-align:center">${q?'該当なし':'まだ投稿がありません。注文したらここに書いてください'}</div>`; return; }
@@ -8483,17 +8601,34 @@ function renderMaterialList_(){
     if(day!==lastDay){ lastDay=day; const d=new Date(day); head=`<div style="font-size:11px;font-weight:700;color:var(--muted);margin:10px 2px 4px;border-bottom:1px solid var(--border);padding-bottom:2px">${isNaN(d)?day:`${d.getMonth()+1}/${d.getDate()} (${DOW_JA[d.getDay()]})`}</div>`; }
     const own=me&&p.author===me;
     const sc=(typeof STAFF_COLORS==='object'&&(STAFF_COLORS[p.author]||STAFF_COLORS[normalizeStaffName?normalizeStaffName(p.author||''):'']))||'#9ca3af';
+    let body='';
+    if(p.v===2){
+      const destChip=p.dest==='在庫'
+        ? `<span style="background:#dcfce7;color:#166534;border-radius:10px;padding:1px 8px;font-size:10.5px;font-weight:700">📦 在庫用</span>`
+        : p.dest==='物件'
+        ? `<span style="background:#dbeafe;color:#1e40af;border-radius:10px;padding:1px 8px;font-size:10.5px;font-weight:700">🏠 ${escapeHtml(p.destName||'')}${p.destRoom?' '+escapeHtml(p.destRoom):''}</span>`
+        : `<span style="background:#f1f5f9;color:#475569;border-radius:10px;padding:1px 8px;font-size:10.5px;font-weight:700">🔧 作業/他</span>`;
+      const vc=MAT_VENDOR_COLORS[p.vendor]||'#64748b';
+      const vendorChip=`<span style="background:${vc};color:#fff;border-radius:10px;padding:1px 8px;font-size:10.5px;font-weight:700">${escapeHtml(p.vendor||'')}</span>`;
+      const itemsHtml=(p.items||[]).map(i=>`<div style="font-size:12.5px;line-height:1.5">・${escapeHtml(i.name)}${i.qty?` <b>×${escapeHtml(String(i.qty))}</b>`:''}${i.cat?` <span style="font-size:10px;color:var(--muted)">(${escapeHtml(i.cat)})</span>`:''}</div>`).join('');
+      const memoHtml=p.memo?`<div style="font-size:11px;color:var(--muted);margin-top:2px">📝 ${escapeHtml(p.memo)}</div>`:'';
+      body=`<div style="display:flex;gap:5px;flex-wrap:wrap;margin:2px 0 4px">${destChip}${vendorChip}</div>${itemsHtml}${memoHtml}`;
+    }else{
+      body=`<div style="font-size:12.5px;white-space:pre-wrap;word-break:break-word;line-height:1.5">${escapeHtml(p.text||'')}</div>`;
+    }
     return head+`<div style="background:var(--panel,#fff);border:1px solid var(--border);border-radius:8px;padding:7px 9px;margin:4px 0;position:relative">
       ${own?`<span style="position:absolute;top:5px;right:6px;display:flex;gap:4px"><button data-medit="${p.id}" title="編集" style="border:0;background:transparent;cursor:pointer;color:#94a3b8;font-size:12px;padding:0">✎</button><button data-mdel="${p.id}" title="削除" style="border:0;background:transparent;cursor:pointer;color:#cbd5e1;font-size:12px;padding:0">✕</button></span>`:''}
       <div style="font-size:11px;margin-bottom:2px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${sc};margin-right:4px"></span><b>${escapeHtml(p.author||'?')}</b> <span style="color:var(--muted);font-size:10px">${escapeHtml(__matFmtT_(p.at))}${p.editedAt?' (編集済)':''}</span></div>
-      <div style="font-size:12.5px;white-space:pre-wrap;word-break:break-word;line-height:1.5">${escapeHtml(p.text||'')}</div>
+      ${body}
     </div>`;
   }).join('');
   host.querySelectorAll('[data-medit]').forEach(b=>b.onclick=()=>{
     const p=(__matPosts||[]).find(x=>x.id===b.dataset.medit); if(!p) return;
     __matEditing=p.id;
-    const ta=bk.querySelector('#mat-input'); ta.value=p.text||''; ta.focus();
+    if(p.v===2) __matFillForm_(p);
+    else { __matResetForm_(); __matSetDest_('作業'); document.getElementById('materialModal').querySelector('#mat-memo').value=p.text||''; }
     __matSyncComposer_();
+    bk.querySelector('#mat-form').scrollIntoView({block:'nearest'});
   });
   host.querySelectorAll('[data-mdel]').forEach(b=>b.onclick=async ()=>{
     if(!confirm('この投稿を削除しますか？(全員の一覧から消えます)')) return;
@@ -8512,9 +8647,11 @@ function openMaterialModal_(){
   const bk=ensureMaterialModal_();
   if(__matPosts===null) __matLoadCache_();
   __matEditing=null; __matSyncComposer_();
+  // 物件名候補(bukkenDatalist)が空なら裏で取得しておく(モーダル利用時のみ=起動コスト増なし)
+  try{ if((!state.bukken||!state.bukken.length)&&typeof fetchBukkenMaster==='function') fetchBukkenMaster({silent:true}); }catch(_){}
   bk.classList.add('show');
-  renderMaterialList_();          // まず手元キャッシュを即表示
-  fetchMaterialOrders_({});       // 裏で最新化
+  renderMaterialList_();
+  fetchMaterialOrders_({});
 }
 function closeMaterialModal_(){ const bk=document.getElementById('materialModal'); if(bk) bk.classList.remove('show'); }
 
