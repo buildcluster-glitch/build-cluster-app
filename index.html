@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.549</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.550</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8751,10 +8751,16 @@ function renderMaterialList_(){
   const me=(typeof getMyself==='function')?getMyself():'';
   const all=(__matPosts||[]).slice().sort((a,b)=>String(b.at||'').localeCompare(String(a.at||'')));
   const q=__matSearch.toLowerCase();
-  const list=q?all.filter(p=>__matSearchText_(p).toLowerCase().includes(q)):all;
+  let list=q?all.filter(p=>__matSearchText_(p).toLowerCase().includes(q)):all;
   bk.querySelector('#mat-count').textContent=q?`${list.length}/${all.length}件`:`${all.length}件`;
   const host=bk.querySelector('#mat-list');
   if(!list.length){ host.innerHTML=`<div style="color:var(--muted);font-size:12px;padding:18px 4px;text-align:center">${q?'該当なし':'まだ投稿がありません。注文したらここに書いてください'}</div>`; return; }
+  // 📏 v1.30.550: 描画は最新150件まで(検索は全件対象のまま)。数百件をスマホで一気にDOM化すると
+  //   データより先に描画が重くなるため。「さらに表示」で全件。データの月別シャード化は
+  //   投稿1,000件超 or 300KB超で発動(台帳と同じ方式・それまでは不要)。
+  const CAP=150;
+  let capped=false;
+  if(!q && !window.__matShowAll && list.length>CAP){ list=list.slice(0,CAP); capped=true; }
   let lastDay='';
   host.innerHTML=list.map(p=>{
     const day=String(p.at||'').slice(0,10);
@@ -8788,6 +8794,10 @@ function renderMaterialList_(){
       ${body}
     </div>`;
   }).join('');
+  if(capped){
+    host.insertAdjacentHTML('beforeend', `<div style="text-align:center;margin:8px 0"><button class="btn" id="mat-more" style="font-size:12px;padding:6px 16px">さらに表示 (残り${all.length-CAP}件)</button></div>`);
+    host.querySelector('#mat-more').onclick=()=>{ window.__matShowAll=true; renderMaterialList_(); };
+  }
   host.querySelectorAll('[data-medit]').forEach(b=>b.onclick=()=>{
     const p=(__matPosts||[]).find(x=>x.id===b.dataset.medit); if(!p) return;
     __matEditing=p.id;
@@ -8811,6 +8821,7 @@ async function fetchMaterialOrders_(opts={}){
 }
 function openMaterialModal_(){
   const bk=ensureMaterialModal_();
+  window.__matShowAll=false;   // 開くたび最新150件表示に戻す(v1.30.550)
   if(__matPosts===null) __matLoadCache_();
   __matEditing=null; __matSyncComposer_();
   try{ if((!state.bukken||!state.bukken.length)&&typeof fetchBukkenMaster==='function') fetchBukkenMaster({silent:true}); }catch(_){}
