@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.539</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.540</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -2818,6 +2818,7 @@
     <button data-view="resto">🏠 原状回復</button>
     <button data-view="inventory">📦 在庫管理</button>
     <button data-view="__tanka__" id="tankaBtn" title="💴 単価表 — スマホ単価表と同じ内容(検索・元請切替)をアプリ内で開く">💴 単価表</button>
+    <button data-view="__material__" id="materialBtn" title="🧾 材料注文の報告 — 注文した材料を全員で共有(LINE WORKS掲示板の引っ越し先)">🧾 材料</button>
     <button data-view="__gantt__" id="ganttBtn" title="📊 工事進捗ガント — 見積アプリの工事進捗タブ(Web閲覧版・表示のみ)をアプリ内で開く">📊 進捗</button>
   </div>
   <button class="nav-btn" id="myEventsBtn" title="👤 自分の設定・フィルタON/OFF">👤 マイ</button>
@@ -2870,6 +2871,7 @@
   <button data-mnav="resto">🏠<span>原状回復</span></button>
   <button data-mnav="inventory">📦<span>在庫</span></button>
   <button data-mnav="tanka">💴<span>単価</span></button>
+  <button data-mnav="material">🧾<span>材料</span></button>
   <button data-mnav="gantt">📊<span>進捗</span></button>
 </nav>
 
@@ -8369,6 +8371,153 @@ async function heartbeatPresence_(opts={}){
 // 📢 全員への連絡事項(全員共有・shared-config 'calendar_announce') v1.30.302
 //   value = JSON { items:[{id,text,by,at,acked:[名前],deleted,updatedAt}], updatedAt }
 //   全STAFFが「確認」したら自動で消える(ヘッダー直下の目立つ帯に表示)。
+// ===== 🧾 材料注文の報告 (v1.30.540・山田「注文した材料を一覧で共有把握投稿」) =====
+// LINE WORKS掲示板「注文した材料報告」の引っ越し先(2026-08掲示板廃止・カレンダー一本化)。
+// 全員が投稿・閲覧。編集/削除は本人のみ。書き方は掲示板と同じ自由文
+// (例:「◯◯マンション101用 浴室鏡 305*435 楽天」「在庫用 ・キク大10個 モノタロウ」)。
+// データ: shared-config 'material_orders' = {posts:[{id,author,text,at,editedAt}], updatedAt}
+//   サーバー改修ゼロ(汎用save/get-shared-config)。大きくなればDrive退避が自動で効く(hatchusho_dataと同じ)。
+// 取得はモーダルを開いた時と送信後のみ=起動時には読まない(起動を重くしない方針)。
+// 書き込みは「サーバー最新を取得→自分の操作を適用→保存」方式。idユニオンをしないのは
+// 削除が他端末のコピーから復活するのを防ぐため(1日2〜3投稿なので同時書き込み衝突は実質起きない)。
+const MATERIAL_KEY = 'material_orders';
+const MATERIAL_CACHE_KEY = 'buildcluster_material_cache';
+let __matPosts = null;
+let __matSearch = '';
+let __matEditing = null;   // 編集中の投稿id
+function __matLoadCache_(){ try{ const j=JSON.parse(localStorage.getItem(MATERIAL_CACHE_KEY)||'null'); if(j&&Array.isArray(j.posts)) __matPosts=j.posts; }catch(_){} }
+function __matSaveCache_(){ try{ localStorage.setItem(MATERIAL_CACHE_KEY, JSON.stringify({posts:__matPosts||[], cachedAt:new Date().toISOString()})); }catch(_){} }
+async function __matFetchRemote_(){
+  const s=loadGasSettings(); if(!s.url||!s.token) return null;
+  const res=await fetch(`${s.url}?action=get-shared-config&key=${MATERIAL_KEY}&token=${encodeURIComponent(s.token)}&t=${Date.now()}`,{cache:'no-store'});
+  const d=await res.json(); if(!d.ok) throw new Error(d.error||'get失敗');
+  let v=d.value; if(typeof v==='string'&&v){ try{ v=JSON.parse(v); }catch(_){ v=null; } }
+  return (v&&Array.isArray(v.posts))?v.posts:[];
+}
+async function __matWrite_(mutator){
+  const s=loadGasSettings(); if(!s.url||!s.token) throw new Error('☁設定(GAS URL/Token)が未設定です');
+  let posts=null;
+  try{ posts=await __matFetchRemote_(); }catch(_){}
+  if(!Array.isArray(posts)) posts=(__matPosts||[]).slice();   // サーバー不通時は手元を土台に(次の成功時に収束)
+  posts=mutator(posts.slice());
+  const value=JSON.stringify({posts, updatedAt:new Date().toISOString()});
+  const res=await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify({action:'save-shared-config',key:MATERIAL_KEY,value,token:s.token,savedBy:'calendar-app'})});
+  const d=await res.json(); if(!d.ok) throw new Error(d.error||'save失敗');
+  __matPosts=posts; __matSaveCache_();
+  return true;
+}
+function __matFmtT_(iso){ const d=new Date(iso); if(isNaN(d))return''; const p=n=>String(n).padStart(2,'0'); return `${d.getMonth()+1}/${d.getDate()}(${DOW_JA[d.getDay()]}) ${p(d.getHours())}:${p(d.getMinutes())}`; }
+function ensureMaterialModal_(){
+  let bk=document.getElementById('materialModal');
+  if(bk) return bk;
+  bk=document.createElement('div');
+  bk.className='modal-overlay'; bk.id='materialModal';   // アプリ標準のオーバーレイ(.show=display:flexで中央寄せ)
+  bk.innerHTML=`<div class="modal" style="max-width:640px;width:96vw;max-height:88vh;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <b style="font-size:15px">🧾 材料注文の報告</b>
+      <span id="mat-count" style="font-size:11px;color:var(--muted)"></span>
+      <input id="mat-search" type="text" placeholder="🔍 品名・物件・購入先・名前" style="flex:1;min-width:140px;font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px">
+      <button class="btn" id="mat-reload" title="最新を取得" style="font-size:12px;padding:5px 9px">🔄</button>
+      <button class="btn" id="mat-close" style="font-size:12px;padding:5px 9px">✕</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-top:8px;align-items:flex-end">
+      <textarea id="mat-input" rows="3" placeholder="例: ◯◯マンション101用&#10;・浴室鏡 305×435 ×1 楽天&#10;(在庫用はその旨を・Enter=改行 / Ctrl+Enter=送信)" style="flex:1;font-size:13px;padding:7px 9px;border:1px solid var(--border);border-radius:6px;resize:vertical;min-height:56px;line-height:1.45"></textarea>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <button class="btn primary" id="mat-send" style="font-size:12.5px;font-weight:700;padding:8px 14px">投稿</button>
+        <button class="btn" id="mat-cancel-edit" style="display:none;font-size:11px;padding:4px 8px">取消</button>
+      </div>
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin-top:3px">投稿者は「<span id="mat-me">(自分未設定)</span>」・編集✎/削除✕は本人のみ・全員に共有されます</div>
+    <div id="mat-list" style="overflow-y:auto;margin-top:8px;flex:1;min-height:120px"></div>
+  </div>`;
+  document.body.appendChild(bk);
+  bk.onclick=e=>{ if(e.target===bk) closeMaterialModal_(); };
+  bk.querySelector('#mat-close').onclick=closeMaterialModal_;
+  bk.querySelector('#mat-reload').onclick=()=>{ fetchMaterialOrders_({toast:true}); };
+  bk.querySelector('#mat-search').oninput=e=>{ __matSearch=(e.target.value||'').trim(); renderMaterialList_(); };
+  const ta=bk.querySelector('#mat-input');
+  ta.onkeydown=e=>{ if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)&&!e.isComposing&&e.keyCode!==229){ e.preventDefault(); bk.querySelector('#mat-send').click(); } };
+  bk.querySelector('#mat-cancel-edit').onclick=()=>{ __matEditing=null; ta.value=''; __matSyncComposer_(); };
+  bk.querySelector('#mat-send').onclick=async ()=>{
+    const me=(typeof getMyself==='function')?getMyself():'';
+    if(!me){ alert('先に「👤 マイ」で自分を設定してください'); return; }
+    const text=(ta.value||'').trim();
+    if(!text) return;
+    const btn=bk.querySelector('#mat-send'); btn.disabled=true; btn.textContent='送信中…';
+    try{
+      if(__matEditing){
+        const id=__matEditing;
+        await __matWrite_(posts=>posts.map(x=>(x.id===id&&x.author===me)?Object.assign({},x,{text,editedAt:new Date().toISOString()}):x));
+      }else{
+        await __matWrite_(posts=>{ posts.push({id:'m_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),author:me,text,at:new Date().toISOString()}); return posts; });
+      }
+      __matEditing=null; ta.value='';
+      renderMaterialList_();
+      if(typeof showAutoSyncToast==='function') showAutoSyncToast('🧾 投稿しました(全員に共有)');
+    }catch(err){
+      alert('送信失敗: '+err.message+'\n(本文は消していません。少し待ってもう一度押してください)');
+    }finally{ btn.disabled=false; __matSyncComposer_(); }
+  };
+  return bk;
+}
+function __matSyncComposer_(){
+  const bk=document.getElementById('materialModal'); if(!bk) return;
+  bk.querySelector('#mat-send').textContent=__matEditing?'保存':'投稿';
+  bk.querySelector('#mat-cancel-edit').style.display=__matEditing?'':'none';
+}
+function renderMaterialList_(){
+  const bk=document.getElementById('materialModal'); if(!bk) return;
+  const me=(typeof getMyself==='function')?getMyself():'';
+  bk.querySelector('#mat-me').textContent=me||'(自分未設定)';
+  const all=(__matPosts||[]).slice().sort((a,b)=>String(b.at||'').localeCompare(String(a.at||'')));
+  const q=__matSearch.toLowerCase();
+  const list=q?all.filter(p=>((p.text||'')+(p.author||'')).toLowerCase().includes(q)):all;
+  bk.querySelector('#mat-count').textContent=q?`${list.length}/${all.length}件`:`${all.length}件`;
+  const host=bk.querySelector('#mat-list');
+  if(!list.length){ host.innerHTML=`<div style="color:var(--muted);font-size:12px;padding:18px 4px;text-align:center">${q?'該当なし':'まだ投稿がありません。注文したらここに書いてください'}</div>`; return; }
+  let lastDay='';
+  host.innerHTML=list.map(p=>{
+    const day=String(p.at||'').slice(0,10);
+    let head='';
+    if(day!==lastDay){ lastDay=day; const d=new Date(day); head=`<div style="font-size:11px;font-weight:700;color:var(--muted);margin:10px 2px 4px;border-bottom:1px solid var(--border);padding-bottom:2px">${isNaN(d)?day:`${d.getMonth()+1}/${d.getDate()} (${DOW_JA[d.getDay()]})`}</div>`; }
+    const own=me&&p.author===me;
+    const sc=(typeof STAFF_COLORS==='object'&&(STAFF_COLORS[p.author]||STAFF_COLORS[normalizeStaffName?normalizeStaffName(p.author||''):'']))||'#9ca3af';
+    return head+`<div style="background:var(--panel,#fff);border:1px solid var(--border);border-radius:8px;padding:7px 9px;margin:4px 0;position:relative">
+      ${own?`<span style="position:absolute;top:5px;right:6px;display:flex;gap:4px"><button data-medit="${p.id}" title="編集" style="border:0;background:transparent;cursor:pointer;color:#94a3b8;font-size:12px;padding:0">✎</button><button data-mdel="${p.id}" title="削除" style="border:0;background:transparent;cursor:pointer;color:#cbd5e1;font-size:12px;padding:0">✕</button></span>`:''}
+      <div style="font-size:11px;margin-bottom:2px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${sc};margin-right:4px"></span><b>${escapeHtml(p.author||'?')}</b> <span style="color:var(--muted);font-size:10px">${escapeHtml(__matFmtT_(p.at))}${p.editedAt?' (編集済)':''}</span></div>
+      <div style="font-size:12.5px;white-space:pre-wrap;word-break:break-word;line-height:1.5">${escapeHtml(p.text||'')}</div>
+    </div>`;
+  }).join('');
+  host.querySelectorAll('[data-medit]').forEach(b=>b.onclick=()=>{
+    const p=(__matPosts||[]).find(x=>x.id===b.dataset.medit); if(!p) return;
+    __matEditing=p.id;
+    const ta=bk.querySelector('#mat-input'); ta.value=p.text||''; ta.focus();
+    __matSyncComposer_();
+  });
+  host.querySelectorAll('[data-mdel]').forEach(b=>b.onclick=async ()=>{
+    if(!confirm('この投稿を削除しますか？(全員の一覧から消えます)')) return;
+    const id=b.dataset.mdel;
+    try{ await __matWrite_(posts=>posts.filter(x=>!(x.id===id&&x.author===me))); renderMaterialList_(); }
+    catch(err){ alert('削除失敗: '+err.message); }
+  });
+}
+async function fetchMaterialOrders_(opts={}){
+  try{
+    const posts=await __matFetchRemote_();
+    if(Array.isArray(posts)){ __matPosts=posts; __matSaveCache_(); renderMaterialList_(); if(opts.toast&&typeof showAutoSyncToast==='function') showAutoSyncToast('🧾 最新を取得しました'); }
+  }catch(err){ console.warn('[material] 取得失敗:', err.message); if(opts.toast) alert('取得失敗: '+err.message); }
+}
+function openMaterialModal_(){
+  const bk=ensureMaterialModal_();
+  if(__matPosts===null) __matLoadCache_();
+  __matEditing=null; __matSyncComposer_();
+  bk.classList.add('show');
+  renderMaterialList_();          // まず手元キャッシュを即表示
+  fetchMaterialOrders_({});       // 裏で最新化
+}
+function closeMaterialModal_(){ const bk=document.getElementById('materialModal'); if(bk) bk.classList.remove('show'); }
+
 const ANNOUNCE_KEY = "calendar_announce";
 const ANNOUNCE_CACHE_KEY = "bc_announce_cache";
 function loadAnnounceMap_(){ try{ const o=JSON.parse(localStorage.getItem(ANNOUNCE_CACHE_KEY)||"null"); return (o&&Array.isArray(o.items))?o:{items:[]}; }catch(e){ return {items:[]}; } }
@@ -18067,6 +18216,7 @@ document.querySelectorAll('#mobileNav button').forEach(b=>{
     const k = b.dataset.mnav;
     if(k === 'tanka'){ openTankaModal_(); return; }   // 💴 単価表はビュー切替でなくモーダル
     if(k === 'gantt'){ openGanttModal_(); return; }   // 📊 進捗ガントも同様にモーダル
+    if(k === 'material'){ openMaterialModal_(); return; }   // 🧾 材料注文の報告(v1.30.540)
     currentView = (k === 'cal') ? 'month' : k;
     render();
   };
@@ -18075,6 +18225,7 @@ document.querySelectorAll(".view-switch button").forEach(b=>{
   b.onclick = ()=>{
     if(b.dataset.view==='__tanka__'){ openTankaModal_(); return; }   // 💴 単価表はモーダル(ビュー切替でない)
     if(b.dataset.view==='__gantt__'){ openGanttModal_(); return; }   // 📊 進捗ガントも同様
+    if(b.dataset.view==='__material__'){ openMaterialModal_(); return; }   // 🧾 材料注文(v1.30.540)
     currentView = b.dataset.view; render();
   };
 });
