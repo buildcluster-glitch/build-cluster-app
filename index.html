@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.541</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.542</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8422,8 +8422,27 @@ const MAT_CATS={
 function __matAllItems_(){ return Object.values(MAT_CATS).flat(); }
 function __matUpdateDl_(cat){
   const dl=document.getElementById('matItemsDl'); if(!dl) return;
+  let html='';
+  // 📦 在庫用のときは在庫管理の登録品目を候補の先頭に(名前が一致すると発注台帳に自動登録される)v1.30.542
+  const bk=document.getElementById('materialModal');
+  const dest=bk?(bk.querySelector('#mat-form')?.dataset.dest||''):'';
+  if(dest==='在庫' && typeof window.__invItemNames_==='function'){
+    try{ html+=window.__invItemNames_().map(n=>`<option value="${escapeHtml(n)}">📦 在庫品目(発注台帳に載ります)</option>`).join(''); }catch(_){}
+  }
   const items=(cat&&MAT_CATS[cat])?MAT_CATS[cat]:__matAllItems_();
-  dl.innerHTML=items.map(n=>`<option value="${escapeHtml(n)}">`).join('');
+  html+=items.map(n=>`<option value="${escapeHtml(n)}">`).join('');
+  dl.innerHTML=html;
+}
+function __matRefreshDestDl_(){
+  const dl=document.getElementById('matDestDl'); if(!dl) return;
+  const seen=new Set(); const opts=[];
+  const add=(name,label)=>{ const k=(name||'').trim(); if(!k||seen.has(k))return; seen.add(k); opts.push(`<option value="${escapeHtml(k)}">${escapeHtml(label||'')}</option>`); };
+  // 🔨 いま動いている台帳(原状回復+修繕)を上位に=材料は大抵進行中の現場のため
+  [...(state.restorations||[]),...(state.repairs||[])]
+    .sort((a,b)=>String(b.updatedAt||b.finalDate||'').localeCompare(String(a.updatedAt||a.finalDate||'')))
+    .forEach(r=>add(r.name, `🔨 ${r.room?r.room+' ':''}${r.kojiName||'工事中'}`));
+  (state.bukken||[]).forEach(b=>add(b.name, b.address||''));
+  dl.innerHTML=opts.join('');
 }
 function __matRowHtml_(it={}){
   const cats=Object.keys(MAT_CATS);
@@ -8451,6 +8470,7 @@ function ensureMaterialModal_(){
       <button class="btn" id="mat-close" style="font-size:12px;padding:5px 9px">✕</button>
     </div>
     <datalist id="matItemsDl"></datalist>
+    <datalist id="matDestDl"></datalist>
     <div id="mat-form" style="border:1px solid var(--border);border-radius:8px;padding:8px 9px;margin-top:8px;background:var(--panel,#f8fafc)">
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
         <div id="mat-dest-seg" style="display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden">
@@ -8458,7 +8478,7 @@ function ensureMaterialModal_(){
           <button data-dest="在庫" style="border:0;padding:5px 10px;font-size:12px;cursor:pointer;background:transparent">📦 在庫用</button>
           <button data-dest="作業" style="border:0;padding:5px 10px;font-size:12px;cursor:pointer;background:transparent">🔧 作業/他</button>
         </div>
-        <input id="mat-dest-name" list="bukkenDatalist" placeholder="物件名" style="display:none;flex:1;min-width:120px;font-size:12.5px;padding:5px 7px;border:1px solid var(--border);border-radius:6px">
+        <input id="mat-dest-name" list="matDestDl" placeholder="物件名(工事中が上位に出ます)" style="display:none;flex:1;min-width:120px;font-size:12.5px;padding:5px 7px;border:1px solid var(--border);border-radius:6px">
         <input id="mat-dest-room" placeholder="号室" style="display:none;width:56px;font-size:12.5px;padding:5px 5px;border:1px solid var(--border);border-radius:6px">
         <select id="mat-vendor" style="font-size:12px;padding:5px 4px;border:1px solid var(--border);border-radius:6px">
           <option value="">購入先▼</option>${MAT_VENDORS.map(v=>`<option>${v}</option>`).join('')}
@@ -8494,6 +8514,14 @@ function ensureMaterialModal_(){
   rows.addEventListener('change',e=>{ const r=e.target.closest('.mat-row'); if(r&&e.target.classList.contains('mr-cat')){ e.target.style.color=e.target.value?'inherit':'var(--muted)'; __matUpdateDl_(e.target.value); } });
   rows.addEventListener('click',e=>{ const d=e.target.closest('.mr-del'); if(!d) return; const all=rows.querySelectorAll('.mat-row'); if(all.length<=1){ d.closest('.mat-row').querySelectorAll('input').forEach(i=>i.value=''); return; } d.closest('.mat-row').remove(); });
   bk.querySelector('#mat-cancel-edit').onclick=()=>{ __matEditing=null; __matResetForm_(); };
+  // 🏠 物件名を選んだら台帳(工事中)から号室を自動補完(空の時だけ)v1.30.542
+  bk.querySelector('#mat-dest-name').addEventListener('change',e=>{
+    const room=bk.querySelector('#mat-dest-room');
+    if(room.value.trim()) return;
+    const nm=(e.target.value||'').trim(); if(!nm) return;
+    const hit=[...(state.restorations||[]),...(state.repairs||[])].find(r=>r.name===nm&&r.room);
+    if(hit) room.value=hit.room;
+  });
   bk.querySelector('#mat-send').onclick=__matSubmit_;
   __matResetForm_();
   return bk;
@@ -8501,6 +8529,7 @@ function ensureMaterialModal_(){
 function __matSetDest_(v){
   const bk=document.getElementById('materialModal'); if(!bk) return;
   const form=bk.querySelector('#mat-form'); form.dataset.dest=v;
+  __matUpdateDl_(bk.querySelector('.mat-row .mr-cat')?.value||'');   // 用途で商品候補が変わる(在庫用=在庫品目が先頭)
   bk.querySelectorAll('#mat-dest-seg [data-dest]').forEach(b=>{
     const on=b.dataset.dest===v;
     b.style.background=on?'var(--accent,#2563eb)':'transparent';
@@ -8517,6 +8546,7 @@ function __matAddRow_(it){
 }
 function __matResetForm_(){
   const bk=document.getElementById('materialModal'); if(!bk) return;
+  window.__matInvDoneOnce=false;
   __matSetDest_('');
   bk.querySelector('#mat-dest-name').value=''; bk.querySelector('#mat-dest-room').value='';
   bk.querySelector('#mat-vendor').value=''; bk.querySelector('#mat-vendor-other').value='';
@@ -8560,6 +8590,17 @@ async function __matSubmit_(){
   if(!vendor){ alert('購入先を選んでください'); return; }
   if(!items.length){ alert('商品名を1つ以上入れてください'); return; }
   const btn=bk.querySelector('#mat-send'); btn.disabled=true; btn.textContent='送信中…';
+  // 📦 在庫用は在庫管理の発注台帳へ自動登録(新規投稿のみ・送信リトライでの二重登録はガード)v1.30.542
+  //   名前が在庫品目と一致した行だけ。登録された発注は在庫管理→発注タブに出て、📥入荷で在庫数+。
+  let invMsg='';
+  if(!__matEditing && dest==='在庫' && typeof window.__invCreateOrdersFromMaterial_==='function' && !window.__matInvDoneOnce){
+    try{
+      const res=window.__invCreateOrdersFromMaterial_(items.map(it=>({name:it.name, qty:it.qty, supplier:vendor, member:me, note:'🧾材料注文から'})));
+      window.__matInvDoneOnce=true;   // この投稿内容ぶんは登録済み(成功後のリセットで解除)
+      items.forEach(it=>{ if(res.created.some(n=>n.normalize('NFKC').replace(/\s+/g,'').toLowerCase()===it.name.normalize('NFKC').replace(/\s+/g,'').toLowerCase())) it.inv=true; });
+      if(res.created.length) invMsg=` / 📦発注台帳に${res.created.length}件(入荷で在庫+)`;
+    }catch(e){ console.warn('[material] 在庫連携失敗:', e.message); }
+  }
   try{
     if(__matEditing){
       const id=__matEditing;
@@ -8567,9 +8608,9 @@ async function __matSubmit_(){
     }else{
       await __matWrite_(posts=>{ posts.push({id:'m_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),v:2,author:me,at:new Date().toISOString(),dest,destName,destRoom,vendor,items,memo}); return posts; });
     }
-    __matEditing=null; __matResetForm_();
+    __matEditing=null; window.__matInvDoneOnce=false; __matResetForm_();
     renderMaterialList_();
-    if(typeof showAutoSyncToast==='function') showAutoSyncToast('🧾 投稿しました(全員に共有)');
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast('🧾 投稿しました(全員に共有)'+invMsg);
   }catch(err){
     alert('送信失敗: '+err.message+'\n(入力内容は消していません。少し待ってもう一度押してください)');
   }finally{ btn.disabled=false; __matSyncComposer_(); }
@@ -8610,7 +8651,7 @@ function renderMaterialList_(){
         : `<span style="background:#f1f5f9;color:#475569;border-radius:10px;padding:1px 8px;font-size:10.5px;font-weight:700">🔧 作業/他</span>`;
       const vc=MAT_VENDOR_COLORS[p.vendor]||'#64748b';
       const vendorChip=`<span style="background:${vc};color:#fff;border-radius:10px;padding:1px 8px;font-size:10.5px;font-weight:700">${escapeHtml(p.vendor||'')}</span>`;
-      const itemsHtml=(p.items||[]).map(i=>`<div style="font-size:12.5px;line-height:1.5">・${escapeHtml(i.name)}${i.qty?` <b>×${escapeHtml(String(i.qty))}</b>`:''}${i.cat?` <span style="font-size:10px;color:var(--muted)">(${escapeHtml(i.cat)})</span>`:''}</div>`).join('');
+      const itemsHtml=(p.items||[]).map(i=>`<div style="font-size:12.5px;line-height:1.5">・${escapeHtml(i.name)}${i.qty?` <b>×${escapeHtml(String(i.qty))}</b>`:''}${i.cat?` <span style="font-size:10px;color:var(--muted)">(${escapeHtml(i.cat)})</span>`:''}${i.inv?` <span style="background:#ecfdf5;color:#047857;border-radius:8px;padding:0 6px;font-size:9.5px;font-weight:700">📦発注台帳</span>`:''}</div>`).join('');
       const memoHtml=p.memo?`<div style="font-size:11px;color:var(--muted);margin-top:2px">📝 ${escapeHtml(p.memo)}</div>`:'';
       body=`<div style="display:flex;gap:5px;flex-wrap:wrap;margin:2px 0 4px">${destChip}${vendorChip}</div>${itemsHtml}${memoHtml}`;
     }else{
@@ -8649,6 +8690,7 @@ function openMaterialModal_(){
   __matEditing=null; __matSyncComposer_();
   // 物件名候補(bukkenDatalist)が空なら裏で取得しておく(モーダル利用時のみ=起動コスト増なし)
   try{ if((!state.bukken||!state.bukken.length)&&typeof fetchBukkenMaster==='function') fetchBukkenMaster({silent:true}); }catch(_){}
+  __matRefreshDestDl_();
   bk.classList.add('show');
   renderMaterialList_();
   fetchMaterialOrders_({});
@@ -27259,6 +27301,29 @@ function stopPolling(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null;
 window.__invRenderAll = renderAll;
 // ヘッダーの「在庫管理 (N品目)」用に有効品目数を公開(calendar側から参照)v1.30.147
 window.__invItemCount = ()=> (Array.isArray(state.items) ? state.items.filter(i=>i.active).length : 0);
+// 🧾 材料注文(カレンダー側)との連携ブリッジ(v1.30.542・山田「注文すると在庫数も増える?」)
+//   「注文で即+」は在庫が嘘をつくので、正しい流れ=発注台帳に登録(実効在庫に反映)→📥入荷で在庫+。
+//   既存のsubmitOrderと同じ形でorders/logs/pendingに積む=既存の同期・入荷UIがそのまま使える。
+window.__invItemNames_ = ()=> (Array.isArray(state.items)?state.items:[]).filter(i=>i.active).map(i=>i.name);
+window.__invCreateOrdersFromMaterial_ = (entries)=>{
+  const norm=s2=>String(s2||'').normalize('NFKC').replace(/\s+/g,'').toLowerCase();
+  const res={created:[], unmatched:[]};
+  (entries||[]).forEach(e=>{
+    const item=(state.items||[]).find(i=>i.active && norm(i.name)===norm(e.name));
+    if(!item){ res.unmatched.push(e.name); return; }
+    const saved={ id:uid(), itemId:item.id, qty:Math.max(1,Math.floor(Number(e.qty)||1)), receivedQty:0,
+      orderDate:todayISO(), expectedDate:'', supplier:String(e.supplier||''), member:String(e.member||''),
+      note:String(e.note||'🧾材料注文から'), status:'ordered', receivedDate:null };
+    state.orders.push(saved);
+    queueOp('upsertOrder', saved);
+    const ordLog={ id:uid(), type:'ord', itemId:saved.itemId, qty:saved.qty, member:saved.member||state.currentUser||'',
+      datetime:new Date().toISOString(), note:`発注作成(🧾材料注文${saved.supplier?` ${saved.supplier}`:''})` };
+    state.logs.push(ordLog); queueOp('appendLog', ordLog);
+    res.created.push(item.name);
+  });
+  if(res.created.length){ save(); renderAll(); }
+  return res;
+};
 })();
 
 </script>
