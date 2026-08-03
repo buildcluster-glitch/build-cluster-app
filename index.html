@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.553</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.554</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -12578,10 +12578,15 @@ async function syncChecksFromGAS(opts){
                       && !(state.restorations||[]).length;
   const __forceFull  = !__lastSyncAt || __gasBaseEmpty || (Date.now() - __lastFullAt) > 60*60*1000;
   const __since = (!!silent && !__forceFull) ? __lastSyncAt : "";   // 手動(!silent)/初回/1時間ごと/土台空=フル
-  // ⏱ サーバー無応答で「読み込み中」が永久に固まるのを防ぐ=75秒で打切り(v1.30.245)
+  // ⏱ サーバー無応答で「読み込み中」が永久に固まるのを防ぐ打切り(v1.30.245)。
+  //   v1.30.554: フル取得だけ75秒→180秒に延長。半日ぶり等でGASの投影キャッシュ(6h TTL)が全滅していると
+  //   フルは数分かかり、75秒打切り×再試行3回で計4分弱「読めない」状態になっていた(山田報告・スタッフのクレーム源)。
+  //   180秒なら冷えたフルも1回で完走する(GAS側は打切り後もサーバーで走り続けて温め直すため、旧動作でも
+  //   最後は成功していた=それを1回で終わらせる)。差分は従来どおり75秒。⚠本命はGAS側の温め直しトリガー(別便)。
   const __syncCtrl = (typeof AbortController!=='undefined') ? new AbortController() : null;
   let __syncTimedOut = false;
-  const __syncTO = __syncCtrl ? setTimeout(()=>{ __syncTimedOut = true; try{ __syncCtrl.abort(); }catch(_){} }, 75000) : null;
+  const __syncTOms = __since ? 75000 : 180000;
+  const __syncTO = __syncCtrl ? setTimeout(()=>{ __syncTimedOut = true; try{ __syncCtrl.abort(); }catch(_){} }, __syncTOms) : null;
   try{
     const res = await fetch(s.url, {
       method:"POST",
@@ -12796,7 +12801,7 @@ async function syncChecksFromGAS(opts){
     }
   }catch(e){
     console.error(e);
-    const __emsg = __syncTimedOut ? "サーバー応答なし(75秒でタイムアウト)。もう一度お試しください" : ("同期失敗: " + e.message);
+    const __emsg = __syncTimedOut ? `サーバー応答なし(${Math.round(__syncTOms/1000)}秒でタイムアウト)。もう一度お試しください` : ("同期失敗: " + e.message);
     if(!silent) hideSyncIndicator("error", __emsg);
     else if(_drvSilentShown) hideSyncIndicator("error", "ドライブ同期失敗");
     // 🔁 v1.30.539: 台帳同期もecho404/一時失敗は数秒後に通る(予定v536/在庫v537と同型)。
