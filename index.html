@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.554</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.555</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4407,12 +4407,53 @@
     if (_cache && (Date.now() - _cacheAt) < TTL) return Promise.resolve(_cache);
     if (_inflight) return _inflight;
     var url = base + '?action=get-shared-configs&keys=' + encodeURIComponent(GC_KEYS.join(',')) + '&token=' + encodeURIComponent(token) + '&t=' + Date.now();
-    _inflight = _origFetch(url, { method:'GET', redirect:'follow' })
+    _inflight = _gasGetWithRetry_(url, { method:'GET', redirect:'follow' })
       .then(function(r){ return r.json(); })
       .then(function(d){ if (d && d.ok && d.values) { _cache = d.values; _cacheAt = Date.now(); } else { _unsupported = true; } return _cache; })
       .catch(function(){ return _cache; })
       .then(function(v){ _inflight = null; return v; });
     return _inflight;
+  }
+  // 🛡 v1.30.555: GAS向けGETの自動リトライ+HTML応答ガード(関所=ここ1箇所で読み取り全経路に効く)
+  //   経緯: GASは混雑時に404/500やHTMLエラーページを散発的に返す(2026-08-03実測多数)。個別機能に
+  //   リトライを17箇所まで手植えしてきたが、網の外の機能(単価表等)が踏み続けるため関所で一括対応。
+  //   ・対象= script.google.com 宛の GET だけ。**POSTは絶対に再試行しない**
+  //     (⚠鉄則: GASのPOSTは404が返ってもサーバー側は実行済み=再送すると二重登録になる・実測で確定済み)
+  //   ・retry条件= ネットワーク失敗 / HTTPエラー / text/html応答(エラーページをデータと誤認する事故の防止)
+  //   ・2回まで(1.2秒→2.5秒)。使い切ったら従来どおりの失敗を返す=呼び出し元のthrow/黙認の使い分けは不変
+  //   ・abort済み(打切りタイマー発火)とオフライン中は再試行しない
+  var _GAS_RETRY_DELAYS = [1200, 2500];
+  function _isGasGet_(input, init){
+    try{
+      var u = (typeof input === 'string') ? input : (input && input.url) || '';
+      if (String(u).indexOf('script.google') < 0) return false;
+      var m = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+      return m === 'GET';
+    }catch(_){ return false; }
+  }
+  function _gasRetryWait_(attempt){ return new Promise(function(res){ setTimeout(res, _GAS_RETRY_DELAYS[attempt]); }); }
+  function _gasRetryBlocked_(init){
+    if (init && init.signal && init.signal.aborted) return true;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+    return false;
+  }
+  function _gasGetWithRetry_(input, init, attempt){
+    attempt = attempt || 0;
+    var p;
+    try { p = _origFetch(input, init); } catch(e){ p = Promise.reject(e); }
+    return p.then(function(r){
+      var ct = '';
+      try{ ct = String((r.headers && r.headers.get('content-type')) || ''); }catch(_){}
+      var bad = !r.ok || ct.indexOf('text/html') >= 0;
+      if (!bad) return r;
+      if (attempt >= _GAS_RETRY_DELAYS.length || _gasRetryBlocked_(init)) return r;
+      console.warn('[GAS関所] ' + (!r.ok ? ('HTTP ' + r.status) : 'HTML応答') + ' → ' + (_GAS_RETRY_DELAYS[attempt]/1000) + '秒後に再試行 (' + (attempt+1) + '/' + _GAS_RETRY_DELAYS.length + ')');
+      return _gasRetryWait_(attempt).then(function(){ return _gasGetWithRetry_(input, init, attempt+1); });
+    }, function(err){
+      if (attempt >= _GAS_RETRY_DELAYS.length || _gasRetryBlocked_(init)) throw err;
+      console.warn('[GAS関所] 通信失敗 → ' + (_GAS_RETRY_DELAYS[attempt]/1000) + '秒後に再試行 (' + (attempt+1) + '/' + _GAS_RETRY_DELAYS.length + '): ' + ((err && err.message) || err));
+      return _gasRetryWait_(attempt).then(function(){ return _gasGetWithRetry_(input, init, attempt+1); });
+    });
   }
   window.fetch = function(input, init){
     try {
@@ -4431,12 +4472,13 @@
               if (vals && Object.prototype.hasOwnProperty.call(vals, key)) {
                 return new Response(JSON.stringify({ ok:true, value: vals[key], _fromBatch:true }), { status:200, headers:{ 'Content-Type':'application/json' } });
               }
-              return _origFetch(input, init); // バッチ未対応/キー無し→従来取得
+              return _gasGetWithRetry_(input, init); // バッチ未対応/キー無し→従来取得(リトライ関所経由・v1.30.555)
             });
           }
         }
       }
     } catch(_) {}
+    if (_isGasGet_(input, init)) return _gasGetWithRetry_(input, init);   // 🛡 GAS向けGETは全部リトライ関所経由(v1.30.555)
     return _origFetch(input, init);
   };
 })();
