@@ -2794,7 +2794,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.557</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.558</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -11392,6 +11392,7 @@ function _jizenBaselineUpdatedAt_(r){
   return "2000-01-01T00:00:00.000Z";   // レコードに安定日時が無ければ固定の古い値(必ず編集より古い)
 }
 function applyJizenRecords_(records){
+  if(typeof JIZEN_AUTO_OFF !== 'undefined' && JIZEN_AUTO_OFF) return; // 🔕 自動事前カード停止中(v1.30.558)=生成も削除同期もしない
   const seen = loadJizenSeenIds_();
   const currentIds = new Set(records.map(r=>r.id));
   let inserted = 0;
@@ -12442,6 +12443,16 @@ function restoApplyProgress(prop, serverProgress){
 }
 // 🚫 完了済み工事の事前は隠す: 事前イベントを state.restorations と「物件名+号室(長いキー優先)」で突合し、
 //   突合工事が status=完了/完工/完成 or 完了日あり なら true(jizen_scheduleに完了案件が残っても表示しない)
+// 🔕 v1.30.558(山田「手入力でも事前入れるから、発注確定で自動で出るこの機能は一旦いらない」):
+//   見積アプリ発注確定→jizen_schedule の自動事前カードを一旦停止するキルスイッチ。
+//   true = ①applyJizenRecords_の自動生成/同期をスキップ ②既存の自動カード(_jizenSourceId or「事前 ◯◯」命名)を非表示。
+//   データは消さない(イベントもjizen_scheduleも無傷)= false に戻せばすべて復活する。
+//   手入力の事前(事前帯・1クリック動作・ドラッグ)はこのスイッチの影響を受けない。
+const JIZEN_AUTO_OFF = true;
+function isAutoJizenEvent_(ev){
+  if(!JIZEN_AUTO_OFF || !ev || ev.category !== '事前') return false;
+  return !!(ev._jizenSourceId || /^事前[\s　]/.test(String(ev.title||"")));
+}
 function isCompletedJizenEvent_(ev){
   if(!ev || ev.category !== '事前') return false;
   // ✍ v1.30.556(山田報告「予定入力で事前カテゴリを付けると消える」): この非表示フィルタは
@@ -14548,7 +14559,7 @@ function renderCalendar(){
     //   state.eventsに入れない=task-sync/永続化/重複統合の対象外。
     const rescheduleGhosts = (typeof buildRescheduleGhosts_==='function') ? buildRescheduleGhosts_() : [];
     // 📋 事務タスク(チェックリスト)はカレンダーに出さずバッジ専用にする(行削除で消えない)
-    const events = [...state.events, ...taikyoVirtuals, ...directMorningVE, ...rescheduleGhosts].filter(c.filterEvent).filter(e=>!isJimuTaskEvent_(e)).filter(e=>!isCompletedJizenEvent_(e)).filter(e=>!(e.source==='taikyo-shared' && e._dismissed));   // 🗑 取消した立会はグリッドから外し最終確認帯の下へ(v1.30.208)
+    const events = [...state.events, ...taikyoVirtuals, ...directMorningVE, ...rescheduleGhosts].filter(c.filterEvent).filter(e=>!isJimuTaskEvent_(e)).filter(e=>!isCompletedJizenEvent_(e)).filter(e=>!isAutoJizenEvent_(e)).filter(e=>!(e.source==='taikyo-shared' && e._dismissed));   // 🗑 取消した立会はグリッドから外し最終確認帯の下へ(v1.30.208) / 🔕 自動事前カードは停止中(v1.30.558)
     // 🔧 事前イベント: 時間未定(anytime)は専用の「事前帯」へ。時刻あり(timed)は通常どおり9-18時グリッドに配置(v1.30.136)
     const __isJizenEv = e => (typeof isJizenEvent_==='function' && isJizenEvent_(e));
     const __isBandJizen = e => !e.allday && __isJizenEv(e) && e.timeMode!=='timed';   // 時間未定の事前=帯
@@ -15632,7 +15643,7 @@ function renderMonth(){
     const dayCls = d.getDay()===6?"sat":(d.getDay()===0?"sun":"");
     // v1.12〜 退去立会(virtual)も含めて月ビューに表示(重複集約・ローテ済)
     const __taikyoVs = buildTaikyoVirtuals_();
-    const dayEvents = [...state.events, ...__taikyoVs].filter(ev=>ev.date===dStr && !ev.allday && isEventVisible(ev) && !isCompletedJizenEvent_(ev))
+    const dayEvents = [...state.events, ...__taikyoVs].filter(ev=>ev.date===dStr && !ev.allday && isEventVisible(ev) && !isCompletedJizenEvent_(ev) && !isAutoJizenEvent_(ev))
       .sort((a,b)=>timeToMin(a.start)-timeToMin(b.start));
     const dayLeaves = state.leaves.filter(l=>dStr>=l.start && dStr<=l.end);
     const MAX_SHOW = 8;
