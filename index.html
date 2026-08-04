@@ -2796,7 +2796,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.560</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.561</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -18913,6 +18913,9 @@ function showQuickAddSheet_(defaults={}, editEv=null){
         if(__qaTitle.value.indexOf('\n') >= 0){ e.preventDefault(); }   // 既に2行=これ以上改行しない
       }
     });
+    // ⌨ 開いた瞬間にタイトルへカーソル(v1.30.561・鈴木要望「すぐ文字入力できるように」)。
+    //   編集時は末尾にカーソル。setTimeout=シートDOM確定後にfocus(rAFはバックグラウンドで発火しない環境があるため不使用)
+    setTimeout(()=>{ try{ __qaTitle.focus(); const L=__qaTitle.value.length; __qaTitle.setSelectionRange(L, L); }catch(_){} }, 30);
   }
   bd.querySelector('#qa-cancel').onclick = ()=>bd.remove();
   bd.querySelector('#qa-detail').onclick = ()=>{
@@ -20711,7 +20714,10 @@ function staffBadgesMini_(staffStr, opts){
 //   マルチ著者: 最新remote取得→id単位LWW(updatedAt)マージ→自分の変更→push。コメントはidユニオン。
 const CAL_REPORTS_KEY = "buildcluster_calendar_reports";
 function loadCalReports_(){ try{ const o=JSON.parse(localStorage.getItem(CAL_REPORTS_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
-function saveCalReports_(m){ try{ localStorage.setItem(CAL_REPORTS_KEY, JSON.stringify(m||{})); }catch(e){} }
+// ⚠ v1.30.561: 保存の成否を返す。スマホは同一オリジン(tanka/ガント同居)の5MB枠が逼迫しやすく、
+//   容量超過(QuotaExceededError)を黙って握りつぶすと「投稿がどこにも保存されないのに✅共有しましたと出る」
+//   事故になる(鈴木報告「画像付きバグ報告が一覧に出ない」の真因候補)。
+function saveCalReports_(m){ try{ localStorage.setItem(CAL_REPORTS_KEY, JSON.stringify(m||{})); return true; }catch(e){ console.warn('[calendar_reports] ローカル保存失敗(容量?):', e && e.message); return false; } }
 // 📷 共有ストアはSheetセル(上限≈50000字)。画像1枚(base64)だけで超過し値全体が壊れる→全端末で空表示になる。
 //   対策: 共有に載せる版は安全予算(SHARE_MAX)内に収め、超える分は古い画像から落とす(=画像はローカル保持・hadPhoto印)。
 //   テキスト/コメント/ステータスは必ず共有される。v1.30.270
@@ -20845,10 +20851,12 @@ async function fetchCalReports_(opts={}){
 const CAL_REPORTS_PENDING_KEY = "buildcluster_calendar_reports_pending";
 function calReportsPending_(){ try{ return localStorage.getItem(CAL_REPORTS_PENDING_KEY)==="1"; }catch(_){ return false; } }
 function setCalReportsPending_(v){ try{ v ? localStorage.setItem(CAL_REPORTS_PENDING_KEY,"1") : localStorage.removeItem(CAL_REPORTS_PENDING_KEY); }catch(_){} }
-async function pushCalReports_(){
+async function pushCalReports_(extraMap){
+  // extraMap(v1.30.561): ローカル保存が容量超過で失敗していても、メモリ上の最新版を直接渡して共有に届ける
   const s = loadGasSettings(); if(!s.url || !s.token) return {ok:false, reason:"nosync"};
   // 最新remote→マージ→push(他人の投稿を消さない)
-  let map = loadCalReports_();
+  const localNow = ()=> extraMap ? mergeCalReports_(extraMap, loadCalReports_()) : loadCalReports_();
+  let map = localNow();
   try{
     const url = `${s.url}?action=get-shared-config&key=calendar_reports&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
     const res = await fetch(url, {method:'GET', redirect:'follow'});
@@ -20856,10 +20864,10 @@ async function pushCalReports_(){
       const d = await res.json();
       let raw = d.value;
       if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(e){ raw=null; } }
-      if(raw && raw.reports) map = mergeCalReports_(raw.reports, loadCalReports_());
+      if(raw && raw.reports) map = mergeCalReports_(raw.reports, localNow());
     }
   }catch(_){}
-  map = mergeCalReports_(map, loadCalReports_());   // ⚠await中の変更も拾う(スナップショットで上書きしない)
+  map = mergeCalReports_(map, localNow());   // ⚠await中の変更も拾う(スナップショットで上書きしない)
   saveCalReports_(map);
   try{
     const share = calReportsForShare_(map);   // 📷 画像はセル上限内に収める(超過分はローカル保持)v1.30.270
@@ -20911,11 +20919,27 @@ function mutateCalReport_(id, patch){
   const map = loadCalReports_();
   const cur = map[id] || {};
   map[id] = Object.assign({}, cur, patch, { id, updatedAt:new Date().toISOString() });
-  saveCalReports_(map);
+  // 💾 v1.30.561: 容量超過に3段構えで抵抗(①素直に保存②削除済み報告の画像を掃除して再挑戦③新規分の画像を諦めて本文だけ)。
+  //   どの段でも map(メモリ上の完全版)は pushCalReports_ に直接渡す=ローカルに書けなくても共有には必ず届く。
+  let photosDropped = 0;
+  let persisted = saveCalReports_(map);
+  if(!persisted){
+    try{ if(typeof pruneDeletedReportPhotos_==='function') pruneDeletedReportPhotos_(); }catch(_){}
+    persisted = saveCalReports_(map);
+    if(!persisted){
+      const ph = brPhotos_(map[id]);
+      if(ph.length){
+        photosDropped = ph.length;
+        brSetPhotos_(map[id], []); map[id].hadPhoto = true; map[id].photoCount = ph.length;
+        persisted = saveCalReports_(map);
+      }
+    }
+  }
   setCalReportsPending_(true);   // 📮 pushが成功するまでは「未共有」(途中でアプリを閉じても次回自動再送)v1.30.464
   updateBugReportBadge_();
   renderBugReportModal_();
-  return pushCalReports_().catch(e=>({ok:false, reason:"error", message:e&&e.message}));
+  return pushCalReports_(map).then(r=>Object.assign({localSaved:persisted, photosDropped}, r||{}))
+    .catch(e=>({ok:false, reason:"error", message:e&&e.message, localSaved:persisted, photosDropped}));
 }
 // 📮 未共有の報告が残っていたら再送(起動時/タブ復帰時/5分ごとの取得後に呼ばれる)v1.30.464
 function retryCalReportsPush_(){
@@ -21057,6 +21081,7 @@ function ensureBugReportModal_(){
     // 📷 画像は共有設定(calendar_reports)に直接載せて全端末へ(v1.30.399・上限200KBに拡大したので剥がれない)。Drive依存の30秒待ちは廃止。
     //    複数枚は photos[] に。旧版端末でも1枚目が見えるよう photo(単数)も同時に入れる(v1.30.465)
     const photos = await __brBuildPhotos();
+    const __phFail = __brDraft.length - photos.length;   // 📷 圧縮/読込に失敗した枚数(HEIC等この端末で扱えない形式・v1.30.561)
     btn.textContent = "共有中…";
     const r = await mutateCalReport_(uid(), brSetPhotos_({ type: ov.querySelector("#br-type").value, text, status:"open",
       by: getMyself()||"", at: new Date().toISOString(), appVer: ver, comments: [] }, photos));
@@ -21065,7 +21090,12 @@ function ensureBugReportModal_(){
     __brClearPhoto();
     renderBugReportModal_();
     if(r && r.ok){
-      if(typeof showAutoSyncToast==='function') showAutoSyncToast("✅ 報告を全員に共有しました");
+      const notes = [];
+      if(__phFail > 0) notes.push(`画像${__phFail}枚はこの端末で読み込めない形式のため添付できませんでした`);
+      if(r.photosDropped) notes.push(`端末の保存容量が足りず画像${r.photosDropped}枚は載せられませんでした(本文は共有済み)`);
+      if(!r.localSaved) notes.push("この端末の保存容量が足りないため、端末内には残せませんでした(共有には届いています)");
+      if(notes.length) alert("✅ 報告は全員に共有しました。ただし:\n・" + notes.join("\n・"));
+      else if(typeof showAutoSyncToast==='function') showAutoSyncToast("✅ 報告を全員に共有しました");
     }else{
       alert("⚠ 投稿はこの端末に保存しましたが、全員への共有に失敗しました。\n電波の良い所で🐞を開き直すと自動で再送します（🔄再共有でも送れます）。\n\n" + ((r&&r.message)||""));
     }
