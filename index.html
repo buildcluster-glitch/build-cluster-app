@@ -2796,7 +2796,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.559</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.560</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -9828,6 +9828,12 @@ function showEventStaffPicker(el, ev){
         <button data-c="home" class="${selCommute.home?"on":""}" style="background:#dcfce7">🏠 直帰</button>
       </div>
     </div>
+    ${(typeof isDoneEligibleEvent_==='function' && isDoneEligibleEvent_(ev)) ? `<div class="qp-sec">
+      <div class="qp-label">✅ 完了 <span style="font-weight:400;color:#94a3b8;font-size:10px">(全員で共有・タイトルに✅)</span></div>
+      <div class="qp-worker-pick" id="evDonePick">
+        <button data-done="1" class="${(typeof isEventDone_==='function' && isEventDone_(ev.id))?'on':''}" style="background:#dcfce7;color:#166534;font-weight:700" title="終わった予定に✓を付ける(ホバーの黒ポップと同じ機能・v1.30.560でここにも設置)">✓ 完了にする</button>
+      </div>
+    </div>` : ""}
     ${isJizenEvent_(ev) ? `<div class="qp-sec">
       <div class="qp-label">📅 別日にも追加 <span style="font-weight:400;color:#94a3b8;font-size:10px">(複数日にまたがる事前)</span></div>
       <div style="display:flex;gap:6px;align-items:center">
@@ -9945,6 +9951,16 @@ function showEventStaffPicker(el, ev){
       }
     };
   });
+  // ✅ 完了トグル(全員共有・v1.30.560): ホバー黒ポップの✓完了と同じ機能を担当ピッカーにも(山田「ここに付けたい」)
+  const __doneBtn = pop.querySelector('#evDonePick button[data-done="1"]');
+  if(__doneBtn){
+    __doneBtn.onclick = ()=>{
+      const next = !(typeof isEventDone_==='function' && isEventDone_(ev.id));
+      __doneBtn.classList.toggle('on', next);
+      if(typeof setEventDone_==='function') setEventDone_(ev.id, next).catch(()=>{});
+      render();
+    };
+  }
   // 📅 別日にも追加(事前が複数日にまたがる時): 選んだ日に「(N日目)」でコピー。タイトルが別なので重複統合で消えない v1.30.123
   const __jCopyBtn = pop.querySelector('#evJizenCopyBtn');
   if(__jCopyBtn){
