@@ -1510,6 +1510,8 @@
   .check-card:hover{background:var(--hover)}
   .check-card.overdue{border-left-color:var(--danger)}
   .check-card.soon{border-left-color:#f59e0b}
+  /* 🧹 清掃完了済=青枠(v1.30.559・山田要望)。insetリングなら親のoverflowに欠けない(v1.30.366の知見) */
+  .check-card.seisou-done{box-shadow:inset 0 0 0 2.5px #2563eb}
   /* ステータス完了の工事は「済」感を強調: グレースケール+取り消し線+ハンコ風スタンプ (ホバーで色復帰) */
   .check-card.done-gray{filter:grayscale(1);opacity:.55;position:relative;overflow:hidden}
   .check-card.done-gray:hover{filter:grayscale(0);opacity:1}
@@ -2794,7 +2796,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.558</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.559</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4397,7 +4399,7 @@
   //   v1.30.526: 小さいのに単発で往復していた5キーをバッチへ追加(山田「読み込みが重い」の実測対応)。
   //   起動時に同じGASへ10本近い並列リクエストが集中し、一部が404/60秒タイムアウトしていた。
   //   ⚠ calendar_reports(画像込み1.1MB)と hatchusho_data(149KB)は重いので今後もバッチに入れない。
-  var GC_KEYS = ['staffMaster','staffAvailability','taikyo_tachiai_schedule','taikyo_overrides','taikyo_comments','taikyo_shiryo_ready','repair_overrides','repair_comments','repair_pos','check_workers','phone_duty','toban_done','alerts','skip_visit','staff_leaves','event_deletions','jimu_messages','jizen_schedule','calendar_reminders','reschedule_traces','jimu_task_comments','jimu_task_tombstones','calendar_changelog','event_done','sanpai'];
+  var GC_KEYS = ['staffMaster','staffAvailability','taikyo_tachiai_schedule','taikyo_overrides','taikyo_comments','taikyo_shiryo_ready','repair_overrides','repair_comments','repair_pos','check_workers','phone_duty','toban_done','alerts','skip_visit','staff_leaves','event_deletions','jimu_messages','jizen_schedule','calendar_reminders','reschedule_traces','jimu_task_comments','jimu_task_tombstones','calendar_changelog','event_done','sanpai','check_seisou'];
   var TTL = 45000; // 起動バーストを束ねる窓(45秒)
   var _cache = null, _cacheAt = 0, _inflight = null, _unsupported = false;
   // 🔄 手動全同期で「今すぐ最新」を取るため、45秒キャッシュを外から無効化できるようにする(v1.30.224)
@@ -6001,6 +6003,12 @@ function showCheckStaffPicker(el, ck){
         <button data-c="home" class="${(ck.commute||'').includes('直帰')?'on':''}" style="background:#dcfce7">🏠 直帰</button>
       </div>
     </div>
+    <div class="qp-sec">
+      <div class="qp-label">🧹 清掃 <span style="font-weight:400;color:#94a3b8;font-size:10px">(全員で共有・ONでカードが青枠)</span></div>
+      <div class="qp-worker-pick" id="ckSeisouPick">
+        <button data-seisou="1" class="${(typeof isCheckSeisouDone_==='function' && isCheckSeisouDone_(ck.id))?'on':''}" style="background:#dbeafe;color:#1e40af;font-weight:700" title="清掃が完了した物件に付ける印。最終確認カードが青枠になります(全端末共有)">🧹 清掃完了済</button>
+      </div>
+    </div>
     ${alertInputHtml_((typeof checkAlertId_==='function') ? checkAlertId_(ck, (state.restorations||[]).find(r=>
         (ck.extDriveFileId && r.extDriveFileId===ck.extDriveFileId) || (ck.extEstimateId && r.extEstimateId===ck.extEstimateId)
       )) : ck.id)}
@@ -6051,6 +6059,16 @@ function showCheckStaffPicker(el, ck){
       });
     };
   });
+  // 🧹 清掃完了済 トグル(全員共有・閉じない・v1.30.559)
+  const __seisouBtn = pop.querySelector('#ckSeisouPick button');
+  if(__seisouBtn){
+    __seisouBtn.onclick = ()=>{
+      const next = !(typeof isCheckSeisouDone_==='function' && isCheckSeisouDone_(ck.id));
+      __seisouBtn.classList.toggle('on', next);
+      if(typeof setCheckSeisou_==='function') setCheckSeisou_(ck.id, next).catch(()=>{});
+      render();
+    };
+  }
   // 🚗 直行/直帰 トグル(全員共有・閉じない)
   let __ckCommute = { go:(ck.commute||'').includes('直行'), home:(ck.commute||'').includes('直帰') };
   pop.querySelectorAll('#ckCommutePick button').forEach(btn=>{
@@ -6455,7 +6473,8 @@ function renderCheckCard(ck, today){
   const __isDoneCk = /完了|完工|完成/.test(ck.status||"") && ck.status !== "清掃完了";
   // ✅ 完了は「✓完了」マークだけ付け、グレースケールにはしない=担当者の色を残す(誰が最確したか一目で分かる・木村報告 v1.30.403)
   const __doneMark = __isDoneCk ? `<span class="badge-sm" style="background:#16a34a;color:#fff;font-weight:700;white-space:nowrap" title="最終確認 完了">✓完了</span>` : "";
-  return `<div class="check-card ${urgCls}${isClickable?" clickable":""}${__isDoneCk?" is-done":""}" data-check-id="${ck.id}" ${styleAttr}>
+  const __seisouDone = (typeof isCheckSeisouDone_==='function') && isCheckSeisouDone_(ck.id);   // 🧹 清掃完了済=青枠(v1.30.559)
+  return `<div class="check-card ${urgCls}${isClickable?" clickable":""}${__isDoneCk?" is-done":""}${__seisouDone?" seisou-done":""}" data-check-id="${ck.id}" ${styleAttr}>
     ${/* 🏷「最終確認」バッジは撤去(v1.30.557・山田「いらない」=帯に居る時点で自明)。修繕ラベルも同様 */""}
     <div class="ck-title" style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">${syncMark}${__doneMark}<span class="ck-name">${escapeHtml(ck.title)}</span>${volBadge}${(!__soloStaffHideName && staffBadge)?`<span style="display:inline-flex;gap:2px;align-items:center">${staffBadge}</span>`:""}${__ckCommuteBadge}</div>
     <div class="row">
@@ -7486,6 +7505,51 @@ function isDoneEligibleEvent_(ev){
   if(typeof isJizenEvent_==='function' && isJizenEvent_(ev)) return false;
   return true;
 }
+// ===========================================================
+// 🧹 最終確認の「清掃完了済」を全端末共有 — shared-config 'check_seisou' v1.30.559(山田要望)
+//   現地担当ピッカーからトグル。ONのカードは青枠(inset ring)で囲む=清掃が済んだ物件が一目で分かる。
+//   キー=ck.id("gas-"+driveFileId=全端末で同一)。event_doneと同じLWW共有マップ方式(台帳には書かない)。
+//   value(JSON) = { dones:{ [ckId]:{done,by,at} }, updatedAt }
+// ===========================================================
+const CHECK_SEISOU_KEY = "buildcluster_check_seisou";
+function loadCheckSeisou_(){ try{ const o=JSON.parse(localStorage.getItem(CHECK_SEISOU_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
+function saveCheckSeisou_(map){ try{ localStorage.setItem(CHECK_SEISOU_KEY, JSON.stringify(map||{})); }catch(e){} }
+function isCheckSeisouDone_(id){ const e=loadCheckSeisou_()[id]; return !!(e && e.done); }
+async function fetchCheckSeisou_(opts={}){
+  const s=loadGasSettings(); const local=loadCheckSeisou_();
+  if(!s.url||!s.token){ return local; }
+  try{
+    const url=`${s.url}?action=get-shared-config&key=check_seisou&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res=await fetch(url,{method:'GET',redirect:'follow'}); if(!res.ok) throw new Error('HTTP '+res.status);
+    const data=await res.json(); let raw=data.value;
+    if(raw===''||raw==null) raw={dones:{}}; else if(typeof raw==='string'){ try{raw=JSON.parse(raw);}catch(e){raw={dones:{}};} }
+    const remote=(raw&&raw.dones&&typeof raw.dones==='object')?raw.dones:{};
+    const merged=mergeEventDoneMaps_(remote, local);   // {at}のLWWマージは event_done と共用
+    saveCheckSeisou_(merged);
+    if(!opts.silent && typeof render==='function') render();
+    return merged;
+  }catch(err){ if(!opts.silent) console.warn('[check_seisou] fetch失敗:', err.message); return local; }
+}
+async function pushCheckSeisouMap_(map){
+  const s=loadGasSettings(); if(!s.url||!s.token) return;
+  const payload={ dones:map||{}, updatedAt:new Date().toISOString() };
+  try{ await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'check_seisou',value:JSON.stringify(payload),token:s.token,savedBy:'calendar-app'})}); }catch(e){ console.warn('[check_seisou] push失敗:', e.message); }
+}
+async function setCheckSeisou_(id, on){
+  const stamp=()=>({ done:!!on, by:(typeof getMyself==='function'?getMyself():'')||'', at:new Date().toISOString() });
+  let map=loadCheckSeisou_(); map[id]=stamp(); saveCheckSeisou_(map);
+  const s=loadGasSettings();
+  if(s.url&&s.token){
+    try{ const url=`${s.url}?action=get-shared-config&key=check_seisou&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+      const res=await fetch(url,{method:'GET',redirect:'follow'});
+      if(res.ok){ const d=await res.json(); let raw=d.value; if(typeof raw==='string'){ try{raw=JSON.parse(raw);}catch(_){raw=null;} }
+        if(raw&&raw.dones&&typeof raw.dones==='object'){ map=mergeEventDoneMaps_(raw.dones, loadCheckSeisou_()); map[id]=stamp(); saveCheckSeisou_(map); } }
+    }catch(_){}
+  }
+  await pushCheckSeisouMap_(map);
+  return map;
+}
+
 // ===========================================================
 // 🖱 修繕アポの「表示位置」を全端末共有 — shared-config 'repair_pos' v1.30.161
 //   時刻未設定(終日帯)の修繕を、台帳に時刻を書かずカレンダーの好きな行に仮置きするための位置(分・0:00からの分)。
@@ -12851,6 +12915,7 @@ async function syncChecksFromGAS(opts){
     // ⚠ 再同期時はアラートも最新を取りに行く(v1.30.115)
     if(typeof fetchAlerts_==='function') fetchAlerts_({silent:true}).catch(()=>{});
     if(typeof fetchEventDone_==='function') fetchEventDone_({silent:true}).catch(()=>{});
+    if(typeof fetchCheckSeisou_==='function') fetchCheckSeisou_({silent:true}).catch(()=>{});   // 🧹 清掃完了済も最新化(v1.30.559)
     if(typeof fetchSanpai_==='function') fetchSanpai_({silent:true}).catch(()=>{});
     // 🚫 再同期時は事前「行かない」も最新を取りに行く(v1.30.131)
     if(typeof fetchSkipVisit_==='function') fetchSkipVisit_({silent:true}).catch(()=>{});
@@ -25146,6 +25211,11 @@ setTimeout(()=>afterOpenSync_(()=>{
       if(typeof fetchEventDone_==='function'){
         fetchEventDone_({silent:true, push:true}).catch(()=>{});
         setInterval(()=>fetchEventDone_({silent:true}).catch(()=>{}), 5*60*1000);
+      }
+      // 🧹 清掃完了済(全員共有)=起動時+5分ごと(v1.30.559)
+      if(typeof fetchCheckSeisou_==='function'){
+        fetchCheckSeisou_({silent:true}).catch(()=>{});
+        setInterval(()=>fetchCheckSeisou_({silent:true}).catch(()=>{}), 5*60*1000);
       }
       // 🗑 産廃回収(全員共有)=起動時+5分ごと(v1.30.428)
       if(typeof fetchSanpai_==='function'){
