@@ -2796,7 +2796,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.563</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.564</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -13636,14 +13636,20 @@ function isEventVisible(ev){
   }
   // 🏢 出社スタッフバッジ フィルタ (複数選択可)
   if(selectedStaffFilter.size > 0){
-    let hit = false;
-    if(selectedStaffFilter.has(ev.staff)) hit = true;
-    if(!hit && Array.isArray(ev.participants)){
-      for(const p of ev.participants){
-        if(selectedStaffFilter.has(p)){ hit = true; break; }
+    // 🕳 担当なし予定は絞り込みの巻き添えにしない(v1.30.564・山田)。「南部を隠しただけで
+    //    誰のものでもない予定まで消えた」事故対応。担当なし=まだ誰がやるか決まっていない予定
+    //    なので、人で絞っている時こそ見えるべき。マイモード(👤自分のみ)は従来どおり対象外。
+    const __unassigned = !ev.staff && !(Array.isArray(ev.participants) && ev.participants.length);
+    if(!__unassigned){
+      let hit = false;
+      if(selectedStaffFilter.has(ev.staff)) hit = true;
+      if(!hit && Array.isArray(ev.participants)){
+        for(const p of ev.participants){
+          if(selectedStaffFilter.has(p)){ hit = true; break; }
+        }
       }
+      if(!hit) return false;
     }
-    if(!hit) return false;
   }
   return true;
 }
