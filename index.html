@@ -2796,7 +2796,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.562</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.563</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -22379,11 +22379,33 @@ function restoPushProgressDebounced(propId){
   if(_restoPushTimers[propId]) clearTimeout(_restoPushTimers[propId]);
   _restoPushTimers[propId] = setTimeout(()=>restoPushProgressNow(propId), 2000);
 }
+// 📮 v1.30.563(山田報告「工事進捗入れると同期失敗」): 進捗pushは1発勝負でリトライ無しだった。
+//   GASの混雑発作(72秒404が実測されている)を踏むと、入力は端末に残るのに共有されず、
+//   次にその物件を編集するまで誰にも届かなかった。→ 未送信キュー(propId単位)+自動再送。
+//   saveProgressは「その物件の進捗まるごと上書き(LWW)」=再送しても二重にならない(再送安全)。
+//   再送時は送信時点の最新stateから作り直すので、後から足した編集も一緒に届く。
+const RESTO_PROG_PENDING_KEY = "bc_resto_progress_pending";
+function _progPendingMap_(){ try{ const o=JSON.parse(localStorage.getItem(RESTO_PROG_PENDING_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(_){ return {}; } }
+function _progPendingSet_(propId, on){
+  try{
+    const m=_progPendingMap_();
+    if(on) m[propId]=Date.now(); else delete m[propId];
+    localStorage.setItem(RESTO_PROG_PENDING_KEY, JSON.stringify(m));
+  }catch(_){}
+}
+let __progRetryTimer = null;
+function retryPendingProgress_(){
+  const ids = Object.keys(_progPendingMap_());
+  if(!ids.length) return;
+  if(typeof navigator!=='undefined' && navigator.onLine===false) return;
+  console.log('[resto] 未共有の進捗を再送:', ids.length, '件');
+  ids.forEach((id,i)=> setTimeout(()=>restoPushProgressNow(id), i*1500));   // 直列気味に(同時多発でGASを叩かない)
+}
 async function restoPushProgressNow(propId){
   const s = loadGasSettings();
   if(!s.url) return;
   const prop = (state.restorations||[]).find(x=>x.id===propId);
-  if(!prop) return;
+  if(!prop){ _progPendingSet_(propId, false); return; }   // 台帳から消えた物件の残骸キューは掃除
   // buildProgressPayload 相当
   const tasks = {};
   (prop.tasks||[]).forEach(t=>{
@@ -22406,9 +22428,12 @@ async function restoPushProgressNow(propId){
     const data = await res.json().catch(()=>null);
     if(!data || data.ok !== true) throw new Error((data && data.error) || "サーバー応答が不正(master_sync未対応の可能性)");
     console.log("[resto] progress pushed:", prop.name, prop.room, data.keys!=null?`(共有${data.keys}件)`:"");
+    _progPendingSet_(propId, false);   // ✅ 共有まで届いた(v1.30.563)
   }catch(e){
     console.warn("[resto] progress push failed", e);
-    if(typeof showAutoSyncToast==='function') showAutoSyncToast("⚠ 進捗の共有保存に失敗(この端末には保存済): "+e.message);
+    _progPendingSet_(propId, true);    // 📮 未共有として記録→自動再送(v1.30.563)
+    if(!__progRetryTimer){ __progRetryTimer = setTimeout(()=>{ __progRetryTimer=null; retryPendingProgress_(); }, 20000); }   // まず20秒後に1回
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast("⚠ 進捗の共有保存に失敗(この端末には保存済・自動で再送します)");
   }
 }
 // state保存 + 詳細表示中なら進捗プッシュ
@@ -25348,6 +25373,12 @@ setTimeout(()=>afterOpenSync_(()=>{
         checkRequiredVersion_();
         setInterval(()=>checkRequiredVersion_(), 30*60*1000);
         window.addEventListener('focus', ()=>checkRequiredVersion_());
+      }
+      // 📮 未共有の工事進捗を自動再送(v1.30.563)=起動15秒後+5分ごと+フォーカス時
+      if(typeof retryPendingProgress_==='function'){
+        setTimeout(()=>retryPendingProgress_(), 15000);
+        setInterval(()=>retryPendingProgress_(), 5*60*1000);
+        window.addEventListener('focus', ()=>retryPendingProgress_());
       }
       // 🗑 産廃回収(全員共有)=起動時+5分ごと(v1.30.428)
       if(typeof fetchSanpai_==='function'){
