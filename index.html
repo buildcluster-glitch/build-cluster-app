@@ -2796,7 +2796,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.561</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.562</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4399,7 +4399,7 @@
   //   v1.30.526: 小さいのに単発で往復していた5キーをバッチへ追加(山田「読み込みが重い」の実測対応)。
   //   起動時に同じGASへ10本近い並列リクエストが集中し、一部が404/60秒タイムアウトしていた。
   //   ⚠ calendar_reports(画像込み1.1MB)と hatchusho_data(149KB)は重いので今後もバッチに入れない。
-  var GC_KEYS = ['staffMaster','staffAvailability','taikyo_tachiai_schedule','taikyo_overrides','taikyo_comments','taikyo_shiryo_ready','repair_overrides','repair_comments','repair_pos','check_workers','phone_duty','toban_done','alerts','skip_visit','staff_leaves','event_deletions','jimu_messages','jizen_schedule','calendar_reminders','reschedule_traces','jimu_task_comments','jimu_task_tombstones','calendar_changelog','event_done','sanpai','check_seisou'];
+  var GC_KEYS = ['staffMaster','staffAvailability','taikyo_tachiai_schedule','taikyo_overrides','taikyo_comments','taikyo_shiryo_ready','repair_overrides','repair_comments','repair_pos','check_workers','phone_duty','toban_done','alerts','skip_visit','staff_leaves','event_deletions','jimu_messages','jizen_schedule','calendar_reminders','reschedule_traces','jimu_task_comments','jimu_task_tombstones','calendar_changelog','event_done','sanpai','check_seisou','calendar_required_version'];
   var TTL = 45000; // 起動バーストを束ねる窓(45秒)
   var _cache = null, _cacheAt = 0, _inflight = null, _unsupported = false;
   // 🔄 手動全同期で「今すぐ最新」を取るため、45秒キャッシュを外から無効化できるようにする(v1.30.224)
@@ -7548,6 +7548,86 @@ async function setCheckSeisou_(id, on){
   }
   await pushCheckSeisouMap_(map);
   return map;
+}
+
+// ===========================================================
+// ⬆ 最低バージョン関門 — shared-config 'calendar_required_version' v1.30.562
+//   台帳DBセッション依頼(project_db_migration_calendar_handoff 2026-08-06): 9月のDB切替日に
+//   旧版端末が旧経路へ書き込んで事故る(v521削除伝播・✓完了再汚染と同型)のを防ぐ2重保険の端末側。
+//   値の形: "1.30.570" または {"min":"1.30.570","msg":"お知らせ文"}(JSON)。空/未設定/解釈不能=何もしない(安全側)。
+//   挙動: 自分が古い→①まず1回だけ自動リロード(キャッシュバスタ付き)②それでも古い(Pagesキャッシュ等)
+//        →全画面ブロック(操作不能=書き込みを物理的に止める)+再読込ボタン。条件解除で自動的に外れる。
+//   設定: コンソールで setRequiredCalendarVersion_('1.30.570') / 解除は setRequiredCalendarVersion_('')
+// ===========================================================
+function __verParts_(s){ return String(s||'').replace(/^v/,'').trim().split('.').map(n=>parseInt(n,10)); }
+function __verLt_(a, b){   // a < b (どちらか解釈不能ならfalse=関門を発動しない)
+  const A=__verParts_(a), B=__verParts_(b);
+  if(!A.length || !B.length || A.some(isNaN) || B.some(isNaN)) return false;
+  for(let i=0;i<Math.max(A.length,B.length);i++){ const x=A[i]||0, y=B[i]||0; if(x!==y) return x<y; }
+  return false;
+}
+function __myAppVersion_(){ try{ return ((document.querySelector('.app-title span')||{}).textContent||'').trim(); }catch(_){ return ''; } }
+function applyRequiredVersion_(rawVal){
+  try{
+    if(!rawVal) return 'none';
+    let req = rawVal, msg = '';
+    if(typeof rawVal==='string' && rawVal.trim().startsWith('{')){ try{ const o=JSON.parse(rawVal); req=o.min||''; msg=o.msg||''; }catch(_){} }
+    if(typeof req!=='string') return 'none';
+    req = req.replace(/^v/,'').trim();
+    if(!/^\d+(\.\d+)*$/.test(req)) return 'none';
+    const mine = __myAppVersion_();
+    if(!mine || !__verLt_(mine, req)){
+      const ov = document.getElementById('verGateOverlay'); if(ov) ov.remove();   // 条件解除→ブロック解除+試行フラグ掃除
+      try{ Object.keys(localStorage).forEach(k=>{ if(k.indexOf('bc_ver_gate_tried_')===0) localStorage.removeItem(k); }); }catch(_){}
+      return 'ok';
+    }
+    const triedKey = 'bc_ver_gate_tried_' + req;
+    let tried = false; try{ tried = localStorage.getItem(triedKey)==='1'; }catch(_){}
+    if(!tried){
+      try{ localStorage.setItem(triedKey,'1'); }catch(_){}
+      console.warn('[version-gate] 要求v'+req+' > 自分'+mine+' → 自動リロード(1回だけ)');
+      setTimeout(()=>{ try{ location.replace(location.pathname + '?vg=' + Date.now()); }catch(_){ location.reload(); } }, 400);
+      return 'reload';
+    }
+    showVersionGate_(req, mine, msg);
+    return 'gate';
+  }catch(e){ return 'error'; }
+}
+function showVersionGate_(req, mine, msg){
+  if(document.getElementById('verGateOverlay')) return;
+  const ov = document.createElement('div');
+  ov.id = 'verGateOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(15,23,42,.92);display:flex;align-items:center;justify-content:center;padding:20px';
+  const escMsg = msg ? String(msg).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) : '';
+  ov.innerHTML = `<div style="background:#fff;border-radius:14px;max-width:420px;width:100%;padding:22px 20px;text-align:center">
+    <div style="font-size:38px">⬆️</div>
+    <div style="font-size:17px;font-weight:800;margin:6px 0;color:#0f172a">アプリの更新が必要です</div>
+    <div style="font-size:13px;color:#475569;line-height:1.7;margin-bottom:8px">この端末は ${__myAppVersion_()||'?'} 、必要なのは v${req} です。<br>データ保護のため、更新するまで操作できません。</div>
+    ${escMsg?`<div style="font-size:12.5px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-bottom:10px;text-align:left">${escMsg}</div>`:''}
+    <button id="verGateReload" style="width:100%;padding:12px;border:0;border-radius:9px;background:#2563eb;color:#fff;font-size:15px;font-weight:800;cursor:pointer">🔄 今すぐ更新（再読込）</button>
+    <div style="font-size:11px;color:#94a3b8;margin-top:8px">押しても変わらない場合は、少し時間をおいてもう一度（配布に最大10分かかります）</div>
+  </div>`;
+  document.body.appendChild(ov);
+  document.getElementById('verGateReload').onclick = ()=>{ try{ location.replace(location.pathname + '?vg=' + Date.now()); }catch(_){ location.reload(); } };
+}
+async function checkRequiredVersion_(){
+  try{
+    const s = loadGasSettings(); if(!s.url || !s.token) return;
+    const url = `${s.url}?action=get-shared-config&key=calendar_required_version&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res = await fetch(url, {method:'GET', redirect:'follow'});
+    if(!res.ok) return;
+    const d = await res.json();
+    applyRequiredVersion_(d && d.value);
+  }catch(_){}
+}
+// 管理者用(コンソール): 要求バージョンを設定/解除
+async function setRequiredCalendarVersion_(ver){
+  const s = loadGasSettings(); if(!s.url || !s.token){ console.warn('GAS未設定'); return; }
+  const r = await fetch(s.url, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({action:'save-shared-config', key:'calendar_required_version', value:String(ver||''), token:s.token, savedBy:'calendar-admin'})});
+  const d = await r.json().catch(()=>null);
+  console.log('[version-gate] 設定:', ver||'(解除)', d);
+  return d;
 }
 
 // ===========================================================
@@ -25262,6 +25342,12 @@ setTimeout(()=>afterOpenSync_(()=>{
       if(typeof fetchCheckSeisou_==='function'){
         fetchCheckSeisou_({silent:true}).catch(()=>{});
         setInterval(()=>fetchCheckSeisou_({silent:true}).catch(()=>{}), 5*60*1000);
+      }
+      // ⬆ 最低バージョン関門(v1.30.562・DB切替日の旧版端末対策)=起動時+30分ごと+フォーカス時
+      if(typeof checkRequiredVersion_==='function'){
+        checkRequiredVersion_();
+        setInterval(()=>checkRequiredVersion_(), 30*60*1000);
+        window.addEventListener('focus', ()=>checkRequiredVersion_());
       }
       // 🗑 産廃回収(全員共有)=起動時+5分ごと(v1.30.428)
       if(typeof fetchSanpai_==='function'){
