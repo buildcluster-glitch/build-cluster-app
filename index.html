@@ -2796,7 +2796,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.564</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.565</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4651,7 +4651,7 @@ function contractorInfo(name){ return CONTRACTORS.find(c=>c.name===name); }
 //     ここに正式名→略称のキーワード表を持つ。新しい取引先が増えたらこの表に1行足す。
 const MOTOUKE_KEYWORDS = [
   [/ワールドレジデンシャル|world\s*residential/i, "WRD"],       // ワールドレジデンシャル / 〜東日本
-  [/ハウジングショップ|hs\s*田中/i,              "HS田中"],     // ハウジングショップ田中
+  [/ハウジングショップ|ハウビングショップ|hs\s*田中|^田中$/i, "HS田中"], // ハウジングショップ田中(物件マスタに「田中」「ハウビング」表記ゆれ有・v1.30.565)
   [/ジェイエイ|ＪＡ|\bJA\b/i,                    "JA"],         // ジェイエイ仙台 泉不動産センター 等
   [/東北分譲/,                                    "東北分譲"],   // 東北分譲住宅販売
   [/山一/,                                        "山一"],
@@ -9520,8 +9520,12 @@ function buildTaikyoVirtualEvent_(r){
     id: `_taikyo_${r.id}`,
     title: `${r.bukken}${r.room?" "+r.room:""}${effTime && !m ? ` (${effTime})` : ""}`,
     category: isProvisional ? "立会(未定)" : "立会",
-    contractor: (taikyoMotouke_(r.bukken) || "山一"),  // 元請けを物件マスタから判定(JSB/みどり等)・無ければ山一(v1.30.40)
-    _motouke: taikyoMotouke_(r.bukken) || "",          // 元請けバッジ表示用(空=不明→山一扱い)
+    // 元請けは物件マスタから判定(JSB/みどり/HS田中等)。⚠v1.30.565: 引けない時の「山一」決め打ちを撤去。
+    //   立会レコード自体に元請け欄が無い(id/bukken/room/date/time/staff/address/koji)ため、
+    //   マスタ未登録=不明。不明を山一と名乗ると他社の立会が山一としてカウントされる(まどか報告
+    //   「ハウジングショップ田中の立会が山一立会になる」)。不明は未分類=「登録して」のサイン。
+    contractor: taikyoMotouke_(r.bukken),
+    _motouke: taikyoMotouke_(r.bukken) || "",          // 元請けバッジ表示用(空=不明)
     staff: effectiveStaff,
     _taikyoRawId: r.id,           // override 用に元id保持
     _taikyoOrigStaff: r.staff || "",
@@ -13479,6 +13483,11 @@ function motoukeKey_(name){
   if(/ジェイエイ|ＪＡ|JA仙台|泉不動産センター/.test(s)) return "JA";
   if(/JSB/i.test(s)) return "JSB";
   if(/光和/.test(s)) return "光和";
+  // 🔗 v1.30.565: ここまでで未知なら MOTOUKE_KEYWORDS(チップのバッジ表記と同じ表)にも当てる。
+  //   これが無いと「田中」がバッジでは"HS田中立会"、フィルタでは"田中"の別チップ、と食い違う
+  //   (物件マスタの元請け表記ゆれ=ハウビングショップ田中/田中 で実際に発生)。判定を1本に揃える。
+  const mk = (typeof motoukeFromText_==='function') ? motoukeFromText_(raw) : null;
+  if(mk && mk.name) return mk.name;
   return short || raw;                                // 未知は短縮名(灰チップ)
 }
 // イベントの元請け: contractorがあればそれ、無ければ物件マスタからタイトルで推定(事前等で空のケース・v1.30.43)
