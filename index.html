@@ -2796,7 +2796,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.565</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.566</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -16298,20 +16298,27 @@ function __quickPopKey(e){
 }
 // 🚫 ドタキャン跡: 古い日付にグレーのマーカー予定を1件作る(普通の予定=全PC同期・削除可)v1.30.129
 //   本体(立会/修繕)は別途新しい日付へ変更する運用。マーカーは「🚫ドタキャン 物件名」グレーチップ。
-function createDotakyanGhost_(label, date, time, reason){
+//   🔍 v1.30.566(鈴木報告): 理由が「施工日決定」の時だけ跡をグレーにしない。現調は実際に行った予定で
+//     キャンセルではないため、グレー化すると「流れた」ように見える。opts={keepColor,titlePrefix,color}。
+function createDotakyanGhost_(label, date, time, reason, opts){
   if(!date){ alert('元の日付が取得できませんでした'); return null; }
   const m = String(time||"").match(/^(\d{1,2})[:：](\d{2})/);
   const __reasonTag = reason ? `（${reason}）` : "";
+  const __keep = !!(opts && opts.keepColor);
+  const __prefix = (opts && opts.titlePrefix) || "🔄日時変更";
   const ev = {
     id: uid(),
-    title: `🔄日時変更 ${label}${time?(" "+time):""}${__reasonTag}`.trim(),
+    title: `${__prefix} ${label}${time?(" "+time):""}${__reasonTag}`.trim(),
     category:"", contractor:"", staff:"", participants:[],
     date: date,
     start: m ? `${String(m[1]).padStart(2,'0')}:${m[2]}` : "09:00",
     end:   m ? `${String(Math.min(+m[1]+1,18)).padStart(2,'0')}:${m[2]}` : "10:00",
     allday:false, timeMode: m ? "timed" : "anytime",
-    color:"#cbd5e1",   // グレー=日時変更跡(旧:ドタキャン跡)
-    memo:`日時変更(元の予定)\n元の予定: ${date}${time?(" "+time):""}${reason?`\n理由: ${reason}`:""}`,
+    // グレー=日時変更跡(旧:ドタキャン跡)。keepColor時は担当色(引けなければ既定色)のまま残す
+    color: __keep ? ((opts && opts.color && opts.color !== "#fff") ? opts.color : "") : "#cbd5e1",
+    memo: __keep
+      ? `現調(実施済み)\n施工日が決まったため対応予定日を移動\n現調: ${date}${time?(" "+time):""}`
+      : `日時変更(元の予定)\n元の予定: ${date}${time?(" "+time):""}${reason?`\n理由: ${reason}`:""}`,
     importance:[], updatedAt:new Date().toISOString(),
   };
   if(typeof pushHistory==='function') pushHistory();
@@ -16319,7 +16326,9 @@ function createDotakyanGhost_(label, date, time, reason){
   if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(ev,'upsert'); }catch(_){} }
   saveState();
   if(typeof render==='function') render();
-  if(typeof showAutoSyncToast==='function') showAutoSyncToast(`🔄 ${date} に日時変更跡を残しました。新しい日付に変更してください`);
+  if(typeof showAutoSyncToast==='function') showAutoSyncToast(__keep
+    ? `🔍 ${date} に現調を残しました。新しい施工日に変更してください`
+    : `🔄 ${date} に日時変更跡を残しました。新しい日付に変更してください`);
   return ev;
 }
 // ====================================================================
@@ -16688,9 +16697,18 @@ function showRepairQuickPop(r, anchorEl){
     const t = pop.querySelector('#qp-resp-time').value.trim();
     const reason = __getReason_();
     if(!d){ alert('元のアポ日付が空です'); return; }
-    if(!confirm(`${d}${t?(" "+t):""} に「日時変更」跡(グレー)を残しますか？\nこの後、日付を新しい日に変えて「変更」を押してください。`)) return;
-    createDotakyanGhost_(`${r.name}${r.room?" "+r.room:""}`, d, t, reason);
-    __dotaBtn.textContent = '✓ 日時変更跡を残しました'; __dotaBtn.disabled = true;
+    // 🔍 v1.30.566: 理由=施工日決定 は現調を実施済み→色を残す(詳細シート側と同じ作法・鈴木報告)
+    const __isSeko = /施工日決定/.test(reason);
+    const __msg = __isSeko
+      ? `${d}${t?(" "+t):""} に「現調」を残しますか？(担当色のまま)\nこの後、日付を施工日に変えて「変更」を押してください。`
+      : `${d}${t?(" "+t):""} に「日時変更」跡(グレー)を残しますか？\nこの後、日付を新しい日に変えて「変更」を押してください。`;
+    if(!confirm(__msg)) return;
+    createDotakyanGhost_(`${r.name}${r.room?" "+r.room:""}`, d, t, reason, __isSeko ? {
+      keepColor: true,
+      titlePrefix: '🔍現調',
+      color: (typeof repairChipColor_==='function') ? repairChipColor_(r.worker||"") : "",
+    } : null);
+    __dotaBtn.textContent = __isSeko ? '✓ 現調を残しました' : '✓ 日時変更跡を残しました'; __dotaBtn.disabled = true;
   }; }
   // ⏰ リマインド(修繕・v1.30.377)。3日前/前日はアポ日基準。担当=r.worker。
   {
@@ -22214,10 +22232,20 @@ function repairDetailDotakyan_(){
   const free = ((document.getElementById("rs-resp-reason-free")||{}).value || "").trim();
   const reason = (picked && free) ? `${picked}：${free}` : (picked || free);
   if(!d){ alert('元のアポ日付が空です'); return; }
-  if(!confirm(`${d}${t?(" "+t):""} に「日時変更」跡(グレー)を残しますか？\nこの後、日付を新しい日に変えて「保存」を押してください。`)) return;
-  createDotakyanGhost_(`${r.name}${r.room?" "+r.room:""}`, d, t, reason);
+  // 🔍 v1.30.566(鈴木報告「施工日決定で現調日がグレーになる・カラーのままにしたい」):
+  //   理由=施工日決定 は流れた予定ではなく「現調を実施→施工日が別途決まった」なので色を残す。
+  const __isSeko = /施工日決定/.test(reason);
+  const __msg = __isSeko
+    ? `${d}${t?(" "+t):""} に「現調」を残しますか？(担当色のまま)\nこの後、日付を施工日に変えて「保存」を押してください。`
+    : `${d}${t?(" "+t):""} に「日時変更」跡(グレー)を残しますか？\nこの後、日付を新しい日に変えて「保存」を押してください。`;
+  if(!confirm(__msg)) return;
+  createDotakyanGhost_(`${r.name}${r.room?" "+r.room:""}`, d, t, reason, __isSeko ? {
+    keepColor: true,
+    titlePrefix: '🔍現調',
+    color: (typeof repairChipColor_==='function') ? repairChipColor_(r.worker||"") : "",
+  } : null);
   const btn = document.getElementById("rs-dotakyan");
-  if(btn){ btn.textContent = '✓ 日時変更跡を残しました'; btn.disabled = true; }
+  if(btn){ btn.textContent = __isSeko ? '✓ 現調を残しました' : '✓ 日時変更跡を残しました'; btn.disabled = true; }
 }
 // ✅ 修繕「✓完了にする」ワンクリック: 最終確認(原状回復)の✓完了ボタンと同じく、ステータス=完了+完了日=今日を
 //   1タップで確定して即座に台帳へ書戻す(南部/大村要望・7値ピッカーから完了を選んで別途保存する2手間を1手間に)v1.30.349
