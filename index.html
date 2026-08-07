@@ -1017,6 +1017,9 @@
   .quick-pop.task-pop .tp-add{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
   .quick-pop.task-pop .tp-add-input{flex:1;min-width:120px;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:6px}
   .quick-pop.task-pop .tp-add-who{flex:0 0 auto;font-size:12px;font-weight:600;padding:4px 6px;border:1px solid var(--border-strong);border-radius:6px;background:#fff;cursor:pointer;max-width:96px}
+  /* 🔄 追加時ステータス(v1.30.568)。選択中は進行中の青で「今どっちで足すか」がひと目で分かる */
+  .quick-pop.task-pop .tp-add-status{flex:0 0 auto;font-size:12px;font-weight:600;padding:4px 6px;border:1px solid var(--border-strong);border-radius:6px;background:#fff;cursor:pointer}
+  .quick-pop.task-pop .tp-add-status.on{background:#3b82f6;color:#fff;border-color:#3b82f6}
   .quick-pop.task-pop .tp-add-btn{border:0;background:var(--accent);color:#fff;border-radius:6px;font-size:12px;font-weight:700;padding:5px 12px;cursor:pointer}
   /* 1行集約タスクチップ: クリック可 + ミニ進捗バー */
   .event-chip .chip-title.chip-checklist{cursor:pointer}
@@ -2796,7 +2799,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.567</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.568</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -10560,12 +10563,15 @@ function setTaskStatus_(title, lineIndex, status, who){
   return lines.join("\n");
 }
 // タスク行を追加(末尾に ・text)。by を渡すと「追加した人」を 〔+名前〕 として付与
-function addTaskLine_(title, text, by){
+//   status に "進行中" を渡すと 🔄 付きで追加できる(v1.30.568・山田要望「追加する時ステータス進行中でも」)。
+//   マーカー位置は setTaskStatus_ と同じ(TASK_BULLET_RE の m[2])＝後からの切替と完全に互換。
+function addTaskLine_(title, text, by, status){
   text = String(text||"").trim(); if(!text) return title;
   const base = String(title||"");
   const sep = (base==="" || base.endsWith("\n")) ? "" : "\n";
   const tag = by ? ` 〔+${String(by).trim()}〕` : "";
-  return base + sep + "・" + text + tag;
+  const marker = (status === "進行中") ? "🔄 " : "";
+  return base + sep + marker + "・" + text + tag;
 }
 // タスク行をゴミ箱へ(🗑 付与・完了マークは外す)= 復元可能な削除
 function deleteTaskLine_(title, lineIndex){
@@ -10881,7 +10887,7 @@ function pruneTombstonedTasks_(){
   }catch(_){ return false; }
 }
 // 📌 指定スタッフの事務タスクリストへ1行追加(無ければ新規作成)。by=追加した人。追加先イベントを返す
-function addTaskToStaff_(staff, text, by){
+function addTaskToStaff_(staff, text, by, status){
   text = String(text||"").trim(); if(!staff || !text) return null;
   { const k=taskBodyKey_(text); if(k && typeof mutateJimuTombstones_==='function'){ try{ mutateJimuTombstones_(staff, [{key:k, on:false}]); }catch(_){} } }   // 🪦 追加=墓標解除(v1.30.331)
   let tev = (typeof getOrConsolidateJimuEvent_==='function') ? getOrConsolidateJimuEvent_(staff) : null;
@@ -10893,7 +10899,7 @@ function addTaskToStaff_(staff, text, by){
             color:"", memo:"", importance:[], updatedAt:new Date().toISOString() };
     state.events.push(tev);
   }
-  tev.title = addTaskLine_(tev.title, text, by);
+  tev.title = addTaskLine_(tev.title, text, by, status);
   tev.updatedAt = new Date().toISOString();
   saveState();
   if(typeof cloudQueueEventChange==='function') cloudQueueEventChange(tev,'upsert');
@@ -10952,6 +10958,7 @@ function showTaskChecklistPopup(el, ev, opts){
   let trashCollapsed = true;   // ゴミ箱は初期は畳む
   let archiveCollapsed = true; // アーカイブは初期は畳む
   let focusAdd = false;        // 追加後に入力へ再フォーカス
+  let addStatus = "未着手";    // ＋追加時のステータス(v1.30.568・山田要望)。renderInnerを跨いで選択を保持
   let msgReactPickerId = null; // 💬業務連絡 リアクション絵文字ピッカー表示中のmsg id(v1.30.90)
   // タイトルを transform で更新→保存→再描画
   const mutate = (transform)=>{
@@ -11189,6 +11196,10 @@ function showTaskChecklistPopup(el, ev, opts){
       </div>
       <div class="tp-add">
         <input type="text" class="tp-add-input" placeholder="＋ タスクを追加 (Enter)">
+        <select class="tp-add-status" title="追加時のステータス(未着手/進行中)">
+          <option value="未着手" ${addStatus!=='進行中'?'selected':''}>未</option>
+          <option value="進行中" ${addStatus==='進行中'?'selected':''}>🔄 進行中</option>
+        </select>
         ${(()=>{
           // 事務タスクのときだけ「追加先の担当」を選べる(他人のリストにも入れられる)
           if(cur.category !== '事務' || typeof STAFF==='undefined') return "";
@@ -11351,20 +11362,23 @@ function showTaskChecklistPopup(el, ev, opts){
       const me = (typeof getMyself==='function') ? getMyself() : "";
       const whoSel = pop.querySelector('.tp-add-who');
       const target = whoSel ? whoSel.value : (cur.staff||"");
+      // 🔄 追加時ステータス(v1.30.568)。選択はrenderInnerを跨いで保持=連続で進行中を足せる
+      const stSel = pop.querySelector('.tp-add-status');
+      addStatus = stSel ? stSel.value : "未着手";
       // 開いているリストの所有者でない人が追加 → 追加者名を 〔+me〕 で記録(誰が頼んだか分かる)
       const by = (me && target && target !== me) ? me : "";
       if(cur.category==='事務' && target && target !== (cur.staff||"")){
         // 他人の事務リストへ追加
         if(me && !confirm(`${target}さんのタスクに追加しますか？`)){ return; }
-        addTaskToStaff_(target, v, by);
+        addTaskToStaff_(target, v, by, addStatus);
         addInput.value=""; addInput.focus();
-        if(typeof showAutoSyncToast==='function') showAutoSyncToast(`✅ ${target}さんのタスクに追加しました`);
+        if(typeof showAutoSyncToast==='function') showAutoSyncToast(`✅ ${target}さんのタスクに追加しました${addStatus==='進行中'?'(🔄進行中)':''}`);
         return;
       }
       focusAdd=true;
       // 🪦 追加=そのテキストの墓標を解除(過去にリネーム/削除で墓標が立っていても再追加を生かす)v1.30.331
       { const k=taskBodyKey_(v); if(cur.staff && k && typeof mutateJimuTombstones_==='function'){ try{ mutateJimuTombstones_(cur.staff, [{key:k, on:false}]); }catch(_){} } }
-      mutate(t=>addTaskLine_(t, v, by));
+      mutate(t=>addTaskLine_(t, v, by, addStatus));
     };
     pop.querySelector('.tp-add-btn').onclick = doAdd;
     // Enter で追加。日本語IMEの変換確定Enter(isComposing/keyCode229)は除外しないと「変換確定の瞬間に空で発火→何も追加されない」(v1.30.133)
@@ -11438,6 +11452,10 @@ function showTaskChecklistPopup(el, ev, opts){
     pop.querySelectorAll('[data-mrad]').forEach(b=>b.onclick=()=>{ msgReactPickerId=(msgReactPickerId===b.dataset.mrad)?null:b.dataset.mrad; renderInner(); });
     pop.querySelectorAll('[data-mrae]').forEach(b=>b.onclick=()=>{ if(!meSelf){alert('先に「👤 自分」を設定してください');return;} const st=msgStaff_(); msgReactPickerId=null; renderInner(); if(st&&typeof addJimuReaction_==='function') addJimuReaction_(st, b.dataset.mrae, b.dataset.em, meSelf); });
     if(focusAdd){ focusAdd=false; addInput.focus(); }
+    // 🔄 追加時ステータスの見た目を選択に追従(進行中=青)＋選択の保持(v1.30.568)
+    { const stSel = pop.querySelector('.tp-add-status');
+      if(stSel){ const paint=()=>stSel.classList.toggle('on', stSel.value==='進行中'); paint();
+        stSel.onchange = ()=>{ addStatus = stSel.value; paint(); }; } }
   };
   renderInner();
   if(inlineHost){ pop.classList.add("task-pop-inline"); inlineHost.innerHTML = ""; inlineHost.appendChild(pop); pop.style.visibility = "visible"; }
