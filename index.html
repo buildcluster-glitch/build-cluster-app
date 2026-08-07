@@ -2796,7 +2796,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.566</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.567</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -20826,11 +20826,27 @@ function staffBadgesMini_(staffStr, opts){
 //   shared-config 'calendar_reports' = JSON { reports:{ [id]:{id,type,text,status,by,at,appVer,comments:[],deleted,updatedAt} }, updatedAt }
 //   マルチ著者: 最新remote取得→id単位LWW(updatedAt)マージ→自分の変更→push。コメントはidユニオン。
 const CAL_REPORTS_KEY = "buildcluster_calendar_reports";
-function loadCalReports_(){ try{ const o=JSON.parse(localStorage.getItem(CAL_REPORTS_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
+// 🧠 v1.30.567(鈴木報告「やっぱりスマホの報告が投稿完了になるのに投稿されていない」): 表示の正本をメモリに。
+//   561で「共有には必ず届く」ようにしたが、画面は全部 localStorage を読み直していたため、容量超過の端末では
+//   投稿が一覧に出ない=本人には「投稿されていない」ようにしか見えなかった(561の申し送りに残した"残り火")。
+//   → メモリ(__calReportsMem)を唯一の読み口にし、localStorageは「書ければ書く」永続化に降格。
+//   メモリはリロードで消えるが、未共有フラグの自動再送＋クラウド取得で復元されるので実害なし。
+let __calReportsMem = null;
+function loadCalReports_(){
+  if(__calReportsMem) return __calReportsMem;
+  try{ const o=JSON.parse(localStorage.getItem(CAL_REPORTS_KEY)||"{}"); __calReportsMem=(o&&typeof o==='object')?o:{}; }
+  catch(e){ __calReportsMem={}; }
+  return __calReportsMem;
+}
 // ⚠ v1.30.561: 保存の成否を返す。スマホは同一オリジン(tanka/ガント同居)の5MB枠が逼迫しやすく、
 //   容量超過(QuotaExceededError)を黙って握りつぶすと「投稿がどこにも保存されないのに✅共有しましたと出る」
 //   事故になる(鈴木報告「画像付きバグ報告が一覧に出ない」の真因候補)。
-function saveCalReports_(m){ try{ localStorage.setItem(CAL_REPORTS_KEY, JSON.stringify(m||{})); return true; }catch(e){ console.warn('[calendar_reports] ローカル保存失敗(容量?):', e && e.message); return false; } }
+//   ⚠ v1.30.567: localStorageに書けても書けなくても、まずメモリを最新にする(表示はこれを見る)。
+function saveCalReports_(m){
+  __calReportsMem = m || {};
+  try{ localStorage.setItem(CAL_REPORTS_KEY, JSON.stringify(__calReportsMem)); return true; }
+  catch(e){ console.warn('[calendar_reports] ローカル保存失敗(容量?・表示と共有はメモリで継続):', e && e.message); return false; }
+}
 // 📷 共有ストアはSheetセル(上限≈50000字)。画像1枚(base64)だけで超過し値全体が壊れる→全端末で空表示になる。
 //   対策: 共有に載せる版は安全予算(SHARE_MAX)内に収め、超える分は古い画像から落とす(=画像はローカル保持・hadPhoto印)。
 //   テキスト/コメント/ステータスは必ず共有される。v1.30.270
