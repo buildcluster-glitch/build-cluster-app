@@ -2799,7 +2799,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.568</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.569</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -11862,6 +11862,40 @@ function restoReducedRows_(p){
   const tasks = (p.tasks||[]).filter(t=> (typeof restoEffCategory==='function'?restoEffCategory(t):t.category)==="reduced" && (typeof isExcludedRestoTask!=='function' || !isExcludedRestoTask(t)));
   return tasks.map(t=>{ const r=restoTaskToHatchuRow_(t); r.reduced=true; r.amount=null; return r; });
 }
+// 🔢 発注書の行を「業者ごと(初出順)→工期順」に整える(v1.30.569・南部報告「順番がバラバラ」)。
+//   発注確定スナップショットは見積アプリの内部順のまま届くので、進捗画面(業者ごと)と並びが食い違っていた。
+//   自社工事は工期順のみ(業者名が一定のため)。同着は元の順を保つ=安定ソート。
+function sortHatchuRows_(rows){
+  const list = (rows||[]).slice();
+  const order = [];
+  list.forEach(r=>{ const c=String(r.contractor||"(業者未設定)"); if(!order.includes(c)) order.push(c); });
+  return list.map((r,i)=>({r,i})).sort((a,b)=>{
+    const ca=order.indexOf(String(a.r.contractor||"(業者未設定)")), cb=order.indexOf(String(b.r.contractor||"(業者未設定)"));
+    if(ca!==cb) return ca-cb;
+    const pa=String(a.r.periodStart||""), pb=String(b.r.periodStart||"");
+    if(pa!==pb){ if(!pa) return 1; if(!pb) return -1; return pa.localeCompare(pb); }
+    return a.i-b.i;
+  }).map(x=>x.r);
+}
+// ➕ 発注確定より後に台帳へ足された工事を拾う(v1.30.569・南部報告「発注書の内容が少ない」)。
+//   スナップショットは業者請求の照合で真値として使うので混ぜず、addedAfter印を付けて別セクションに出す。
+//   同名同数量が複数ある案件(換気扇2行など)があるため、キーごとの「個数」で突合する。
+function hatchuRowsAddedAfter_(p, rec){
+  if(!p || !rec || rec._localGen) return [];
+  const nz = s => String(s==null?"":s).normalize("NFKC").replace(/[\s　]/g,"");
+  const keyOf = (name, qty, unit) => nz(name)+"|"+nz(qty)+"|"+nz(unit);
+  const have = new Map();
+  (rec.rows||[]).forEach(r=>{ const k=keyOf(r.workName, r.qty, r.unit); have.set(k, (have.get(k)||0)+1); });
+  const live = restoOutsourceRows_(p).concat(restoInhouseRows_(p)).concat(restoReducedRows_(p));
+  const extra = [];
+  live.forEach(r=>{
+    const k = keyOf(r.workName, r.qty, r.unit);
+    const n = have.get(k)||0;
+    if(n>0){ have.set(k, n-1); return; }   // スナップショットにある分は消し込む
+    extra.push(Object.assign({}, r, {addedAfter:true}));
+  });
+  return extra;
+}
 // カレンダー手持ちの原状回復データから発注書recを生成 (外注+自社工事)
 //   見積アプリの hatchusho_data が無い案件でも発注書を出せるフォールバック。
 //   見積アプリ専用ヘッダ項目(電話番号/駐車場/玄関鍵/エントランス/水道電気/除菌日)は空欄。
@@ -11893,11 +11927,15 @@ function openHatchushoPrint_(rec){
   };
   // 外注 / 自社(ビルドクラスタ)に分離 — 見積アプリ printHatchu と同じ構成
   const isJisha = r => /自社工事|ビルドクラスタ/.test(r.contractor||"");
-  const gai   = rows.filter(r=>!isJisha(r) && !r.reduced);
-  const jisha = rows.filter(r=> isJisha(r) && !r.reduced);
-  const red   = rows.filter(r=> !!r.reduced);                        // ✂️減工事は外注/自社に混ぜず一番下に独立セクション(v1.30.335・山田)
+  // ➕ 発注確定後に足された工事は確定分と混ぜず一番下の独立セクションへ(v1.30.569・南部報告)
+  const confirmed = rows.filter(r=> !r.addedAfter);
+  const added     = sortHatchuRows_(rows.filter(r=> !!r.addedAfter));
+  const gai   = sortHatchuRows_(confirmed.filter(r=>!isJisha(r) && !r.reduced));   // 🔢業者ごと(初出順)→工期順(v1.30.569)
+  const jisha = confirmed.filter(r=> isJisha(r) && !r.reduced);
+  const red   = confirmed.filter(r=> !!r.reduced);                   // ✂️減工事は外注/自社に混ぜず一番下に独立セクション(v1.30.335・山田)
   const gaiTotal   = gai.reduce((s,r)=> s + (+r.amount||0), 0);
   const jishaTotal = jisha.reduce((s,r)=> s + (+r.amount||0), 0);   // 🏠自社工事の受注金額(v1.30.334・山田)
+  const addedTotal = added.reduce((s,r)=> s + (r.reduced ? 0 : (+r.amount||0)), 0);
   // 🚧 進捗(施工完了+担当)を発注書に反映(v1.30.319/320・山田)。hatchusho_data由来でも現在の原状回復案件のタスクから突合。
   //   施工完了=checkWork または status==='done'。突合は「室名+工事名」→無ければ「工事名だけ」で緩く一致。表記ゆれ吸収(NFKC/空白除去)。
   const __nz = s => String(s||'').normalize('NFKC').replace(/[\s　]/g,'').trim();
@@ -11946,7 +11984,10 @@ function openHatchushoPrint_(rec){
     ${jisha.map(rowHtml).join("")}
     ${jisha.length?`<tr class="hp-subtotal"><td colspan="8" style="text-align:right;">🏠 自社工事 小計(受注)</td><td class="num">¥${jishaTotal.toLocaleString()}</td></tr>`:""}
     ${red.length?`<tr class="hp-section hp-section-reduced"><td colspan="9">✂️ 減工事(やらない工事)</td></tr>`:""}
-    ${red.map(rowHtml).join("")}`;
+    ${red.map(rowHtml).join("")}
+    ${added.length?`<tr class="hp-section hp-section-added"><td colspan="9">➕ 発注確定後に追加された工事 (${added.length}件・発注書の確定分には含まれていません)</td></tr>`:""}
+    ${added.map(rowHtml).join("")}
+    ${added.length?`<tr class="hp-subtotal"><td colspan="8" style="text-align:right;">➕ 追加分 小計</td><td class="num">¥${addedTotal.toLocaleString()}</td></tr>`:""}`;
   // 発行元: JSONにissuer指定があれば優先。なければ元請で自動判定(山一/みどり/光和→光和工業)
   const issuer = h.issuerName
     ? {name:h.issuerName, lines:[h.issuerAddr, h.issuerTel, h.issuerFax].filter(Boolean), logo:h.issuerLogo||""}
@@ -12060,6 +12101,7 @@ function ensureHatchushoStyle_(){
     #hatchushoOverlay .hatchu-print .hp-t tr.hp-section td{-webkit-print-color-adjust:exact;print-color-adjust:exact;font-weight:bold;padding:1mm 2mm;font-size:9pt;border-top:1.5px solid #000 !important}
     #hatchushoOverlay .hatchu-print .hp-t tr.hp-section-jisha td{background:#dbeafe !important;color:#1e40af}
     #hatchushoOverlay .hatchu-print .hp-t tr.hp-section-reduced td{background:#ede9f5 !important;color:#6d5a94}   /* ✂️減工事セクション見出し(v1.30.335) */
+    #hatchushoOverlay .hatchu-print .hp-t tr.hp-section-added td{background:#fef3c7 !important;color:#92400e}    /* ➕発注確定後の追加(v1.30.569・南部報告) */
     #hatchushoOverlay .hatchu-print .hp-t tr.h-reduced td{background:#f3f0fa !important;color:#8b7bb0;-webkit-print-color-adjust:exact;print-color-adjust:exact}   /* ✂️減工事=やらない工事(グレー紫)v1.30.333 */
     #hatchushoOverlay .hatchu-print .note{font-size:7pt;color:#94a3b8;margin-top:3mm}
     @media print{
@@ -12103,6 +12145,9 @@ function updateHatchushoBtn_(){
       if(red.length && !(rec.rows||[]).some(r=>r&&r.reduced)){
         rec = {...rec, rows:(rec.rows||[]).concat(red)};
       }
+      // ➕ 発注確定より後に台帳へ足された工事(v1.30.569・南部報告)。スナップショットには混ぜず印付きで足す
+      const add = hatchuRowsAddedAfter_(p, rec);
+      if(add.length) rec = {...rec, rows:(rec.rows||[]).concat(add)};
     } else {
       // 2) JSONが無ければカレンダー手持ちデータで生成(外注+自社)
       rec = buildHatchushoFromResto_(p);
