@@ -2799,7 +2799,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.571</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.572</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4671,7 +4671,8 @@ const MOTOUKE_KEYWORDS = [
   [/山一/,                                        "山一"],
   [/みどり/,                                      "みどり"],
   [/丸山/,                                        "丸山"],
-  [/JSB/i,                                        "JSB"],
+  // 「ジェイ・エス・ビー・ネットワーク」等のカタカナ表記もJSBに寄せる(v1.30.572・山田)。中黒/･/空白の有無は問わない
+  [/JSB|ジェイ[・･\s]*エス[・･\s]*ビ[ーイ]/i,      "JSB"],
 ];
 function motoukeFromText_(text){
   const s = String(text||"").trim();
@@ -13564,6 +13565,10 @@ function motoukeKey_(name){
   if(mk && mk.name) return mk.name;
   return short || raw;                                // 未知は短縮名(灰チップ)
 }
+// 🏷 元請けチップの表示名(v1.30.572・山田): 内部キーは "未分類" のまま(hiddenCategoriesの保存値・
+//   突合ロジック・過去データを壊さない)で、画面に出す文字だけ「社内予定」にする。
+//   元請けが付かない予定＝社内の予定、という実態に合わせた言い換え。
+function motoukeLabel_(key){ return key === "未分類" ? "社内予定" : String(key||""); }
 // イベントの元請け: contractorがあればそれ、無ければ物件マスタからタイトルで推定(事前等で空のケース・v1.30.43)
 function eventMotouke_(ev){
   const k = motoukeKey_(ev && ev.contractor);
@@ -13676,7 +13681,7 @@ function renderCategoryFilter(){
     const taikyoBadge = (__tk && (__tk.confirmed||__tk.provisional))
       ? ` <span class="cat-taikyo" title="うち退去立会 確定${__tk.confirmed}件${__tk.provisional?` / 担当未定(仮)${__tk.provisional}件`:''}">🏠立会${__tk.confirmed}${__tk.provisional?`+仮${__tk.provisional}`:''}</span>`
       : "";
-    chip.innerHTML = `<span class="swatch" style="background:${color}"></span>${escapeHtml(key)} <span class="cat-count">${count}</span>${taikyoBadge}`;
+    chip.innerHTML = `<span class="swatch" style="background:${color}"></span>${escapeHtml(motoukeLabel_(key))} <span class="cat-count">${count}</span>${taikyoBadge}`;
     chip.title = "クリック: このカテゴリのみ表示＋予定へジャンプ(再クリックで次へ) / Shift+クリック: ON/OFF切替";
     chip.onclick = (e)=>{
       if(e.shiftKey){
