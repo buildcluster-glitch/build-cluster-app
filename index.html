@@ -2799,7 +2799,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.569</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.570</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -21398,7 +21398,10 @@ function renderBugReportModal_(){
       ? `<span style="background:#fecdd3;color:#9f1239;font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px">🐞 バグ</span>`
       : `<span style="background:#e2e8f0;color:#475569;font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px">⚪ 通常</span>`;
     const d = new Date(r.at); const dStr = isNaN(d) ? "" : `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-    const cmts = (r.comments||[]).map(c=>`<div style="font-size:11px;padding:3px 6px;background:#f8fafc;border-radius:5px;margin-top:3px"><b>${escapeHtml(c.by||"?")}</b> ${escapeHtml(c.text||"")}</div>`).join("");
+    // 🔤 v1.30.570(鈴木報告「掲示板が謎に右スクロールされる」): コメントだけ折り返し指定が無く、
+    //   長い連続英数字(貼り付けたコード片・URL等)が改行されずカード幅を押し広げて掲示板全体に横スクロールが出ていた。
+    //   本文側(word-break:break-word)と同じ扱いに揃える。overflow-wrap:anywhere で「1語しかない」時も必ず折る。
+    const cmts = (r.comments||[]).map(c=>`<div style="font-size:11px;padding:3px 6px;background:#f8fafc;border-radius:5px;margin-top:3px;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;min-width:0"><b>${escapeHtml(c.by||"?")}</b> ${escapeHtml(c.text||"")}</div>`).join("");
     return `<div style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:8px">
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <button data-br-status="${r.id}" title="クリックでステータス切替" style="background:${st.bg};color:${st.fg};border:none;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;cursor:pointer">${st.label}</button>
@@ -21417,7 +21420,7 @@ function renderBugReportModal_(){
           + (missing ? `<div style="margin-top:3px;font-size:10px;color:var(--muted)">📷 他${missing}枚（サイズ上限のため投稿した端末でのみ表示）</div>` : "");
       })()}
       ${cmts}
-      <div style="display:flex;gap:6px;margin-top:5px">
+      <div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap">
         <button data-br-cmt="${r.id}" class="btn" style="font-size:10px;padding:2px 8px">💬 コメント${(r.comments||[]).length?` (${(r.comments||[]).length})`:""}</button>
         ${brPhotos_(r).map((p,i)=>`<button data-br-copyimg="${r.id}" data-br-idx="${i}" class="btn" style="font-size:10px;padding:2px 8px">📋 画像${brPhotos_(r).length>1?(i+1):""}コピー</button>`).join("")}
         ${(r.by===me||!r.by) && r.id!==__brEditId ? `<button data-br-edit="${r.id}" class="btn" style="font-size:10px;padding:2px 8px">✏️ 編集</button>` : ""}
