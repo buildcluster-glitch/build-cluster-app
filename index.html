@@ -49,6 +49,27 @@
     display:flex;align-items:center;gap:6px;padding:6px 10px;
     flex-wrap:nowrap;overflow-x:auto;
   }
+  /* ↔ 横スクロールする帯を「スクロールできる」と分かる見た目に(v1.30.573・山田「スライドがわかりにくい」)
+     ①細い実線のスクロールバーを常時表示 ②右端(左端)に影＝まだ続きがある合図。
+     影は background-attachment:local のCSSだけの仕掛けで、端まで送ると自動で消える(JS不要)。 */
+  header.app-header, .band-row, .category-filter{
+    scrollbar-width:thin; scrollbar-color:#cbd5e1 transparent;
+    background-image:
+      linear-gradient(to right,  #ffffff 40%, rgba(255,255,255,0)),
+      linear-gradient(to left,   #ffffff 40%, rgba(255,255,255,0)),
+      linear-gradient(to right,  rgba(15,23,42,.16), rgba(15,23,42,0)),
+      linear-gradient(to left,   rgba(15,23,42,.16), rgba(15,23,42,0));
+    background-position:left center, right center, left center, right center;
+    background-repeat:no-repeat;
+    background-size:26px 100%, 26px 100%, 12px 100%, 12px 100%;
+    background-attachment:local, local, scroll, scroll;
+  }
+  header.app-header::-webkit-scrollbar, .band-row::-webkit-scrollbar, .category-filter::-webkit-scrollbar{height:7px}
+  header.app-header::-webkit-scrollbar-thumb, .band-row::-webkit-scrollbar-thumb, .category-filter::-webkit-scrollbar-thumb{
+    background:#cbd5e1;border-radius:4px}
+  header.app-header::-webkit-scrollbar-thumb:hover, .band-row::-webkit-scrollbar-thumb:hover, .category-filter::-webkit-scrollbar-thumb:hover{
+    background:#94a3b8}
+  header.app-header::-webkit-scrollbar-track, .band-row::-webkit-scrollbar-track, .category-filter::-webkit-scrollbar-track{background:transparent}
   /* ☁ クラウド同期 アイコン */
   .nav-btn#cloudSyncBtn{position:relative;padding:5px 8px;font-size:14px}
   #cloudSyncIcon.syncing{display:inline-block;animation:cloudSpin 1s linear infinite}
@@ -308,7 +329,8 @@
   .ys-cat-header{background:#e0e7ff !important;font-size:10px;font-weight:600}
 
   .category-filter{
-    background:#fff;border-bottom:1px solid var(--border);padding:6px 12px;
+    /* ⚠ background一括指定にすると上の横スクロール影(background-image)を打ち消すのでcolorだけ指定(v1.30.573) */
+    background-color:#fff;border-bottom:1px solid var(--border);padding:6px 12px;
     display:flex;align-items:center;gap:8px;overflow-x:auto;
   }
   .category-filter .title{font-weight:600;color:var(--muted);font-size:12px;white-space:nowrap}
@@ -2799,7 +2821,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.572</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.573</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -18393,6 +18415,22 @@ document.querySelectorAll("#calZoomSwitch button").forEach(b=>{
 });
 applyCalZoom_();   // 起動時に前回の縮小率を復元
 window.addEventListener("resize", ()=>{ if(typeof applyCalZoom_==='function') applyCalZoom_(); });
+// ↔ 横スクロールする帯をマウスホイールで送れるように(v1.30.573・山田「スライドがわかりにくい」)
+//   PCは縦ホイールしか無く、帯の上で回しても何も起きない=「動かせる」と気づけないのが分かりにくさの正体。
+//   はみ出している時だけ横送りに読み替える(はみ出していなければ従来どおりページが縦に動く)。
+//   帯(.band-row等)はrenderで作り直されるので、個別配線ではなくdocument委譲で拾う=貼り直し不要。
+document.addEventListener("wheel", function(e){
+  if(e.ctrlKey) return;                                      // ピンチズーム(Ctrl+ホイール)は邪魔しない
+  const el = e.target && e.target.closest
+    ? e.target.closest("header.app-header, .band-row, .category-filter") : null;
+  if(!el) return;
+  if(el.scrollWidth <= el.clientWidth + 1) return;            // はみ出していない=従来どおりページが縦に動く
+  const dx = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;   // 横ホイール優先・無ければ縦を横に
+  if(!dx) return;
+  const before = el.scrollLeft;
+  el.scrollLeft = before + dx;
+  if(el.scrollLeft !== before) e.preventDefault();            // 実際に動いた時だけページ縦スクロールを止める
+}, {passive:false});
 // 📑 月切替タブ: PC↔スマホ幅をまたいだ時に出し分けを追従(v1.30.493)
 window.addEventListener("resize", ()=>{ try{ renderMonthTabs(); }catch(_){} });
 // 📱 ピンチイン/アウトでカレンダーを拡大縮小(スマホ・v1.30.258・山田)。2本指の距離比→zoom(0.5〜1.5・100%付近スナップ)。
