@@ -2799,7 +2799,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.570</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.571</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -3168,6 +3168,17 @@
         <div class="field"><label>原価（任意）</label><input id="xw-cost" type="number" inputmode="numeric" min="0" placeholder="外注費/発注単価"></div>
       </div>
       <div class="field"><label>メモ</label><textarea id="xw-note" rows="2" placeholder="現地で追加依頼 など"></textarea></div>
+      <!-- 📷 写真(v1.30.571・山田要望): 台帳(GAS)は触らず、登録成功後に現場メモとして投稿する
+           = 全端末共有＋Drive退避の既存経路にそのまま乗る -->
+      <div class="field" id="xw-photo-field">
+        <label>📷 写真（任意・最大4枚）</label>
+        <input type="file" accept="image/*" id="xw-photo-file" multiple style="display:none">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button type="button" class="nav-btn" id="xw-photo-btn">📷 写真を選ぶ</button>
+          <span id="xw-photo-note" style="font-size:11px;color:var(--muted)">現場メモに「＋追加工事: 〇〇」として全員に共有されます</span>
+        </div>
+        <div id="xw-photo-list" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
+      </div>
       <div style="font-size:11px;color:var(--muted)">📄 登録・編集・削除は物件フォルダの「追加工事控え.txt」にも自動記録されます</div>
       <div id="xw-error" style="display:none;color:#dc2626;font-size:12px;font-weight:600;white-space:pre-wrap"></div>
     </div>
@@ -23726,10 +23737,31 @@ function updateAddExtraBtn_(){
 let __xwExtraId = null;   // idempotencyキー: 初回submitで採番→リトライで使い回し→モーダル開き直しでリセット
 let __xwEditId = null;    // 編集モード: 対象行のextraId(null=新規登録) v1.30.421
 let __xwSending = false;
+// 📷 v1.30.571: 登録時に添えた写真(圧縮済みdataURL)。登録成功後に現場メモへ投稿してから空にする。
+//   台帳(GAS task-add-extra-work)のスキーマは変えない=DB移行のデータモデル凍結にも抵触しない。
+let __xwPhotos = [];
+const XW_PHOTO_MAX = 4;
+function renderXwPhotos_(){
+  const box = document.getElementById("xw-photo-list"); if(!box) return;
+  box.innerHTML = __xwPhotos.map((src,i)=>
+    `<span style="position:relative;display:inline-block">
+       <img src="${escapeHtml(src)}" style="height:56px;border-radius:6px;border:1px solid var(--border)">
+       <button type="button" data-xw-rmphoto="${i}" title="削除" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;line-height:16px;padding:0;border-radius:50%;border:1px solid var(--border-strong);background:#fff;color:#dc2626;font-size:11px;cursor:pointer">×</button>
+     </span>`).join("");
+  box.querySelectorAll("[data-xw-rmphoto]").forEach(b=>{
+    b.onclick = ()=>{ __xwPhotos.splice(+b.dataset.xwRmphoto, 1); renderXwPhotos_(); };
+  });
+  const note = document.getElementById("xw-photo-note");
+  if(note) note.textContent = __xwPhotos.length
+    ? `${__xwPhotos.length}枚 — 登録すると現場メモに「＋追加工事: 〇〇」として全員に共有されます`
+    : "現場メモに「＋追加工事: 〇〇」として全員に共有されます";
+}
 function openExtraWorkModal_(){
   const p = (state.restorations||[]).find(x=>x.id===restoDetailId);
   if(!p || !p.extDriveFileId) return;
   __xwExtraId = null; __xwEditId = null; __xwSending = false;
+  __xwPhotos = []; renderXwPhotos_();
+  { const f=document.getElementById("xw-photo-field"); if(f) f.style.display = ""; }   // 新規登録では出す
   document.getElementById("xw-title").textContent = "＋ 追加工事の登録";
   document.getElementById("xw-save").textContent = "台帳に登録";
   document.getElementById("xw-delete").style.display = "none";
@@ -23782,6 +23814,9 @@ async function openExtraWorkEdit_(taskExtraId){
   }
   openExtraWorkModal_();               // 新規モードでリセット表示→この後に編集値を流し込む
   __xwEditId = taskExtraId;
+  // 📷 写真は「登録時に現場メモへ投稿」する仕組み(v1.30.571)。編集では出さない(後から足すなら現場メモから直接)
+  { const f=document.getElementById("xw-photo-field"); if(f) f.style.display = "none"; }
+  __xwPhotos = []; renderXwPhotos_();
   const billable = !line.hatchuOnly;
   const name = billable ? (line.item || "") : (line.hatchuItem || "");
   document.getElementById("xw-title").textContent = "✎ 追加工事の編集";
@@ -23896,14 +23931,41 @@ async function submitExtraWork_(){
       });
       saveState();
     }
+    // 📷 添えた写真を現場メモへ(v1.30.571)。台帳登録が成功した後だけ実行=失敗時に写真だけ残らない
+    const __photos = __xwPhotos.slice();
+    __xwPhotos = [];
     closeExtraWorkModal_();
     if(restoDetailId){ try{ renderRestoDetail(); }catch(_){} }
     if(typeof showAutoSyncToast==='function') showAutoSyncToast(data.duplicate ? "✅ 登録済みでした（重複なし）" : "✅ 追加工事を台帳に登録しました");
+    if(__photos.length) postExtraWorkPhotos_(p2, name, __photos, __xwExtraId);
   }catch(e){
     show((e && e.gasNotReady) ? ("⏳ "+e.message) : ("登録に失敗しました: "+((e && e.message) || e)));
   }finally{
     __xwSending = false;
     saveBtn.disabled = false; saveBtn.textContent = "台帳に登録";
+  }
+}
+// 📷 追加工事に添えた写真を現場メモとして投稿(v1.30.571・山田要望)
+//   既存の現場メモ経路をそのまま使う=Drive退避(restoPersistPhoto_)＋全端末共有＋写真ズームが全部効く。
+//   コメントは1件1枚の構造なので、複数枚は「(2/3)」のように連番で1枚ずつ投稿する。
+async function postExtraWorkPhotos_(p, workName, photos, extraId){
+  if(!p || !photos || !photos.length) return;
+  try{
+    for(let i=0; i<photos.length; i++){
+      const url = await restoPersistPhoto_(photos[i], p);
+      const suffix = photos.length>1 ? `（${i+1}/${photos.length}）` : "";
+      const live = (state.restorations||[]).find(x=>x.id===p.id) || p;   // 同期で差し替わっても最新に積む
+      (live.comments = live.comments||[]).push({
+        id: uid(), author: getMyself()||"", date: fmtDate(new Date()),
+        text: `＋追加工事: ${workName}${suffix}`, photo: url, extraId: extraId||""
+      });
+      restoSave();
+    }
+    if(restoDetailId){ try{ renderRestoDetail(); }catch(_){} }
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast(`📷 写真${photos.length}枚を現場メモに追加しました`);
+  }catch(e){
+    console.warn('[追加工事] 写真の投稿に失敗:', e && e.message);
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast("⚠ 追加工事は登録できましたが写真の保存に失敗しました");
   }
 }
 // 配線(静的・一度だけ)
@@ -23912,6 +23974,31 @@ async function submitExtraWork_(){
   if(!m) return;
   document.getElementById("xw-cancel").onclick = closeExtraWorkModal_;
   document.getElementById("xw-save").onclick = submitExtraWork_;
+  // 📷 写真の選択(v1.30.571)。現場メモと同じ圧縮(150KB/1280px)をかけてから溜める
+  {
+    const pBtn = document.getElementById("xw-photo-btn"), pIn = document.getElementById("xw-photo-file");
+    if(pBtn && pIn){
+      pBtn.onclick = ()=> pIn.click();
+      pIn.onchange = async ()=>{
+        const files = [...(pIn.files||[])];
+        pIn.value = "";                                   // 同じ写真の再選択でもonchangeが出るように
+        if(!files.length) return;
+        const room = XW_PHOTO_MAX - __xwPhotos.length;
+        if(room <= 0){ alert(`写真は最大${XW_PHOTO_MAX}枚までです`); return; }
+        pBtn.disabled = true; pBtn.textContent = "圧縮中…";
+        try{
+          for(const f of files.slice(0, room)){
+            try{ __xwPhotos.push(await restoCompressImage(f, 150000, 1280)); }
+            catch(e){ console.warn('[追加工事] 画像の読込に失敗:', f && f.name, e && e.message); }
+          }
+          if(files.length > room) alert(`写真は最大${XW_PHOTO_MAX}枚までのため、${files.length-room}枚は取り込みませんでした`);
+        } finally {
+          pBtn.disabled = false; pBtn.textContent = "📷 写真を選ぶ";
+          renderXwPhotos_();
+        }
+      };
+    }
+  }
   // 🗑 削除(編集モードのみ表示・v1.30.421): 台帳の行を削除→ローカルタスクも即除去
   document.getElementById("xw-delete").onclick = async ()=>{
     if(!__xwEditId || __xwSending) return;
