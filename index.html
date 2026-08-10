@@ -2821,7 +2821,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.573</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.574</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4141,6 +4141,20 @@
           <div style="font-size:10px;color:var(--muted);margin-top:4px">🌐=master_sync staffMaster / 📋=ローカルSTAFF配列</div>
         </div>
         <button class="btn" id="all-open-member-edit" style="font-size:11px;padding:4px 10px">👥 メンバー追加・削除…</button>
+      </fieldset>
+
+      <!-- 🔐 セクション0.5: Supabaseログイン (v1.30.574・DB移行の準備。切替までは"許可証"のみでデータ経路は従来のまま) -->
+      <fieldset style="border:1px solid var(--border);border-radius:8px;padding:12px;margin:0" id="all-auth-box">
+        <legend style="padding:0 8px;font-weight:700;color:#1f2937">🔐 ログイン (新システムの準備)</legend>
+        <div id="all-auth-state" style="font-size:12px;margin-bottom:8px"></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn primary" id="all-auth-login" style="font-size:12px;padding:5px 14px">ログイン</button>
+          <button class="btn" id="all-auth-logout" style="font-size:12px;padding:5px 14px;display:none">ログアウト</button>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:8px">
+          9月の新システム切替に向けた準備です。<b>いまはログインしてもアプリの動きは今までと全く同じ</b>（データは従来どおり）。<br>
+          切替日までに全員が一度ログインしておく必要があります。パスワードが分からない時は山田さんへ。
+        </div>
       </fieldset>
 
       <!-- セクション1: Drive同期 (台帳取り込み) -->
@@ -20429,6 +20443,8 @@ function openAllSettings(focus){
   // 自分: master_sync staffMaster をバックグラウンド取得 (キャッシュ優先)
   fetchStaffMaster({silent:true}).then(()=>renderAllMyselfSelect()).catch(()=>{});
   renderAllMyselfSelect();
+  // 🔐 ログイン状態(v1.30.574)
+  try{ if(typeof renderAuthState_==='function') renderAuthState_(); }catch(_){}
 
   // Drive (gas)
   const gs = loadGasSettings();
@@ -20512,6 +20528,206 @@ function openAllSettings(focus){
 }
 function closeAllSettings(){ allSettingsModal.classList.remove('show'); }
 allSettingsModal.onclick = e=>{ if(e.target===allSettingsModal) closeAllSettings(); };
+
+// ============================================================================
+// 🔐 Supabase ログイン (v1.30.574) — DB移行の準備。8/17の説明会で配布するための先行実装。
+//   ⚠ 現時点では「許可証を持たせるだけ」: ログインしてもデータの読み書きは従来のGASのまま。
+//      切替日(最速8/30)にデータ経路をSupabaseへ向けた時、このセッションがそのまま使われる。
+//   ⚠ fail-open: 未ログイン・失敗・通信断でもアプリは従来どおり全機能動く(8/17時点でブロックしない)。
+//   実装方式=auth REST直叩き(supabase-js UMDは同梱しない=起動を1バイトも重くしない)。
+//   申し送り: [[project-db-migration-calendar-handoff]] の「追加依頼(2026-08-09)」
+// ============================================================================
+const SB_AUTH = {
+  url: 'https://grbqpsunbuduvvgdntzc.supabase.co',
+  key: 'sb_publishable__CEhKynIR-v9uGW_cBg_1g_wHyN-k8n',   // 公開前提のpublishable key(tankaと同じ)
+};
+const SB_SESSION_KEY = 'bc_sb_session';
+const SB_PROMPT_SNOOZE_KEY = 'bc_sb_login_snooze';   // 「あとで」の抑止期限(ms)
+let __sbRefreshTimer = null;
+
+function sbSession_(){
+  try{ const o = JSON.parse(localStorage.getItem(SB_SESSION_KEY)||'null'); return (o && o.access_token) ? o : null; }
+  catch(_){ return null; }
+}
+function sbSaveSession_(s){
+  try{
+    if(!s){ localStorage.removeItem(SB_SESSION_KEY); }
+    else localStorage.setItem(SB_SESSION_KEY, JSON.stringify(s));
+  }catch(e){ console.warn('[auth] セッション保存に失敗(容量?):', e && e.message); }
+}
+function sbLoggedInEmail_(){ const s = sbSession_(); return (s && s.email) || ''; }
+// 期限の少し前に自動更新。タブが寝ていて過ぎてしまってもフォーカス復帰時に拾う
+function sbScheduleRefresh_(){
+  if(__sbRefreshTimer){ clearTimeout(__sbRefreshTimer); __sbRefreshTimer = null; }
+  const s = sbSession_(); if(!s || !s.expires_at) return;
+  const ms = (s.expires_at*1000) - Date.now() - 120000;      // 期限2分前
+  __sbRefreshTimer = setTimeout(()=>{ sbRefresh_().catch(()=>{}); }, Math.max(5000, Math.min(ms, 2147483000)));
+}
+async function sbAuthFetch_(path, body){
+  const res = await fetch(`${SB_AUTH.url}/auth/v1/${path}`, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'apikey': SB_AUTH.key, 'Authorization':'Bearer '+SB_AUTH.key },
+    body: JSON.stringify(body||{})
+  });
+  let d = null; try{ d = await res.json(); }catch(_){}
+  if(!res.ok){
+    const msg = (d && (d.error_description || d.msg || d.error || d.message)) || ('HTTP '+res.status);
+    const e = new Error(msg); e.status = res.status; throw e;
+  }
+  return d;
+}
+function sbStoreToken_(d){
+  if(!d || !d.access_token) throw new Error('応答にトークンがありません');
+  const s = {
+    access_token: d.access_token, refresh_token: d.refresh_token || '',
+    expires_at: d.expires_at || (Math.floor(Date.now()/1000) + (d.expires_in||3600)),
+    email: (d.user && d.user.email) || '',
+    role: (d.user && d.user.app_metadata && d.user.app_metadata.bc_role) || '',
+  };
+  sbSaveSession_(s); sbScheduleRefresh_(); renderAuthState_();
+  return s;
+}
+async function sbLogin_(email, password){
+  const d = await sbAuthFetch_('token?grant_type=password', { email:String(email||'').trim(), password:String(password||'') });
+  return sbStoreToken_(d);
+}
+async function sbRefresh_(){
+  const s = sbSession_(); if(!s || !s.refresh_token) return null;
+  try{
+    const d = await sbAuthFetch_('token?grant_type=refresh_token', { refresh_token: s.refresh_token });
+    return sbStoreToken_(d);
+  }catch(e){
+    // 期限切れ/失効。fail-open=アプリは動かし続け、次の機会に再ログインを促すだけ
+    console.warn('[auth] セッション更新に失敗:', e && e.message);
+    if(e && (e.status===400 || e.status===401)){ sbSaveSession_(null); renderAuthState_(); }
+    return null;
+  }
+}
+function sbLogout_(){
+  const s = sbSession_();
+  if(s && s.access_token){
+    // サーバー側の失効は best-effort(失敗してもローカルは消す)
+    fetch(`${SB_AUTH.url}/auth/v1/logout`, { method:'POST',
+      headers:{ 'apikey':SB_AUTH.key, 'Authorization':'Bearer '+s.access_token } }).catch(()=>{});
+  }
+  sbSaveSession_(null);
+  if(__sbRefreshTimer){ clearTimeout(__sbRefreshTimer); __sbRefreshTimer=null; }
+  renderAuthState_();
+}
+// ⚙全体設定の表示更新
+function renderAuthState_(){
+  const box = document.getElementById('all-auth-state');
+  const btnIn = document.getElementById('all-auth-login');
+  const btnOut = document.getElementById('all-auth-logout');
+  if(!box) return;
+  const em = sbLoggedInEmail_();
+  if(em){
+    const s = sbSession_();
+    box.innerHTML = `<span style="background:#dcfce7;color:#166534;font-weight:700;padding:2px 8px;border-radius:6px">✅ ログイン済み</span>
+      <span style="margin-left:6px">${escapeHtml(em)}${s&&s.role?`（${escapeHtml(s.role)}）`:''}</span>`;
+    if(btnIn) btnIn.style.display = 'none';
+    if(btnOut) btnOut.style.display = '';
+  }else{
+    box.innerHTML = `<span style="background:#fef3c7;color:#92400e;font-weight:700;padding:2px 8px;border-radius:6px">⚠ 未ログイン</span>
+      <span style="margin-left:6px;color:var(--muted)">切替日までに一度ログインしてください</span>`;
+    if(btnIn) btnIn.style.display = '';
+    if(btnOut) btnOut.style.display = 'none';
+  }
+}
+// ログイン画面(JS生成・「あとで」で閉じられる=8/17時点ではブロックしない)
+function openLoginModal_(opts){
+  opts = opts || {};
+  let ov = document.getElementById('sbLoginModal');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.className = 'modal-overlay'; ov.id = 'sbLoginModal'; ov.style.zIndex = 900;
+    ov.innerHTML = `
+      <div class="modal" style="max-width:380px">
+        <div class="modal-header">🔐 ログイン</div>
+        <div class="modal-body">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:10px" id="sb-login-lead"></div>
+          <div class="field"><label>メールアドレス</label><input id="sb-login-email" type="email" autocomplete="username" placeholder="you@build-cluster.co.jp"></div>
+          <div class="field"><label>パスワード</label><input id="sb-login-pw" type="password" autocomplete="current-password" placeholder="パスワード"></div>
+          <div id="sb-login-err" style="display:none;color:#dc2626;font-size:12px;font-weight:600;white-space:pre-wrap;margin-top:4px"></div>
+          <div style="font-size:11px;color:var(--muted);margin-top:10px">
+            9月の新システム切替の準備です。<b>いまログインしてもアプリの動きは今までと同じ</b>です。<br>
+            分からない時は山田さんへ。あとで ⚙全体設定 からもログインできます。
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn" id="sb-login-later">あとで</button>
+          <span style="flex:1"></span>
+          <button class="btn primary" id="sb-login-go">ログイン</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    ov.querySelector('#sb-login-later').onclick = ()=>{
+      try{ localStorage.setItem(SB_PROMPT_SNOOZE_KEY, String(Date.now() + 6*3600*1000)); }catch(_){}   // 6時間は出さない
+      ov.classList.remove('show');
+    };
+    const doLogin = async ()=>{
+      const em = ov.querySelector('#sb-login-email').value.trim();
+      const pw = ov.querySelector('#sb-login-pw').value;
+      const err = ov.querySelector('#sb-login-err');
+      const btn = ov.querySelector('#sb-login-go');
+      err.style.display='none'; err.textContent='';
+      if(!em || !pw){ err.textContent = 'メールアドレスとパスワードを入れてください'; err.style.display='block'; return; }
+      btn.disabled = true; btn.textContent = 'ログイン中…';
+      try{
+        await sbLogin_(em, pw);
+        ov.querySelector('#sb-login-pw').value = '';
+        ov.classList.remove('show');
+        try{ localStorage.removeItem(SB_PROMPT_SNOOZE_KEY); }catch(_){}
+        if(typeof showAutoSyncToast==='function') showAutoSyncToast('🔐 ログインしました（アプリの動きは今までどおりです）');
+      }catch(e){
+        const m = String((e && e.message) || e);
+        err.textContent = /Invalid login credentials/i.test(m)
+          ? 'メールアドレスかパスワードが違います'
+          : (/Failed to fetch|NetworkError/i.test(m) ? '通信できませんでした。電波の良い所でもう一度お試しください' : m);
+        err.style.display = 'block';
+      }finally{
+        btn.disabled = false; btn.textContent = 'ログイン';
+      }
+    };
+    ov.querySelector('#sb-login-go').onclick = doLogin;
+    ov.querySelector('#sb-login-pw').onkeydown = e=>{ if(e.key==='Enter' && !e.isComposing) doLogin(); };
+    ov.onclick = e=>{ if(e.target===ov) ov.querySelector('#sb-login-later').click(); };
+  }
+  const lead = ov.querySelector('#sb-login-lead');
+  if(lead) lead.textContent = opts.lead || '新システム(9月切替)の準備として、一度ログインをお願いします。';
+  ov.querySelector('#sb-login-later').style.display = opts.required ? 'none' : '';
+  ov.classList.add('show');
+  setTimeout(()=>{ try{ ov.querySelector('#sb-login-email').focus(); }catch(_){} }, 60);
+}
+// 起動時: セッションがあれば静かに更新、無ければ(スヌーズ中でなければ)ログイン画面を出す
+function initSupabaseAuth_(){
+  try{
+    renderAuthState_();
+    const s = sbSession_();
+    if(s){
+      sbScheduleRefresh_();
+      if(s.expires_at && (s.expires_at*1000 - Date.now()) < 300000) sbRefresh_().catch(()=>{});   // 5分未満なら即更新
+      return;
+    }
+    let snooze = 0; try{ snooze = +(localStorage.getItem(SB_PROMPT_SNOOZE_KEY)||0) || 0; }catch(_){}
+    if(Date.now() < snooze) return;
+    setTimeout(()=>{ try{ openLoginModal_(); }catch(_){} }, 1200);   // 起動描画が済んでから
+  }catch(e){ console.warn('[auth] 初期化で例外(アプリ動作には影響しません):', e && e.message); }
+}
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='visible'){
+    const s = sbSession_();
+    if(s && s.expires_at && (s.expires_at*1000 - Date.now()) < 300000) sbRefresh_().catch(()=>{});
+  }
+});
+// ⚙全体設定のボタン配線 + 起動
+{
+  const bIn = document.getElementById('all-auth-login');
+  const bOut = document.getElementById('all-auth-logout');
+  if(bIn)  bIn.onclick  = ()=> openLoginModal_({lead:'新システム(9月切替)の準備です。会社のメールアドレスでログインしてください。'});
+  if(bOut) bOut.onclick = ()=>{ if(confirm('ログアウトしますか？\n（アプリの機能は今までどおり使えます）')) sbLogout_(); };
+}
+initSupabaseAuth_();
 document.getElementById('all-settings-cancel').onclick = closeAllSettings;
 
 // 🗄 バックアップ復元
