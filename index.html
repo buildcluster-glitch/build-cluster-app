@@ -2821,13 +2821,15 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.574</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.575</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
   </div>
   <script>try{var __v=((document.querySelector('.app-title span')||{}).textContent||'').trim();var __sa=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone;document.title=__sa?__v:('ビルドクラスタ工事管理 '+__v);}catch(e){}</script>
   <!-- ☁ 全同期は最重要ボタン(山田 v1.30.527)。右端では遠いので「今日」の隣＝いちばん押しやすい位置へ -->
+  <!-- 🔐 未ログインの時だけ出る入口(v1.30.575・山田「画面きえちゃった」対策)。ログインすると自動で消える -->
+  <button class="nav-btn" id="authLoginBtn" style="display:none;background:#fef3c7;border-color:#f59e0b;color:#92400e;font-weight:700" title="新システムの準備：一度ログインしてください（アプリの動きは今までと同じです）">🔐 ログイン</button>
   <button class="nav-btn" id="cloudSyncBtn" title="☁ 全同期 — クラウド(予定/休暇) + Drive(最終確認・立会・事前など) をまとめて今すぐ同期。設定は⚙"><span id="cloudSyncIcon">☁</span><span id="cloudSyncBadge" class="hidden"></span></button>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
@@ -20614,8 +20616,16 @@ function sbLogout_(){
   if(__sbRefreshTimer){ clearTimeout(__sbRefreshTimer); __sbRefreshTimer=null; }
   renderAuthState_();
 }
+// 🔐 ヘッダーの入口(v1.30.575): 未ログインの時だけ出す。ログイン画面が消えても迷子にならないように
+function updateAuthHeaderBtn_(){
+  const b = document.getElementById('authLoginBtn');
+  if(!b) return;
+  b.style.display = sbLoggedInEmail_() ? 'none' : '';
+  b.onclick = ()=> openLoginModal_({lead:'新システム(9月切替)の準備です。会社のメールアドレスでログインしてください。'});
+}
 // ⚙全体設定の表示更新
 function renderAuthState_(){
+  try{ updateAuthHeaderBtn_(); }catch(_){}
   const box = document.getElementById('all-auth-state');
   const btnIn = document.getElementById('all-auth-login');
   const btnOut = document.getElementById('all-auth-logout');
@@ -20662,8 +20672,11 @@ function openLoginModal_(opts){
       </div>`;
     document.body.appendChild(ov);
     ov.querySelector('#sb-login-later').onclick = ()=>{
-      try{ localStorage.setItem(SB_PROMPT_SNOOZE_KEY, String(Date.now() + 6*3600*1000)); }catch(_){}   // 6時間は出さない
+      // 🔕 v1.30.575: 6時間→2時間。「あとで」を押しても同じ日のうちにもう一度出したいため
+      try{ localStorage.setItem(SB_PROMPT_SNOOZE_KEY, String(Date.now() + 2*3600*1000)); }catch(_){}
       ov.classList.remove('show');
+      if(typeof showAutoSyncToast==='function') showAutoSyncToast('🔐 ログインは ⚙全体設定 か 右上の「🔐ログイン」からいつでもできます');
+      updateAuthHeaderBtn_();
     };
     const doLogin = async ()=>{
       const em = ov.querySelector('#sb-login-email').value.trim();
@@ -20691,7 +20704,9 @@ function openLoginModal_(opts){
     };
     ov.querySelector('#sb-login-go').onclick = doLogin;
     ov.querySelector('#sb-login-pw').onkeydown = e=>{ if(e.key==='Enter' && !e.isComposing) doLogin(); };
-    ov.onclick = e=>{ if(e.target===ov) ov.querySelector('#sb-login-later').click(); };
+    // 🚫 v1.30.575(山田報告「ログインしようとしたら画面きえちゃった」): 背景タップで閉じるのを廃止。
+    //   スマホはキーボードを閉じようと余白をタップするのが自然な動作で、それが「あとで」扱い=消える+
+    //   スヌーズまで掛かっていた。閉じるのは「あとで」ボタンを押した時だけにする。
   }
   const lead = ov.querySelector('#sb-login-lead');
   if(lead) lead.textContent = opts.lead || '新システム(9月切替)の準備として、一度ログインをお願いします。';
