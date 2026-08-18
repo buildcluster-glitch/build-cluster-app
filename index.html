@@ -2821,7 +2821,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.575</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.576</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -9497,6 +9497,39 @@ function __ensureMotoukeIdx_(){
   __motoukeIdx_ = { sig, exact, prefix, cache:new Map() };
   return __motoukeIdx_;
 }
+// 🏘 v1.30.576(山田報告「アクティブパレス百合ヶ丘B2/上桜木浅野貸家F棟の立会が反映されない」):
+//   物件マスタに無い"新しい棟"を、同じ団地の兄弟棟から推定する。
+//   例=B2はマスタに無いが「アクティブパレス百合ヶ丘」で始まる A7/A10/C7 が全部山一 → B2も山一。
+//   ⚠**兄弟の元請けが1種類に揃っている時だけ**採用(混在する団地は従来どおり不明のまま)。
+//   v1.30.40の「不明なら問答無用で山一」は、山一以外を誤表示する(まどか報告のHS田中)ため復活させない。
+//   兄弟の判定=正規化名の先頭6文字以上が一致(短い名前での過剰一致を防ぐ)。
+const MOTOUKE_SIBLING_MIN = 6;
+//   ⚠**先頭一致だけでは足りない**(実データ452件の総当たりで判明): 「ライオンズマンション北仙台(山一)」と
+//   「ライオンズマンション山手町505(みどり)」、「コンフォート利府(みどり)」と「コンフォート◯◯(山一)」のように
+//   **全国どこにでもある建物名**は別物件なのに先頭が一致してしまう。
+//   → 共通部分の"後ろ"が「棟・号の記号程度」(B2 / F棟 / 弐番館)の時だけ兄弟とみなす。
+//     地名が続くもの(北仙台 / 山手町505 / 利府)は別物件として弾く。
+const MOTOUKE_WING_RE = /^[A-Za-z0-9〇一二三四五六七八九十壱弐参]{0,4}(棟|号棟|番館|号館|館|号)?$/;
+function __motoukeCommonLen_(a, b){
+  let i = 0; const n = Math.min(a.length, b.length);
+  while(i < n && a[i] === b[i]) i++;
+  return i;
+}
+function taikyoMotoukeBySibling_(key, idx){
+  if(!key || key.length < MOTOUKE_SIBLING_MIN) return "";
+  let found = "", multi = false;
+  idx.exact.forEach((mo, bn)=>{
+    if(multi || !mo) return;
+    if(bn.length < MOTOUKE_SIBLING_MIN) return;
+    const c = __motoukeCommonLen_(key, bn);
+    if(c < MOTOUKE_SIBLING_MIN) return;                                    // 共通部分が短い=別物件
+    if(!MOTOUKE_WING_RE.test(key.slice(c)) || !MOTOUKE_WING_RE.test(bn.slice(c))) return;   // 差分が棟記号でない=別物件
+    const k2 = (typeof motoukeKey_==='function') ? motoukeKey_(mo) : mo;   // 表記ゆれを揃えてから比較
+    if(!found) found = k2;
+    else if(found !== k2) multi = true;                                    // 兄弟の元請けが混在=推定しない
+  });
+  return multi ? "" : found;
+}
 function taikyoMotouke_(bukken){
   const key = __motoukeNorm_(bukken); if(!key) return "";
   const idx = __ensureMotoukeIdx_();
@@ -9504,6 +9537,7 @@ function taikyoMotouke_(bukken){
   let mo = "";
   if(idx.exact.has(key)) mo = idx.exact.get(key);                                   // 完全一致優先
   else { const hit = idx.prefix.find(([bn]) => key.startsWith(bn)); mo = hit ? hit[1] : ""; } // マスタ名で始まる
+  if(!mo) mo = taikyoMotoukeBySibling_(key, idx);                                   // 🏘 兄弟棟から推定(v1.30.576)
   idx.cache.set(key, mo);
   return mo;
 }
