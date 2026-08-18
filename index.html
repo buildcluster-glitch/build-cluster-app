@@ -2829,7 +2829,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.580</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.581</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -6565,7 +6565,7 @@ function renderCheckCard(ck, today){
     ${(()=>{ // ⚠ アラート: 事前チップ等で入力された1本もキー解決で拾う(v1.30.426・山田「最終確認時ピカール…」が出なかった)
       if(typeof alertChipHtml_!=='function') return "";
       const __ak = (typeof checkAlertId_==='function') ? checkAlertId_(ck, linkedResto) : ck.id;
-      const __h = alertChipHtml_(__ak);
+      const __h = alertChipHtml_(__ak, {multiline:true});   // 📝 カードは幅があるので複数アラートを1件1行で(v1.30.581)
       return __h ? `<div style="margin-top:2px">${__h}</div>` : "";
     })()}
   </div>`;
@@ -7408,6 +7408,14 @@ function alertChipHtml_(id, opts){
   // 📝 v1.30.579: 複数行アラートはチップ上で「／」区切りの1行に畳む(改行はHTMLで潰れて読みにくいため)。
   //   ホバーtitleは改行のまま=全文が縦に読める。
   const __lines = String(e.text||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  const __title = escapeHtml('⚠ '+e.text+(e.author?(' ('+e.author+')'):''));
+  // 📝 v1.30.581(山田「ここ2行にわけてほしい」): 幅に余裕のあるカード(最終確認/原状回復)では
+  //   複数アラートを**1件1行**で出す。カレンダーのチップは高さが命なので従来どおり「／」で1行に畳む。
+  if(opts && opts.multiline && __lines.length > 1){
+    return __lines.map((t,i)=>
+      `<span class="chip-alert" style="display:block;font-size:11.5px;font-weight:800;color:#dc2626;line-height:16px;white-space:normal;word-break:break-word" title="${__title}">${escapeHtml('⚠'+t+((i===__lines.length-1&&__au)?(' '+__au):''))}</span>`
+    ).join('');
+  }
   const txt = `⚠${__lines.join(' ／ ')}${__au?(' '+__au):''}`;
   const inline = opts&&opts.inline;
   const st = inline
