@@ -2829,7 +2829,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.582</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.583</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -6345,6 +6345,26 @@ function isRepairCheck_(ck){
 }
 // 🔧 最終確認帯に出す修繕は「受注系(発注済の実工事)」だけ。提出済/見積中の提案(追加提案工事 等)は最終確認日があっても出さない(山田 v1.30.225)
 function repairCheckShows_(c){ return !!(c && c.hasFinalCheck && /受注|工事指示|着工|施工|完工|完了/.test(String(c.status||""))); }
+// 🏠 v1.30.583(山田「原状回復の性質を持つ修繕だから発注書や工事進捗を表示してほしい」):
+//   修繕レコード → 対応する原状回復レコード(工程3件以上の修繕に付く _repairResto の裏レコード・v1.30.439)を引く。
+//   これが引ければ 📋進捗ダイアログ が開ける=その中の「📄発注書」もそのまま使える。
+//   突合は最終確認カード(v1.30.437)と同じ作法: driveFileId → estimateId → 物件名+号室の正規化一致。
+function restoForRepair_(r){
+  if(!r) return null;
+  const restos = state.restorations || [];
+  if(!restos.length) return null;
+  const nz = s => String(s||"").normalize("NFKC").replace(/[\s　]/g,"").replace(/号室?$/,"").toUpperCase();
+  const key = nz(String(r.name||"") + String(r.room||""));
+  return (r.extDriveFileId && restos.find(x=>x.extDriveFileId === r.extDriveFileId))
+      || (r.extEstimateId  && restos.find(x=>x.extEstimateId  === r.extEstimateId))
+      || (key && restos.find(x=>nz(String(x.name||"")+String(x.room||"")) === key))
+      || null;
+}
+// 工程を持っている(=発注書・進捗を出す価値がある)修繕か
+function repairHasResto_(r){
+  const p = restoForRepair_(r);
+  return !!(p && (p.tasks||[]).length);
+}
 // 修繕が完了済か(最終確認カードの __isDoneCk と同条件)。完了チップはグレー+取消線で表示。
 function isRepairDone_(r){
   const s = (r && r.status) || "";
@@ -15461,7 +15481,7 @@ function renderCalendar(){
           : "";
         // 仮置き(時刻未記録)は時刻ピル自体を出さない(破線ボーダーで仮置きは明示済)。「仮」ラベルは不要(v1.30.171)
         const __timeBox = tentative ? '' : `<span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>`;
-        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden">${tagHtml}<span class="rg-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto">${escapeHtml(label)}</span>${__doneBadge}${__vendorBadge}${__repCmt}${__repRem}${__repCommute}</span>${__descLine}</span>${__timeBox}${__repBottom}${__repAlert}`;
+        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden">${tagHtml}<span class="rg-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto">${escapeHtml(label)}</span>${__doneBadge}${__vendorBadge}${(typeof repairHasResto_==='function'&&repairHasResto_(r))?`<span class="chip-prog" data-rep-prog="${escapeHtml(String(r.id))}" role="button" title="📋 工事進捗・発注書を開く（工程を持つ修繕）">📋</span>`:''}${__repCmt}${__repRem}${__repCommute}</span>${__descLine}</span>${__timeBox}${__repBottom}${__repAlert}`;
         if(__repBottom || __repAlert){ el.classList.add('chip-has-staffs'); el.style.setProperty('--card-bg', wColor); } // 担当色で全面着色(v1.30.51)
         attachRepairChipHover(el, r); // リッチtooltip
         // 1クリック=詳細シート / ダブルクリック=作業担当ピッカー(v1.30.181)
@@ -16678,6 +16698,13 @@ function bindRepairChipClicks_(el, r){
   el.onclick = (e)=>{
     e.stopPropagation();
     if(el.__dragEndAt && Date.now() - el.__dragEndAt < 350) return;  // ドラッグ直後のクリックは無視
+    // 📋 進捗アイコン → 工事進捗ダイアログ(発注書もこの中)。詳細シートの遅延発火は打ち消す v1.30.583
+    if(e.target && e.target.closest && e.target.closest('[data-rep-prog]')){
+      e.preventDefault(); clearTimeout(el.__clickT);
+      const p = (typeof restoForRepair_==='function') ? restoForRepair_(r) : null;
+      if(p && typeof openRestoDialog==='function') openRestoDialog(p.id);
+      return;
+    }
     clearTimeout(el.__clickT);
     el.__clickT = setTimeout(()=>{ if(typeof openRepairSheet==='function') openRepairSheet(r.id); }, 240);
   };
@@ -22371,6 +22398,8 @@ function renderRepairCard(r, i){
         ${tagShort?`<span class="rep-tag" style="background:${tagBg}">${escapeHtml(tagShort)}</span>`:""}
         <span class="rep-name">${escapeHtml(r.name||"(無題)")}${r.room?` <span class="rep-room">${escapeHtml(r.room)}</span>`:""}</span>
         ${r.creatorMemo?`<span class="rep-memo-icon" title="📝 ${escapeHtml(r.creatorMemo)}">📝</span>`:""}
+        ${(typeof repairHasResto_==='function' && repairHasResto_(r))
+          ? `<span class="chip-prog" data-rep-prog="${escapeHtml(String(r.id))}" role="button" title="📋 工事進捗・発注書を開く（工程を持つ修繕）">📋</span>` : ""}
         <span class="rep-st rep-st-wf ${WF_PILL[wf]||"s-st-draft"}" data-wf="1">${escapeHtml(wf)}</span>
       </div>
       <div class="rep-badges">
@@ -22408,6 +22437,15 @@ function bindRepairCardEvents(container){
       if(e.target.closest('[data-st-pop="1"]')){
         e.stopPropagation();
         openRepairStatusPop(c.dataset.id, e.target.closest('[data-st-pop="1"]'));
+        return;
+      }
+      // 📋 進捗アイコン → 工事進捗ダイアログ(中の「📄発注書」もそのまま使える)v1.30.583
+      if(e.target.closest('[data-rep-prog]')){
+        e.stopPropagation();
+        const r = (state.repairs||[]).find(x=>x.id===c.dataset.id);
+        const p = (typeof restoForRepair_==='function') ? restoForRepair_(r) : null;
+        if(p && typeof openRestoDialog==='function') openRestoDialog(p.id);
+        else openRepairSheet(c.dataset.id);
         return;
       }
       // 💬 チャットバッジ → 詳細シートを開いてチャットへスクロール(v1.30.186)
