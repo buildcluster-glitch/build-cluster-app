@@ -2829,7 +2829,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.583</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.584</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -2856,6 +2856,7 @@
     <button data-view="inventory">📦 在庫管理</button>
     <button data-view="__material__" id="materialBtn" title="🧾 材料注文の報告 — 注文した材料を全員で共有(LINE WORKS掲示板の引っ越し先)">🧾 材料</button>
     <button data-view="__tanka__" id="tankaBtn" title="💴 単価表 — スマホ単価表と同じ内容(検索・元請切替)をアプリ内で開く">💴 単価表</button>
+    <!-- 🔕 v1.30.584(山田「一回消していいや」): GANTT_NAV_OFF=false に戻せば即復活する -->
     <button data-view="__gantt__" id="ganttBtn" title="📊 工事進捗ガント — 見積アプリの工事進捗タブ(Web閲覧版・表示のみ)をアプリ内で開く">📊 進捗</button>
   </div>
   <button class="nav-btn" id="myEventsBtn" title="👤 自分の設定・フィルタON/OFF">👤 マイ</button>
@@ -12843,6 +12844,19 @@ function restoApplyProgress(prop, serverProgress){
 //   データは消さない(イベントもjizen_scheduleも無傷)= false に戻せばすべて復活する。
 //   手入力の事前(事前帯・1クリック動作・ドラッグ)はこのスイッチの影響を受けない。
 const JIZEN_AUTO_OFF = true;
+// 🔕 v1.30.584(山田「カレンダーの進捗、一回消していいや」): ヘッダー📊進捗 と スマホ下部ナビ📊進捗 を隠す。
+//   機能・公開ページ(https://buildcluster-glitch.github.io/gantt/)は生きているのでURLからは今までどおり見られる。
+//   **false に戻すだけで両方復活**(JIZEN_AUTO_OFFと同じ作法)。
+const GANTT_NAV_OFF = true;
+(function(){
+  const apply = ()=>{
+    if(!GANTT_NAV_OFF) return;
+    const b = document.getElementById('ganttBtn'); if(b) b.style.display = 'none';
+    document.querySelectorAll('[data-mnav="gantt"]').forEach(x=>{ x.style.display = 'none'; });
+  };
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);
+  else apply();
+})();
 function isAutoJizenEvent_(ev){
   if(!JIZEN_AUTO_OFF || !ev || ev.category !== '事前') return false;
   return !!(ev._jizenSourceId || /^事前[\s　]/.test(String(ev.title||"")));
