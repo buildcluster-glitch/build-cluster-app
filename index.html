@@ -2829,7 +2829,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.584</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.585</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -18361,9 +18361,9 @@ document.getElementById("addLeaveBtn").onclick = ()=>openLeaveModal(null);
 function openAnnounceCompose_(){
   const me=(typeof getMyself==='function')?getMyself():"";
   if(!me){ alert('先に「👤 自分」を設定してください(👤マイ)'); return; }
-  if(typeof announceActiveItems_==='function' && announceActiveItems_().length>=ANNOUNCE_MAX){
-    alert(`📢 連絡事項は最大${ANNOUNCE_MAX}件までです。\n確認が済んだ連絡を🗑で消してから追加してください。`); return;
-  }
+  // 🔕 v1.30.585: 上限に達していても**画面は開く**(履歴を見に来た時に開けないと困るため)。
+  //   出せないことは中の注意書きと「📢出す」ボタンの無効化で伝える。
+  const __overMax = (typeof announceActiveItems_==='function' && announceActiveItems_().length>=ANNOUNCE_MAX);
   let ov=document.getElementById('announceComposeModal');
   if(!ov){
     ov=document.createElement('div'); ov.className='modal-overlay'; ov.id='announceComposeModal';
@@ -18383,6 +18383,13 @@ function openAnnounceCompose_(){
           <div id="ac-staff" class="qp-worker-pick" style="display:flex;gap:5px;flex-wrap:wrap"></div>
         </div>
         <div id="ac-note" style="font-size:11px;color:#92400e;font-weight:700;margin-top:6px"></div>
+        <div id="ac-max-note" style="display:none;font-size:12px;color:#b91c1c;font-weight:700;margin-top:6px;background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:6px 9px"></div>
+        <!-- 📜 v1.30.585(山田「自分が過去にいつどんな内容を出したか振り返れるように・邪魔にならないように」):
+             既定は畳んだ見出しだけ=普段は視界に入らない。押した時だけ開く。 -->
+        <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px">
+          <button type="button" id="ac-hist-head" style="width:100%;text-align:left;background:transparent;border:0;cursor:pointer;font-size:12px;font-weight:700;color:#475569;padding:2px 0"></button>
+          <div id="ac-hist" style="display:none;margin-top:6px;max-height:240px;overflow:auto"></div>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn" id="ac-cancel">キャンセル</button>
@@ -18413,7 +18420,50 @@ function openAnnounceCompose_(){
   ov.querySelector('#ac-clear').onclick=()=>{ sel.clear(); paint(); };
   ov.querySelector('#ac-text').value='';
   paint();
+  // 📜 これまでの連絡(自分が出したぶん)。データは🗑後も deleted:true で残っているのでそのまま履歴になる(v1.30.585)
+  {
+    const all = ((typeof loadAnnounceMap_==='function' ? loadAnnounceMap_() : {}).items) || [];
+    const mine = all.filter(it=> it && it.by === me).sort((a,b)=> String(b.at||'').localeCompare(String(a.at||'')));
+    const head = ov.querySelector('#ac-hist-head');
+    const box  = ov.querySelector('#ac-hist');
+    const label = open => `${open?'▾':'▸'} 📜 自分が出した連絡 ${mine.length}件${open?'':'（押すと開きます）'}`;
+    box.style.display = 'none';
+    head.textContent = label(false);
+    head.onclick = ()=>{
+      const willOpen = box.style.display === 'none';
+      box.style.display = willOpen ? 'block' : 'none';
+      head.textContent = label(willOpen);
+    };
+    box.innerHTML = mine.length ? mine.map(it=>{
+      const d = new Date(it.at);
+      const ds = isNaN(d) ? '' : `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      const tg = (typeof announceTargets_==='function') ? announceTargets_(it) : [];
+      const toLabel = (it.to && it.to.length) ? `🎯${it.to.join('・')}` : '👥全員';
+      const ackN = ((it.acked||[]).filter(s=> tg.includes(s))).length;
+      const state = it.deleted
+        ? `<span style="background:#e2e8f0;color:#64748b;font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px">済(消去)</span>`
+        : `<span style="background:#dcfce7;color:#166534;font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px">表示中</span>`;
+      return `<div style="border:1px solid var(--border);border-radius:8px;padding:6px 9px;margin-bottom:6px;background:#fff">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:10px;color:var(--muted)">
+          <span>${escapeHtml(ds)}</span>${state}
+          <span style="margin-left:auto">${escapeHtml(toLabel)} ・ 確認 ${ackN}/${tg.length}</span>
+        </div>
+        <div style="font-size:13px;margin-top:3px;white-space:pre-wrap;word-break:break-word;color:#0f172a">${escapeHtml(it.text||'')}</div>
+      </div>`;
+    }).join('') : `<div style="font-size:12px;color:var(--muted);padding:6px">まだ出したことがありません</div>`;
+  }
+  // 上限に達している時は「出す」だけ止める(画面は開く=履歴は見られる)v1.30.585
+  {
+    const post = ov.querySelector('#ac-post');
+    const mx = ov.querySelector('#ac-max-note');
+    post.disabled = __overMax;
+    post.style.opacity = __overMax ? .5 : '';
+    post.style.cursor = __overMax ? 'not-allowed' : '';
+    mx.style.display = __overMax ? 'block' : 'none';
+    mx.textContent = __overMax ? `いま表示中の連絡が${ANNOUNCE_MAX}件あるため、新しくは出せません。確認が済んだ連絡を🗑で消してからどうぞ（下の履歴は見られます）。` : '';
+  }
   ov.querySelector('#ac-post').onclick=()=>{
+    if(__overMax) return;
     const t=(ov.querySelector('#ac-text').value||'').trim();
     if(!t){ alert('本文を入力してください'); return; }
     if(typeof addAnnounce_==='function') addAnnounce_(t, [...sel]);
