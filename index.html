@@ -1015,11 +1015,16 @@
   .quick-pop.remind-list-pop .rlp-done:hover{background:#15803d}
   .quick-pop.remind-list-pop .rlp-empty{font-size:12px;color:var(--muted);text-align:center;padding:12px}
   /* 💬 タスクコメント常時表示(v1.30.265) */
-  .quick-pop.task-pop .tp-cmt-inline{margin:1px 0 5px 30px;display:flex;flex-direction:column;gap:2px}
-  .quick-pop.task-pop .tp-cmt-line{font-size:11px;line-height:1.35;color:#334155;background:#f1f5f9;border-radius:6px;padding:2px 7px;display:flex;gap:5px;align-items:baseline;flex-wrap:wrap}
-  .quick-pop.task-pop .tp-cmt-line > b{color:#1d4ed8;font-size:10px;flex-shrink:0}
+  /* 💬タスクのコメント(v1.30.580・山田「文字小さいから大きく・見やすく」): 11px→13px。
+     本文を主役にして、名前と時刻は小さいまま脇に置く=情報量は変えずに読みやすさだけ上げる。 */
+  .quick-pop.task-pop .tp-cmt-inline{margin:2px 0 7px 30px;display:flex;flex-direction:column;gap:3px}
+  .quick-pop.task-pop .tp-cmt-line{font-size:13px;line-height:1.5;color:#1e293b;background:#f1f5f9;border-radius:6px;padding:4px 9px;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+  .quick-pop.task-pop .tp-cmt-line > b{color:#1d4ed8;font-size:11px;flex-shrink:0}
   .quick-pop.task-pop .tp-cmt-line .tp-cmt-txt{flex:1;min-width:0;word-break:break-word;white-space:pre-wrap}
-  .quick-pop.task-pop .tp-cmt-line .tp-cmt-time{font-size:9px;color:#94a3b8;flex-shrink:0}
+  .quick-pop.task-pop .tp-cmt-line .tp-cmt-time{font-size:10px;color:#94a3b8;flex-shrink:0}
+  /* 💬コメントポップアップ側も同じ大きさに揃える(v1.30.580) */
+  .quick-pop .tcp-list .ev-comment-card{font-size:13px !important;line-height:1.5;padding:5px 8px !important}
+  .quick-pop .tcp-list .tcp-text{font-size:13px;color:#0f172a}
   .quick-pop.task-pop .tp-row .tp-done-quick{flex:0 0 auto;border:1.5px solid #bbf7d0;background:#f0fdf4;color:#16a34a;font-size:12px;font-weight:800;line-height:1;cursor:pointer;padding:2px 6px;border-radius:5px}
   .quick-pop.task-pop .tp-row .tp-done-quick:hover{background:#16a34a;color:#fff;border-color:#16a34a}
   .quick-pop.task-pop .tp-row .tp-del{flex:0 0 auto;border:0;background:transparent;color:#cbd5e1;font-size:16px;line-height:1;cursor:pointer;padding:0 2px}
@@ -2824,7 +2829,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.579</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.580</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
