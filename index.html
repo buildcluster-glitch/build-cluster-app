@@ -2824,7 +2824,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.578</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.579</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -7400,7 +7400,10 @@ function alertChipHtml_(id, opts){
   const e = getAlert_(id); if(!e) return "";
   // 著者は姓だけ(「山田裕貴」→「山田」)=チップ幅を食わない(山田 2026-07-15・v1.30.427)。ホバーtitleはフルネーム
   const __au = (typeof surnameOf_==='function') ? surnameOf_(e.author) : (e.author||'');
-  const txt = `⚠${e.text}${__au?(' '+__au):''}`;
+  // 📝 v1.30.579: 複数行アラートはチップ上で「／」区切りの1行に畳む(改行はHTMLで潰れて読みにくいため)。
+  //   ホバーtitleは改行のまま=全文が縦に読める。
+  const __lines = String(e.text||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  const txt = `⚠${__lines.join(' ／ ')}${__au?(' '+__au):''}`;
   const inline = opts&&opts.inline;
   const st = inline
     ? `display:inline-block;max-width:100%;font-size:11.5px;font-weight:800;color:#dc2626;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom`
@@ -7443,21 +7446,65 @@ async function setAlert_(id, text){
   return map;
 }
 // ピッカー用: ⚠アラート入力欄HTML + 配線(全ピッカー共通) v1.30.115
+//   📝 v1.30.579(山田要望「複数アラート入力できるように2段＋項目追加」): 1行→複数行に。
+//   ⚠**データは今までどおり1本の文字列**(改行区切り)で持つ=共有ストアの形も旧版端末も壊さない。
+//     旧版は改行込みの文字列をそのまま1件のアラートとして扱うだけ(表示が長くなる程度で実害なし)。
+const ALERT_ROWS_MIN = 2;   // 既定で出す入力欄の数
+function alertLinesOf_(id){
+  const e = (typeof getAlert_==='function') ? getAlert_(id) : null;
+  const arr = String((e && e.text) || "").split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  while(arr.length < ALERT_ROWS_MIN) arr.push("");     // 空欄を足して常に2段以上見せる
+  return arr;
+}
+function alertRowHtml_(id, val, i){
+  return `<div class="qp-alert-row" style="display:flex;gap:4px;align-items:center;margin-top:${i?4:0}px">
+    <input type="text" class="qp-alert-input" data-alert-id="${escapeHtml(String(id))}" data-alert-i="${i}" value="${escapeHtml(val||"")}" placeholder="${i?'（続けて書けます）':'例: 電気メーター写真お願いします'}" style="flex:1;min-width:0;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px;color:#dc2626;font-weight:600">
+    <button type="button" class="qp-alert-del" title="この行を消す" style="flex-shrink:0;width:24px;height:24px;padding:0;line-height:22px;border:1px solid var(--border-strong);background:#fff;color:#dc2626;border-radius:6px;cursor:pointer;font-size:12px">✕</button>
+  </div>`;
+}
 function alertInputHtml_(id){
-  const e=getAlert_(id); const cur=e?e.text:"";
-  return `<div class="qp-sec">
+  const lines = alertLinesOf_(id);
+  return `<div class="qp-sec" data-alert-sec="${escapeHtml(String(id))}">
     <div class="qp-label">⚠ アラート <span style="font-weight:400;color:#94a3b8;font-size:10px">(常時赤字でチップ表示・全員共有)</span></div>
-    <input type="text" class="qp-alert-input" data-alert-id="${escapeHtml(String(id))}" value="${escapeHtml(cur)}" placeholder="例: 電気メーター写真お願いします" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px;color:#dc2626;font-weight:600">
+    <div class="qp-alert-list">${lines.map((v,i)=>alertRowHtml_(id,v,i)).join("")}</div>
+    <button type="button" class="qp-alert-add" style="margin-top:5px;font-size:11px;padding:3px 10px;border:1px solid var(--border-strong);background:#fff;border-radius:6px;cursor:pointer">＋ 項目を追加</button>
   </div>`;
 }
 // ⚠ 未確定のアラート入力を確定させる(「✓ 保存」押下時の保険。blur自動保存と二重でも__lastガードで無害)v1.30.412
 function flushAlertInput_(pop){ try{ const inp=pop && pop.querySelector('.qp-alert-input'); if(inp) inp.dispatchEvent(new Event('blur')); }catch(_){} }
 function wireAlertInput_(pop){
-  const inp=pop.querySelector('.qp-alert-input'); if(!inp) return;
-  let __last=inp.value;
-  const save=()=>{ if(inp.value===__last) return; __last=inp.value; if(typeof setAlert_==='function') setAlert_(inp.dataset.alertId, inp.value).catch(()=>{}); if(typeof render==='function') render(); };
-  inp.addEventListener('keydown', e=>{ if(e.key==='Enter' && !e.isComposing && e.keyCode!==229){ e.preventDefault(); save(); inp.blur(); } });   // IME変換確定Enterでは発火しない(v1.30.262)
-  inp.addEventListener('blur', save);
+  const sec = pop.querySelector('[data-alert-sec]'); if(!sec) return;
+  const id = sec.dataset.alertSec;
+  const list = sec.querySelector('.qp-alert-list');
+  const joined = ()=> [...list.querySelectorAll('.qp-alert-input')].map(x=>x.value.trim()).filter(Boolean).join("\n");
+  let __last = joined();
+  const save = ()=>{
+    const v = joined();
+    if(v === __last) return;
+    __last = v;
+    if(typeof setAlert_==='function') setAlert_(id, v).catch(()=>{});
+    if(typeof render==='function') render();
+  };
+  const wireRow = row=>{
+    const inp = row.querySelector('.qp-alert-input');
+    inp.addEventListener('keydown', e=>{ if(e.key==='Enter' && !e.isComposing && e.keyCode!==229){ e.preventDefault(); save(); inp.blur(); } });   // IME変換確定Enterでは発火しない(v1.30.262)
+    inp.addEventListener('blur', save);
+    row.querySelector('.qp-alert-del').onclick = ()=>{
+      const rows = [...list.querySelectorAll('.qp-alert-row')];
+      if(rows.length <= ALERT_ROWS_MIN) inp.value = "";      // 2段は残す(全部消えて入力できなくなるのを防ぐ)
+      else row.remove();
+      save();
+    };
+  };
+  list.querySelectorAll('.qp-alert-row').forEach(wireRow);
+  const addBtn = sec.querySelector('.qp-alert-add');
+  if(addBtn) addBtn.onclick = ()=>{
+    const i = list.querySelectorAll('.qp-alert-row').length;
+    list.insertAdjacentHTML('beforeend', alertRowHtml_(id, "", i));
+    const row = list.lastElementChild;
+    wireRow(row);
+    try{ row.querySelector('.qp-alert-input').focus(); }catch(_){}
+  };
 }
 // ===========================================================
 // 🚫 事前「行かない(訪問不要)」を全端末共有 — shared-config 'skip_visit' v1.30.131
