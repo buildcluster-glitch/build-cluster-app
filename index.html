@@ -2829,7 +2829,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.581</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.582</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -21292,6 +21292,46 @@ function saveCalReports_(m){
   try{ localStorage.setItem(CAL_REPORTS_KEY, JSON.stringify(__calReportsMem)); return true; }
   catch(e){ console.warn('[calendar_reports] ローカル保存失敗(容量?・表示と共有はメモリで継続):', e && e.message); return false; }
 }
+// 📷 v1.30.582(山田「保存容量が残り少」・実測でbuildcluster_calendar_reportsが1.69MB=最大の占有):
+//   バグ報告の写真をDriveへ退避してURLで持つ。現場メモ(restoPersistPhoto_ v1.30.393)と同じ考え方。
+//   ⭐二重の得: ①端末の5MB枠を食わない ②共有ストアの予算(200KB)に収まるので**他の人にも写真が見える**
+//     (今までは大きい画像が共有時に落とされ「投稿した端末でのみ表示」になっていた)。
+//   失敗時はdataURIのまま=従来動作(fail-open)。
+async function reportPhotoToDrive_(dataUrl){
+  if(!dataUrl || String(dataUrl).indexOf('http') === 0) return dataUrl;   // 既にURL
+  try{
+    const r = await restoUploadToDrive(dataUrl, 'バグ報告', '');
+    if(r && r.ok && r.url) return r.url;
+  }catch(_){}
+  return dataUrl;
+}
+// 🧹 既存report内のdataURI写真をまとめてDriveへ退避(容量の回収)。進捗はボタン文言で返す
+async function migrateReportPhotosToDrive_(btn){
+  const s = (typeof loadGasSettings==='function') ? loadGasSettings() : {};
+  if(!s.url || !s.token){ alert('この端末はクラウド同期が未設定のため、Driveへ退避できません(⚙設定でURL/Tokenを入れてください)'); return; }
+  const map = loadCalReports_();
+  const targets = [];
+  Object.values(map).forEach(r=>{
+    if(!r) return;
+    brPhotos_(r).forEach((p,i)=>{ if(String(p).indexOf('data:')===0) targets.push({r, i}); });
+  });
+  if(!targets.length){ alert('✅ 端末に残っている画像はありません（すべてDrive退避済みです）'); return; }
+  if(!confirm(`端末に残っている画像 ${targets.length}枚 をDriveへ移します。\n・画像は今までどおり見られます（むしろ全員に見えるようになります）\n・この端末の保存容量が空きます\n\n実行しますか？`)) return;
+  const orig = btn ? btn.textContent : '';
+  let done = 0, failed = 0;
+  for(const t of targets){
+    if(btn){ btn.disabled = true; btn.textContent = `退避中… ${done+failed+1}/${targets.length}`; }
+    const list = brPhotos_(t.r);
+    const url = await reportPhotoToDrive_(list[t.i]);
+    if(String(url).indexOf('http') === 0){ list[t.i] = url; brSetPhotos_(t.r, list); done++; }
+    else failed++;
+  }
+  saveCalReports_(map);
+  try{ await pushCalReports_(map); }catch(_){}
+  if(btn){ btn.disabled = false; btn.textContent = orig; }
+  if(typeof renderBugReportModal_==='function') renderBugReportModal_();
+  alert(`📷 ${done}枚をDriveへ移しました${failed?`（${failed}枚は失敗＝端末に残しました）`:''}。\n保存容量が空いたはずです（⚙の容量表示で確認できます）。`);
+}
 // 📷 共有ストアはSheetセル(上限≈50000字)。画像1枚(base64)だけで超過し値全体が壊れる→全端末で空表示になる。
 //   対策: 共有に載せる版は安全予算(SHARE_MAX)内に収め、超える分は古い画像から落とす(=画像はローカル保持・hadPhoto印)。
 //   テキスト/コメント/ステータスは必ず共有される。v1.30.270
@@ -21561,6 +21601,7 @@ function ensureBugReportModal_(){
       </div>
       <div class="modal-footer">
         <button class="btn" id="br-reshare" title="この端末の報告を全員に再共有し、最新を取得します（スマホに出ない時に）">🔄 再共有</button>
+        <button class="btn" id="br-migrate" title="端末に残っている画像をDriveへ移して保存容量を空けます（画像は今までどおり見られます）">🧹 画像をDriveへ</button>
         <button class="btn" id="br-close">閉じる</button>
       </div>
     </div>`;
@@ -21569,6 +21610,8 @@ function ensureBugReportModal_(){
   ov.querySelector("#br-close").onclick = ()=> ov.classList.remove("show");
   const __brReshare = ov.querySelector("#br-reshare");
   if(__brReshare) __brReshare.onclick = ()=> reshareBugReports_(__brReshare);
+  const __brMig = ov.querySelector("#br-migrate");   // 🧹 端末の画像をDriveへ(v1.30.582)
+  if(__brMig) __brMig.onclick = ()=> migrateReportPhotosToDrive_(__brMig);
   // 📷 画像添付(v1.30.260 / 複数枚化 v1.30.465・最上要望): 最大4枚。
   //   元ファイルを持っておき、投稿時に「枚数に応じた目標サイズ」でまとめて圧縮する
   //   (共有ストアの予算内に収めるため。1〜2枚=各60KB / 3枚=各46KB / 4枚=各35KB)
@@ -21654,8 +21697,16 @@ function ensureBugReportModal_(){
     btn.disabled = true; btn.textContent = __brDraft.length ? "画像を圧縮中…" : "共有中…";
     // 📷 画像は共有設定(calendar_reports)に直接載せて全端末へ(v1.30.399・上限200KBに拡大したので剥がれない)。Drive依存の30秒待ちは廃止。
     //    複数枚は photos[] に。旧版端末でも1枚目が見えるよう photo(単数)も同時に入れる(v1.30.465)
-    const photos = await __brBuildPhotos();
-    const __phFail = __brDraft.length - photos.length;   // 📷 圧縮/読込に失敗した枚数(HEIC等この端末で扱えない形式・v1.30.561)
+    const photos0 = await __brBuildPhotos();
+    const __phFail = __brDraft.length - photos0.length;   // 📷 圧縮/読込に失敗した枚数(HEIC等この端末で扱えない形式・v1.30.561)
+    // 📷 v1.30.582: Driveへ退避してURLで持つ(端末の5MB枠を食わない+共有予算に収まり全員に見える)。
+    //    失敗した分はdataURIのまま=従来どおり投稿できる(fail-open)。
+    const photos = [];
+    for(let i=0; i<photos0.length; i++){
+      btn.textContent = photos0.length>1 ? `画像を保存中… ${i+1}/${photos0.length}` : "画像を保存中…";
+      photos.push(await reportPhotoToDrive_(photos0[i]));
+    }
+    const __phLocal = photos.filter(p=>String(p).indexOf('data:')===0).length;   // Drive退避できなかった枚数
     btn.textContent = "共有中…";
     const r = await mutateCalReport_(uid(), brSetPhotos_({ type: ov.querySelector("#br-type").value, text, status:"open",
       by: getMyself()||"", at: new Date().toISOString(), appVer: ver, comments: [] }, photos));
@@ -21666,6 +21717,7 @@ function ensureBugReportModal_(){
     if(r && r.ok){
       const notes = [];
       if(__phFail > 0) notes.push(`画像${__phFail}枚はこの端末で読み込めない形式のため添付できませんでした`);
+      if(__phLocal > 0) notes.push(`画像${__phLocal}枚はDriveへ保存できず端末内に置きました(容量を使います・後で🧹画像をDriveへ で移せます)`);
       if(r.photosDropped) notes.push(`端末の保存容量が足りず画像${r.photosDropped}枚は載せられませんでした(本文は共有済み)`);
       if(!r.localSaved) notes.push("この端末の保存容量が足りないため、端末内には残せませんでした(共有には届いています)");
       if(notes.length) alert("✅ 報告は全員に共有しました。ただし:\n・" + notes.join("\n・"));
