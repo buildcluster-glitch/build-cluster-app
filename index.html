@@ -2829,7 +2829,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.585</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.586</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4553,11 +4553,24 @@ const STAFF = ["山田裕貴","大村将史","南部大我","木村優作","鈴�
 const TOBAN_ORDER = ["山田裕貴","大村将史","南部大我","木村優作","鈴木悠平","最上登生"];
 const TOBAN_ANCHOR_MONDAY = "2026-06-22";   // この週の当番=
 const TOBAN_ANCHOR_STAFF  = "大村将史";
+// 🏖 v1.30.586(南部報告「倉庫番がお盆で1個ずれている」・山田裁定「いまは南部当番が正解」):
+//   会社が丸ごと休みの週は当番を数えない。従来は8/10週(お盆8/9-16)も1週として進めていたため、
+//   南部さんの当番が誰も居ない週に丸ごと入り、実質1回飛ばされて以降ずっと1人ぶん先行していた。
+//   **ここに月曜日を1行足すだけ**でその週を飛ばせる(年末年始も同じことが起きるので都度追記する)。
+const TOBAN_SKIP_MONDAYS = [
+  "2026-08-10",   // お盆休み(8/9〜16)
+];
 function mondayOf_(d){ const dt = (d instanceof Date) ? new Date(d) : new Date(String(d)); if(isNaN(dt)) return null; dt.setHours(0,0,0,0); const wd=(dt.getDay()+6)%7; dt.setDate(dt.getDate()-wd); return dt; }
 function tobanOfDate_(d){
   const m = mondayOf_(d), anchor = mondayOf_(TOBAN_ANCHOR_MONDAY);
   if(!m || !anchor) return "";
-  const weeks = Math.round((m - anchor)/(7*86400000));
+  let weeks = Math.round((m - anchor)/(7*86400000));
+  // 🏖 アンカーとこの週の間にある「休みの週」は進めない(その週の当番は休み明けへ持ち越す)
+  const skipped = TOBAN_SKIP_MONDAYS.reduce((n, s)=>{
+    const sm = mondayOf_(s);
+    return (sm && sm >= anchor && sm < m) ? n+1 : n;
+  }, 0);
+  weeks -= skipped;
   const n = TOBAN_ORDER.length;
   const anchorIdx = Math.max(0, TOBAN_ORDER.indexOf(TOBAN_ANCHOR_STAFF));
   return TOBAN_ORDER[((anchorIdx + weeks) % n + n) % n];
