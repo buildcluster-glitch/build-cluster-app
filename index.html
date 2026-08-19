@@ -2836,7 +2836,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.587</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.588</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -18229,7 +18229,7 @@ function renderColorPicker(selected){
     </label>`).join("");
   colorWrap.innerHTML = html;
 }
-function closeEventModal(){ eventModal.classList.remove("show"); editingEventId=null; }
+function closeEventModal(){ eventModal.classList.remove("show"); editingEventId=null; __qaPendingAlert=null; }   // ⚠ 持ち越しアラートも破棄(保存以外の閉じ方で残さない)v1.30.588
 function getTimeMode(){
   return document.querySelector('input[name="ev-timemode"]:checked')?.value || "timed";
 }
@@ -18325,6 +18325,8 @@ document.getElementById("ev-save").onclick = ()=>{
     state.events.push(data);
   }
   saveState();
+  // ⚠ クイック登録シートから持ち越したアラート(v1.30.588)。保存確定時だけ共有へ(キャンセルはcloseEventModalで破棄)
+  if(__qaPendingAlert!=null){ try{ if(typeof setAlert_==='function') setAlert_(data.id, __qaPendingAlert).catch(()=>{}); }catch(_){} __qaPendingAlert=null; }
   if(typeof cloudQueueEventChange === 'function') cloudQueueEventChange(data, 'upsert');
   closeEventModal();
   render();
@@ -19240,6 +19242,8 @@ document.querySelectorAll(".view-switch button").forEach(b=>{
 //   増やす時はここに1行足すだけ。title は必須、category / time は省略可(省略=触らない)。
 //     category: カテゴリボタンの値("" = 未分類 / "立会" "修繕" "事務" 等)
 //     time    : "" = 時間未定 / "__am__" = AM中 / "__pm__" = PM中 / "09:00" のような時刻
+// ⚠ クイック登録シート→✏️詳細フォームへのアラート持ち越し(v1.30.588)。詳細フォームの「保存」確定時にだけ共有へ書く
+let __qaPendingAlert = null;
 const QUICK_TEMPLATES = [
   { id:"souko", label:"🏭 倉庫番", title:"倉庫番", time:"" },
 ];
@@ -19302,6 +19306,9 @@ function showQuickAddSheet_(defaults={}, editEv=null){
       <button data-c="go" class="${selCommute.go?'on':''}" style="background:#dbeafe">🚗 直行</button>
       <button data-c="home" class="${selCommute.home?'on':''}" style="background:#dcfce7">🏠 直帰</button>
     </div>
+    <div class="qa-label">⚠ アラート <span style="font-weight:400;color:var(--muted);font-size:10px">(任意・常時赤字でチップ表示・全員共有)</span></div>
+    <div id="qa-alert-list" style="margin-bottom:6px"></div>
+    <button type="button" id="qa-alert-add" style="margin-bottom:12px;font-size:11px;padding:3px 10px;border:1px solid var(--border-strong);background:#fff;border-radius:6px;cursor:pointer">＋ 項目を追加</button>
     <div class="qa-actions">
       <button id="qa-cancel" style="background:#f1f5f9;color:#334155">キャンセル</button>
       <button id="qa-detail" style="background:#e0e7ff;color:#3730a3">✏️ 詳細</button>
@@ -19325,6 +19332,31 @@ function showQuickAddSheet_(defaults={}, editEv=null){
     });
   };
   paintStaff();
+  // ⚠ アラート入力(v1.30.588・山田「この画面でもアラート入力できるように」): 共有アラート(v1.30.115/579)をクイック登録にも。
+  //   既存部品alertInputHtml_はblurで即・共有保存する作り=①新規予定はまだidが無い ②キャンセルしても残る、の2点でここでは使えない。
+  //   ここは欄に溜めるだけ→「登録/保存」が押された時にsetAlert_で確定(キャンセル安全)。シートは省スペース優先で既定1段(ピッカーは2段)。
+  const __alertLines0 = isEdit
+    ? (function(){ const e=(typeof getAlert_==='function')?getAlert_(editEv.id):null; return String((e&&e.text)||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean); })()
+    : [];
+  const __alertList = bd.querySelector('#qa-alert-list');
+  const __alertRowHtml = v => `<div class="qa-alert-row" style="display:flex;gap:4px;align-items:center;margin-top:4px">
+    <input type="text" class="qa-alert-input" value="${escapeHtml(v||'')}" placeholder="例: 電気メーター写真お願いします" style="flex:1;min-width:0;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px;color:#dc2626;font-weight:600">
+    <button type="button" class="qa-alert-del" title="この行を消す" style="flex-shrink:0;width:24px;height:24px;padding:0;line-height:22px;border:1px solid var(--border-strong);background:#fff;color:#dc2626;border-radius:6px;cursor:pointer;font-size:12px">✕</button>
+  </div>`;
+  const __wireAlertRow = row => { row.querySelector('.qa-alert-del').onclick = ()=>{
+    if(__alertList.querySelectorAll('.qa-alert-row').length <= 1) row.querySelector('.qa-alert-input').value = "";   // 最後の1段は残す(入力欄が消えて書けなくなるのを防ぐ・v579と同じ)
+    else row.remove();
+  }; };
+  (__alertLines0.length ? __alertLines0 : ['']).forEach(v=>__alertList.insertAdjacentHTML('beforeend', __alertRowHtml(v)));
+  __alertList.querySelectorAll('.qa-alert-row').forEach(__wireAlertRow);
+  bd.querySelector('#qa-alert-add').onclick = ()=>{
+    __alertList.insertAdjacentHTML('beforeend', __alertRowHtml(''));
+    const row = __alertList.lastElementChild; __wireAlertRow(row);
+    try{ row.querySelector('.qa-alert-input').focus(); }catch(_){}
+  };
+  const __alertJoined = ()=> [...__alertList.querySelectorAll('.qa-alert-input')].map(x=>x.value.trim()).filter(Boolean).join('\n');
+  // 変更があった時だけsetAlert_(無駄な共有書込・著者スタンプ上書きを避ける)。編集で空にした場合は""=解除がそのまま届く
+  const __alertCommit = id => { try{ const v=__alertJoined(); if(v !== __alertLines0.join('\n') && typeof setAlert_==='function') setAlert_(id, v).catch(()=>{}); }catch(_){} };
   bd.querySelectorAll('.qa-cat button').forEach(b=>{
     b.onclick = ()=>{
       selCat = b.dataset.cat;   // 単一選択(未分類="")
@@ -19379,6 +19411,7 @@ function showQuickAddSheet_(defaults={}, editEv=null){
     const __ampm = (st==='__am__' || st==='__pm__');   // 🌗 AM中/PM中は時刻扱いにしない(詳細フォームへtimeMode渡す)
     const __realSt = __ampm ? (st==='__am__' ? '09:00' : '13:00') : st;
     const posS = __realSt || posStart || "";   // 時間未定でもクリック位置を引き継ぐ
+    { const __alV = __alertJoined(); __qaPendingAlert = (__alV !== __alertLines0.join('\n')) ? __alV : null; }   // ⚠ 持ち越し(詳細フォーム保存時に確定)v1.30.588
     bd.remove();
     if(isEdit){ openEventModal(editEv); return; }   // 編集: 従来フォームで詳細編集
     openEventModal(null, {date:d||undefined, staff:selStaff[0]||undefined, participants:selStaff.slice(1), start:posS||undefined, end:posS?endOf(posS):undefined, category:selCat||undefined, timeMode: __ampm ? (st==='__am__'?'am':'pm') : undefined});
@@ -19402,6 +19435,7 @@ function showQuickAddSheet_(defaults={}, editEv=null){
       else { const posS = posStart || target.start || "09:00"; target.start = posS; target.end = endOf(posS); target.timeMode = target.allday ? (target.timeMode||"allday") : "anytime"; }
       target.updatedAt = new Date().toISOString();
       saveState();
+      __alertCommit(target.id);   // ⚠ アラート確定(setAlert_はローカル即時反映→直後のrenderで見える)v1.30.588
       if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(target,'upsert'); }catch(_){} }
       render(); bd.remove();
       return;
@@ -19418,6 +19452,7 @@ function showQuickAddSheet_(defaults={}, editEv=null){
     };
     if(typeof pushHistory==='function') pushHistory();
     state.events.push(ev);
+    __alertCommit(ev.id);   // ⚠ アラート確定(新規idに紐付け)v1.30.588
     if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(ev,'upsert'); }catch(_){} }
     saveState(); render();
     bd.remove();
