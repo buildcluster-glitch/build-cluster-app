@@ -24,7 +24,8 @@ const SHEETS = {
       'title','category','contractor','staff','participants',
       'commute','importance','color','memo',
       'comments',
-      'createdBy','createdAt','updatedAt'
+      'createdBy','createdAt','updatedAt',
+      'version'   // 🔢 write-through の版番号(2026-08-19)。api.gs の API_SHEETS.events と必ず揃えること
     ],
     freezeRows: 1,
   },

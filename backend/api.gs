@@ -35,7 +35,11 @@ const API_SHEETS = {
     'title','category','contractor','staff','participants',
     'commute','importance','color','memo',
     'comments',
-    'createdBy','createdAt','updatedAt'
+    'createdBy','createdAt','updatedAt',
+    // 🔢 write-through(2026-08-19): 影DBの新旧判定に使う単調増加の版番号。
+    //    末尾に足すこと(既存列の順序を変えるとシートの中身がズレる)。
+    //    doGet応答にフィールドが1つ増えるだけ=影同期・アプリともに無害(台帳DB契約で合意済み)。
+    'version'
   ],
   properties: ['id','name','address','propertyType','contractor','note','updatedAt'],
   logs:       ['id','type','eventId','member','datetime','note','opId'],
@@ -100,6 +104,13 @@ function doPost(e) {
     const body = JSON.parse(e.postData.contents || '{}');
     const action = body.action;
     const data = body.data;
+    // 🔧 遠隔スイッチ(wt-config): フラグの読み書きだけ。**門番より前**に置く=自分で解除不能にならない
+    if (action === 'wt-config') {
+      return jsonResponse_({ ok: true, action: action, result: wtConfig_(body) });
+    }
+    // 🚧 メンテ/門番: 書き込み系だけ止める(読み=doGetは別経路なので影響なし)。通常はnullで素通し
+    var _mg = (typeof maintGuard_ === 'function') ? maintGuard_(action) : null;
+    if (_mg) return _mg;
     const result = dispatch_(action, data);
     // lastSyncAt を更新
     upsertConfig_('lastSyncAt', new Date().toISOString());
@@ -124,11 +135,18 @@ const IDEMPOTENT_ACTIONS = new Set(['setEventStatus']);
 function dispatch_(action, data) {
   const lock = LockService.getScriptLock();
   lock.waitLock(10000); // 10秒、同時書き込み待機
+  let result;
   try {
-    return dispatchInner_(action, data);
+    // 📮 write-through: ロック内では**積むだけ**(禁止事項②=ロックを持ったままSupabaseへ送らない)。
+    //    カレンダーはbulkSyncで数十件を1ロックで処理するため、ここで送ると全端末の保存が直列化する。
+    if (typeof wtQueueReset_ === 'function') wtQueueReset_();
+    result = dispatchInner_(action, data);
   } finally {
     lock.releaseLock();
   }
+  // ★ロック解放後に送る。失敗しても本保存(スプレッドシート)は既に完了=応答には影響しない
+  if (typeof wtFlushQueue_ === 'function') wtFlushQueue_();
+  return result;
 }
 
 // ロックは呼び出し元(dispatch_)が1回だけ取る。bulkSync_ から1件ずつ呼ぶときに
@@ -315,6 +333,19 @@ function upsertRow_(name, data) {
     data.updatedAt = new Date().toISOString();
   }
   const rowIdx = findRowIndexById_(sh, data.id);
+  // 🔢 version採番(events のみ): **このロックの中で**「既存+1」を決める=単調増加が保証される。
+  //   新旧判定の主役(updatedAtは時計ズレ・同ミリ秒保存で壊れるため使わない)。
+  //   旧版アプリが version を送ってこなくてもここで必ず付く。
+  if (name === 'events' && headers.includes('version')) {
+    let prevVer = 0;
+    if (rowIdx !== -1) {
+      try {
+        const vCol = headers.indexOf('version') + 1;
+        prevVer = Number(sh.getRange(rowIdx, vCol).getValue()) || 0;
+      } catch (e) { prevVer = 0; }
+    }
+    data.version = prevVer + 1;
+  }
   const row = objectToRow_(data, headers);
   if (rowIdx === -1) {
     if (headers.includes('createdAt') && !data.createdAt) {
@@ -325,9 +356,11 @@ function upsertRow_(name, data) {
     } else {
       sh.appendRow(row);
     }
+    if (name === 'events' && typeof wtQueueUpsert_ === 'function') wtQueueUpsert_(data);
     return { id: data.id, action: 'inserted' };
   }
   sh.getRange(rowIdx, 1, 1, headers.length).setValues([row]);
+  if (name === 'events' && typeof wtQueueUpsert_ === 'function') wtQueueUpsert_(data);
   return { id: data.id, action: 'updated' };
 }
 
@@ -336,7 +369,18 @@ function deleteRowById_(name, id) {
   if (!sh) throw new Error('sheet not found: ' + name);
   const rowIdx = findRowIndexById_(sh, id);
   if (rowIdx === -1) return { id, action: 'not_found' };
+  // 🔢 削除も version付き tombstone にする(遅れて届いた古い更新で予定が復活しないように)。
+  //   消す前に現在のversionを読んでおく=wtQueueDelete_ 側で +1 して送る。
+  let lastVer = 0;
+  if (name === 'events') {
+    try {
+      const headers = API_SHEETS[name];
+      const vCol = headers.indexOf('version') + 1;
+      if (vCol > 0) lastVer = Number(sh.getRange(rowIdx, vCol).getValue()) || 0;
+    } catch (e) { lastVer = 0; }
+  }
   sh.deleteRow(rowIdx);
+  if (name === 'events' && typeof wtQueueDelete_ === 'function') wtQueueDelete_(id, lastVer);
   return { id, action: 'deleted' };
 }
 
