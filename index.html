@@ -2836,7 +2836,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.588</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.589</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -7561,6 +7561,52 @@ function wireAlertInput_(pop){
   };
 }
 // ===========================================================
+// ✏️ 時刻の自由入力メモ(「早め」「夕方」等)を全端末共有 — shared-config 'time_notes' v1.30.589
+//   山田要望「時間入力『早め(赤字で)』とか自由に日本語入力にも」。時刻セレクトの「✏️自由入力」から入れる。
+//   データは⚠アラートと同型のLWWマップ。イベント本体に持たせない理由=✅完了(v424)と同じ
+//   (api.gsのシート列が固定で、本体に足しても同期で消える)。挙動=時間未定(anytime)+赤字ラベル。text=""で解除。
+//   value(JSON) = { notes:{ [evId]:{text, by, at} }, updatedAt }
+// ===========================================================
+const TIME_NOTES_KEY = "buildcluster_time_notes";
+function loadTimeNotes_(){ try{ const o=JSON.parse(localStorage.getItem(TIME_NOTES_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
+function saveTimeNotes_(map){ try{ localStorage.setItem(TIME_NOTES_KEY, JSON.stringify(map||{})); }catch(e){} }
+function timeNoteGet_(id){ const e=loadTimeNotes_()[id]; return (e && e.text) ? e : null; }
+async function fetchTimeNotes_(opts={}){
+  const s=loadGasSettings(); const local=loadTimeNotes_();
+  if(!s.url||!s.token){ return local; }
+  try{
+    const url=`${s.url}?action=get-shared-config&key=time_notes&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res=await fetch(url,{method:'GET',redirect:'follow'}); if(!res.ok) throw new Error('HTTP '+res.status);
+    const data=await res.json(); let raw=data.value;
+    if(raw===''||raw==null) raw={notes:{}}; else if(typeof raw==='string'){ try{raw=JSON.parse(raw);}catch(e){raw={notes:{}};} }
+    const remote=(raw&&raw.notes&&typeof raw.notes==='object')?raw.notes:{};
+    const merged=mergeAlertMaps_(remote, local);   // LWW(atが新しい方)=アラートと同じマージ器を流用
+    saveTimeNotes_(merged);
+    if(opts.push && JSON.stringify(merged)!==JSON.stringify(remote)){ pushTimeNotesMap_(merged).catch(()=>{}); }
+    if(!opts.silent && typeof render==='function') render();
+    return merged;
+  }catch(err){ if(!opts.silent) console.warn('[time_notes] fetch失敗:', err.message); return local; }
+}
+async function pushTimeNotesMap_(map){
+  const s=loadGasSettings(); if(!s.url||!s.token) return;
+  const payload={ notes:map||{}, updatedAt:new Date().toISOString() };
+  try{ await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'time_notes',value:JSON.stringify(payload),token:s.token,savedBy:'calendar-app'})}); }catch(e){ console.warn('[time_notes] push失敗:', e.message); }
+}
+async function setTimeNote_(id, text){
+  const stamp=()=>({ text:(text||'').trim(), by:(typeof getMyself==='function'?getMyself():'')||'', at:new Date().toISOString() });
+  let map=loadTimeNotes_(); map[id]=stamp(); saveTimeNotes_(map);
+  const s=loadGasSettings();
+  if(s.url&&s.token){
+    try{ const url=`${s.url}?action=get-shared-config&key=time_notes&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+      const res=await fetch(url,{method:'GET',redirect:'follow'});
+      if(res.ok){ const d=await res.json(); let raw=d.value; if(typeof raw==='string'){ try{raw=JSON.parse(raw);}catch(_){raw=null;} }
+        if(raw&&raw.notes&&typeof raw.notes==='object'){ map=mergeAlertMaps_(raw.notes, loadTimeNotes_()); map[id]=stamp(); saveTimeNotes_(map); } }
+    }catch(_){}
+  }
+  await pushTimeNotesMap_(map);
+  return map;
+}
+// ===========================================================
 // 🚫 事前「行かない(訪問不要)」を全端末共有 — shared-config 'skip_visit' v1.30.131
 //   軽い工事で現地に行かなくていい事前をグレー化+🚫行かない印に。台帳NO(_jizenSourceId)で突合(端末ごとにev.idが違うため)。
 //   value(JSON) = { skips:{ [key]:{skip,at,by} }, updatedAt }   key= sid:台帳NO or t:正規化物件名
@@ -10043,9 +10089,11 @@ function showEventStaffPicker(el, ev){
   // 🕐 日時変更用(全員共有)。時刻あり=timed/無し=時間未定。v1.30.169
   const __evSelTime = (ev.timeMode==='timed') ? (ev.start||'') : '';
   // 🌗 AM中/PM中(v1.30.445 山田要望): 時刻は決めないが午前/午後は決まっている予定。timeMode='am'/'pm'(同期列は既存timeMode=GAS変更不要)
-  let __evTimeOptsHtml = `<option value=""${(!__evSelTime && ev.timeMode!=='am' && ev.timeMode!=='pm')?' selected':''}>時間未定</option>`
+  const __evNote0 = (typeof timeNoteGet_==='function') ? ((timeNoteGet_(ev.id)||{}).text||'') : '';   // ✏️ 時刻の自由入力メモ(v1.30.589)
+  let __evTimeOptsHtml = `<option value=""${(!__evSelTime && ev.timeMode!=='am' && ev.timeMode!=='pm' && !__evNote0)?' selected':''}>時間未定</option>`
     + `<option value="__am__"${ev.timeMode==='am'?' selected':''}>AM中</option>`
-    + `<option value="__pm__"${ev.timeMode==='pm'?' selected':''}>PM中</option>`;
+    + `<option value="__pm__"${ev.timeMode==='pm'?' selected':''}>PM中</option>`
+    + `<option value="__free__"${__evNote0?' selected':''}>✏️自由入力(早め 等)</option>`;
   for(let h=7;h<=19;h++){ for(let m=0;m<60;m+=15){ const v=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`; __evTimeOptsHtml += `<option value="${v}"${v===__evSelTime?' selected':''}>${v}</option>`; } }
   const __evEndOf = st => st ? `${String(Math.min(+st.slice(0,2)+1,23)).padStart(2,'0')}:${st.slice(3)}` : '10:00';
   pop.innerHTML = `
@@ -10084,6 +10132,7 @@ function showEventStaffPicker(el, ev){
         <button id="evDtApply" class="qp-detail" style="padding:6px 10px;flex-shrink:0;background:#e0e7ff;color:#3730a3">変更</button>
         <button id="evDtMitei" class="qp-detail" style="padding:6px 10px;flex-shrink:0;background:#fef3c7;color:#92400e" title="ワンタップで時間未定にする(現在位置は保持)">🕔 未定に</button>
       </div>
+      <input type="text" id="evDtNote" value="${escapeHtml(__evNote0)}" placeholder="例: 早め・夕方(「変更」で確定・全員共有)" style="display:${__evNote0?'block':'none'};width:100%;box-sizing:border-box;margin-top:6px;padding:5px 6px;font-size:12px;border:1px solid var(--border-strong);border-radius:6px;color:#dc2626;font-weight:700">
     </div>
     <div class="qp-sec">
       <div class="qp-label">⏰ リマインド <span style="font-weight:400;color:#94a3b8;font-size:10px">(この日から⏰が点滅で知らせる)</span></div>
@@ -10265,6 +10314,11 @@ function showEventStaffPicker(el, ev){
       render();
     };
   }
+  // ✏️ 「自由入力」を選んだ時だけ赤字メモ欄を出す(v1.30.589)
+  {
+    const __sel = pop.querySelector('#evDtTime'), __noteEl = pop.querySelector('#evDtNote');
+    if(__sel && __noteEl) __sel.onchange = ()=>{ const on = __sel.value==='__free__'; __noteEl.style.display = on?'block':'none'; if(on){ try{ __noteEl.focus(); }catch(_){} } };
+  }
   // 🕐 日時変更(全員共有)。時刻ありtimed/無し=時間未定。台帳ではなく予定本体を更新→cloud同期 v1.30.169
   const __evDtApply = pop.querySelector('#evDtApply');
   if(__evDtApply){
@@ -10276,21 +10330,28 @@ function showEventStaffPicker(el, ev){
       if(!real){ return; }
       if(typeof pushHistory==='function') pushHistory();
       real.date = nd;
+      // ✏️ 時刻の自由入力メモ(v1.30.589): 自由入力=時間未定扱い+赤字ラベル。他の選択に変えたら古いメモは消す
+      const __ntxApply = (nt==='__free__') ? (((pop.querySelector('#evDtNote')||{}).value||'').trim()) : null;
+      if(nt==='__free__'){
+        real.timeMode = 'anytime'; real.allday = false;   // 置き位置(start/end)は現状維持=時間未定と同じ扱い
+        if(typeof setTimeNote_==='function') setTimeNote_(ev.id, __ntxApply).catch(()=>{});
+      }
+      else if(typeof timeNoteGet_==='function' && timeNoteGet_(ev.id) && typeof setTimeNote_==='function'){ setTimeNote_(ev.id, '').catch(()=>{}); }
       if(nt==='__am__' || nt==='__pm__'){
         // 🌗 AM中/PM中: 時刻なし扱いだが表示位置アンカーとしてstart/endを午前/午後に置く(v1.30.445)
         const isAm = nt==='__am__';
         real.timeMode = isAm ? 'am' : 'pm'; real.allday = false;
         real.start = isAm ? '09:00' : '13:00'; real.end = isAm ? '10:00' : '14:00';
       }
-      else if(nt){ real.start = nt; real.end = __evEndOf(nt); real.timeMode = 'timed'; real.allday = false; }
-      else { real.timeMode = 'anytime'; real.allday = false; }
+      else if(nt && nt!=='__free__'){ real.start = nt; real.end = __evEndOf(nt); real.timeMode = 'timed'; real.allday = false; }
+      else if(!nt){ real.timeMode = 'anytime'; real.allday = false; }
       real.updatedAt = new Date().toISOString();
       saveState();
       if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(real,'upsert'); }catch(_){} }
       render();
       if(typeof flashEventChip_==='function') flashEventChip_(real.id);
       __evDtApply.textContent = '✓ 変更'; setTimeout(()=>{ try{ __evDtApply.textContent='変更'; }catch(_){} }, 1200);
-      if(typeof showAutoSyncToast==='function'){ const dd=parseDate(nd); const tLabel = nt==='__am__' ? ' AM中' : nt==='__pm__' ? ' PM中' : nt ? ` ${nt}` : '(時間未定)'; showAutoSyncToast(`✅ 予定を ${(dd&&!isNaN(dd))?`${dd.getMonth()+1}/${dd.getDate()}`:nd}${tLabel} に変更`); }
+      if(typeof showAutoSyncToast==='function'){ const dd=parseDate(nd); const tLabel = nt==='__am__' ? ' AM中' : nt==='__pm__' ? ' PM中' : nt==='__free__' ? ` ✏️${__ntxApply||'(時間未定)'}` : nt ? ` ${nt}` : '(時間未定)'; showAutoSyncToast(`✅ 予定を ${(dd&&!isNaN(dd))?`${dd.getMonth()+1}/${dd.getDate()}`:nd}${tLabel} に変更`); }
     };
   }
   // 🕔 v1.30.311: ワンタップで時間未定にする + 未定バッジ付与
@@ -10309,6 +10370,8 @@ function showEventStaffPicker(el, ev){
       real.updatedAt = new Date().toISOString();
       saveState();
       if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(real,'upsert'); }catch(_){} }
+      // ✏️ 時刻メモが残っていたら掃除(「未定に」=素の未定へ)v1.30.589
+      if(typeof timeNoteGet_==='function' && timeNoteGet_(ev.id) && typeof setTimeNote_==='function'){ setTimeNote_(ev.id,'').catch(()=>{}); const __n=pop.querySelector('#evDtNote'); if(__n){ __n.value=''; __n.style.display='none'; } }
       const sel = pop.querySelector('#evDtTime'); if(sel) sel.value = '';
       render();
       if(typeof flashEventChip_==='function') flashEventChip_(real.id);
@@ -13278,6 +13341,7 @@ async function syncChecksFromGAS(opts){
     if(typeof fetchTobanDone_==='function') fetchTobanDone_({silent:true}).catch(()=>{});   // ✅当番完了も最新化 v1.30.198
     // ⚠ 再同期時はアラートも最新を取りに行く(v1.30.115)
     if(typeof fetchAlerts_==='function') fetchAlerts_({silent:true}).catch(()=>{});
+    if(typeof fetchTimeNotes_==='function') fetchTimeNotes_({silent:true}).catch(()=>{});   // ✏️時刻メモも最新化(v1.30.589)
     if(typeof fetchEventDone_==='function') fetchEventDone_({silent:true}).catch(()=>{});
     if(typeof fetchCheckSeisou_==='function') fetchCheckSeisou_({silent:true}).catch(()=>{});   // 🧹 清掃完了済も最新化(v1.30.559)
     if(typeof fetchSanpai_==='function') fetchSanpai_({silent:true}).catch(()=>{});
@@ -15325,7 +15389,9 @@ function renderCalendar(){
           : (taskInfo
               ? `<span class="ct-text" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${compactTaskHtml}</span>`
               : `<span style="display:inline-flex;min-width:0;flex:0 1 auto;align-items:baseline"><span class="ct-text" style="min-width:0;${__wrapName ? 'white-space:normal;display:-webkit-box;-webkit-line-clamp:'+__nameLines+';-webkit-box-orient:vertical;overflow:hidden;word-break:break-word' : 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap'}">${escapeHtml(__nameMain)}</span>${__roomTail ? `<span class="ct-room" style="flex-shrink:0;font-weight:600">${escapeHtml(__roomTail)}</span>` : ""}</span>`);
+        const __tNoteE = (typeof timeNoteGet_==='function') ? timeNoteGet_(ev.id) : null;   // ✏️ 時刻の自由入力メモ=赤字で時刻の位置に(v1.30.589・事前でも手書きは意図的なので出す)
         const timeBox = (ev.source==="direct-morning") ? ""   // 🚗直行マーカーは時刻(09:00)を出さない(v1.30.241)
+          : __tNoteE ? `<span class="chip-time" style="background:#fee2e2;border-color:#fca5a5;color:#dc2626;font-weight:800;max-width:130px;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml('✏️'+__tNoteE.text+(__tNoteE.by?(' ('+__tNoteE.by+')'):''))}">${escapeHtml(__tNoteE.text)}</span>`
           : (typeof isJizenEvent_==='function' && isJizenEvent_(ev)) ? ""   // 📌事前は時間バッジ(09:00等)を出さない=時間未定/時刻あり両方(v1.30.327・山田)
           : (ev.undecidedBadge === true) ? `<span class="chip-time" style="opacity:.7">未定</span>`   // 🕔 v1.30.311: 予定単位の未定フラグ(担当ポップの🕔未定にボタンで付与)
           : isAnytime ? (__twLabel ? `<span class="chip-time" style="opacity:.85">${__twLabel}</span>` : "")   // anytime単独ではバッジ非表示 / AM中・PM中はバッジ表示(v1.30.445)
@@ -16355,6 +16421,7 @@ function showChipTip(ev, mouseX, mouseY){
   else if(ev.timeMode === "am") timeText = "AM中";
   else if(ev.timeMode === "pm") timeText = "PM中";
   else timeText = `${ev.start} 〜 ${ev.end}`;
+  { const __ttN = (typeof timeNoteGet_==='function') ? timeNoteGet_(ev.id) : null; if(__ttN) timeText = `✏️${__ttN.text}`; }   // 時刻の自由入力メモ優先(v1.30.589)
   rows.push(`<div class="tt-row"><span class="tt-key">🕐</span><span class="tt-val">${escapeHtml(timeText)}</span></div>`);
   // 直行/直帰
   if(ev.commute){
@@ -19272,10 +19339,13 @@ function showQuickAddSheet_(defaults={}, editEv=null){
   const selTime = isEdit
     ? (editEv.timeMode==="timed" ? (editEv.start||"") : editEv.timeMode==="am" ? "__am__" : editEv.timeMode==="pm" ? "__pm__" : "")
     : "";
+  // ✏️ 時刻の自由入力メモ(v1.30.589): 既存メモがあれば「自由入力」を初期選択
+  const __noteInit = (isEdit && typeof timeNoteGet_==='function') ? ((timeNoteGet_(editEv.id)||{}).text||'') : '';
   const timeOpts = [
-    `<option value=""${selTime?"":" selected"}>時間未定</option>`,
+    `<option value=""${(selTime||__noteInit)?"":" selected"}>時間未定</option>`,
     `<option value="__am__"${selTime==="__am__"?" selected":""}>AM中</option>`,
     `<option value="__pm__"${selTime==="__pm__"?" selected":""}>PM中</option>`,
+    `<option value="__free__"${__noteInit?" selected":""}>✏️自由入力(早め 等)</option>`,
   ];
   for(let h=7; h<=19; h++) for(let m=0; m<60; m+=15){
     const v = `${pad(h)}:${pad(m)}`;
@@ -19295,6 +19365,7 @@ function showQuickAddSheet_(defaults={}, editEv=null){
       <input type="date" id="qa-date" value="${escapeHtml(dateV)}">
       <select id="qa-time">${timeOpts.join('')}</select>
     </div>
+    <div class="qa-row" id="qa-time-note-row" style="display:${__noteInit?'flex':'none'}"><input type="text" id="qa-time-note" value="${escapeHtml(__noteInit)}" placeholder="例: 早め・夕方・前の現場のあと" style="color:#dc2626;font-weight:700"></div>
     <div class="qa-label">カテゴリ</div>
     <div class="qa-cat">${qaCats.map(c=>{
       return `<button data-cat="${escapeHtml(c.val)}" class="${c.val===selCat?'on':''}" style="background:${c.color}40">${escapeHtml(c.name)}</button>`;
@@ -19363,6 +19434,11 @@ function showQuickAddSheet_(defaults={}, editEv=null){
       bd.querySelectorAll('.qa-cat button').forEach(x=>x.classList.toggle('on', x.dataset.cat===selCat));
     };
   });
+  // ✏️ 「自由入力」を選んだ時だけ赤字メモ欄を出す(v1.30.589)
+  {
+    const __ts = bd.querySelector('#qa-time'), __row = bd.querySelector('#qa-time-note-row');
+    if(__ts && __row) __ts.onchange = ()=>{ const on = __ts.value==='__free__'; __row.style.display = on?'flex':'none'; if(on){ try{ __row.querySelector('input').focus(); }catch(_){} } };
+  }
   // 📋 テンプレ予定(v1.30.520・山田): よく入れる予定をプルダウンから一発で。
   //   選ぶとタイトル(+指定があればカテゴリ/時間)が入る。あとは普通に編集できる。
   {
@@ -19409,7 +19485,7 @@ function showQuickAddSheet_(defaults={}, editEv=null){
     const d = bd.querySelector('#qa-date').value;
     const st = bd.querySelector('#qa-time').value;
     const __ampm = (st==='__am__' || st==='__pm__');   // 🌗 AM中/PM中は時刻扱いにしない(詳細フォームへtimeMode渡す)
-    const __realSt = __ampm ? (st==='__am__' ? '09:00' : '13:00') : st;
+    const __realSt = __ampm ? (st==='__am__' ? '09:00' : '13:00') : (st==='__free__' ? '' : st);   // ✏️自由入力は時刻扱いしない(v1.30.589)
     const posS = __realSt || posStart || "";   // 時間未定でもクリック位置を引き継ぐ
     { const __alV = __alertJoined(); __qaPendingAlert = (__alV !== __alertLines0.join('\n')) ? __alV : null; }   // ⚠ 持ち越し(詳細フォーム保存時に確定)v1.30.588
     bd.remove();
@@ -19424,6 +19500,12 @@ function showQuickAddSheet_(defaults={}, editEv=null){
     if(!title){ alert('タイトルを入れてください'); return; }
     const d = bd.querySelector('#qa-date').value || fmtDate(new Date());
     const st = bd.querySelector('#qa-time').value;
+    // ✏️ 時刻の自由入力メモ(v1.30.589): 自由入力選択中=メモを保存(変更時のみ)/時刻・未定を選び直したら古いメモは消す
+    const __noteOn = (st==='__free__');
+    const __noteTxt = __noteOn ? ((bd.querySelector('#qa-time-note')||{}).value||'').trim() : '';
+    const __noteCommit = id => { if(typeof setTimeNote_!=='function') return;
+      if(__noteOn){ if(__noteTxt!==__noteInit) setTimeNote_(id, __noteTxt).catch(()=>{}); }
+      else if(__noteInit){ setTimeNote_(id, '').catch(()=>{}); } };
     if(isEdit){
       // 📝 既存予定を上書き保存(title/カテゴリ/担当/日付/時刻)。時間未定なら位置は維持し元のmode/終日を尊重
       const target = (state.events||[]).find(e=>e.id===editEv.id);
@@ -19431,20 +19513,22 @@ function showQuickAddSheet_(defaults={}, editEv=null){
       if(typeof pushHistory==='function') pushHistory();
       target.title = title; target.category = selCat||""; target.staff = selStaff[0]||""; target.participants = selStaff.slice(1); target.date = d; target.commute = __commuteStr();
       if(st==='__am__' || st==='__pm__'){ const isAm = st==='__am__'; target.timeMode = isAm?'am':'pm'; target.allday = false; target.start = isAm?'09:00':'13:00'; target.end = isAm?'10:00':'14:00'; }   // 🌗 v1.30.446
-      else if(st){ target.start = st; target.end = endOf(st); target.timeMode = "timed"; target.allday = false; }
+      else if(st && st!=='__free__'){ target.start = st; target.end = endOf(st); target.timeMode = "timed"; target.allday = false; }
+      else if(st==='__free__'){ const posS = posStart || target.start || "09:00"; target.start = posS; target.end = endOf(posS); target.timeMode = "anytime"; target.allday = false; }   // ✏️自由入力=時間未定扱い(位置は維持)v1.30.589
       else { const posS = posStart || target.start || "09:00"; target.start = posS; target.end = endOf(posS); target.timeMode = target.allday ? (target.timeMode||"allday") : "anytime"; }
       target.updatedAt = new Date().toISOString();
       saveState();
       __alertCommit(target.id);   // ⚠ アラート確定(setAlert_はローカル即時反映→直後のrenderで見える)v1.30.588
+      __noteCommit(target.id);    // ✏️ 時刻メモ確定 v1.30.589
       if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(target,'upsert'); }catch(_){} }
       render(); bd.remove();
       return;
     }
     // 🌗 AM中/PM中(v1.30.446): 時刻扱いにせずtimeMode=am/pm、配置アンカーは午前9時/午後1時
     const __ampm = (st==='__am__' || st==='__pm__');
-    const __tMode = __ampm ? (st==='__am__'?'am':'pm') : (st ? "timed" : "anytime");
-    // 表示位置: 時刻を選べばその時刻(timed) / AM中PM中=午前午後アンカー / 時間未定でもクリック位置(posStart)があればそこ / 無ければ09:00
-    const posS = __ampm ? (st==='__am__'?'09:00':'13:00') : (st || posStart || "09:00");
+    const __tMode = __ampm ? (st==='__am__'?'am':'pm') : ((st && st!=='__free__') ? "timed" : "anytime");   // ✏️自由入力=anytime(v1.30.589)
+    // 表示位置: 時刻を選べばその時刻(timed) / AM中PM中=午前午後アンカー / 時間未定・自由入力でもクリック位置(posStart)があればそこ / 無ければ09:00
+    const posS = __ampm ? (st==='__am__'?'09:00':'13:00') : (((st && st!=='__free__') ? st : posStart) || "09:00");
     const ev = {
       id: uid(), title, category: selCat||"", contractor:"", staff: selStaff[0]||"", participants: selStaff.slice(1),
       date: d, start: posS, end: endOf(posS), allday: false, timeMode: __tMode,
@@ -19453,6 +19537,7 @@ function showQuickAddSheet_(defaults={}, editEv=null){
     if(typeof pushHistory==='function') pushHistory();
     state.events.push(ev);
     __alertCommit(ev.id);   // ⚠ アラート確定(新規idに紐付け)v1.30.588
+    __noteCommit(ev.id);    // ✏️ 時刻メモ確定 v1.30.589
     if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(ev,'upsert'); }catch(_){} }
     saveState(); render();
     bd.remove();
@@ -26150,6 +26235,7 @@ setTimeout(()=>afterOpenSync_(()=>{
     // ⚠ アラート(全員共有) 取得・初回push・以後5分ごと(v1.30.115)
     if(typeof fetchAlerts_==='function'){
       fetchAlerts_({silent:true, push:true}).catch(()=>{});
+      if(typeof fetchTimeNotes_==='function'){ fetchTimeNotes_({silent:true, push:true}).catch(()=>{}); setInterval(()=>fetchTimeNotes_({silent:true}).catch(()=>{}), 5*60*1000); }   // ✏️時刻メモも同じサイクルで(v1.30.589)
       setInterval(()=>fetchAlerts_({silent:true}).catch(()=>{}), 5*60*1000);
     }
     // 🚫 事前「行かない」(全員共有) 取得・初回push・以後5分ごと(v1.30.131)
