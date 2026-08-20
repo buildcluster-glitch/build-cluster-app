@@ -73,10 +73,19 @@ curl -si "https://script.google.com/macros/s/<デプロイID>/dev" | grep -i loc
 5. **`bulkSync` のロックをバッチ全体で1回**に。従来は1件ごとに取り直していて、
    その隙間に他端末の書き込みが割り込めた（`dispatchInner_` を追加）。
 
+## 2026-08-20 に入れた変更（version 5・現在の本番）
+
+6. **write-through**（`wt_writethrough.gs` 新規）: 保存/削除をSupabase影DBへも送る。
+   **WT_FLAG=off でデプロイ＝挙動は version 4 と同一**。カナリアは `wt-config` で遠隔操作。
+   ロックの禁止事項対応＝ロック内はキューに積むだけ→解放後に送信。
+7. **MAINT_FLAG**（`maint_flag.gs` 新規）: 切替当日の書き込み停止フラグ（on/gatekeeper）。wt-config は止めない。
+8. サーバー側ファイル名を `コード.gs`→`setup.gs` に整理（debugSpreadsheet は setup.gs 末尾に継承）。
+   appsscript.json は明示スコープ無し（自動検出）に統一。
+
 ## ロールバック
 
 デプロイのバージョンを戻すだけで即座に元へ戻ります（URLは不変）。
-version 2＝改修前 / version 3＝高速化のみ / **version 4＝現在**。
+version 2＝改修前 / version 3＝高速化のみ / version 4＝withPull・一括ロック / **version 5＝現在(write-through・flag off)**。
 
 ## ⚠ curl で叩くときの罠
 

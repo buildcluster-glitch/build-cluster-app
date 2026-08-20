@@ -160,3 +160,16 @@ function resetBackend_DANGEROUS() {
   });
   setupBackend();
 }
+
+// (本番HEADから継承・2026-08-20 wt デプロイ時に取り込み) エディタ用デバッグ
+function debugSpreadsheet() {
+  const ss = SpreadsheetApp.getActive();
+  if (!ss) {
+    Logger.log("❌ getActive() = null (スタンドアロンの可能性)");
+    return;
+  }
+  Logger.log("✅ Spreadsheet ID: " + ss.getId());
+  Logger.log("✅ Name: " + ss.getName());
+  Logger.log("✅ URL: " + ss.getUrl());
+  Logger.log("Sheets: " + ss.getSheets().map(s=>s.getName()).join(", "));
+}
