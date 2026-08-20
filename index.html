@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.591</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.592</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8822,9 +8822,13 @@ async function __matFetchRemote_(){
 }
 async function __matWrite_(mutator){
   const s=loadGasSettings(); if(!s.url||!s.token) throw new Error('☁設定(GAS URL/Token)が未設定です');
+  // ⛑ v1.30.592(山田「保存されてないトラブル多発」): 読み直し失敗時に古いキャッシュで全体上書きしない。
+  //   旧実装は読み直し失敗→自分のキャッシュ(最後に開いた時点)で丸ごとPOST=混雑発作の間に他の人が投稿した分を
+  //   静かに消していた(消された本人には「保存されてない」に見える)。失敗はthrow→呼び元のキューが自動再送する。
   let posts=null;
   try{ posts=await __matFetchRemote_(); }catch(_){}
-  if(!Array.isArray(posts)) posts=(__matPosts||[]).slice();
+  if(!Array.isArray(posts)) throw new Error('混雑で読み直せませんでした');
+  if(posts.length===0 && (__matPosts||[]).length>=3) throw new Error('読み直しが空でした(混雑の疑い)');   // 丸ごと消失ガード
   posts=mutator(posts.slice());
   const value=JSON.stringify({posts, updatedAt:new Date().toISOString()});
   const res=await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
@@ -8833,6 +8837,38 @@ async function __matWrite_(mutator){
   __matPosts=posts; __matSaveCache_();
   return true;
 }
+// ⛑ 保存の型=op(操作)+冪等適用+再送キュー(v1.30.592・山田「保存されてないトラブル多発」)
+//   addはid存在チェックで冪等=再送・二度押し・「応答だけ404(実は保存済み)」でも二重にならない。
+//   失敗したopはキューに積み、次のop時に先頭へまとめて適用+モーダルを開いた時+5分ごと+タブ復帰時に自動再送。
+//   ※完全な同時投稿対策(2人同時の後勝ち)はDB移行(RPC化・8/30予定)で根治。これはそれまでの止血+移行後も再送の型は流用可
+const MATERIAL_PENDING_KEY='buildcluster_material_pending';
+function __matLoadPending_(){ try{ const a=JSON.parse(localStorage.getItem(MATERIAL_PENDING_KEY)||'[]'); return Array.isArray(a)?a:[]; }catch(_){ return []; } }
+function __matSavePending_(a){ try{ localStorage.setItem(MATERIAL_PENDING_KEY, JSON.stringify(a||[])); }catch(_){} }
+function __matApplyOp_(posts, op){
+  if(!op) return posts;
+  if(op.type==='add'){ if(op.post && !posts.some(x=>x.id===op.post.id)) posts.push(op.post); return posts; }
+  if(op.type==='edit') return posts.map(x=>(x.id===op.id&&x.author===op.me)?Object.assign({},x,op.patch):x);
+  if(op.type==='del') return posts.filter(x=>!(x.id===op.id&&x.author===op.me));
+  return posts;
+}
+async function __matWriteOps_(newOp){
+  const ops=__matLoadPending_().concat(newOp?[newOp]:[]);
+  if(!ops.length) return true;
+  try{
+    await __matWrite_(posts=>ops.reduce((p,o)=>__matApplyOp_(p,o),posts));
+    __matSavePending_([]);
+    return true;
+  }catch(err){ __matSavePending_(ops); throw err; }
+}
+function __matRetryPending_(){
+  if(!__matLoadPending_().length) return;
+  __matWriteOps_(null).then(()=>{
+    try{ renderMaterialList_(); }catch(_){}
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast('🧾 保留していた材料注文を送信しました');
+  }).catch(()=>{});
+}
+setInterval(()=>__matRetryPending_(), 5*60*1000);
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') __matRetryPending_(); });
 function __matFmtT_(iso){ const d=new Date(iso); if(isNaN(d))return''; const p=n=>String(n).padStart(2,'0'); return `${d.getMonth()+1}/${d.getDate()}(${DOW_JA[d.getDay()]}) ${p(d.getHours())}:${p(d.getMinutes())}`; }
 
 function ensureMaterialModal_(){
@@ -9135,18 +9171,21 @@ async function __matSubmit_(){
       }catch(e){ console.warn('[material] 在庫連携失敗:', e.message); }
     }
   }
+  // ⛑ v1.30.592: op化(idは送信時に1回だけ採番=再送しても同じ投稿として冪等)
+  const op = __matEditing
+    ? {type:'edit', id:__matEditing, me, patch:{v:2,dest,destName,destRoom,vendor,items,memo,editedAt:new Date().toISOString()}}
+    : {type:'add', post:{id:'m_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),v:2,author:me,at:new Date().toISOString(),dest,destName,destRoom,vendor,items,memo}};
   try{
-    if(__matEditing){
-      const id=__matEditing;
-      await __matWrite_(posts=>posts.map(x=>(x.id===id&&x.author===me)?Object.assign({},x,{v:2,dest,destName,destRoom,vendor,items,memo,editedAt:new Date().toISOString()}):x));
-    }else{
-      await __matWrite_(posts=>{ posts.push({id:'m_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),v:2,author:me,at:new Date().toISOString(),dest,destName,destRoom,vendor,items,memo}); return posts; });
-    }
+    await __matWriteOps_(op);
     __matEditing=null; window.__matInvDoneOnce=false; __matResetForm_();
     renderMaterialList_();
     if(typeof showAutoSyncToast==='function') showAutoSyncToast('🧾 投稿しました(全員に共有)'+invMsg);
   }catch(err){
-    alert('送信失敗: '+err.message+'\n(入力内容は消していません。少し待ってもう一度押してください)');
+    // キュー済み=自動再送される。手元の一覧にも反映(冪等なので再送で二重にならない)し、入力は畳んで完了扱いに
+    __matPosts=__matApplyOp_((__matPosts||[]).slice(), op); __matSaveCache_();
+    __matEditing=null; window.__matInvDoneOnce=false; __matResetForm_();
+    renderMaterialList_();
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast('⏳ 混雑中のため保留しました。自動で再送します(一覧には反映済み)');
   }finally{ btn.disabled=false; __matSyncComposer_(); }
 }
 function __matSyncComposer_(){
@@ -9223,14 +9262,20 @@ function renderMaterialList_(){
   host.querySelectorAll('[data-mdel]').forEach(b=>b.onclick=async ()=>{
     if(!confirm('この投稿を削除しますか？(全員の一覧から消えます)')) return;
     const id=b.dataset.mdel;
-    try{ await __matWrite_(posts=>posts.filter(x=>!(x.id===id&&x.author===me))); renderMaterialList_(); }
-    catch(err){ alert('削除失敗: '+err.message); }
+    const delOp={type:'del', id, me};   // ⛑ v1.30.592: op化=失敗しても自動再送
+    try{ await __matWriteOps_(delOp); renderMaterialList_(); }
+    catch(err){
+      __matPosts=__matApplyOp_((__matPosts||[]).slice(), delOp); __matSaveCache_(); renderMaterialList_();
+      if(typeof showAutoSyncToast==='function') showAutoSyncToast('⏳ 混雑中のため保留しました。削除は自動で再送します');
+    }
   });
 }
 async function fetchMaterialOrders_(opts={}){
   try{
-    const posts=await __matFetchRemote_();
-    if(Array.isArray(posts)){ __matPosts=posts; __matSaveCache_(); renderMaterialList_(); if(opts.toast&&typeof showAutoSyncToast==='function') showAutoSyncToast('🧾 最新を取得しました'); }
+    let posts=await __matFetchRemote_();
+    if(Array.isArray(posts)){
+      posts=__matLoadPending_().reduce((p,o)=>__matApplyOp_(p,o), posts);   // ⛑ 未送信opを上乗せ表示(v1.30.592)
+      __matPosts=posts; __matSaveCache_(); renderMaterialList_(); if(opts.toast&&typeof showAutoSyncToast==='function') showAutoSyncToast('🧾 最新を取得しました'); }
   }catch(err){ console.warn('[material] 取得失敗:', err.message); if(opts.toast) alert('取得失敗: '+err.message); }
 }
 function openMaterialModal_(){
@@ -9242,6 +9287,7 @@ function openMaterialModal_(){
   __matRefreshDestDl_();
   bk.classList.add('show');
   renderMaterialList_();
+  __matRetryPending_();   // ⛑ 未送信があればまず再送(v1.30.592)
   fetchMaterialOrders_({});
 }
 function closeMaterialModal_(){ const bk=document.getElementById('materialModal'); if(bk) bk.classList.remove('show'); }
