@@ -160,7 +160,10 @@ function wtReport() {
 // ---- 疎通/異常系テスト(専用idのみ・エディタから手動実行) ----
 //   ⚠E_TESTルール(8/7事故): 実予定のidは絶対に使わない。終わったらDB側の掃除も1セット。
 function wtSelfTest() {
-  var TID = 'E20990101_000000_calwttest';   // 実在しない専用id
+  // 8/20知見: 固定idだと残骸(前回や他セッションの検収の墓標)に当たり全拒否になって applied 経路を証明できない
+  // → 実行ごとにユニークな専用id(E20990101_*形式は維持)。掃除は E20990101_%_calwt% を台帳DB側でまとめて削除
+  var TID = 'E20990101_' + Utilities.formatDate(new Date(), 'GMT', 'HHmmss') + '_calwt';
+  Logger.log('テストid: ' + TID);
   var doc = { id: TID, version: 1, date: '2099-01-01', startTime: '10:00', endTime: '11:00',
     title: 'カレンダーGAS-WT疎通テスト', category: '', staff: '', contractor: '',
     updatedAt: new Date().toISOString() };
@@ -173,20 +176,29 @@ function wtSelfTest() {
   Logger.log('delete v3        : ' + wtSend_('wt_delete_event', { p_operation_id: Utilities.getUuid(), p_id: TID, p_version: 3 }));
   doc.version = 4;
   Logger.log('削除後upsert(deleted期待): ' + wtSend_('wt_upsert_event', { p_operation_id: Utilities.getUuid(), p_doc: doc }));
-  Logger.log('→ テスト後は E20990101_000000_calwttest をDBから掃除すること');
+  Logger.log('→ テスト後は ' + TID + ' をDBから掃除すること(台帳DB側で E20990101_%_calwt% を一括削除でも可)');
 }
 
 // ---- ⏱ timeoutSeconds が本当に効くかの実測(改訂3の宿題・エディタから手動実行) ----
 //   10秒待つエンドポイントへ3秒指定で投げ、3秒台で例外になれば「効いている」。
 function wtTimeoutProbe() {
-  var t0 = Date.now();
-  var opt = { method: 'get', muteHttpExceptions: true };
-  try { opt.timeoutSeconds = 3; } catch (e) {}
-  var msg = '';
-  try { UrlFetchApp.fetch('https://httpbin.org/delay/10', opt); msg = '完走(=3秒で切れていない)'; }
-  catch (e) { msg = '例外: ' + String(e && e.message || e); }
-  Logger.log('経過 ' + ((Date.now() - t0) / 1000).toFixed(1) + '秒 / ' + msg +
-    ' → 3秒台で例外なら timeoutSeconds は有効、10秒超なら無効(fail-open構造なので実害なし)');
+  // 8/20実測: httpbinが過負荷時は待たずに即エラー応答を返し「完走0.2秒」で判定不能になる
+  // → 応答コードを出す+複数の遅延サーバーで再測定。どれも待たせられなければ判定保留(カナリアの実カウンタで観察)
+  var urls = ['https://httpstat.us/200?sleep=10000', 'https://httpbin.org/delay/10', 'https://deelay.me/10000/https://example.com'];
+  for (var i = 0; i < urls.length; i++) {
+    var t0 = Date.now();
+    var opt = { method: 'get', muteHttpExceptions: true };
+    try { opt.timeoutSeconds = 3; } catch (e) {}
+    var msg = '';
+    try { var res = UrlFetchApp.fetch(urls[i], opt); msg = '完走 HTTP' + res.getResponseCode(); }
+    catch (e) { msg = '例外: ' + String(e && e.message || e); }
+    var sec = (Date.now() - t0) / 1000;
+    Logger.log(urls[i] + ' → 経過 ' + sec.toFixed(1) + '秒 / ' + msg);
+    if (sec > 5) { Logger.log('→ 判定: timeoutSecondsは【効いていない】(10秒近く待った)。fail-open構造なので実害なし=遅いサーバー時に応答が延びるだけ'); return; }
+    if (sec >= 2 && sec <= 5) { Logger.log('→ 判定: timeoutSecondsは【有効】(3秒前後で打ち切り)'); return; }
+    // 2秒未満で返った=遅延サーバーが実際には待たせていない(過負荷等)→次の候補で再測定
+  }
+  Logger.log('→ どの遅延サーバーも待たせられず判定不能。カナリア初日にwt-configのcounters(ok/timeout)で観察に切り替え');
 }
 
 // ---- 🔧 遠隔スイッチ: フラグだけをtoken保護で読み書き(カナリアの上げ下げを手作業にしない) ----
