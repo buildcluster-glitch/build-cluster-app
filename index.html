@@ -2000,8 +2000,8 @@
   .rt-log .text{flex:1;min-width:0;color:#dc2626;font-weight:600}
   .rt-log .rm{background:none;border:none;color:#dc2626;cursor:pointer;font-size:13px}
   /* 📷 作業ログ写真(v1.30.590・山田「写真みきれ」): flex-basis:100%が幅54pxを打ち消して全幅×54pxの帯に
-     cover切り抜きされていた。切り抜きをやめ全体表示(高さ上限180px・アスペクト維持・左寄せ)。タップ拡大は従来どおり */
-  .rt-log-img{flex-basis:100%;width:100%;height:auto;max-height:180px;object-fit:contain;object-position:left center;border-radius:6px;cursor:pointer;margin-top:2px}
+     cover切り抜きされていた。切り抜きをやめ全体表示(高さ上限100px=591で180→100に・アスペクト維持・左寄せ)。タップ拡大は従来どおり */
+  .rt-log-img{flex-basis:100%;width:100%;height:auto;max-height:100px;object-fit:contain;object-position:left center;border-radius:6px;cursor:pointer;margin-top:2px}
   .rt-log-add{display:flex;align-items:center;gap:4px;margin-top:4px}
   .rt-log-add input[type="text"]{flex:1;min-width:0;padding:4px 8px;font-size:12px;border:1px solid var(--border-strong);border-radius:6px}
   .rt-log-add .photo-btn,.rt-log-add button{padding:4px 8px;font-size:12px;border:1px solid var(--border-strong);border-radius:6px;background:#fff;cursor:pointer}
@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.590</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.591</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
