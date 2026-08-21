@@ -109,7 +109,7 @@ function doPost(e) {
       return jsonResponse_({ ok: true, action: action, result: wtConfig_(body) });
     }
     // 🚧 メンテ/門番: 書き込み系だけ止める(読み=doGetは別経路なので影響なし)。通常はnullで素通し
-    var _mg = (typeof maintGuard_ === 'function') ? maintGuard_(action) : null;
+    var _mg = (typeof maintGuard_ === 'function') ? maintGuard_(action, body) : null;   // bodyはclient識別用(gatekeeper細分化 2026-08-21)
     if (_mg) return _mg;
     const result = dispatch_(action, data);
     // lastSyncAt を更新
@@ -194,6 +194,9 @@ function markOpIdSeen_(opId){
 }
 
 // イベントステータス変更 (atomic) ※Phase2 用に予約。currentはstatus列なし → events.metaを使うなら拡張
+// ⚠(2026-08-21点検・見積GAS ver83の教訓): これは行の一部だけ書く「部分更新」なので、有効化する時は
+//   ①version採番(+1) ②wtQueue_への積み込み を必ず足すこと。今のままだと影DBに更新が届かず
+//   Outbox(DB→Drive)復元でパッチが失われる構造の穴になる。現在はstatus列なしでthrow=実質休眠なので実害なし。
 // 現状の events シートには status 列が無いので、必要なら events.headers に追加してから使う
 function setEventStatus_(eventId, newStatus){
   const sh = SpreadsheetApp.getActive().getSheetByName('events');

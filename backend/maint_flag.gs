@@ -26,8 +26,15 @@ var MAINT_WRITE_ACTIONS_ = [
   'bulkSync'
 ];
 
+// 🚪 gatekeeper細分化(2026-08-21・社長裁定(b)=docs/gatekeeper発動条件_決定メモ_2026-08-21.md・見積GAS ver83と同じ考え方):
+//   切替後の門番で塞ぐのは「8/30にDBへ移るドメイン=予定(events)」だけ。
+//   properties/logs/members は切替後もGASに残るドメインなので素通し(旧版・新版どちらのアプリも書いてよい)。
+//   bulkSyncは旧版アプリのバックグラウンド同期の正体(中身はほぼevents)なので塞ぐ側。
+var MAINT_GATEKEEPER_BLOCK_ = ['upsertEvent', 'deleteEvent', 'setEventStatus', 'bulkSync'];
+
 // 書き込みアクションをメンテ/門番フラグで拒否。通常時はnull(素通し)
-function maintGuard_(action) {
+//   body: doPostのbody丸ごと(client識別用)。'on'はクラ助も含め全停止(従来どおり・再送安全)。
+function maintGuard_(action, body) {
   var flag;
   try { flag = (PropertiesService.getScriptProperties().getProperty('MAINT_FLAG') || '').toLowerCase(); }
   catch (e) { return null; }                                  // fail-open(フラグが読めない時は業務を止めない)
@@ -37,6 +44,8 @@ function maintGuard_(action) {
       error: 'メンテナンス中です。切替作業が終わるまでお待ちください(数十分)。入力内容は送信し直してください' });
   }
   if (flag === 'gatekeeper') {
+    if (MAINT_GATEKEEPER_BLOCK_.indexOf(action) < 0) return null;   // GASに残るドメインは素通し
+    if (body && body.client === 'kurasuke') return null;            // 🤖クラ助は切替後もGAS玄関(Phase 7まで)=素通し(見積GAS ver83と同じ識別子)
     return jsonResponse_({ ok: false, maintenance: true, gatekeeper: true,
       error: 'アプリが古い版です。アプリを更新(再起動/リロード)してから保存し直してください' });
   }

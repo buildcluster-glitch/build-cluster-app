@@ -82,10 +82,18 @@ curl -si "https://script.google.com/macros/s/<デプロイID>/dev" | grep -i loc
 8. サーバー側ファイル名を `コード.gs`→`setup.gs` に整理（debugSpreadsheet は setup.gs 末尾に継承）。
    appsscript.json は明示スコープ無し（自動検出）に統一。
 
+## 2026-08-21 に入れた変更（version 7・現在の本番）
+
+9. **gatekeeper細分化**（決定メモ2026-08-21・社長裁定(b)）: MAINT_FLAG='gatekeeper' で塞ぐのは
+   **eventsドメインだけ**（upsertEvent/deleteEvent/setEventStatus/bulkSync）。properties/logs/members は
+   切替後もGASに残るドメインなので素通し。`body.client==='kurasuke'` は門番素通し（見積GAS ver83と同じ識別子）。
+   'on'（切替30分）は従来どおり全停止（クラ助含む）。
+10. setEventStatus に「有効化時はversion採番+wt必須」の注記（部分更新の穴・現在は休眠で実害なし）。
+
 ## ロールバック
 
 デプロイのバージョンを戻すだけで即座に元へ戻ります（URLは不変）。
-version 2＝改修前 / version 3＝高速化のみ / version 4＝withPull・一括ロック / **version 5＝現在(write-through・flag off)**。
+version 2＝改修前 / 3＝高速化 / 4＝withPull・一括ロック / 5〜6＝write-through / **version 7＝現在(gatekeeper細分化)**。
 
 ## ⚠ curl で叩くときの罠
 
