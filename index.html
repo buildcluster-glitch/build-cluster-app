@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.592</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.593</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -23026,10 +23026,18 @@ function openActionList(){
           + `<span class="al-prog-meta">💬${escapeHtml(ds2)} ${escapeHtml(__last.author||'')}${__cs.length>1?` <span class="al-prog-more">他${__cs.length-1}件</span>`:''}</span>`
           + `<span class="al-prog-txt">${escapeHtml(t2s)}</span></div>`;
       }
+      // 🏷 営業/進行ステータス(v1.30.593・山田「ここに営業ステータスと進捗ステータスも」): 修繕カードと同じ色ピルを流用。
+      //   進行はこのリストの性質上ほぼ「アポ・手配 未」だが、明示要望＋将来フィルタが広がっても崩れないよう両方出す。
+      const __st = r.status || "";
+      const __stLabel = __st==='提出済' ? '見積提出済' : __st==='受注（工事指示有）' ? '受注' : __st;
+      const __stHtml = __st ? `<span class="rep-st ${REPAIR_STATUS_PILL[__st]||'s-st-active'}" style="font-size:10px;padding:2px 6px" title="営業ステータス: ${escapeHtml(__st)}">${escapeHtml(__stLabel)}</span>` : '';
+      const __wf2 = r.workflowStatus || 'アポ・手配 未';
+      const __wfHtml = `<span class="rep-st ${WF_PILL[__wf2]||'s-st-draft'}" style="font-size:10px;padding:2px 6px" title="進行ステータス">${escapeHtml(__wf2)}</span>`;
       return `<div class="al-item" data-repair-id="${escapeHtml(r.id)}">`
         + `<span class="al-tag" style="background:${tagBg};color:${textColorFor(tagBg)}" title="${escapeHtml(r.contractor||'')}">修繕</span>`
         + `<span class="al-name">${escapeHtml(r.name||'(物件名なし)')}${r.room?` <span class="al-room">${escapeHtml(r.room)}</span>`:''}</span>`
         + `<span class="al-wf" style="background:${wfBar}">📞要日程</span>`
+        + __stHtml + __wfHtml
         + (r.contractor?`<span class="al-cont">${escapeHtml(shortenCompany(r.contractor))}</span>`:'')
         + apoHtml
         + (descShort?`<span class="al-desc">${escapeHtml(descShort)}</span>`:'')
