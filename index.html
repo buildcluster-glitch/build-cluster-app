@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.593</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.594</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -21547,7 +21547,7 @@ function staffBadgesMini_(staffStr, opts){
 }
 
 // ===== 🐞 バグ・要望の報告ボード (全員共有・見積アプリの報告と同様) v1.30.257 =====
-//   shared-config 'calendar_reports' = JSON { reports:{ [id]:{id,type,text,status,by,at,appVer,comments:[],deleted,updatedAt} }, updatedAt }
+//   shared-config 'calendar_reports' = JSON { reports:{ [id]:{id,type,text,status,by,at,appVer,dev,comments:[],deleted,updatedAt} }, updatedAt }
 //   マルチ著者: 最新remote取得→id単位LWW(updatedAt)マージ→自分の変更→push。コメントはidユニオン。
 const CAL_REPORTS_KEY = "buildcluster_calendar_reports";
 // 🧠 v1.30.567(鈴木報告「やっぱりスマホの報告が投稿完了になるのに投稿されていない」): 表示の正本をメモリに。
@@ -21988,7 +21988,7 @@ function ensureBugReportModal_(){
     const __phLocal = photos.filter(p=>String(p).indexOf('data:')===0).length;   // Drive退避できなかった枚数
     btn.textContent = "共有中…";
     const r = await mutateCalReport_(uid(), brSetPhotos_({ type: ov.querySelector("#br-type").value, text, status:"open",
-      by: getMyself()||"", at: new Date().toISOString(), appVer: ver, comments: [] }, photos));
+      by: getMyself()||"", at: new Date().toISOString(), appVer: ver, dev: deviceInfo_(), comments: [] }, photos));
     btn.disabled = false; btn.textContent = "投稿";
     ov.querySelector("#br-text").value = "";
     __brClearPhoto();
@@ -22119,7 +22119,13 @@ function renderBugReportModal_(){
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <button data-br-status="${r.id}" title="クリックでステータス切替" style="background:${st.bg};color:${st.fg};border:none;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;cursor:pointer">${st.label}</button>
         ${typeBadge}
-        <span style="font-size:10px;color:var(--muted);margin-left:auto">${escapeHtml(r.by||"?")} ・ ${dStr}${r.appVer?` ・ ${escapeHtml(r.appVer)}`:""}</span>
+        ${(function(){   // ⚠ 旧版から出た未対応report=「その端末が古いだけ」の可能性を最初に示す(v1.30.594)
+          if(r.status!=="open" || !r.appVer || typeof __verLt_!=="function") return "";
+          const mine = (typeof appVersion_==="function") ? appVersion_() : "";
+          if(!mine || !__verLt_(r.appVer, mine)) return "";
+          return `<span style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px" title="この報告は${escapeHtml(r.appVer)}の端末から出ています(最新は${escapeHtml(mine)})。まず端末をリロードして直るか確認してください">⚠ 旧版から</span>`;
+        })()}
+        <span style="font-size:10px;color:var(--muted);margin-left:auto;min-width:0;text-align:right"${r.dev?` title="${escapeHtml("報告した端末: "+r.dev)}"`:""}>${escapeHtml(r.by||"?")} ・ ${dStr}${r.appVer?` ・ ${escapeHtml(r.appVer)}`:""}${r.dev?` ・ ${escapeHtml(r.dev)}`:""}</span>
       </div>
       ${(r.id===__brEditId)
         ? `<div style="margin-top:5px"><textarea class="br-edit-in" data-eid="${r.id}" rows="3" style="width:100%;box-sizing:border-box;font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;resize:vertical;min-height:60px;line-height:1.4">${escapeHtml(r.text||"")}</textarea><div style="display:flex;gap:6px;margin-top:4px"><button data-br-esave="${r.id}" class="btn primary" style="font-size:11px;padding:3px 12px">保存</button><button data-br-ecancel="${r.id}" class="btn" style="font-size:11px;padding:3px 12px">取消</button></div><div style="font-size:9px;color:var(--muted);margin-top:2px">Ctrl+Enterで保存 / Escで取消</div></div>`
@@ -22210,6 +22216,35 @@ document.getElementById("bugReportBtn").onclick = openBugReportModal_;
 //   スマホはタブ名(版番号入り)が見えない=自分が最新版を使えているか確認できなかった。
 //   ヘッダー先頭に常時表示＋タップで「今の版の確認 → 最新に更新(キャッシュ削除して再読込)」まで完結させる。
 function appVersion_(){ return ((document.querySelector(".app-title span")||{}).textContent||"").trim(); }
+// 📱 バグ報告に「どの端末から出したか」を残す(v1.30.594・山田要望)。
+//   ねらい=「私の端末では出るのに他では出ない」型の切り分け。実際に版ズレが原因の事例が続いた
+//   (鈴木端末が559のまま/v574ログイン不能)。人が思い出せない情報を機械が黙って添える。
+//   ⚠個人情報は集めない(UAの生文字列も既知端末なら保存しない)。1報告あたり40字程度に抑える=共有200KB予算を守る。
+function deviceInfo_(){
+  try{
+    const ua = navigator.userAgent || '';
+    const os = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android'
+      : /Windows/.test(ua) ? 'Windows' : /Mac OS X|Macintosh/.test(ua) ? 'Mac' : '';
+    // ⚠ iOSは全ブラウザがWebKit=Chrome/FirefoxはCriOS/FxiOSで名乗る。Safari判定より先に見ること。
+    //   LINE/LINE WORKSのアプリ内ブラウザは更新が効きにくく事故りやすいので明示的に拾う。
+    const br = /\bLine\//i.test(ua) ? 'LINEアプリ内' : /Edg\//.test(ua) ? 'Edge'
+      : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /FxiOS|Firefox\//.test(ua) ? 'Firefox'
+      : /Safari\//.test(ua) ? 'Safari' : '';
+    const parts = [];
+    parts.push((os || 'その他') + (br ? '/' + br : ''));
+    parts.push(Math.round(window.innerWidth) + '×' + Math.round(window.innerHeight));
+    // ホーム画面(PWA)起動は自動更新が効きにくい=「古い版のまま」の温床なので必ず残す
+    let standalone = false;
+    try{ standalone = !!(window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)); }catch(_){}
+    if(standalone) parts.push('ホーム画面');
+    try{   // 端末の保存容量(5MB上限・過去に容量圧迫で保存失敗した実績あり)
+      let bytes=0; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); bytes += (k.length + (localStorage.getItem(k)||'').length); }
+      parts.push(bytes >= 1048576 ? (bytes/1048576).toFixed(1)+'MB' : Math.round(bytes/1024)+'KB');   // 1MB未満はKB表示(消したて端末が0.0MBに見えるのを防ぐ)
+    }catch(_){}
+    if(!os) parts.push(ua.slice(0,60));   // 未知端末の時だけUAの頭を残す(判別できないと調べようがないため)
+    return parts.join(' ');
+  }catch(_){ return ''; }
+}
 async function forceUpdateApp_(){
   if(navigator.onLine === false){ alert("⚠ オフラインです。ネットに繋がってから更新してください。"); return; }
   try{ if(window.caches){ const ks = await caches.keys(); await Promise.all(ks.map(k=>caches.delete(k))); } }catch(_){}
