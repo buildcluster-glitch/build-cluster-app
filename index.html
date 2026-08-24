@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.602</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.603</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -9096,7 +9096,29 @@ function alcRenderModal_(){
       : `<button data-alc-when="${when}" style="flex:1;background:var(--accent);color:#fff;border:0;border-radius:12px;padding:16px 10px;font-size:15px;font-weight:800;cursor:pointer">🍺✕ 酒気なし・体調OK<div style="font-size:11px;font-weight:600;opacity:.9;margin-top:2px">${label}チェックを記録</div></button>`;
     self.innerHTML=`<div style="font-size:12px;color:var(--muted);margin-bottom:5px">🚙 車両: <b id="alc-mycar" style="color:var(--text);cursor:pointer;text-decoration:underline dotted" title="タップで今日の車を変更">${escapeHtml(alcCarOf_(me))}</b></div>
       <div style="display:flex;gap:8px">${btn('am','出発前(朝)',am)}${btn('pm','帰着(夕)',pm)}</div>
-      <div style="margin-top:6px"><input id="alc-memo" type="text" placeholder="指示事項・特記(任意・例: 体調やや不良のため近距離のみ)" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px"></div>`;
+      <div style="margin-top:6px;display:flex;gap:6px;align-items:center">
+        <input id="alc-memo" type="text" placeholder="指示事項・特記(任意)" style="flex:1;min-width:0;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px">
+        <input id="alc-photo-in" type="file" accept="image/*" capture="environment" style="display:none">
+        <button id="alc-photo-btn" class="btn" style="flex-shrink:0;font-size:11px;padding:6px 10px" title="検知器の結果写真(任意)。直帰の日に添えると遠隔チェックの補強になります">📷<span id="alc-photo-mark" style="display:none">✓</span></button>
+      </div>`;
+    // 📷 任意の写真(v1.30.603・山田「写真まではいらない?」→任意添付を用意・直帰時の遠隔チェック補強用)
+    //   検知器の画面を撮る想定。圧縮(60KB)→Drive退避してURLだけ記録=月シャードを太らせない
+    {
+      const pin=self.querySelector('#alc-photo-in'), pbtn=self.querySelector('#alc-photo-btn');
+      if(pbtn) pbtn.onclick=()=>pin && pin.click();
+      if(pin) pin.onchange=async()=>{
+        const f=pin.files&&pin.files[0]; if(!f) return;
+        pbtn.disabled=true; pbtn.textContent='⏳';
+        try{
+          const comp=await restoCompressImage(f, 60000, 1000);
+          let url=comp;
+          try{ const r=await restoUploadToDrive(comp, 'アルコールチェック', ''); if(r&&r.ok&&r.url) url=r.url; }catch(_){}
+          window.__alcPhoto=url;
+          pbtn.textContent='📷'; pbtn.insertAdjacentHTML('beforeend','<span id="alc-photo-mark">✓</span>');
+        }catch(e){ alert('写真の読み込みに失敗: '+e.message); pbtn.textContent='📷'; }
+        pbtn.disabled=false;
+      };
+    }
     const mycar=self.querySelector('#alc-mycar');
     if(mycar) mycar.onclick=()=>{
       const cars=[...new Set(ALC_DRIVERS.map(alcCarOf_))];
@@ -9108,6 +9130,7 @@ function alcRenderModal_(){
         b.disabled=true; b.style.opacity=.6;
         const entry={ staff:me, date:today, when:b.dataset.alcWhen, car:(window.__alcCarToday||alcCarOf_(me)),
           result:'none', memo:(self.querySelector('#alc-memo')||{}).value||'', at:new Date().toISOString() };
+        if(window.__alcPhoto){ entry.photo=window.__alcPhoto; window.__alcPhoto=null; }   // 📷 任意(v1.30.603)
         await alcRecord_(entry);
         alcRenderModal_(); alcUpdateBadge_(); if(typeof render==='function') render();
         if(typeof showAutoSyncToast==='function') showAutoSyncToast(b.dataset.alcWhen==='am'?'🚗 いってらっしゃい(記録しました)':'🏠 おつかれさまでした(記録しました)');
@@ -9119,7 +9142,7 @@ function alcRenderModal_(){
   const map=alcLoad_(alcMonthKey_());
   const rows=ALC_DRIVERS.map(st=>{
     const am=map[alcId_(today,st,'am')], pm=map[alcId_(today,st,'pm')];
-    const cell=e=>e?`<span style="color:#166534;font-weight:700">✅${(d=>isNaN(d)?'':`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`)(new Date(e.at))}</span>${e.memo?` <span title="${escapeHtml(e.memo)}">📝</span>`:''}`:'<span style="color:#94a3b8">—</span>';
+    const cell=e=>e?`<span style="color:#166534;font-weight:700">✅${(d=>isNaN(d)?'':`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`)(new Date(e.at))}</span>${e.memo?` <span title="${escapeHtml(e.memo)}">📝</span>`:''}${e.photo?` <a href="${escapeHtml(e.photo)}" target="_blank" title="検知器の写真を開く" style="text-decoration:none">📷</a>`:''}`:'<span style="color:#94a3b8">—</span>';
     const need=alcNeedsCheck_(st);
     return `<div style="display:flex;gap:8px;align-items:center;padding:4px 6px;border-bottom:1px solid var(--border);font-size:12px">
       <span style="min-width:5.5em;font-weight:600">${need?'🚗?':''}${escapeHtml(st)}</span>
@@ -9146,10 +9169,10 @@ function alcExportCsv_(){
     const rows=Object.values(map).sort((a,b)=>String(a.date+a.at).localeCompare(String(b.date+b.at)));
     if(!rows.length){ alert('この月の記録はありません'); return; }
     const esc=v=>`"${String(v==null?'':v).replace(/"/g,'""')}"`;
-    const head=['日付','時刻','運転者','車両','タイミング','確認方法','酒気帯び','確認者','指示事項・特記'];
+    const head=['日付','時刻','運転者','車両','タイミング','確認方法','酒気帯び','確認者','指示事項・特記','写真URL'];
     const csv=[head.join(',')].concat(rows.map(e=>{
       const d=new Date(e.at);
-      return [e.date, isNaN(d)?'':`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`, e.staff, e.car||'', e.when==='am'?'運転前':'運転後', 'アルコール検知器', e.result==='none'?'無':'有', e.staff, e.memo||''].map(esc).join(',');
+      return [e.date, isNaN(d)?'':`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`, e.staff, e.car||'', e.when==='am'?'運転前':'運転後', 'アルコール検知器', e.result==='none'?'無':'有', e.staff, e.memo||'', e.photo||''].map(esc).join(',');
     })).join('\r\n');
     const blob=new Blob(['\ufeff'+csv],{type:'text/csv'});
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`アルコールチェック記録_${ym.trim()}.csv`; a.click();
