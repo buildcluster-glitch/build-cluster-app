@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.598</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.599</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -6931,14 +6931,27 @@ function renderIfChanged_(before, after){
 // entryが実質「上書きなし」か(全フィールド空)
 function __ovIsEmpty_(e){ return !e || (!String(e.staff||'').trim() && !String(e.date||'').trim() && !String(e.time||'').trim()); }
 // 2マップを taikyoId 単位の last-write-wins(at新しい方)で統合
+// 🧟 v1.30.599(鈴木iPhoneの担当色が最新版・同期OKでも直らない事件): a=サーバー b=ローカル。
+//   ローカル勝ちは「自分の直近の編集をpush前に消さないため」の設計だが、**pushが失われた古いローカル**が
+//   居座ると、その端末だけ永遠にサーバーと食い違う(まさに今回の症状)。編集は普通は即pushされるので、
+//   **24時間経ってもサーバーに届いていないローカルはゾンビ=サーバーを正**とする。
+const TAIKYO_OV_ZOMBIE_MS = 24*60*60*1000;
+function __ovIsZombie_(e){
+  const t = Date.parse((e && e.at) || '');
+  return !isNaN(t) && (Date.now() - t) > TAIKYO_OV_ZOMBIE_MS;
+}
 function mergeTaikyoOverrideMaps_(a, b){
   const out = {};
   const keys = new Set([...Object.keys(a||{}), ...Object.keys(b||{})]);
   keys.forEach(k=>{
     const ea = a?.[k], eb = b?.[k];
-    if(!ea){ out[k] = eb; return; }
+    if(!ea){ if(!__ovIsZombie_(eb)) out[k] = eb; return; }        // ローカルのみ: 24h超は捨てる(push喪失ゾンビ)
     if(!eb){ out[k] = ea; return; }
-    out[k] = (String(eb.at||'') >= String(ea.at||'')) ? eb : ea;   // 新しい方を採用
+    if(String(eb.at||'') >= String(ea.at||'')){                    // ローカルが新しい
+      out[k] = __ovIsZombie_(eb) && JSON.stringify(ea)!==JSON.stringify(eb)
+        ? ea                                                       // …が24h超なのにサーバーに届いていない=ゾンビ→サーバーを正
+        : eb;
+    } else out[k] = ea;
   });
   return out;
 }
@@ -22281,9 +22294,60 @@ function renderDeviceVersions_(){
   const oldN = names.filter(n=>{ const m=meta[n]||{}; return mine && m.ver && typeof __verLt_==='function' && __verLt_(m.ver, mine); }).length;
   host.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:4px">📱 各端末の版 <span style="font-weight:400">(最近ひらいた人・カーソルで端末情報)</span>${oldN?` — <b style="color:#b91c1c">${oldN}人が旧版のまま（リロードを案内してください）</b>`:''}</div><div style="display:flex;flex-wrap:wrap;gap:5px">${rows}</div>`;
 }
+// 🔍 v1.30.599: 立会の担当色 診断+自己修復。押した端末の中身とサーバーを突き合わせ、
+//   食い違いを**通常報告として自動送信**(=山田/Claudeが遠隔で読める)+ローカルをサーバー基準に修復して描き直す。
+//   「反映されない」系の報告が来たら、その人にこのボタンを押してもらうだけで原因が採取できる。
+async function runTaikyoColorDiag_(){
+  const me=(typeof getMyself==='function')?getMyself():'';
+  const s=loadGasSettings(); if(!s.url||!s.token){ alert('☁設定が未設定です'); return; }
+  const local = loadTaikyoOverrides_();
+  let remote = null;
+  try{
+    if(typeof window.__gcBatchInvalidate==='function') window.__gcBatchInvalidate();
+    const res = await fetch(`${s.url}?action=get-shared-config&key=taikyo_overrides&token=${encodeURIComponent(s.token)}&t=${Date.now()}`,{method:'GET',redirect:'follow'});
+    const d = await res.json(); let raw=d.value;
+    if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(_){ raw=null; } }
+    remote = (raw&&raw.overrides&&typeof raw.overrides==='object') ? raw.overrides : {};
+  }catch(e){ alert('サーバーから読めませんでした: '+e.message); return; }
+  const ids = new Set([...Object.keys(local||{}), ...Object.keys(remote||{})]);
+  const diffs = [];
+  ids.forEach(k=>{
+    const L=local[k], R=remote[k];
+    if(JSON.stringify(L)===JSON.stringify(R)) return;
+    const f=e=>e?`staff:${e.staff||'(空)'} at:${String(e.at||'').slice(5,16)} by:${e.by||''}`:'(なし)';
+    diffs.push(`${k}\n  端末: ${f(L)}\n  ｻｰﾊﾞ: ${f(R)}`);
+  });
+  // 修復: 新ルールのマージ(ゾンビ排除込み)でローカルをサーバー基準に整える
+  const merged = mergeTaikyoOverrideMaps_(remote, local);
+  saveTaikyoOverrides_(merged);
+  if(typeof bumpTaikyoEpoch_==='function') bumpTaikyoEpoch_();
+  if(typeof render==='function') render();
+  const head = `🔍立会色 診断 (${(typeof appVersion_==='function')?appVersion_():''} / ${(typeof deviceInfo_==='function')?deviceInfo_():''})`;
+  const body = diffs.length
+    ? `食い違い ${diffs.length}件(端末とサーバー)→ローカルをサーバー基準に修復しました:\n\n${diffs.slice(0,8).join('\n')}${diffs.length>8?`\n…他${diffs.length-8}件`:''}`
+    : `食い違いなし(端末とサーバーは一致)。ローカル件数=${Object.keys(local||{}).length}`;
+  try{
+    await mutateCalReport_(uid(), { type:'normal', text:`${head}\n${body}`, status:'open',
+      by: me||'', at:new Date().toISOString(), appVer:(typeof appVersion_==='function')?appVersion_():'', dev:(typeof deviceInfo_==='function')?deviceInfo_():'', comments:[] });
+  }catch(_){}
+  renderBugReportModal_();
+  alert(diffs.length ? `食い違い${diffs.length}件を見つけて修復しました。\n結果は報告として共有済みです。カレンダーの色を確認してください。` : '端末とサーバーは一致していました(結果は報告として共有済み)。');
+}
 function renderBugReportModal_(){
   const list = document.getElementById("br-list"); if(!list) return;
   try{ renderDeviceVersions_(); }catch(_){}
+  // 🔍 診断ボタン(1回だけ設置)
+  try{
+    const dv = document.getElementById("br-devices");
+    if(dv && !document.getElementById("br-diag-btn")){
+      const b = document.createElement("button");
+      b.id = "br-diag-btn"; b.className = "btn";
+      b.style.cssText = "font-size:11px;padding:3px 10px;margin:4px 0 0";
+      b.textContent = "🔍 立会の色 診断(押すだけで採取+修復)";
+      b.onclick = ()=>{ b.disabled=true; b.textContent="診断中…"; runTaikyoColorDiag_().finally(()=>{ b.disabled=false; b.textContent="🔍 立会の色 診断(押すだけで採取+修復)"; }); };
+      dv.after(b);
+    }
+  }catch(_){}
   // 📮 未共有バナー(v1.30.464): 「投稿したのに他の人に見えない」状態を本人に見えるようにする
   {
     const host = document.getElementById("br-list").parentElement;
