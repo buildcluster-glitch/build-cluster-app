@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.599</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.600</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -6940,21 +6940,26 @@ function __ovIsZombie_(e){
   const t = Date.parse((e && e.at) || '');
   return !isNaN(t) && (Date.now() - t) > TAIKYO_OV_ZOMBIE_MS;
 }
-function mergeTaikyoOverrideMaps_(a, b){
+// 共通LWWマージ(ゾンビ排除つき・v1.30.600で全共有マップに展開)。a=サーバー b=ローカル。
+//   ⚠サーバーが空(初期化/読み損ね)の時はゾンビ排除しない=ローカルが復元の最後の砦(従来の挙動を維持)。
+//   ⚠atが無い/読めないエントリはゾンビ扱いしない(古い形式のデータを壊さない)。
+function lwwMergeZombieSafe_(a, b){
   const out = {};
+  const remoteHasAny = !!(a && Object.keys(a).length);
   const keys = new Set([...Object.keys(a||{}), ...Object.keys(b||{})]);
   keys.forEach(k=>{
     const ea = a?.[k], eb = b?.[k];
-    if(!ea){ if(!__ovIsZombie_(eb)) out[k] = eb; return; }        // ローカルのみ: 24h超は捨てる(push喪失ゾンビ)
+    if(!ea){ if(!(remoteHasAny && __ovIsZombie_(eb))) out[k] = eb; return; }   // ローカルのみ: サーバーに他のデータが有るのに24h超届いていない=ゾンビ→捨てる
     if(!eb){ out[k] = ea; return; }
     if(String(eb.at||'') >= String(ea.at||'')){                    // ローカルが新しい
-      out[k] = __ovIsZombie_(eb) && JSON.stringify(ea)!==JSON.stringify(eb)
+      out[k] = (__ovIsZombie_(eb) && JSON.stringify(ea)!==JSON.stringify(eb))
         ? ea                                                       // …が24h超なのにサーバーに届いていない=ゾンビ→サーバーを正
         : eb;
     } else out[k] = ea;
   });
   return out;
 }
+function mergeTaikyoOverrideMaps_(a, b){ return lwwMergeZombieSafe_(a, b); }
 // shared-config から取得 → ローカルと統合(local生存) → キャッシュ更新。opts.push で統合結果をpush(移行用)
 async function fetchTaikyoOverrides_(opts={}){
   const s = loadGasSettings();
@@ -7091,13 +7096,7 @@ function loadRepairOverrides_(){
   try{ const o = JSON.parse(localStorage.getItem(REPAIR_OVERRIDE_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; }
 }
 function saveRepairOverrides_(map){ try{ localStorage.setItem(REPAIR_OVERRIDE_KEY, JSON.stringify(map||{})); }catch(e){} }
-function mergeRepairOverrideMaps_(a,b){
-  const out={}; const keys=new Set([...Object.keys(a||{}),...Object.keys(b||{})]);
-  keys.forEach(k=>{ const ea=a?.[k], eb=b?.[k];
-    if(!ea){ out[k]=eb; return; } if(!eb){ out[k]=ea; return; }
-    out[k] = (String(eb.at||'')>=String(ea.at||'')) ? eb : ea; });   // last-write-wins
-  return out;
-}
+function mergeRepairOverrideMaps_(a,b){ return lwwMergeZombieSafe_(a,b); }   // 🧟 v1.30.600: ゾンビ排除つきLWWに統一
 // オーバーレイを state.repairs.worker に反映(クラウド共有値が真値)
 function applyRepairOverridesToState_(){
   const map = loadRepairOverrides_();
@@ -7228,7 +7227,7 @@ async function setRepairCommuteOverride_(repairId, commute){
 const CHECK_WORKERS_KEY = "buildcluster_check_workers";
 function loadCheckWorkers_(){ try{ const o=JSON.parse(localStorage.getItem(CHECK_WORKERS_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
 function saveCheckWorkers_(map){ try{ localStorage.setItem(CHECK_WORKERS_KEY, JSON.stringify(map||{})); }catch(e){} }
-function mergeCheckWorkerMaps_(a,b){ const out={}; const keys=new Set([...Object.keys(a||{}),...Object.keys(b||{})]); keys.forEach(k=>{ const ea=a&&a[k], eb=b&&b[k]; if(!ea){out[k]=eb;return;} if(!eb){out[k]=ea;return;} out[k]=(String(eb.at||'')>=String(ea.at||''))?eb:ea; }); return out; } // last-write-wins
+function mergeCheckWorkerMaps_(a,b){ return lwwMergeZombieSafe_(a,b); }   // 🧟 v1.30.600: ゾンビ排除つきLWWに統一
 // オーバーレイを state.checks.staff(=作業担当) に反映。gas-sync由来は overlay が真値(無ければ空)。
 //   旧データ移行: estimatorName 未設定(=旧staff=見積作成者)なら estimatorName へ退避して staff を空に。
 function applyCheckWorkersToState_(){
@@ -7330,7 +7329,7 @@ async function setCheckCommuteOverride_(checkId, commute){
 const PHONE_DUTY_KEY = "buildcluster_phone_duty";
 function loadPhoneDuty_(){ try{ const o=JSON.parse(localStorage.getItem(PHONE_DUTY_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
 function savePhoneDuty_(map){ try{ localStorage.setItem(PHONE_DUTY_KEY, JSON.stringify(map||{})); }catch(e){} }
-function mergePhoneDutyMaps_(a,b){ const out={}; const keys=new Set([...Object.keys(a||{}),...Object.keys(b||{})]); keys.forEach(k=>{ const ea=a&&a[k], eb=b&&b[k]; if(!ea){out[k]=eb;return;} if(!eb){out[k]=ea;return;} out[k]=(String(eb.at||'')>=String(ea.at||''))?eb:ea; }); return out; } // last-write-wins
+function mergePhoneDutyMaps_(a,b){ return lwwMergeZombieSafe_(a,b); }   // 🧟 v1.30.600: ゾンビ排除つきLWWに統一
 function getPhoneDuty_(date){ const e=loadPhoneDuty_()[date]; return (e&&e.staff)||""; }
 async function fetchPhoneDuty_(opts={}){
   const s=loadGasSettings(); const local=loadPhoneDuty_();
@@ -7376,7 +7375,7 @@ async function setPhoneDuty_(date, staff){
 const SANPAI_KEY = "buildcluster_sanpai";
 function loadSanpai_(){ try{ const o=JSON.parse(localStorage.getItem(SANPAI_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
 function saveSanpai_(map){ try{ localStorage.setItem(SANPAI_KEY, JSON.stringify(map||{})); }catch(e){} }
-function mergeSanpaiMaps_(a,b){ const out={}; const keys=new Set([...Object.keys(a||{}),...Object.keys(b||{})]); keys.forEach(k=>{ const ea=a&&a[k], eb=b&&b[k]; if(!ea){out[k]=eb;return;} if(!eb){out[k]=ea;return;} out[k]=(String(eb.at||'')>=String(ea.at||''))?eb:ea; }); return out; } // last-write-wins
+function mergeSanpaiMaps_(a,b){ return lwwMergeZombieSafe_(a,b); }   // 🧟 v1.30.600: ゾンビ排除つきLWWに統一
 // 次回(今日以降で最も近い回収日)。過ぎた分は返さない=ヘッダーから自動で消える
 function nextSanpai_(){
   const map=loadSanpai_(); const today=(typeof fmtDate==='function')?fmtDate(new Date()):new Date().toISOString().slice(0,10);
@@ -7431,7 +7430,7 @@ async function setSanpai_(date, entry){
 const TOBAN_DONE_KEY = "buildcluster_toban_done";
 function loadTobanDone_(){ try{ const o=JSON.parse(localStorage.getItem(TOBAN_DONE_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
 function saveTobanDone_(map){ try{ localStorage.setItem(TOBAN_DONE_KEY, JSON.stringify(map||{})); }catch(e){} }
-function mergeTobanDoneMaps_(a,b){ const out={}; const keys=new Set([...Object.keys(a||{}),...Object.keys(b||{})]); keys.forEach(k=>{ const ea=a&&a[k], eb=b&&b[k]; if(!ea){out[k]=eb;return;} if(!eb){out[k]=ea;return;} out[k]=(String(eb.at||'')>=String(ea.at||''))?eb:ea; }); return out; }
+function mergeTobanDoneMaps_(a,b){ return lwwMergeZombieSafe_(a,b); }   // 🧟 v1.30.600: ゾンビ排除つきLWWに統一
 function tobanWeekKey_(d){ const m=mondayOf_(d||new Date()); return m?fmtDate(m):""; }
 function getTobanDoneEntry_(weekKey){ return loadTobanDone_()[weekKey]||null; }
 async function fetchTobanDone_(opts={}){
@@ -7476,7 +7475,7 @@ async function setTobanDone_(weekKey, done){
 const ALERTS_KEY = "buildcluster_alerts";
 function loadAlerts_(){ try{ const o=JSON.parse(localStorage.getItem(ALERTS_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
 function saveAlerts_(map){ try{ localStorage.setItem(ALERTS_KEY, JSON.stringify(map||{})); }catch(e){} }
-function mergeAlertMaps_(a,b){ const out={}; const keys=new Set([...Object.keys(a||{}),...Object.keys(b||{})]); keys.forEach(k=>{ const ea=a&&a[k], eb=b&&b[k]; if(!ea){out[k]=eb;return;} if(!eb){out[k]=ea;return;} out[k]=(String(eb.at||'')>=String(ea.at||''))?eb:ea; }); return out; } // last-write-wins
+function mergeAlertMaps_(a,b){ return lwwMergeZombieSafe_(a,b); }   // 🧟 v1.30.600: ゾンビ排除つきLWWに統一
 function getAlert_(id){ const e=loadAlerts_()[id]; return (e && e.text) ? e : null; }
 function alertChipHtml_(id, opts){
   const e = getAlert_(id); if(!e) return "";
@@ -7650,7 +7649,7 @@ async function setTimeNote_(id, text){
 const SKIP_VISIT_KEY = "buildcluster_skip_visit";
 function loadSkipVisit_(){ try{ const o=JSON.parse(localStorage.getItem(SKIP_VISIT_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
 function saveSkipVisit_(map){ try{ localStorage.setItem(SKIP_VISIT_KEY, JSON.stringify(map||{})); }catch(e){} }
-function mergeSkipVisitMaps_(a,b){ const out={}; const keys=new Set([...Object.keys(a||{}),...Object.keys(b||{})]); keys.forEach(k=>{ const ea=a&&a[k], eb=b&&b[k]; if(!ea){out[k]=eb;return;} if(!eb){out[k]=ea;return;} out[k]=(String(eb.at||'')>=String(ea.at||''))?eb:ea; }); return out; }
+function mergeSkipVisitMaps_(a,b){ return lwwMergeZombieSafe_(a,b); }   // 🧟 v1.30.600: ゾンビ排除つきLWWに統一
 function jizenSkipKey_(ev){ if(!ev) return ""; if(ev._jizenSourceId) return "sid:"+ev._jizenSourceId; const t=String(ev.title||"").replace(/^事前\s*/,"").replace(/\s*[(（]\d+日目[)）]\s*$/,"").normalize("NFKC").replace(/\s|　/g,""); return t?("t:"+t):""; }
 function isSkipVisit_(ev){ const k=jizenSkipKey_(ev); if(!k) return false; const e=loadSkipVisit_()[k]; return !!(e&&e.skip); }
 async function fetchSkipVisit_(opts={}){
@@ -7698,7 +7697,7 @@ async function setSkipVisit_(ev, skip){
 const EVENT_DONE_KEY = "buildcluster_event_done";
 function loadEventDone_(){ try{ const o=JSON.parse(localStorage.getItem(EVENT_DONE_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
 function saveEventDone_(map){ try{ localStorage.setItem(EVENT_DONE_KEY, JSON.stringify(map||{})); }catch(e){} }
-function mergeEventDoneMaps_(a,b){ const out={}; const keys=new Set([...Object.keys(a||{}),...Object.keys(b||{})]); keys.forEach(k=>{ const ea=a&&a[k], eb=b&&b[k]; if(!ea){out[k]=eb;return;} if(!eb){out[k]=ea;return;} out[k]=(String(eb.at||'')>=String(ea.at||''))?eb:ea; }); return out; }
+function mergeEventDoneMaps_(a,b){ return lwwMergeZombieSafe_(a,b); }   // 🧟 v1.30.600: ゾンビ排除つきLWWに統一
 function isEventDone_(id){ const e=loadEventDone_()[id]; return !!(e && e.done); }
 function eventDoneInfo_(id){ const e=loadEventDone_()[id]; return (e && e.done) ? e : null; }
 async function fetchEventDone_(opts={}){
@@ -7877,7 +7876,7 @@ async function setRequiredCalendarVersion_(ver){
 const REPAIR_POS_KEY = "buildcluster_repair_pos";
 function loadRepairPos_(){ try{ const o=JSON.parse(localStorage.getItem(REPAIR_POS_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
 function saveRepairPos_(map){ try{ localStorage.setItem(REPAIR_POS_KEY, JSON.stringify(map||{})); }catch(e){} }
-function mergeRepairPosMaps_(a,b){ const out={}; const keys=new Set([...Object.keys(a||{}),...Object.keys(b||{})]); keys.forEach(k=>{ const ea=a&&a[k], eb=b&&b[k]; if(!ea){out[k]=eb;return;} if(!eb){out[k]=ea;return;} out[k]=(String(eb.at||'')>=String(ea.at||''))?eb:ea; }); return out; }
+function mergeRepairPosMaps_(a,b){ return lwwMergeZombieSafe_(a,b); }   // 🧟 v1.30.600: ゾンビ排除つきLWWに統一
 function getRepairPosMin_(id){ const e=loadRepairPos_()[id]; return (e && typeof e.min==='number' && !e.cleared) ? e.min : null; }
 async function pushRepairPosMap_(map){
   const s=loadGasSettings(); if(!s.url||!s.token) return;
@@ -7923,7 +7922,7 @@ async function setRepairPosMin_(id, min){
 const STAFF_LEAVES_KEY = "buildcluster_staff_leaves_overlay";
 function loadLeaveOverlay_(){ try{ const o=JSON.parse(localStorage.getItem(STAFF_LEAVES_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
 function saveLeaveOverlay_(map){ try{ localStorage.setItem(STAFF_LEAVES_KEY, JSON.stringify(map||{})); }catch(e){} }
-function mergeLeaveMaps_(a,b){ const out={}; const keys=new Set([...Object.keys(a||{}),...Object.keys(b||{})]); keys.forEach(k=>{ const ea=a&&a[k], eb=b&&b[k]; if(!ea){out[k]=eb;return;} if(!eb){out[k]=ea;return;} out[k]=(String(eb.at||'')>=String(ea.at||''))?eb:ea; }); return out; } // last-write-wins
+function mergeLeaveMaps_(a,b){ return lwwMergeZombieSafe_(a,b); }   // 🧟 v1.30.600: ゾンビ排除つきLWWに統一
 function leaveToEntry_(l){ return {id:l.id, staff:l.staff||'', start:l.start||'', end:l.end||'', type:l.type||'', memo:l.memo||'', at:l.updatedAt||new Date().toISOString()}; }
 // オーバーレイ(map)から state.leaves を再構築(削除tombstoneは除外)
 function applyLeavesFromOverlay_(){ const map=loadLeaveOverlay_(); if(!Object.keys(map).length) return; state.leaves=Object.values(map).filter(e=>e&&e.id&&!e.deleted).map(e=>({id:e.id,staff:e.staff,start:e.start,end:e.end,type:e.type,memo:e.memo,updatedAt:e.at})); saveState(); }
@@ -22298,40 +22297,49 @@ function renderDeviceVersions_(){
 //   食い違いを**通常報告として自動送信**(=山田/Claudeが遠隔で読める)+ローカルをサーバー基準に修復して描き直す。
 //   「反映されない」系の報告が来たら、その人にこのボタンを押してもらうだけで原因が採取できる。
 async function runTaikyoColorDiag_(){
+  // 🔍 v1.30.600: 立会だけ→**色の3系統**(立会/最終確認/修繕)に拡張(山田報告「最終確認は色がつかない」)
   const me=(typeof getMyself==='function')?getMyself():'';
   const s=loadGasSettings(); if(!s.url||!s.token){ alert('☁設定が未設定です'); return; }
-  const local = loadTaikyoOverrides_();
-  let remote = null;
-  try{
-    if(typeof window.__gcBatchInvalidate==='function') window.__gcBatchInvalidate();
-    const res = await fetch(`${s.url}?action=get-shared-config&key=taikyo_overrides&token=${encodeURIComponent(s.token)}&t=${Date.now()}`,{method:'GET',redirect:'follow'});
-    const d = await res.json(); let raw=d.value;
-    if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(_){ raw=null; } }
-    remote = (raw&&raw.overrides&&typeof raw.overrides==='object') ? raw.overrides : {};
-  }catch(e){ alert('サーバーから読めませんでした: '+e.message); return; }
-  const ids = new Set([...Object.keys(local||{}), ...Object.keys(remote||{})]);
-  const diffs = [];
-  ids.forEach(k=>{
-    const L=local[k], R=remote[k];
-    if(JSON.stringify(L)===JSON.stringify(R)) return;
-    const f=e=>e?`staff:${e.staff||'(空)'} at:${String(e.at||'').slice(5,16)} by:${e.by||''}`:'(なし)';
-    diffs.push(`${k}\n  端末: ${f(L)}\n  ｻｰﾊﾞ: ${f(R)}`);
-  });
-  // 修復: 新ルールのマージ(ゾンビ排除込み)でローカルをサーバー基準に整える
-  const merged = mergeTaikyoOverrideMaps_(remote, local);
-  saveTaikyoOverrides_(merged);
+  const STORES = [
+    { label:'立会',     key:'taikyo_overrides', load:loadTaikyoOverrides_, save:saveTaikyoOverrides_, field:e=>e&&(e.staff||'') },
+    { label:'最終確認', key:'check_workers',    load:loadCheckWorkers_,    save:saveCheckWorkers_,    field:e=>e&&(e.worker||'') },
+    { label:'修繕',     key:'repair_overrides', load:loadRepairOverrides_, save:saveRepairOverrides_, field:e=>e&&(e.worker||'') },
+  ];
+  if(typeof window.__gcBatchInvalidate==='function') window.__gcBatchInvalidate();
+  const sections = [];
+  let total = 0;
+  for(const st of STORES){
+    let remote;
+    try{
+      const res = await fetch(`${s.url}?action=get-shared-config&key=${st.key}&token=${encodeURIComponent(s.token)}&t=${Date.now()}`,{method:'GET',redirect:'follow'});
+      const d = await res.json(); let raw=d.value;
+      if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(_){ raw=null; } }
+      remote = (raw&&raw.overrides&&typeof raw.overrides==='object') ? raw.overrides : {};
+    }catch(e){ sections.push(`【${st.label}】サーバーから読めず: ${e.message}`); continue; }
+    const local = st.load();
+    const ids = new Set([...Object.keys(local||{}), ...Object.keys(remote||{})]);
+    const diffs = [];
+    ids.forEach(k=>{
+      const L=local[k], R=remote[k];
+      if(JSON.stringify(L)===JSON.stringify(R)) return;
+      const f=e=>e?`担当:${st.field(e)||'(空)'} at:${String(e.at||'').slice(5,16)} by:${e.by||''}`:'(なし)';
+      diffs.push(`${k}\n  端末: ${f(L)}\n  ｻｰﾊﾞ: ${f(R)}`);
+    });
+    total += diffs.length;
+    st.save(lwwMergeZombieSafe_(remote, local));   // 修復(ゾンビ排除込み)
+    sections.push(`【${st.label}】${diffs.length?`食い違い${diffs.length}件→修復:\n${diffs.slice(0,5).join('\n')}${diffs.length>5?`\n…他${diffs.length-5}件`:''}`:`一致(${Object.keys(local||{}).length}件)`}`);
+  }
+  if(typeof applyCheckWorkersToState_==='function') applyCheckWorkersToState_();
+  if(typeof applyRepairOverridesToState_==='function') applyRepairOverridesToState_();
   if(typeof bumpTaikyoEpoch_==='function') bumpTaikyoEpoch_();
   if(typeof render==='function') render();
-  const head = `🔍立会色 診断 (${(typeof appVersion_==='function')?appVersion_():''} / ${(typeof deviceInfo_==='function')?deviceInfo_():''})`;
-  const body = diffs.length
-    ? `食い違い ${diffs.length}件(端末とサーバー)→ローカルをサーバー基準に修復しました:\n\n${diffs.slice(0,8).join('\n')}${diffs.length>8?`\n…他${diffs.length-8}件`:''}`
-    : `食い違いなし(端末とサーバーは一致)。ローカル件数=${Object.keys(local||{}).length}`;
+  const head = `🔍色の診断 (${(typeof appVersion_==='function')?appVersion_():''} / ${(typeof deviceInfo_==='function')?deviceInfo_():''})`;
   try{
-    await mutateCalReport_(uid(), { type:'normal', text:`${head}\n${body}`, status:'open',
+    await mutateCalReport_(uid(), { type:'normal', text:`${head}\n${sections.join('\n\n')}`, status:'open',
       by: me||'', at:new Date().toISOString(), appVer:(typeof appVersion_==='function')?appVersion_():'', dev:(typeof deviceInfo_==='function')?deviceInfo_():'', comments:[] });
   }catch(_){}
   renderBugReportModal_();
-  alert(diffs.length ? `食い違い${diffs.length}件を見つけて修復しました。\n結果は報告として共有済みです。カレンダーの色を確認してください。` : '端末とサーバーは一致していました(結果は報告として共有済み)。');
+  alert(total ? `食い違い${total}件を見つけて修復しました。\n結果は報告として共有済みです。色を確認してください。` : '端末とサーバーは一致していました(結果は報告として共有済み)。');
 }
 function renderBugReportModal_(){
   const list = document.getElementById("br-list"); if(!list) return;
@@ -22343,8 +22351,8 @@ function renderBugReportModal_(){
       const b = document.createElement("button");
       b.id = "br-diag-btn"; b.className = "btn";
       b.style.cssText = "font-size:11px;padding:3px 10px;margin:4px 0 0";
-      b.textContent = "🔍 立会の色 診断(押すだけで採取+修復)";
-      b.onclick = ()=>{ b.disabled=true; b.textContent="診断中…"; runTaikyoColorDiag_().finally(()=>{ b.disabled=false; b.textContent="🔍 立会の色 診断(押すだけで採取+修復)"; }); };
+      b.textContent = "🔍 色の診断(立会/最終確認/修繕・押すだけで採取+修復)";
+      b.onclick = ()=>{ b.disabled=true; b.textContent="診断中…"; runTaikyoColorDiag_().finally(()=>{ b.disabled=false; b.textContent="🔍 色の診断(立会/最終確認/修繕・押すだけで採取+修復)"; }); };
       dv.after(b);
     }
   }catch(_){}
