@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.600</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.601</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -6911,8 +6911,13 @@ function loadTaikyoOverrides_(){
   try{ const o = JSON.parse(localStorage.getItem(TAIKYO_OVERRIDE_KEY)||"{}"); return (o && typeof o==='object') ? o : {}; }
   catch(e){ return {}; }
 }
+// ⚠ v1.30.601: 保存失敗を黙らせない(鈴木iPhone事件=容量いっぱいで書込が静かに失敗→「同期OKなのに直らない」の温床)
+function __lsQuotaWarnOnce_(){
+  if(window.__lsQuotaWarned) return; window.__lsQuotaWarned = true;
+  try{ if(typeof showAutoSyncToast==='function') showAutoSyncToast('⚠ この端末の保存容量がいっぱいで最新情報を保存できません。🐞→🔍色の診断 を押すと自動掃除します'); }catch(_){}
+}
 function saveTaikyoOverrides_(map){
-  try{ localStorage.setItem(TAIKYO_OVERRIDE_KEY, JSON.stringify(map||{})); }catch(e){}
+  try{ localStorage.setItem(TAIKYO_OVERRIDE_KEY, JSON.stringify(map||{})); }catch(e){ __lsQuotaWarnOnce_(); }
 }
 // 🔄 v1.30.595(鈴木報告「同期されておらず色が消えている」・iPhoneホーム画面起動):
 //   共有マップの定期取得は opts.silent の時に render() を呼んでいなかった=**取れているのに画面が古いまま**。
@@ -7095,7 +7100,7 @@ const REPAIR_OVERRIDE_KEY = "buildcluster_repair_overrides";
 function loadRepairOverrides_(){
   try{ const o = JSON.parse(localStorage.getItem(REPAIR_OVERRIDE_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; }
 }
-function saveRepairOverrides_(map){ try{ localStorage.setItem(REPAIR_OVERRIDE_KEY, JSON.stringify(map||{})); }catch(e){} }
+function saveRepairOverrides_(map){ try{ localStorage.setItem(REPAIR_OVERRIDE_KEY, JSON.stringify(map||{})); }catch(e){ __lsQuotaWarnOnce_(); } }
 function mergeRepairOverrideMaps_(a,b){ return lwwMergeZombieSafe_(a,b); }   // 🧟 v1.30.600: ゾンビ排除つきLWWに統一
 // オーバーレイを state.repairs.worker に反映(クラウド共有値が真値)
 function applyRepairOverridesToState_(){
@@ -7226,7 +7231,7 @@ async function setRepairCommuteOverride_(repairId, commute){
 // ===========================================================
 const CHECK_WORKERS_KEY = "buildcluster_check_workers";
 function loadCheckWorkers_(){ try{ const o=JSON.parse(localStorage.getItem(CHECK_WORKERS_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
-function saveCheckWorkers_(map){ try{ localStorage.setItem(CHECK_WORKERS_KEY, JSON.stringify(map||{})); }catch(e){} }
+function saveCheckWorkers_(map){ try{ localStorage.setItem(CHECK_WORKERS_KEY, JSON.stringify(map||{})); }catch(e){ __lsQuotaWarnOnce_(); } }
 function mergeCheckWorkerMaps_(a,b){ return lwwMergeZombieSafe_(a,b); }   // 🧟 v1.30.600: ゾンビ排除つきLWWに統一
 // オーバーレイを state.checks.staff(=作業担当) に反映。gas-sync由来は overlay が真値(無ければ空)。
 //   旧データ移行: estimatorName 未設定(=旧staff=見積作成者)なら estimatorName へ退避して staff を空に。
@@ -22333,6 +22338,26 @@ async function runTaikyoColorDiag_(){
   if(typeof applyRepairOverridesToState_==='function') applyRepairOverridesToState_();
   if(typeof bumpTaikyoEpoch_==='function') bumpTaikyoEpoch_();
   if(typeof render==='function') render();
+  // 📦 v1.30.601: ストレージ検査(鈴木iPhone事件の真相追跡)。診断でローカル全消えが観測された=
+  //   「保存容量いっぱいで書き込みが黙って失敗」の疑い(save系は全部catch(e){}で握りつぶす作りのため表に出ない)。
+  //   ①実際に書けるかテスト ②書けなければ自動掃除(古いスナップ間引き)→再テスト ③使用量の内訳TOP8を報告に載せる。
+  try{
+    const testWrite = ()=>{ try{ localStorage.setItem('__bc_quota_test', 'x'.repeat(100*1024)); localStorage.removeItem('__bc_quota_test'); return true; }catch(_){ return false; } };
+    let bytes=0; const sizes=[];
+    for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); const n=(k.length+(localStorage.getItem(k)||'').length); bytes+=n; sizes.push([k,n]); }
+    sizes.sort((x,y)=>y[1]-x[1]);
+    const before = testWrite();
+    let after = before, cleaned = '';
+    if(!before){
+      try{ if(typeof pruneSnapshots_==='function') pruneSnapshots_(); cleaned='古い自動バックアップを間引き'; }catch(_){}
+      after = testWrite();
+    }
+    const top = sizes.slice(0,8).map(x=>`  ${x[0]}: ${Math.round(x[1]/1024)}KB`).join('\n');
+    sections.push(`【📦ストレージ】合計${(bytes/1024/1024).toFixed(2)}MB(文字数換算)\n`
+      + `書込テスト(100KB): ${before?'✅成功':'❌失敗(容量いっぱい=これが「保存されない」の正体の可能性大)'}`
+      + (!before ? `\n自動掃除(${cleaned||'掃除なし'})→再テスト: ${after?'✅成功':'❌まだ失敗(このスマホのブラウザのサイトデータ削除が必要)'}` : '')
+      + `\n内訳TOP8:\n${top}`);
+  }catch(e){ sections.push('【📦ストレージ】検査失敗: '+e.message); }
   const head = `🔍色の診断 (${(typeof appVersion_==='function')?appVersion_():''} / ${(typeof deviceInfo_==='function')?deviceInfo_():''})`;
   try{
     await mutateCalReport_(uid(), { type:'normal', text:`${head}\n${sections.join('\n\n')}`, status:'open',
