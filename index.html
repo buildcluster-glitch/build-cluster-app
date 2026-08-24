@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.604</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.605</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -5264,7 +5264,30 @@ function cleanupLegacySnapshots_(){
 }
 // 起動15秒後(クラウド同期が落ち着いてから)＋以後5分おきに枠チェック
 setTimeout(cleanupLegacySnapshots_, 8000);   // 軽量化前の重いバックアップを掃除
-setTimeout(()=>{ try{ pruneSnapshots_(); }catch(_){} }, 5000);   // v1.30.291: 起動時に新しい上限(10個)まで即間引き=溜まったsnapで容量圧迫→すぐ軽く
+setTimeout(()=>{ try{ pruneSnapshots_(); }catch(_){} }, 5000);
+// 📦 v1.30.605: 起動時に「書けるか」を実測し、書けなければ再取得できるキャッシュを自動解放する。
+//   鈴木iPhone事件=localStorage満杯→**全ての保存が黙って失敗**→担当色が何度直しても消える、が3日続いた。
+//   診断ボタンを押してもらわなくても、アプリを開いた時点で自動で復旧させる。
+setTimeout(()=>{
+  try{
+    const test=()=>{ try{ localStorage.setItem('__bc_q','x'.repeat(80*1024)); localStorage.removeItem('__bc_q'); return true; }catch(_){ return false; } };
+    if(test()) return;
+    console.warn('[capacity] 保存容量が不足→自動解放を実行');
+    try{ pruneSnapshots_(); }catch(_){}
+    if(test()) return;
+    let freed=0;
+    ['buildcluster_calendar_reports','buildcluster_hatchusho_cache','tanka_cache_v1',
+     'buildcluster_naiso_thumbs_cache','buildcluster_taikyo_schedule_cache','buildcluster_jizen_schedule_cache'].forEach(k=>{
+      if(test()) return;
+      try{ const v=localStorage.getItem(k); if(v){ freed+=(k.length+v.length); localStorage.removeItem(k); } }catch(_){}
+    });
+    if(freed){
+      console.warn(`[capacity] 再取得できるキャッシュを ${Math.round(freed/1024)}KB 解放しました`);
+      if(typeof showAutoSyncToast==='function') showAutoSyncToast(`📦 保存容量が不足していたため一時データを${Math.round(freed/1024)}KB整理しました(内容はサーバーから取り直します)`);
+      ['fetchCalReports_','fetchTaikyoSchedule','fetchJizenSchedule'].forEach(fn=>{ try{ if(typeof window[fn]==='function'){ const p=window[fn]({silent:true}); if(p&&p.catch) p.catch(()=>{}); } }catch(_){ } });
+    }
+  }catch(_){}
+}, 7000);   // v1.30.291: 起動時に新しい上限(10個)まで即間引き=溜まったsnapで容量圧迫→すぐ軽く
 setTimeout(takeSnapshotIfDue_, 15000);
 setInterval(takeSnapshotIfDue_, 5*60*1000);
 
@@ -22043,10 +22066,46 @@ function loadCalReports_(){
 //   容量超過(QuotaExceededError)を黙って握りつぶすと「投稿がどこにも保存されないのに✅共有しましたと出る」
 //   事故になる(鈴木報告「画像付きバグ報告が一覧に出ない」の真因候補)。
 //   ⚠ v1.30.567: localStorageに書けても書けなくても、まずメモリを最新にする(表示はこれを見る)。
+// 📦 v1.30.605(鈴木iPhoneの診断で確定): このキャッシュが**1639KB=端末2.5MBの65%**を占め、
+//   localStorageを満杯にして**他の全部の保存を黙って失敗させていた**(担当色が何度直しても消える真犯人)。
+//   正体=v582以前に投稿されたdata:URI写真が端末にだけ residing(サーバー側の同じデータは104KB)。
+//   ⚠これは**キャッシュ**でサーバーが正本→予算を超えたら写真を落として本文だけ残す。写真はDriveのURL分は無傷、
+//     古いdata:URI分は「投稿した端末でのみ表示」だったものなので、落としても全員の見え方は変わらない。
+const CAL_REPORTS_BUDGET = 400*1024;   // 端末に置く上限(サーバー実測104KBに対し十分な余裕)
+function __stripReportPhotos_(m){
+  const out = {};
+  Object.keys(m||{}).forEach(k=>{
+    const r = Object.assign({}, m[k]);
+    const keep = p => String(p||'').indexOf('http') === 0;          // Driveに退避済みのURLだけ残す
+    if(Array.isArray(r.photos)){
+      const before = r.photos.length;
+      r.photos = r.photos.filter(keep);
+      if(r.photos.length < before) r.hadPhoto = true;               // 「画像あり(この端末では非表示)」の既存表示に載る
+    }
+    if(r.photo && !keep(r.photo)){ delete r.photo; r.hadPhoto = true; }
+    out[k] = r;
+  });
+  return out;
+}
 function saveCalReports_(m){
   __calReportsMem = m || {};
-  try{ localStorage.setItem(CAL_REPORTS_KEY, JSON.stringify(__calReportsMem)); return true; }
-  catch(e){ console.warn('[calendar_reports] ローカル保存失敗(容量?・表示と共有はメモリで継続):', e && e.message); return false; }
+  let payload = JSON.stringify(__calReportsMem);
+  if(payload.length > CAL_REPORTS_BUDGET){
+    const slim = __stripReportPhotos_(__calReportsMem);
+    const slimStr = JSON.stringify(slim);
+    if(slimStr.length < payload.length){
+      console.warn(`[calendar_reports] 予算超過 ${Math.round(payload.length/1024)}KB → 端末内の写真を外して ${Math.round(slimStr.length/1024)}KB に(表示と共有はDriveのURLで継続)`);
+      payload = slimStr;   // ⚠メモリ上(__calReportsMem)は元のまま=この画面では写真が見え続ける
+    }
+  }
+  try{ localStorage.setItem(CAL_REPORTS_KEY, payload); return true; }
+  catch(e){
+    // 容量オーバー: 写真を全部外して最小構成で再試行(本文だけでも残す)
+    try{ localStorage.setItem(CAL_REPORTS_KEY, JSON.stringify(__stripReportPhotos_(__calReportsMem))); return true; }catch(_){}
+    console.warn('[calendar_reports] ローカル保存失敗(容量?・表示と共有はメモリで継続):', e && e.message);
+    if(typeof __lsQuotaWarnOnce_==='function') __lsQuotaWarnOnce_();
+    return false;
+  }
 }
 // 📷 v1.30.582(山田「保存容量が残り少」・実測でbuildcluster_calendar_reportsが1.69MB=最大の占有):
 //   バグ報告の写真をDriveへ退避してURLで持つ。現場メモ(restoPersistPhoto_ v1.30.393)と同じ考え方。
@@ -22603,8 +22662,23 @@ async function runTaikyoColorDiag_(){
     const before = testWrite();
     let after = before, cleaned = '';
     if(!before){
-      try{ if(typeof pruneSnapshots_==='function') pruneSnapshots_(); cleaned='古い自動バックアップを間引き'; }catch(_){}
+      const steps=[];
+      try{ if(typeof pruneSnapshots_==='function') pruneSnapshots_(); steps.push('古い自動バックアップを間引き'); }catch(_){}
       after = testWrite();
+      // 📦 v1.30.605: それでもダメなら**再取得できるキャッシュ**を解放する(サーバーが正本なので消して安全)。
+      //   鈴木iPhoneの実測=calendar_reportsだけで1639KB。ここを空ければ一気に空く。
+      if(!after){
+        const REFETCHABLE = ['buildcluster_calendar_reports','buildcluster_hatchusho_cache','tanka_cache_v1',
+          'buildcluster_naiso_thumbs_cache','buildcluster_taikyo_schedule_cache','buildcluster_jizen_schedule_cache'];
+        let freed=0;
+        REFETCHABLE.forEach(k=>{
+          try{ const v=localStorage.getItem(k); if(v){ freed += (k.length+v.length); localStorage.removeItem(k); } }catch(_){}
+          if(!after) after = testWrite();
+        });
+        if(freed) steps.push(`再取得できるキャッシュを解放(${Math.round(freed/1024)}KB)`);
+        try{ if(typeof __calReportsMem!=='undefined') __calReportsMem = {}; }catch(_){}
+      }
+      cleaned = steps.join(' → ') || '掃除なし';
     }
     const top = sizes.slice(0,8).map(x=>`  ${x[0]}: ${Math.round(x[1]/1024)}KB`).join('\n');
     sections.push(`【📦ストレージ】合計${(bytes/1024/1024).toFixed(2)}MB(文字数換算)\n`
