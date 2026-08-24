@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.611</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.612</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -6572,12 +6572,17 @@ function renderCheckCard(ck, today){
     __disinfectOn = (linkedResto.disinfectDone === true);
   }
   // 入居予定日: 🔑鍵交換日・🦠除菌有 を同じ箱にパッケージング(v1.30.557)
+  //   v1.30.612: 手入力の ck.moveInDate(日付欄=ISO)が空でも、紐づく原状回復の入居日(自由入力)を出す。
+  //   「9/1予定 ※8/21時点」のような予定表記が台帳側の主流で、従来はここに何も出ていなかった。
   let moveInHtml = "";
-  if(ck.moveInDate){
-    const m = parseDate(ck.moveInDate);
-    if(!isNaN(m)){
-      const __pkg = [`入居 ${m.getMonth()+1}/${m.getDate()}`, __keyPkg, __disinfectOn ? `<span title="除菌 実施">🦠有</span>` : ""].filter(Boolean).join(" ");
-      moveInHtml = `<span class="ck-movein">${__pkg}</span>`;
+  {
+    const __ckMi = (typeof parseLooseMovein_==='function')
+      ? (parseLooseMovein_(ck.moveInDate) ||
+         (linkedResto ? parseLooseMovein_((typeof restoMoveinRaw_==='function') ? restoMoveinRaw_(linkedResto) : linkedResto.moveinRaw) : null))
+      : null;
+    if(__ckMi){
+      const __pkg = [`入居 ${escapeHtml(__ckMi.label + __ckMi.suffix)}`, __keyPkg, __disinfectOn ? `<span title="除菌 実施">🦠有</span>` : ""].filter(Boolean).join(" ");
+      moveInHtml = `<span class="ck-movein" title="${escapeHtml(moveinTip_(__ckMi))}">${__pkg}</span>`;
       __keyPkg = ""; __keyBadge = ""; __disinfectOn = false;   // 箱に入れたので単独表示はしない
     }
   }
@@ -12563,6 +12568,10 @@ let __hatchushoRecords = [];
 let __hatchushoInFlight = null;
 const HATCHUSHO_TTL_MS = 5 * 60 * 1000;
 const HATCHUSHO_CACHE_KEY = "buildcluster_hatchusho_cache";
+// 🏠 入居日だけの署名(発注書が届いて入居日が変わった時にチップを描き直す判定用・v1.30.612)
+function __hatchushoMoveinSig_(recs){
+  return (recs||[]).map(r=>`${r&&r.id}:${((r&&r.header)||{}).moveinDate||""}`).join("|");
+}
 function loadCachedHatchusho_(){
   try{ const raw = localStorage.getItem(HATCHUSHO_CACHE_KEY); return raw ? JSON.parse(raw) : null; }catch(e){ return null; }
 }
@@ -12575,6 +12584,7 @@ async function fetchHatchushoData(opts={}){
   if(!s.url || !s.token){
     if(!opts.silent) console.warn('[hatchusho_data] GAS URL/token 未設定');
     __hatchushoRecords = loadCachedHatchusho_()?.records || __hatchushoRecords;
+    if(typeof clearMoveinMemo_==='function') clearMoveinMemo_();
     return __hatchushoRecords;
   }
   if(!opts.force){
@@ -12583,6 +12593,7 @@ async function fetchHatchushoData(opts={}){
       const age = Date.now() - new Date(cached.fetchedAt).getTime();
       if(age < HATCHUSHO_TTL_MS){
         __hatchushoRecords = cached.records || [];
+        if(typeof clearMoveinMemo_==='function') clearMoveinMemo_();
         if(!opts.silent) console.log(`[hatchusho_data] cache hit (age=${Math.round(age/1000)}s, count=${__hatchushoRecords.length})`);
         return __hatchushoRecords;
       }
@@ -12603,8 +12614,15 @@ async function fetchHatchushoData(opts={}){
       }
       if(!Array.isArray(raw)) raw = [];
       const records = raw.filter(r => r && r.id && r.header && Array.isArray(r.rows));
+      const __prevMiSig = __hatchushoMoveinSig_(__hatchushoRecords);
       __hatchushoRecords = records;
+      if(typeof clearMoveinMemo_==='function') clearMoveinMemo_();
       saveCachedHatchusho_(records);
+      // 🏠 v1.30.612: 入居日を発注書ヘッダで補完しているチップがあるため、入居日が動いた時だけ1回描き直す
+      //   (起動6秒後の初回取得ではチップが既に描かれ終わっている=これが無いと次の再描画まで出ない)
+      if(__hatchushoMoveinSig_(records) !== __prevMiSig){
+        try{ if(typeof render === 'function') render(); }catch(e){ console.warn('[hatchusho] 入居日の再描画に失敗:', e.message); }
+      }
       if(!opts.silent) console.log(`[hatchusho_data] loaded ${records.length}件`);
       // 開いている進捗ダイアログのボタン状態を更新
       if(typeof restoDetailId !== 'undefined' && restoDetailId && typeof updateHatchushoBtn_==='function') updateHatchushoBtn_();
@@ -12612,6 +12630,7 @@ async function fetchHatchushoData(opts={}){
     }catch(err){
       console.warn('[hatchusho_data] fetch失敗:', err.message);
       __hatchushoRecords = loadCachedHatchusho_()?.records || __hatchushoRecords;
+      if(typeof clearMoveinMemo_==='function') clearMoveinMemo_();
       return __hatchushoRecords;
     }finally{ __hatchushoInFlight = null; }
   })();
@@ -13332,6 +13351,74 @@ function normalizeDate(d){
   return "";
 }
 
+// 🏠 入居日の「ゆるいパース」(v1.30.612・山田「入居予定でもバッジ表示したい」)
+//   台帳(発注書ヘッダ ho.nyukyoDate)の入居日は自由入力欄。実測(hatchusho_data 73件・2026-08-25)の内訳:
+//     "2026-08-01" / "2026/08/28"(スラッシュ) / "9/1予定 ※8/21時点" / "7/6迄" / "8/末 予定" /
+//     "7月末迄" / "7/28入居希望有り ※7/16時点" / "お盆明け入居予定" / "申込あり" / "未定"(43件)
+//   従来は normalizeDate/parseDate が通る「きれいなISO」だけを見ていたので、
+//   「予定」が1文字付くだけでバッジが丸ごと消えていた(=入居予定日が現場に伝わらない)。
+//   ここでは「日付が読めなくても、読めた範囲で出す」方針にする。情報ゼロの「未定」だけ出さない。
+//   返り値: null | { iso, label, suffix, text, tentative, asOf, raw }
+function parseLooseMovein_(raw){
+  const s0 = String(raw == null ? "" : raw).trim();
+  if(!s0) return null;
+  // 「※8/21時点」= 情報の鮮度メモであって入居日そのものではない → 日付抽出の前に切り離す
+  //   (切り離さないと "9/1予定 ※8/21時点" から 8/21 を拾ってしまう)
+  const asOf = (s0.match(/[※*]\s*(.+)$/) || [])[1] || "";
+  const base = s0.replace(/[※*].*$/, "").trim() || s0;
+  const flat = base.replace(/[\s　]/g, "");
+  if(!flat || /^(未定|未定です|なし|無し|不明|不詳|[-–—―ー])$/.test(flat)) return null;   // 情報ゼロ=出さない
+  const tentative = /予定|見込|希望|申込|頃|ころ|以降|上旬|中旬|下旬|末|迄|まで/.test(flat);
+  let iso = "", label = "", m;
+  if((m = flat.match(/(\d{4})[-\/.年](\d{1,2})[-\/.月](\d{1,2})/))){
+    iso = normalizeDate(`${m[1]}/${+m[2]}/${+m[3]}`);
+  }else if((m = flat.match(/(?:^|[^\d])(\d{1,2})[\/.月](\d{1,2})日?(?!\d)/))){
+    iso = normalizeDate(`${+m[1]}/${+m[2]}`);                       // 年なしM/D → normalizeDateが年を補完
+  }else if((m = flat.match(/(?:^|[^\d])(\d{1,2})[\/.月]?(末|上旬|中旬|下旬)/))){
+    label = `${+m[1]}/${m[2]}`;                                     // 「8/末」「7月末」= 日は無いが月は分かる
+  }
+  if(iso){
+    const d = parseDate(iso);
+    if(!isNaN(d)) label = `${d.getMonth()+1}/${d.getDate()}`;
+    else iso = "";
+  }
+  // 「迄」「希望」は現場での意味が違うので言い換えない(予定に丸めると期限が消える)
+  const suffix = !tentative ? "" : /迄|まで/.test(flat) ? "迄" : /希望/.test(flat) ? "希望" : "予定";
+  if(!label){
+    // 日付も月も取れない自由文(「お盆明け入居予定」「申込あり」)は文言そのままを短く出す。
+    // 語尾は文言に含まれているので suffix は付けない(「…予定予定」になる)
+    label = flat.replace(/入居/g, "").replace(/^[・,、･]/, "").trim() || flat;
+    if(label.length > 7) label = label.slice(0, 7) + "…";
+    return { iso:"", label, suffix:"", text:`入:${label}`, tentative:true, asOf:asOf.trim(), raw:s0 };
+  }
+  return { iso, label, suffix, text:`入:${label}${suffix}`, tentative, asOf:asOf.trim(), raw:s0 };
+}
+// 入居日バッジのツールチップ(元の表記と「※◯時点」を落とさない)
+function moveinTip_(info){
+  if(!info) return "";
+  return `入居日: ${info.raw}`;
+}
+// 🏠 原状回復レコードの入居日(生表記)。射影が空なら発注書ヘッダ(hatchusho_data)で補完する。
+//   ⚠ moveinDate は normalizeDate 済み=自由入力だと空になるため、生値 moveinRaw を先に見る(v1.30.612)
+let __moveinHatchushoMemo = new Map();   // resto.id → 発注書ヘッダ由来の入居日(チップ毎の全件スキャンを避ける)
+function clearMoveinMemo_(){ __moveinHatchushoMemo = new Map(); }
+function restoMoveinRaw_(r){
+  if(!r) return "";
+  if(r.moveinRaw) return r.moveinRaw;
+  if(r.moveinDate) return r.moveinDate;
+  // ここから先は発注書ヘッダの補完。findHatchushoForResto_ は全件スキャン(NFKC正規化つき)なので
+  // チップ毎に呼ぶと重い → レコードidで記憶し、hatchusho_data が入れ替わった時だけ捨てる
+  const k = r.id || "";
+  if(k && __moveinHatchushoMemo.has(k)) return __moveinHatchushoMemo.get(k);
+  let v = "";
+  try{
+    const h = ((typeof findHatchushoForResto_==='function' ? findHatchushoForResto_(r) : null) || {}).header || {};
+    v = h.moveinDate || "";
+  }catch(_){ v = ""; }
+  if(k) __moveinHatchushoMemo.set(k, v);
+  return v;
+}
+
 // 📅 GAS射影の日付アンカー: ISOキー(responseDateIso/finalCheckDateIso)を最優先・無ければ生値をnormalizeDate
 //   生値(p.responseDate/p.finalDate 等)は "6/13" 等のM/D文字列で年が無い → 見積アプリが年補完したISOを優先する(v1.30.27)
 function pickIsoDate_(iso, ...raws){
@@ -13628,6 +13715,13 @@ function extractRestorations(properties, existing){
     if(!isRealResto && !isRepairResto) return;
     const id = "resto-" + (p.driveFileId || p.estimateId || p.no || (p.name+"|"+(p.room||"")));
     const prev = exById.get(id);
+    // 🏠 入居日(v1.30.612): 発注書の入居日欄(ho.nyukyoDate)は自由入力で、
+    //   「9/1予定 ※8/21時点」「8/末 予定」「7/6迄」等が実際に入っている。normalizeDate はこれを空に落とすため、
+    //   ISOにできなかった時だけ生表記を残す(同じ値の二重保存はしない=localStorageは共有資源)。
+    //   null = 今回の応答に入居日欄そのものが無い(light同期等) → 前回値を継承する、の意味。
+    const __miIn  = String(p.movein || "").trim();
+    const __miIso = normalizeDate(p.movein);
+    const __miRaw = __miIn ? (__miIso ? "" : __miIn) : null;
     const prop = {
       id,
       name: p.name || "(物件名なし)",
@@ -13641,7 +13735,8 @@ function extractRestorations(properties, existing){
       layout: p.floor_plan || p.layout || prev?.layout || "",
       orderDate: normalizeDate(p.orderDate || p.document_date),
       moveout: p.move_out_month || prev?.moveout || "",
-      moveinDate: normalizeDate(p.movein) || prev?.moveinDate || "",
+      moveinDate: __miIso || prev?.moveinDate || "",
+      moveinRaw: (__miRaw === null ? (prev?.moveinRaw || "") : __miRaw),
       finalDate: normalizeDate(p.finalDate),
       originalFinalDate: normalizeDate(p.originalFinalDate || p.originalFinalCheckDate) || prev?.originalFinalDate || "",
       completeDate: normalizeDate(p.completeDate) || prev?.completeDate || "",
@@ -15581,7 +15676,7 @@ function renderCalendar(){
         const r = m.resto;
         console.log("[probeRestoLink] HIT:", m.key, "→", r.name, "/ room:", r.room);
         console.log("  status(営業):", r.status, " / workflowStatus(工事):", r.workflowStatus);
-        console.log("  workVolume:", r.workVolume, "/ finalDate:", r.finalDate, "/ moveinDate:", r.moveinDate);
+        console.log("  workVolume:", r.workVolume, "/ finalDate:", r.finalDate, "/ moveinDate:", r.moveinDate, "/ moveinRaw:", r.moveinRaw || "(なし)", "→ バッジ:", (typeof parseLooseMovein_==='function' ? (parseLooseMovein_(restoMoveinRaw_(r))||{}).text || "(出さない)" : "?"));
         console.log("  vacancyDate:", r.vacancyDate, "/ disinfectDone:", r.disinfectDone);
         console.log("  cleaningContractor:", r.cleaningContractor, "/ keyContractor:", r.keyContractor);
         console.log("  🔑 keyChangeDate (導出後):", r.keyChangeDate);
@@ -15679,12 +15774,15 @@ function renderCalendar(){
         textParts.push(`最確${md}`);
       }
     }
-    if(r.moveinDate){
-      const d = parseDate(r.moveinDate);
-      if(!isNaN(d)){
-        const md = `${d.getMonth()+1}/${d.getDate()}`;
-        htmlParts.push(`<span style="color:#dc2626;font-weight:700">入:${escapeHtml(md)}</span>`);   // 入居→入:(赤字)
-        textParts.push(`入:${md}`);
+    // 🏠 入居日(v1.30.612): 「9/1予定 ※8/21時点」のような予定表記でも出す。
+    //   従来はISOだけを見ていたため、現場が一番見たい「もうすぐ入居」がチップから消えていた。
+    {
+      const __mi = (typeof parseLooseMovein_==='function')
+        ? parseLooseMovein_((typeof restoMoveinRaw_==='function') ? restoMoveinRaw_(r) : (r.moveinRaw || r.moveinDate))
+        : null;
+      if(__mi){
+        htmlParts.push(`<span title="${escapeHtml(moveinTip_(__mi))}" style="color:#dc2626;font-weight:700">${escapeHtml(__mi.text)}</span>`);   // 入居→入:(赤字)
+        textParts.push(__mi.text);
       }
     }
     // 🔑 鍵交換日 (日付のみ・業者名は除外)
@@ -24360,9 +24458,12 @@ function renderRestoCard(p){
   // 📅 最終確認日
   let finalStr = "";
   if(p.finalDate){ const d=parseDate(p.finalDate); if(!isNaN(d)) finalStr = `${d.getMonth()+1}/${d.getDate()}`; }
-  // 🏠 入居日
-  let moveinStr = "";
-  if(p.moveinDate){ const d=parseDate(p.moveinDate); if(!isNaN(d)) moveinStr = `${d.getMonth()+1}/${d.getDate()}`; }
+  // 🏠 入居日 — 予定表記(「9/1予定 ※8/21時点」等)も出す(v1.30.612)
+  const __rcMi = (typeof parseLooseMovein_==='function')
+    ? parseLooseMovein_((typeof restoMoveinRaw_==='function') ? restoMoveinRaw_(p) : (p.moveinRaw || p.moveinDate))
+    : null;
+  const moveinStr = __rcMi ? (__rcMi.label + __rcMi.suffix) : "";
+  const moveinTipStr = __rcMi ? moveinTip_(__rcMi) : "入居日";
   // ⚠ 当初最終確認日との差分(遅延/前倒し)バッジ
   let delayBadgeHtml = "";
   if(p.finalDate && p.originalFinalDate && p.finalDate !== p.originalFinalDate){
@@ -24454,7 +24555,7 @@ function renderRestoCard(p){
         <div class="rc-bar"><div class="rc-bar-inner" style="width:${pr.pct}%"></div></div>
         ${finalStr?`<span class="rc-final" title="最終確認日">最終確認 ${finalStr}</span>`:""}
         ${delayBadgeHtml}
-        ${moveinStr?`<span class="rc-movein" title="入居日" style="font-size:11px;color:#475569;font-weight:600;flex-shrink:0">入居 ${moveinStr}</span>`:""}
+        ${moveinStr?`<span class="rc-movein" title="${escapeHtml(moveinTipStr)}" style="font-size:11px;color:#475569;font-weight:600;flex-shrink:0">入居 ${escapeHtml(moveinStr)}</span>`:""}
         ${p.moveout?`<span class="rc-moveout" title="退去月">退去 ${escapeHtml(p.moveout)}</span>`:""}
         <span class="rc-pill ${st}">${RESTO_STATUS_LABEL[st]}</span>
       </div>
@@ -24533,7 +24634,7 @@ function renderRestoDetail(){
   if(p.orderDate) kv.push(["発注日",p.orderDate]);
   if(p.vacancyDate) kv.push(["退去予定日",p.vacancyDate]);   // v1.9.3 新規
   if(p.moveout) kv.push(["退去月",p.moveout]);
-  if(p.moveinDate) kv.push(["入居日",p.moveinDate]);
+  if(p.moveinRaw || p.moveinDate) kv.push(["入居日", p.moveinRaw || p.moveinDate]);   // v1.30.612: 生表記(「9/1予定 ※8/21時点」)をそのまま出す
   if(p.finalDate) kv.push(["最終確認日",p.finalDate]);
   if(p.pic) kv.push(["担当者",p.pic]);
   if(p.cleaningContractor) kv.push(["クリーニング",p.cleaningContractor]); // v1.9.3 新規
@@ -24547,7 +24648,7 @@ function renderRestoDetail(){
   {
     const __hh = (((typeof findHatchushoForResto_==='function') ? findHatchushoForResto_(p) : null)||{}).header || {};
     const _md = s=>{ const d=parseDate(s); return isNaN(d)?String(s||""):`${d.getMonth()+1}/${d.getDate()}`; };
-    if(!p.moveinDate && __hh.moveinDate) kv.push(["入居日", _md(__hh.moveinDate)]);
+    if(!p.moveinRaw && !p.moveinDate && __hh.moveinDate) kv.push(["入居日", __hh.moveinDate]);
     if(!p.layout && __hh.layout)         kv.push(["間取り", __hh.layout]);
     const add = (label, v)=>{ if(v) kv.push([label, v]); };
     add("駐車場",      p.parkingExist   || __hh.parkingExist);
