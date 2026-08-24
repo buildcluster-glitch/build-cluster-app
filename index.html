@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.607</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.608</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8985,6 +8985,16 @@ async function heartbeatPresence_(opts={}){
 //   書込は 読み直し→適用→保存→**読み戻し検証**(朝の同時打刻で他人の記録を巻き込まないため)+失敗は再送キュー(v592と同型)
 // 車両: 各自ほぼ固定(まどかは運転なし=対象外)。車名マスタ=shared-config `alcohol_cars` {staff:carName}(山田が⚙で編集)
 const ALC_DRIVERS = STAFF.filter(s=>s!=='まどか');
+// 🚙 車両マスタ(東京海上日動の保険証券から転記・2026-08-24)。CSVの「自動車登録番号」列はここから入る。
+//   増減した時はここに1行足す/消すだけ。label=画面表示・plate=法定記録用の登録番号
+const ALC_CAR_MASTER = [
+  { label:'ハイエース',      plate:'仙台333 ね 822'  },
+  { label:'N-VAN(あ2526)',  plate:'仙台483 あ 2526' },
+  { label:'N-VAN(け2951)',  plate:'仙台483 け 2951' },
+  { label:'N-VAN(ぬ358)',   plate:'仙台484 ぬ 358'  },
+  { label:'N-VAN(い217)',   plate:'仙台483 い 217'  },
+];
+function alcCarFull_(c){ return `${c.label} / ${c.plate}`; }
 const ALC_PENDING_KEY = 'bc_alcohol_pending';
 const ALC_CARS_KEY = 'bc_alcohol_cars';
 function alcMonthKey_(d){ const x=d?new Date(d):new Date(); return `alcohol_log_${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}`; }
@@ -9130,7 +9140,7 @@ function ensureAlcModal_(){
     <div style="margin-top:14px;display:flex;align-items:center;gap:8px">
       <b style="font-size:13px">📋 今日のみんなの記録</b>
       <button id="alc-csv" class="btn" style="margin-left:auto;font-size:11px;padding:3px 10px" title="月次の記録をCSVで保存(点検・提出用)">📥 月次CSV</button>
-      <button id="alc-cars" class="btn" style="font-size:11px;padding:3px 10px" title="スタッフごとの車両名を登録(山田さん向け)">⚙車両名</button>
+      <button id="alc-cars" class="btn" style="font-size:11px;padding:3px 10px" title="いつも乗る車を割り当て(登録番号つき・山田さん向け)">🚙車両</button>
     </div>
     <div id="alc-list" style="margin-top:6px"></div>
   </div>`;
@@ -9182,8 +9192,8 @@ function alcRenderModal_(){
     }
     const mycar=self.querySelector('#alc-mycar');
     if(mycar) mycar.onclick=()=>{
-      const cars=[...new Set(ALC_DRIVERS.map(alcCarOf_))];
-      const v=prompt('今日の車両(いつもと違う車の日だけ変更):\n'+cars.join(' / '), alcCarOf_(me));
+      const cars=ALC_CAR_MASTER.map(alcCarFull_);
+      const v=prompt('今日の車両(いつもと違う車の日だけ変更):\n'+cars.join('\n'), alcCarOf_(me));
       if(v && v.trim()){ window.__alcCarToday=v.trim(); mycar.textContent=v.trim(); }
     };
     self.querySelectorAll('[data-alc-when]').forEach(b=>{
@@ -9295,17 +9305,45 @@ function alcExportCsv_(){
   })();
 }
 function alcEditCars_(){
-  const cars=alcCars_();
-  const lines=ALC_DRIVERS.map(st=>`${st}=${cars[st]||''}`).join('\n');
-  const v=prompt('スタッフごとの車両(「名前=通称 / 登録番号」の形式・1行1人):\n例) 山田裕貴=ハイエース白 / 仙台301あ12-34\n※登録番号まで入れるとCSVが法定記録の様式に揃います', lines);
-  if(v==null) return;
-  const next={};
-  v.split('\n').forEach(l=>{ const m=l.split('='); if(m.length>=2){ const st=m[0].trim(), c=m.slice(1).join('=').trim(); if(ALC_DRIVERS.includes(st)&&c) next[st]=c; } });
-  try{ localStorage.setItem(ALC_CARS_KEY, JSON.stringify(next)); }catch(_){}
-  // 全員に共有
-  const s=loadGasSettings();
-  if(s.url&&s.token){ fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'alcohol_cars',value:JSON.stringify({cars:next,updatedAt:new Date().toISOString()}),token:s.token,savedBy:'calendar-app'})}).catch(()=>{}); }
-  alcRenderModal_();
+  // 🚙 v1.30.608: 手入力プロンプト→**プルダウン割当**に。車両マスタ(保険証券由来)から選ぶだけ。
+  document.querySelectorAll('#alcCarsModal').forEach(x=>x.remove());
+  const cur = alcCars_();
+  const bk = document.createElement('div');
+  bk.className='modal-overlay show'; bk.id='alcCarsModal'; bk.style.zIndex='1200';
+  const opts = c => ALC_CAR_MASTER.map(m=>{
+    const full = alcCarFull_(m);
+    return `<option value="${escapeHtml(full)}"${cur[c]===full?' selected':''}>${escapeHtml(m.label)} ／ ${escapeHtml(m.plate)}</option>`;
+  }).join('');
+  bk.innerHTML = `<div class="modal" style="max-width:520px;width:96vw;max-height:88vh;overflow:auto;padding:14px 16px">
+    <div style="display:flex;align-items:center;gap:8px"><b style="font-size:15px">🚙 いつも乗る車の割り当て</b>
+      <span style="font-size:11px;color:var(--muted)">CSVの「自動車登録番号」に入ります</span></div>
+    <div style="margin-top:10px">${ALC_DRIVERS.map(st=>`
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:7px">
+        <span style="min-width:6em;font-size:13px;font-weight:600">${escapeHtml(st)}</span>
+        <select data-alc-car="${escapeHtml(st)}" style="flex:1;min-width:0;font-size:13px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px">
+          <option value="">（未設定）</option>${opts(st)}
+        </select>
+      </div>`).join('')}</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:6px">※ 車が増減したら教えてください(マスタに追加します)。その日だけ違う車に乗る時は🚗画面の車両名をタップして変更できます。</div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button id="alc-cars-cancel" class="btn" style="flex:1">キャンセル</button>
+      <button id="alc-cars-save" class="btn primary" style="flex:1">保存(全員に共有)</button>
+    </div></div>`;
+  document.body.appendChild(bk);
+  bk.onclick = e=>{ if(e.target===bk) bk.remove(); };
+  bk.querySelector('#alc-cars-cancel').onclick = ()=>bk.remove();
+  bk.querySelector('#alc-cars-save').onclick = ()=>{
+    const next = {};
+    bk.querySelectorAll('[data-alc-car]').forEach(sel=>{ if(sel.value) next[sel.dataset.alcCar]=sel.value; });
+    try{ localStorage.setItem(ALC_CARS_KEY, JSON.stringify(next)); }catch(_){}
+    const s2 = loadGasSettings();
+    if(s2.url && s2.token){
+      fetch(s2.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body:JSON.stringify({action:'save-shared-config',key:'alcohol_cars',value:JSON.stringify({cars:next,updatedAt:new Date().toISOString()}),token:s2.token,savedBy:'calendar-app'})}).catch(()=>{});
+    }
+    bk.remove(); alcRenderModal_();
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast('🚙 車両を保存しました(全員に共有)');
+  };
 }
 async function alcFetchCars_(){
   const s=loadGasSettings(); if(!s.url||!s.token) return;
