@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.595</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.596</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4440,6 +4440,11 @@
         <label>メモ</label>
         <input id="lv-memo" placeholder="">
       </div>
+      <!-- 💬 休暇コメント(全員共有・v1.30.596 鈴木要望)。新規登録時はidが無いので隠す -->
+      <div class="field" id="lv-chat-field" style="display:none">
+        <label>💬 コメント <span style="font-weight:400;color:var(--muted);font-size:11px">(全員共有・チップにカーソルを合わせても読めます。Enterで送信)</span></label>
+        <div id="lv-chat" class="rchat"></div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn danger" id="lv-delete" style="display:none">削除</button>
@@ -4469,7 +4474,7 @@
   //   v1.30.526: 小さいのに単発で往復していた5キーをバッチへ追加(山田「読み込みが重い」の実測対応)。
   //   起動時に同じGASへ10本近い並列リクエストが集中し、一部が404/60秒タイムアウトしていた。
   //   ⚠ calendar_reports(画像込み1.1MB)と hatchusho_data(149KB)は重いので今後もバッチに入れない。
-  var GC_KEYS = ['staffMaster','staffAvailability','taikyo_tachiai_schedule','taikyo_overrides','taikyo_comments','taikyo_shiryo_ready','repair_overrides','repair_comments','repair_pos','check_workers','phone_duty','toban_done','alerts','skip_visit','staff_leaves','event_deletions','jimu_messages','jizen_schedule','calendar_reminders','reschedule_traces','jimu_task_comments','jimu_task_tombstones','calendar_changelog','event_done','sanpai','check_seisou','calendar_required_version'];
+  var GC_KEYS = ['staffMaster','staffAvailability','taikyo_tachiai_schedule','taikyo_overrides','taikyo_comments','taikyo_shiryo_ready','repair_overrides','repair_comments','repair_pos','check_workers','phone_duty','toban_done','alerts','skip_visit','staff_leaves','event_deletions','jimu_messages','jizen_schedule','calendar_reminders','reschedule_traces','jimu_task_comments','jimu_task_tombstones','calendar_changelog','event_done','sanpai','check_seisou','calendar_required_version','leave_comments','time_notes'];
   var TTL = 45000; // 起動バーストを束ねる窓(45秒)
   var _cache = null, _cacheAt = 0, _inflight = null, _unsupported = false;
   // 🔄 手動全同期で「今すぐ最新」を取るため、45秒キャッシュを外から無効化できるようにする(v1.30.224)
@@ -8174,6 +8179,91 @@ async function mutateTaikyoCommentsRemote_(taikyoId, mutator){
     }catch(e){ console.warn('[taikyo_comments] push失敗:', e.message); }
   }
   return map;
+}
+// ===========================================================
+// 💬 休暇のコメント(全端末共有) — shared-config 'leave_comments' v1.30.596
+//   鈴木要望「休みにもコメント機能欲しい(カーソル合わせるとコメント表示)」。
+//   立会コメント(taikyo_comments)と同じ流儀=**最新remoteを読んで1件だけ足してpush**(他の人のコメントを消さない)。
+//   キー=休暇レコードのid。休暇本体(staff_leaves)には手を入れない=全体上書きで消える事故を作らない。
+//   value(JSON) = { comments:{ [leaveId]:[{id,author,text,at}] }, updatedAt }
+// ===========================================================
+const LEAVE_COMMENTS_KEY = "buildcluster_leave_comments";
+function loadLeaveCommentsMap_(){ try{ const o=JSON.parse(localStorage.getItem(LEAVE_COMMENTS_KEY)||"{}"); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
+function saveLeaveCommentsMap_(map){ try{ localStorage.setItem(LEAVE_COMMENTS_KEY, JSON.stringify(map||{})); }catch(e){} }
+function leaveComments_(leaveId){ const a=loadLeaveCommentsMap_()[leaveId]; return Array.isArray(a)?a:[]; }
+async function fetchLeaveComments_(opts={}){
+  const s=loadGasSettings(); if(!s.url||!s.token) return loadLeaveCommentsMap_();
+  const before = loadLeaveCommentsMap_();
+  try{
+    const url=`${s.url}?action=get-shared-config&key=leave_comments&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+    const res=await fetch(url,{method:'GET',redirect:'follow'}); if(!res.ok) throw new Error('HTTP '+res.status);
+    const data=await res.json(); let raw=data.value;
+    if(raw===''||raw==null) raw={comments:{}}; else if(typeof raw==='string'){ try{raw=JSON.parse(raw);}catch(e){raw={comments:{}};} }
+    const remote=(raw&&raw.comments&&typeof raw.comments==='object')?raw.comments:{};
+    saveLeaveCommentsMap_(remote);
+    if(!opts.silent && typeof render==='function') render();
+    else if(typeof renderIfChanged_==='function') renderIfChanged_(before, remote);   // 🔄 v1.30.595の教訓=静かでも変化時は描き直す
+    return remote;
+  }catch(err){ if(!opts.silent) console.warn('[leave_comments] fetch失敗:', err.message); return loadLeaveCommentsMap_(); }
+}
+// 最新remoteを取得→対象idのリストにmutatorを1回適用→push(他端末のコメントは残る)
+async function mutateLeaveCommentsRemote_(leaveId, mutator){
+  const s=loadGasSettings();
+  let map=loadLeaveCommentsMap_();
+  if(s.url&&s.token){
+    try{
+      const url=`${s.url}?action=get-shared-config&key=leave_comments&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+      const res=await fetch(url,{method:'GET',redirect:'follow'});
+      if(res.ok){ const d=await res.json(); let raw=d.value;
+        if(typeof raw==='string'){ try{raw=JSON.parse(raw);}catch(_){raw=null;} }
+        if(raw&&raw.comments&&typeof raw.comments==='object') map=raw.comments; }
+    }catch(_){ /* オフライン等: ローカルを土台に続行 */ }
+  }
+  const list = Array.isArray(map[leaveId]) ? map[leaveId].slice() : [];
+  const next = mutator(list) || [];
+  if(next.length) map[leaveId]=next; else delete map[leaveId];
+  saveLeaveCommentsMap_(map);
+  if(typeof renderLeaveChat_==='function') renderLeaveChat_(leaveId);
+  if(typeof render==='function') render();
+  if(s.url&&s.token){
+    const payload={ comments:map, updatedAt:new Date().toISOString() };
+    try{ await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({action:'save-shared-config',key:'leave_comments',value:JSON.stringify(payload),token:s.token,savedBy:'calendar-app'})}); }
+    catch(e){ console.warn('[leave_comments] push失敗:', e.message); }
+  }
+  return map;
+}
+function addLeaveComment_(leaveId, text, author){
+  text=String(text||'').trim(); if(!leaveId||!text) return null;
+  const c={ id: uid(), author: author||'', text, at: new Date().toISOString() };
+  const map=loadLeaveCommentsMap_();
+  (map[leaveId]=Array.isArray(map[leaveId])?map[leaveId]:[]).push(c);
+  saveLeaveCommentsMap_(map);
+  mutateLeaveCommentsRemote_(leaveId, list => list.some(x=>x.id===c.id) ? list : [...list, c]);
+  return c;
+}
+function deleteLeaveComment_(leaveId, commentId){
+  if(!leaveId||!commentId) return;
+  const map=loadLeaveCommentsMap_();
+  if(Array.isArray(map[leaveId])){
+    map[leaveId]=map[leaveId].filter(x=>x.id!==commentId);
+    if(!map[leaveId].length) delete map[leaveId];
+    saveLeaveCommentsMap_(map);
+  }
+  mutateLeaveCommentsRemote_(leaveId, list => list.filter(x=>x.id!==commentId));
+}
+// 🖱 ホバー用: コメントをツールチップの行に(最大3件・古い順)
+function leaveCommentsTip_(leaveId){
+  const list = leaveComments_(leaveId);
+  if(!list.length) return '';
+  const sorted = list.slice().sort((a,b)=>String(a.at||'').localeCompare(String(b.at||'')));
+  const shown = sorted.slice(-3);
+  const head = (sorted.length>3) ? `\n💬コメント(${sorted.length}件・最新3件)` : `\n💬コメント`;
+  return head + shown.map(c=>{
+    const d=new Date(c.at); const ds=isNaN(d)?'':`${d.getMonth()+1}/${d.getDate()} `;
+    const au=(typeof surnameOf_==='function')?surnameOf_(c.author):(c.author||'');
+    return `\n・${ds}${au?au+': ':''}${String(c.text||'').replace(/\s+/g,' ')}`;
+  }).join('');
 }
 function addTaikyoComment_(taikyoId, text, author){
   text = String(text||'').trim(); if(!taikyoId || !text) return null;
@@ -13411,6 +13501,7 @@ async function syncChecksFromGAS(opts){
     // ⚠ 再同期時はアラートも最新を取りに行く(v1.30.115)
     if(typeof fetchAlerts_==='function') fetchAlerts_({silent:true}).catch(()=>{});
     if(typeof fetchTimeNotes_==='function') fetchTimeNotes_({silent:true}).catch(()=>{});   // ✏️時刻メモも最新化(v1.30.589)
+    if(typeof fetchLeaveComments_==='function') fetchLeaveComments_({silent:true}).catch(()=>{});   // 💬休暇コメントも最新化(v1.30.596)
     if(typeof fetchEventDone_==='function') fetchEventDone_({silent:true}).catch(()=>{});
     if(typeof fetchCheckSeisou_==='function') fetchCheckSeisou_({silent:true}).catch(()=>{});   // 🧹 清掃完了済も最新化(v1.30.559)
     if(typeof fetchSanpai_==='function') fetchSanpai_({silent:true}).catch(()=>{});
@@ -14550,14 +14641,17 @@ function renderLeaveBand(){
     }
     const range = l.start===l.end ? l.start.slice(5) : `${l.start.slice(5)}〜${l.end.slice(5)}`;
     const typeLabel = leaveDispLabel_(l);
-    const tooltip = `${display} ${typeLabel} ${range}${l.memo&&l.type!=="振休"?'\n'+l.memo:''}`;
+    const __lvcTip = (typeof leaveCommentsTip_==='function') ? leaveCommentsTip_(l.id) : '';   // 💬 v1.30.596
+    const tooltip = `${display} ${typeLabel} ${range}${l.memo&&l.type!=="振休"?'\n'+l.memo:''}${__lvcTip}`;
+    const __lvcN = (typeof leaveComments_==='function') ? leaveComments_(l.id).length : 0;
+    const __lvcBadge = __lvcN ? `<span class="lb-task" title="💬 コメント${__lvcN}件">💬${__lvcN>1?__lvcN:''}</span>` : '';
     const rangeHtml = withRange ? ` <span class="lb-range">${range}</span>` : "";
     const _tp = staffTaskProgress_(l.staff);
     const __lbMsgAlert = (typeof staffHasUnackMsg_==='function' && staffHasUnackMsg_(l.staff)) ? `<span class="msg-alert" title="💬 業務連絡(未確認) — リアクションで確認済みに">🔔</span>` : "";
     const taskBadge = `<span class="lb-task${__lbMsgAlert?' has-msg-alert':''}" data-task-staff="${escapeHtml(l.staff)}" title="📋 事務タスク${_tp.has?' ('+_tp.dn+'/'+_tp.tt+')':''}">📋${__lbMsgAlert}</span>`;
     const __lbRems = (typeof remindersForStaff_==='function') ? remindersForStaff_(l.staff) : [];
     const __lbRemind = __lbRems.length ? `<span class="lb-remind${__lbRems.some(r=>r.due)?' due':''}" data-remind-staff="${escapeHtml(l.staff)}" title="⏰ リマインド ${__lbRems.length}件・クリックで一覧">⏰${__lbRems.length>1?__lbRems.length:''}</span>` : "";
-    return `<span class="leave-badge" data-leave-id="${l.id}" data-staff="${escapeHtml(l.staff)}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}"><span class="lb-staff">${escapeHtml(display)}</span><span class="lb-type">${escapeHtml(typeLabel)}</span>${rangeHtml}${fracBadge_(l.staff,'lb-frac')}${taskBadge}${__lbRemind}</span>`;
+    return `<span class="leave-badge" data-leave-id="${l.id}" data-staff="${escapeHtml(l.staff)}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}"><span class="lb-staff">${escapeHtml(display)}</span><span class="lb-type">${escapeHtml(typeLabel)}</span>${rangeHtml}${fracBadge_(l.staff,'lb-frac')}${__lvcBadge}${taskBadge}${__lbRemind}</span>`;
   };
 
   // 休暇スタッフチップ (出社チップと同じく選択可能に)
@@ -14567,11 +14661,14 @@ function renderLeaveBand(){
     const display = (typeof getStaffDisplayName === 'function') ? getStaffDisplayName(l.staff) : l.staff;
     const range = l.start===l.end ? l.start.slice(5) : `${l.start.slice(5)}〜${l.end.slice(5)}`;
     const typeLabel = leaveDispLabel_(l);
-    const tooltip = `${display} ${typeLabel} ${range}${l.memo&&l.type!=="振休"?'\n'+l.memo:''}`;
+    const __lvcTip = (typeof leaveCommentsTip_==='function') ? leaveCommentsTip_(l.id) : '';   // 💬 v1.30.596
+    const tooltip = `${display} ${typeLabel} ${range}${l.memo&&l.type!=="振休"?'\n'+l.memo:''}${__lvcTip}`;
+    const __lvcN = (typeof leaveComments_==='function') ? leaveComments_(l.id).length : 0;
+    const __lvcBadge = __lvcN ? `<span class="lb-task" title="💬 コメント${__lvcN}件">💬${__lvcN>1?__lvcN:''}</span>` : '';
     const _tp = staffTaskProgress_(l.staff);
     const __lbMsgAlert = (typeof staffHasUnackMsg_==='function' && staffHasUnackMsg_(l.staff)) ? `<span class="msg-alert" title="💬 業務連絡(未確認) — リアクションで確認済みに">🔔</span>` : "";
     const taskBadge = `<span class="lb-task${__lbMsgAlert?' has-msg-alert':''}" data-task-staff="${escapeHtml(l.staff)}" title="📋 事務タスク${_tp.has?' ('+_tp.dn+'/'+_tp.tt+')':''}">📋${__lbMsgAlert}</span>`;
-    return `<span class="leave-badge" data-leave-id="${l.id}" data-staff="${escapeHtml(l.staff)}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}"><span class="lb-staff">${escapeHtml(display)}</span><span class="lb-type">${escapeHtml(typeLabel)}</span>${taskBadge}</span>`;
+    return `<span class="leave-badge" data-leave-id="${l.id}" data-staff="${escapeHtml(l.staff)}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}"><span class="lb-staff">${escapeHtml(display)}</span><span class="lb-type">${escapeHtml(typeLabel)}</span>${__lvcBadge}${taskBadge}</span>`;
   };
 
   const filterHint = hasFilter
@@ -14743,8 +14840,10 @@ function renderCalendar(){
       const fg = textColorFor(bg);
       const range = l.start===l.end ? l.start.slice(5) : `${l.start.slice(5)}〜${l.end.slice(5)}`;
       const typeLabel = leaveDispLabel_(l);
-      const tt = `${l.staff} ${typeLabel} ${range}${l.memo&&l.type!=="振休"?'\n'+l.memo:''}`;
-      return `<span class="leave-badge" data-leave-id="${l.id}" style="background:${bg};color:${fg}" title="${escapeHtml(tt)}"><span class="lb-staff">${escapeHtml(l.staff)}</span><span class="lb-type">${escapeHtml(typeLabel)}</span></span>`;
+      const __ctip = (typeof leaveCommentsTip_==='function') ? leaveCommentsTip_(l.id) : '';   // 💬 v1.30.596
+      const tt = `${l.staff} ${typeLabel} ${range}${l.memo&&l.type!=="振休"?'\n'+l.memo:''}${__ctip}`;
+      const __cn = (typeof leaveComments_==='function') ? leaveComments_(l.id).length : 0;
+      return `<span class="leave-badge" data-leave-id="${l.id}" style="background:${bg};color:${fg}" title="${escapeHtml(tt)}"><span class="lb-staff">${escapeHtml(l.staff)}</span><span class="lb-type">${escapeHtml(typeLabel)}</span>${__cn?`<span class="lb-task" title="💬 コメント${__cn}件">💬${__cn>1?__cn:''}</span>`:''}</span>`;
     }).join("");
     // 修繕アポ (responseDate がこの列の日付に一致) — Phase3 カレンダー連携
     // responseTime が "10:00" 等の正確な時刻パース可能なら時間グリッドに配置、不可なら終日帯に
@@ -16229,7 +16328,7 @@ function renderMonth(){
     const showEvents = dayEvents.slice(0,MAX_SHOW);
     const moreCount = dayEvents.length - showEvents.length;
     const leavesHtml = dayLeaves.map(l=>
-      `<div class="month-leave" data-leave-id="${l.id}" title="${escapeHtml(l.memo||"")}">${escapeHtml(l.staff)} ${escapeHtml(leaveDispLabel_(l))}</div>`
+      `<div class="month-leave" data-leave-id="${l.id}" title="${escapeHtml((l.memo||"") + ((typeof leaveCommentsTip_==='function')?leaveCommentsTip_(l.id):''))}">${escapeHtml(l.staff)} ${escapeHtml(leaveDispLabel_(l))}${(typeof leaveComments_==='function' && leaveComments_(l.id).length)?' 💬':''}</div>`
     ).join("");
     const eventsHtml = showEvents.map(ev=>{
       // リーダー未指定 → 透明背景+点線 / 事前はデフォ白(担当色で着色しない・点線なし)
@@ -18507,7 +18606,48 @@ function openLeaveModal(lv, defaults){
   const __lvMemo = document.getElementById("lv-memo");
   const __lvMemoHint = ()=>{ if(__lvMemo) __lvMemo.placeholder = (__lvType.value==="振休") ? "振休元の日付 (例: 6/28)" : ""; };
   if(__lvType){ __lvType.onchange = __lvMemoHint; __lvMemoHint(); }
+  // 💬 コメント(v1.30.596): 既存の休暇を開いた時だけ。投稿は「保存」を待たず即共有(他のコメント欄と同じ作法)
+  {
+    const f = document.getElementById("lv-chat-field");
+    if(f){
+      f.style.display = lv ? "" : "none";
+      if(lv){ renderLeaveChat_(lv.id); if(typeof fetchLeaveComments_==='function') fetchLeaveComments_({silent:true}).then(()=>renderLeaveChat_(lv.id)).catch(()=>{}); }
+    }
+  }
   leaveModal.classList.add("show");
+}
+// 💬 休暇コメントの描画+配線(v1.30.596)。修繕の進捗チャット(.rchat)と同じ見た目に揃える
+function renderLeaveChat_(leaveId){
+  const box = document.getElementById("lv-chat");
+  if(!box || !leaveId) return;
+  const me = (typeof getMyself==='function') ? getMyself() : "";
+  const list = (typeof leaveComments_==='function' ? leaveComments_(leaveId) : [])
+    .slice().sort((a,b)=>String(a.at||'').localeCompare(String(b.at||'')));
+  const rows = list.length ? list.map(c=>{
+    const d=new Date(c.at); const ds=isNaN(d)?'':`${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    const mine = me && c.author===me;
+    return `<div class="rchat-msg${mine?' mine':''}"><div class="rchat-meta"><b>${escapeHtml(c.author||'?')}</b>${escapeHtml(ds)}${mine?`<button class="rchat-del" data-lvc-del="${escapeHtml(c.id)}" title="削除">✕</button>`:''}</div><div class="rchat-text">${escapeHtml(c.text||'')}</div></div>`;
+  }).join('') : `<div class="rchat-empty">まだコメントはありません</div>`;
+  box.innerHTML = `<div class="rchat-list">${rows}</div>
+    <div class="rchat-input"><textarea id="lv-chat-in" rows="1" placeholder="連絡・引き継ぎなど(Enterで送信)"></textarea><button id="lv-chat-send">送信</button></div>`;
+  const listEl = box.querySelector('.rchat-list'); if(listEl) listEl.scrollTop = listEl.scrollHeight;
+  const ta = box.querySelector('#lv-chat-in');
+  const send = ()=>{
+    const t = (ta.value||'').trim(); if(!t) return;
+    if(!me){ alert('先に「👤 マイ」で自分を設定してください'); return; }
+    ta.value='';
+    if(typeof addLeaveComment_==='function') addLeaveComment_(leaveId, t, me);
+    renderLeaveChat_(leaveId);
+  };
+  box.querySelector('#lv-chat-send').onclick = send;
+  ta.addEventListener('keydown', e=>{   // IME変換確定のEnterでは送信しない(v1.30.262と同じ作法)
+    if(e.key==='Enter' && !e.shiftKey && !e.isComposing && e.keyCode!==229){ e.preventDefault(); send(); }
+  });
+  box.querySelectorAll('[data-lvc-del]').forEach(b=>{ b.onclick=()=>{
+    if(!confirm('このコメントを削除しますか？')) return;
+    if(typeof deleteLeaveComment_==='function') deleteLeaveComment_(leaveId, b.dataset.lvcDel);
+    renderLeaveChat_(leaveId);
+  }; });
 }
 function closeLeaveModal(){ leaveModal.classList.remove("show"); editingLeaveId=null; }
 document.getElementById("lv-cancel").onclick = closeLeaveModal;
@@ -26348,6 +26488,7 @@ setTimeout(()=>afterOpenSync_(()=>{
     if(typeof fetchAlerts_==='function'){
       fetchAlerts_({silent:true, push:true}).catch(()=>{});
       if(typeof fetchTimeNotes_==='function'){ fetchTimeNotes_({silent:true, push:true}).catch(()=>{}); setInterval(()=>fetchTimeNotes_({silent:true}).catch(()=>{}), 5*60*1000); }   // ✏️時刻メモも同じサイクルで(v1.30.589)
+      if(typeof fetchLeaveComments_==='function'){ fetchLeaveComments_({silent:true}).catch(()=>{}); setInterval(()=>fetchLeaveComments_({silent:true}).catch(()=>{}), 5*60*1000); }   // 💬休暇コメント(v1.30.596)
       setInterval(()=>fetchAlerts_({silent:true}).catch(()=>{}), 5*60*1000);
     }
     // 🚫 事前「行かない」(全員共有) 取得・初回push・以後5分ごと(v1.30.131)
