@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.601</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.602</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -2856,6 +2856,7 @@
     <button data-z="0.7">70%</button><button data-z="0.85">85%</button><button data-z="1">100%</button>
   </div>
   <button class="nav-btn" id="actionListBtn" title="🗓 要対応 — アポ日未設定(要日程)の修繕を一覧表示">🗓 要対応 <span id="actionListCount" class="al-count">0</span></button>
+  <button class="nav-btn" id="alcBtn" title="🚗 運転前後チェック — アルコール確認の記録(安全運転管理者制度・全員共有)">🚗<span id="alcBtnMark" style="display:none;color:#dc2626;font-weight:800">?</span></button>
   <span id="headerDutyBox" class="header-duty-box"></span>
   <div class="nav-date" id="navDate"></div>
   <div class="view-switch">
@@ -8953,6 +8954,235 @@ async function heartbeatPresence_(opts={}){
 // 📢 全員への連絡事項(全員共有・shared-config 'calendar_announce') v1.30.302
 //   value = JSON { items:[{id,text,by,at,acked:[名前],deleted,updatedAt}], updatedAt }
 //   全STAFFが「確認」したら自動で消える(ヘッダー直下の目立つ帯に表示)。
+// ===== 🚗 運転前後アルコールチェック (v1.30.602・安全運転管理者制度) =====
+// 社長GO(2026-08-24): 朝=出社時/夕=帰社時(直帰先でもスマホから)に「酒気なし・体調OK」をワンタップ記録。
+// 法定記録(確認者/運転者/車両/日時/確認方法/酒気帯び有無/指示事項)を満たす。検知器は全員配布・写真は不要(法令要件外)。
+// データ: shared-config `alcohol_log_YYYY-MM`(月シャード=60秒同期を太らせない・1年保存は月キーが残ることで自然に満たす)
+//   checks: { [date_staff_am|pm]: {staff,date,when,car,result,memo,at} }  idが決定的=再送・二度押しでも二重にならない
+//   書込は 読み直し→適用→保存→**読み戻し検証**(朝の同時打刻で他人の記録を巻き込まないため)+失敗は再送キュー(v592と同型)
+// 車両: 各自ほぼ固定(まどかは運転なし=対象外)。車名マスタ=shared-config `alcohol_cars` {staff:carName}(山田が⚙で編集)
+const ALC_DRIVERS = STAFF.filter(s=>s!=='まどか');
+const ALC_PENDING_KEY = 'bc_alcohol_pending';
+const ALC_CARS_KEY = 'bc_alcohol_cars';
+function alcMonthKey_(d){ const x=d?new Date(d):new Date(); return `alcohol_log_${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}`; }
+function alcLocalKey_(mk){ return 'bc_'+mk; }
+function alcLoad_(mk){ try{ const o=JSON.parse(localStorage.getItem(alcLocalKey_(mk))||'{}'); return (o&&typeof o==='object')?o:{}; }catch(_){ return {}; } }
+function alcSave_(mk,map){ try{ localStorage.setItem(alcLocalKey_(mk), JSON.stringify(map||{})); }catch(e){ if(typeof __lsQuotaWarnOnce_==='function') __lsQuotaWarnOnce_(); } }
+function alcCars_(){ try{ const o=JSON.parse(localStorage.getItem(ALC_CARS_KEY)||'{}'); return (o&&typeof o==='object')?o:{}; }catch(_){ return {}; } }
+function alcCarOf_(staff){ const c=alcCars_()[staff]; return (c&&String(c).trim()) ? c : `${String(staff).replace(/\s|　/g,'').slice(0,2)}車(未登録)`; }
+function alcId_(date, staff, when){ return `${date}_${staff}_${when}`; }
+async function alcFetchRemote_(mk){
+  const s=loadGasSettings(); if(!s.url||!s.token) return null;
+  const res=await fetch(`${s.url}?action=get-shared-config&key=${mk}&token=${encodeURIComponent(s.token)}&t=${Date.now()}`,{method:'GET',redirect:'follow'});
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  const d=await res.json(); let v=d.value;
+  if(v===''||v==null) return {};
+  if(typeof v==='string'){ try{ v=JSON.parse(v); }catch(_){ return {}; } }
+  return (v&&v.checks&&typeof v.checks==='object') ? v.checks : {};
+}
+async function alcFetch_(opts={}){
+  const mk=alcMonthKey_();
+  try{
+    const remote=await alcFetchRemote_(mk); if(remote===null) return alcLoad_(mk);
+    const merged=lwwMergeZombieSafe_(remote, alcLoad_(mk));
+    alcSave_(mk, merged);
+    if(!opts.silent && typeof render==='function') render();
+    else if(typeof renderIfChanged_==='function') renderIfChanged_(remote, merged);
+    alcUpdateBadge_();
+    return merged;
+  }catch(e){ if(!opts.silent) console.warn('[alcohol] fetch失敗:', e.message); return alcLoad_(mk); }
+}
+async function alcPush_(mk, applyFn){
+  const s=loadGasSettings(); if(!s.url||!s.token) throw new Error('☁設定が未設定です');
+  let base=null;
+  try{ base=await alcFetchRemote_(mk); }catch(_){}
+  if(base===null||base===undefined) throw new Error('読み直せませんでした');
+  const next=applyFn(lwwMergeZombieSafe_(base, alcLoad_(mk)));
+  const res=await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify({action:'save-shared-config',key:mk,value:JSON.stringify({checks:next,updatedAt:new Date().toISOString()}),token:s.token,savedBy:'calendar-app'})});
+  const d=await res.json(); if(!d.ok) throw new Error(d.error||'保存失敗');
+  alcSave_(mk, next);
+  return next;
+}
+// 記録(冪等・失敗はキュー→再送・成功後に読み戻し検証=朝の同時打刻対策)
+async function alcRecord_(entry){
+  const mk=alcMonthKey_(entry.date);
+  const id=alcId_(entry.date, entry.staff, entry.when);
+  const map=alcLoad_(mk); map[id]=entry; alcSave_(mk,map); alcUpdateBadge_();   // 楽観反映
+  try{
+    await alcPush_(mk, next=>{ next[id]=entry; return next; });
+    // 読み戻し検証: 同時打刻で他端末の保存に巻き込まれて消えていないか(消えていたら再送キューへ)
+    try{ const back=await alcFetchRemote_(mk); if(back && !back[id]) throw new Error('verify-miss'); }catch(e){ if(String(e.message).includes('verify-miss')) throw e; }
+    return true;
+  }catch(e){
+    const q=(function(){ try{ const a=JSON.parse(localStorage.getItem(ALC_PENDING_KEY)||'[]'); return Array.isArray(a)?a:[]; }catch(_){ return []; } })();
+    if(!q.some(x=>alcId_(x.date,x.staff,x.when)===id)) q.push(entry);
+    try{ localStorage.setItem(ALC_PENDING_KEY, JSON.stringify(q)); }catch(_){}
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast('⏳ 混雑中のため保留しました。自動で再送します(記録は消えません)');
+    return false;
+  }
+}
+function alcRetryPending_(){
+  let q; try{ q=JSON.parse(localStorage.getItem(ALC_PENDING_KEY)||'[]'); }catch(_){ q=[]; }
+  if(!Array.isArray(q)||!q.length) return;
+  const rest=q.slice();
+  (async()=>{
+    for(const e of q){
+      try{ await alcPush_(alcMonthKey_(e.date), next=>{ next[alcId_(e.date,e.staff,e.when)]=e; return next; }); rest.splice(rest.findIndex(x=>alcId_(x.date,x.staff,x.when)===alcId_(e.date,e.staff,e.when)),1); }
+      catch(_){ break; }
+    }
+    try{ localStorage.setItem(ALC_PENDING_KEY, JSON.stringify(rest)); }catch(_){}
+    if(rest.length<q.length && typeof showAutoSyncToast==='function') showAutoSyncToast('🚗 保留していたチェック記録を送信しました');
+  })();
+}
+setInterval(()=>alcRetryPending_(), 5*60*1000);
+// 当日の自分の状態
+function alcTodayOf_(staff, when){ const d=fmtDate(new Date()); return alcLoad_(alcMonthKey_())[alcId_(d, staff, when)] || null; }
+// 🚗? バッジ判定: 運転スタッフで今日の朝チェックが無い(17時以降は帰社チェック無しも)。休みの人は除外
+function alcNeedsCheck_(staff){
+  if(!ALC_DRIVERS.includes(staff)) return false;
+  const today=fmtDate(new Date());
+  const onLeave=(state.leaves||[]).some(l=>l.staff===staff && today>=l.start && today<=l.end && !/当番|出社/.test(l.type||''));
+  if(onLeave) return false;
+  if(!alcTodayOf_(staff,'am')) return true;
+  if(new Date().getHours()>=17 && !alcTodayOf_(staff,'pm')) return true;
+  return false;
+}
+function alcUpdateBadge_(){
+  try{
+    const me=(typeof getMyself==='function')?getMyself():'';
+    const m=document.getElementById('alcBtnMark');
+    if(m) m.style.display = (me && alcNeedsCheck_(me)) ? '' : 'none';
+  }catch(_){}
+}
+// ===== モーダル =====
+function ensureAlcModal_(){
+  let bk=document.getElementById('alcModal');
+  if(bk) return bk;
+  bk=document.createElement('div'); bk.className='modal-overlay'; bk.id='alcModal';
+  bk.innerHTML=`<div class="modal" style="max-width:560px;width:96vw;max-height:92vh;overflow:auto;padding:14px 16px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <b style="font-size:15px">🚗 運転前後チェック</b>
+      <span style="font-size:11px;color:var(--muted)">アルコール検知器で確認してから押してください(全員共有・1年保存)</span>
+      <button id="alc-close" class="btn" style="margin-left:auto;font-size:12px;padding:4px 12px">閉じる</button>
+    </div>
+    <div id="alc-self" style="margin-top:10px"></div>
+    <div style="margin-top:14px;display:flex;align-items:center;gap:8px">
+      <b style="font-size:13px">📋 今日のみんなの記録</b>
+      <button id="alc-csv" class="btn" style="margin-left:auto;font-size:11px;padding:3px 10px" title="月次の記録をCSVで保存(点検・提出用)">📥 月次CSV</button>
+      <button id="alc-cars" class="btn" style="font-size:11px;padding:3px 10px" title="スタッフごとの車両名を登録(山田さん向け)">⚙車両名</button>
+    </div>
+    <div id="alc-list" style="margin-top:6px"></div>
+  </div>`;
+  document.body.appendChild(bk);
+  bk.onclick=e=>{ if(e.target===bk) bk.classList.remove('show'); };
+  bk.querySelector('#alc-close').onclick=()=>bk.classList.remove('show');
+  bk.querySelector('#alc-csv').onclick=alcExportCsv_;
+  bk.querySelector('#alc-cars').onclick=alcEditCars_;
+  return bk;
+}
+function alcRenderModal_(){
+  const bk=document.getElementById('alcModal'); if(!bk) return;
+  const me=(typeof getMyself==='function')?getMyself():'';
+  const today=fmtDate(new Date());
+  const self=bk.querySelector('#alc-self');
+  if(!me){ self.innerHTML='<div style="font-size:12px;color:var(--muted)">先に「👤 マイ」で自分を設定してください</div>'; }
+  else if(!ALC_DRIVERS.includes(me)){ self.innerHTML=`<div style="font-size:12px;color:var(--muted)">${escapeHtml(me)}さんは運転チェックの対象外です(下の一覧は見られます)</div>`; }
+  else{
+    const am=alcTodayOf_(me,'am'), pm=alcTodayOf_(me,'pm');
+    const fmtT=e=>{ const d=new Date(e.at); return isNaN(d)?'':`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
+    const btn=(when,label,done)=> done
+      ? `<div style="flex:1;background:#dcfce7;border:1.5px solid #86efac;border-radius:12px;padding:14px 10px;text-align:center"><div style="font-size:14px;font-weight:800;color:#166534">✅ ${label}済み</div><div style="font-size:11px;color:#15803d;margin-top:2px">${fmtT(done)} ・ ${escapeHtml(done.car||'')}</div></div>`
+      : `<button data-alc-when="${when}" style="flex:1;background:var(--accent);color:#fff;border:0;border-radius:12px;padding:16px 10px;font-size:15px;font-weight:800;cursor:pointer">🍺✕ 酒気なし・体調OK<div style="font-size:11px;font-weight:600;opacity:.9;margin-top:2px">${label}チェックを記録</div></button>`;
+    self.innerHTML=`<div style="font-size:12px;color:var(--muted);margin-bottom:5px">🚙 車両: <b id="alc-mycar" style="color:var(--text);cursor:pointer;text-decoration:underline dotted" title="タップで今日の車を変更">${escapeHtml(alcCarOf_(me))}</b></div>
+      <div style="display:flex;gap:8px">${btn('am','出発前(朝)',am)}${btn('pm','帰着(夕)',pm)}</div>
+      <div style="margin-top:6px"><input id="alc-memo" type="text" placeholder="指示事項・特記(任意・例: 体調やや不良のため近距離のみ)" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px"></div>`;
+    const mycar=self.querySelector('#alc-mycar');
+    if(mycar) mycar.onclick=()=>{
+      const cars=[...new Set(ALC_DRIVERS.map(alcCarOf_))];
+      const v=prompt('今日の車両(いつもと違う車の日だけ変更):\n'+cars.join(' / '), alcCarOf_(me));
+      if(v && v.trim()){ window.__alcCarToday=v.trim(); mycar.textContent=v.trim(); }
+    };
+    self.querySelectorAll('[data-alc-when]').forEach(b=>{
+      b.onclick=async()=>{
+        b.disabled=true; b.style.opacity=.6;
+        const entry={ staff:me, date:today, when:b.dataset.alcWhen, car:(window.__alcCarToday||alcCarOf_(me)),
+          result:'none', memo:(self.querySelector('#alc-memo')||{}).value||'', at:new Date().toISOString() };
+        await alcRecord_(entry);
+        alcRenderModal_(); alcUpdateBadge_(); if(typeof render==='function') render();
+        if(typeof showAutoSyncToast==='function') showAutoSyncToast(b.dataset.alcWhen==='am'?'🚗 いってらっしゃい(記録しました)':'🏠 おつかれさまでした(記録しました)');
+      };
+    });
+  }
+  // 今日の一覧
+  const list=bk.querySelector('#alc-list');
+  const map=alcLoad_(alcMonthKey_());
+  const rows=ALC_DRIVERS.map(st=>{
+    const am=map[alcId_(today,st,'am')], pm=map[alcId_(today,st,'pm')];
+    const cell=e=>e?`<span style="color:#166534;font-weight:700">✅${(d=>isNaN(d)?'':`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`)(new Date(e.at))}</span>${e.memo?` <span title="${escapeHtml(e.memo)}">📝</span>`:''}`:'<span style="color:#94a3b8">—</span>';
+    const need=alcNeedsCheck_(st);
+    return `<div style="display:flex;gap:8px;align-items:center;padding:4px 6px;border-bottom:1px solid var(--border);font-size:12px">
+      <span style="min-width:5.5em;font-weight:600">${need?'🚗?':''}${escapeHtml(st)}</span>
+      <span style="min-width:8em;color:var(--muted)">${escapeHtml((am&&am.car)||(pm&&pm.car)||alcCarOf_(st))}</span>
+      <span style="flex:1">朝 ${cell(am)}</span><span style="flex:1">夕 ${cell(pm)}</span></div>`;
+  }).join('');
+  list.innerHTML=rows;
+}
+function openAlcModal_(){
+  const bk=ensureAlcModal_();
+  bk.classList.add('show');
+  alcRenderModal_();
+  alcRetryPending_();
+  alcFetch_({silent:true}).then(()=>alcRenderModal_()).catch(()=>{});
+}
+function alcExportCsv_(){
+  const now=new Date();
+  const ym=prompt('CSVを出す月(YYYY-MM):', `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`);
+  if(!ym||!/^\d{4}-\d{2}$/.test(ym.trim())) return;
+  const mk='alcohol_log_'+ym.trim();
+  (async()=>{
+    let map=alcLoad_(mk);
+    try{ const r=await alcFetchRemote_(mk); if(r) map=lwwMergeZombieSafe_(r,map); }catch(_){}
+    const rows=Object.values(map).sort((a,b)=>String(a.date+a.at).localeCompare(String(b.date+b.at)));
+    if(!rows.length){ alert('この月の記録はありません'); return; }
+    const esc=v=>`"${String(v==null?'':v).replace(/"/g,'""')}"`;
+    const head=['日付','時刻','運転者','車両','タイミング','確認方法','酒気帯び','確認者','指示事項・特記'];
+    const csv=[head.join(',')].concat(rows.map(e=>{
+      const d=new Date(e.at);
+      return [e.date, isNaN(d)?'':`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`, e.staff, e.car||'', e.when==='am'?'運転前':'運転後', 'アルコール検知器', e.result==='none'?'無':'有', e.staff, e.memo||''].map(esc).join(',');
+    })).join('\r\n');
+    const blob=new Blob(['\ufeff'+csv],{type:'text/csv'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`アルコールチェック記録_${ym.trim()}.csv`; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 3000);
+  })();
+}
+function alcEditCars_(){
+  const cars=alcCars_();
+  const lines=ALC_DRIVERS.map(st=>`${st}=${cars[st]||''}`).join('\n');
+  const v=prompt('スタッフごとの車両名(「名前=車両名」の形式・1行1人):\n例) 山田裕貴=ハイエース白', lines);
+  if(v==null) return;
+  const next={};
+  v.split('\n').forEach(l=>{ const m=l.split('='); if(m.length>=2){ const st=m[0].trim(), c=m.slice(1).join('=').trim(); if(ALC_DRIVERS.includes(st)&&c) next[st]=c; } });
+  try{ localStorage.setItem(ALC_CARS_KEY, JSON.stringify(next)); }catch(_){}
+  // 全員に共有
+  const s=loadGasSettings();
+  if(s.url&&s.token){ fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'alcohol_cars',value:JSON.stringify({cars:next,updatedAt:new Date().toISOString()}),token:s.token,savedBy:'calendar-app'})}).catch(()=>{}); }
+  alcRenderModal_();
+}
+async function alcFetchCars_(){
+  const s=loadGasSettings(); if(!s.url||!s.token) return;
+  try{
+    const res=await fetch(`${s.url}?action=get-shared-config&key=alcohol_cars&token=${encodeURIComponent(s.token)}&t=${Date.now()}`,{method:'GET',redirect:'follow'});
+    const d=await res.json(); let v=d.value;
+    if(typeof v==='string'&&v){ try{ v=JSON.parse(v); }catch(_){ v=null; } }
+    if(v&&v.cars&&typeof v.cars==='object'){ try{ localStorage.setItem(ALC_CARS_KEY, JSON.stringify(v.cars)); }catch(_){} }
+  }catch(_){}
+}
+{ const b=document.getElementById('alcBtn'); if(b) b.onclick=openAlcModal_; }
+setTimeout(()=>{ alcFetch_({silent:true}).catch(()=>{}); alcFetchCars_(); alcRetryPending_(); }, 8000);
+setInterval(()=>{ alcFetch_({silent:true}).catch(()=>{}); }, 5*60*1000);
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible'){ alcUpdateBadge_(); } });
+
 // ===== 🧾 材料注文の報告 (v1.30.540〜545) =====
 // LINE WORKS掲示板「注文した材料報告」の引っ越し先。v545=在庫管理式のカードUI(スマホ最適化)。
 // データ: shared-config 'material_orders' = {posts:[{id,author,at,editedAt,v:2,dest,destName,destRoom,vendor,items:[{cat,name,qty,forStock,inv}],memo}]}
@@ -14687,7 +14917,8 @@ function renderLeaveBand(){
     const __rems = (typeof remindersForStaff_==='function') ? remindersForStaff_(s) : [];
     const __remDue = __rems.some(r=>r.due);
     const __remind = __rems.length ? `<span class="sc-remind${__remDue?' due':''}" data-remind-staff="${escapeHtml(s)}" title="⏰ リマインド ${__rems.length}件${__remDue?'(期限到来あり)':''}・クリックで一覧">⏰${__rems.length>1?__rems.length:''}</span>` : "";
-    return `<span class="${cls.join(' ')}" data-staff-filter="${escapeHtml(s)}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}">${escapeHtml(display)}${fracBadge_(s,'sc-frac')}${subHtml}${__remind}</span>`;
+    const __alcMark = (typeof alcNeedsCheck_==='function' && alcNeedsCheck_(s)) ? `<span title="🚗 運転チェック未記録 — ヘッダーの🚗から記録" style="font-size:10px">🚗?</span>` : '';   // 🚗 v1.30.602
+    return `<span class="${cls.join(' ')}" data-staff-filter="${escapeHtml(s)}" style="background:${bg};color:${fg}" title="${escapeHtml(tooltip)}">${escapeHtml(display)}${fracBadge_(s,'sc-frac')}${__alcMark}${subHtml}${__remind}</span>`;
   };
   // コンパクト休暇バッジ: 担当色背景 + フルネーム + 種別
   const leaveChip = (l, withRange)=>{
