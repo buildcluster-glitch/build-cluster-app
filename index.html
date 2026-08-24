@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.606</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.607</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -9207,6 +9207,9 @@ function alcRenderModal_(){
     });
   }
   // ✅ 管理者確認(その日の記録を安全運転管理者/補助者が確認した印)v1.30.606
+  //   📅 v1.30.607(社長「俺が休みの時はあとからチェックでもいい?」): **過去日の未確認も押せるように**。
+  //     管理者が休んだ日の記録は翌営業日にまとめて確認する運用が現実的なため(確認行為そのものは
+  //     補助者が当日に行い、ここは"記録のレビュー"を残す欄)。直近14日で記録がある日だけ並べる。
   //   これが無いと法定記録が「運転者の自己申告だけ」になり、管理者が業務を果たした証拠が残らない
   {
     const cf=(typeof alcConfirmOf_==='function')?alcConfirmOf_(today):null;
@@ -9217,6 +9220,27 @@ function alcRenderModal_(){
       : `<button id="alc-confirm-btn" class="btn" style="font-size:11px;padding:4px 12px;background:#fef3c7;border-color:#fcd34d;color:#92400e" title="安全運転管理者(または補助者)が今日の記録を確認した印。CSVの「管理者確認」列に残ります">✅ 今日の記録を確認した(管理者用)</button>`;
     const cb=host.querySelector('#alc-confirm-btn');
     if(cb) cb.onclick=()=>alcSetConfirm_(today);
+    // 📅 未確認の過去日(記録がある日のみ・直近14日)
+    const pend=[];
+    for(let i=1;i<=14;i++){
+      const d=new Date(); d.setDate(d.getDate()-i);
+      const ds=fmtDate(d);
+      const mp=alcLoad_(alcMonthKey_(ds));
+      const has=Object.keys(mp).some(k=>k.indexOf(ds+'_')===0);
+      if(has && !alcConfirmOf_(ds)) pend.push(ds);
+    }
+    if(pend.length){
+      host.insertAdjacentHTML('beforeend',
+        `<div style="margin-top:6px;font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:6px 9px">
+          📅 未確認の日が${pend.length}日あります(休みの日など・あとから確認できます)
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px">
+            ${pend.map(ds=>`<button data-alc-cfd="${ds}" class="btn" style="font-size:10.5px;padding:2px 8px">${ds.slice(5).replace('-','/')} ✅</button>`).join('')}
+            ${pend.length>1?`<button id="alc-cf-all" class="btn" style="font-size:10.5px;padding:2px 8px;background:#fde68a;border-color:#f59e0b;font-weight:700">まとめて確認(${pend.length}日)</button>`:''}
+          </div></div>`);
+      host.querySelectorAll('[data-alc-cfd]').forEach(b=>{ b.onclick=()=>alcSetConfirm_(b.dataset.alcCfd); });
+      const all=host.querySelector('#alc-cf-all');
+      if(all) all.onclick=async()=>{ all.disabled=true; all.textContent='確認中…'; for(const ds of pend){ await alcSetConfirm_(ds); } };
+    }
   }
   // 今日の一覧
   const list=bk.querySelector('#alc-list');
