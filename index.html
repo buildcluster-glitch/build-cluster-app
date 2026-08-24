@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.594</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.595</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -6909,6 +6909,20 @@ function loadTaikyoOverrides_(){
 function saveTaikyoOverrides_(map){
   try{ localStorage.setItem(TAIKYO_OVERRIDE_KEY, JSON.stringify(map||{})); }catch(e){}
 }
+// 🔄 v1.30.595(鈴木報告「同期されておらず色が消えている」・iPhoneホーム画面起動):
+//   共有マップの定期取得は opts.silent の時に render() を呼んでいなかった=**取れているのに画面が古いまま**。
+//   silent の意味は「ログ/トーストを出さない」であって「描き直さない」ではない、という取り違えが原因。
+//   ⚠ただし無条件の再描画は入力中のカーソルを奪う事故(v1.30.462の作業ログ/v1.4.1012の数量2桁)を招くので、
+//     **中身が実際に変わった時だけ**+**入力中でない時だけ**描き直す。入力中なら次の描画機会に自然と反映される。
+function renderIfChanged_(before, after){
+  try{
+    if(JSON.stringify(before) === JSON.stringify(after)) return false;
+    const ae = document.activeElement;
+    if(ae && (ae.tagName==='INPUT' || ae.tagName==='TEXTAREA' || ae.isContentEditable)) return false;
+    if(typeof render==='function') render();
+    return true;
+  }catch(_){ return false; }
+}
 // entryが実質「上書きなし」か(全フィールド空)
 function __ovIsEmpty_(e){ return !e || (!String(e.staff||'').trim() && !String(e.date||'').trim() && !String(e.time||'').trim()); }
 // 2マップを taikyoId 単位の last-write-wins(at新しい方)で統合
@@ -6944,6 +6958,7 @@ async function fetchTaikyoOverrides_(opts={}){
       pushTaikyoOverridesMap_(merged).catch(()=>{});
     }
     if(!opts.silent && typeof render==='function') render();
+    else renderIfChanged_(local, merged);   // 🔄 v1.30.595: 静かな取得でも担当色が変わったら描き直す
     return merged;
   }catch(err){
     if(!opts.silent) console.warn('[taikyo_overrides] fetch失敗:', err.message);
@@ -7114,6 +7129,7 @@ async function fetchRepairOverrides_(opts={}){
     applyRepairOverridesToState_();
     if(opts.push && JSON.stringify(merged) !== JSON.stringify(remote)){ pushRepairOverridesMap_(merged).catch(()=>{}); }
     if(!opts.silent && typeof render==='function') render();
+    else renderIfChanged_(local, merged);   // 🔄 v1.30.595
     return merged;
   }catch(err){ if(!opts.silent) console.warn('[repair_overrides] fetch失敗:', err.message); applyRepairOverridesToState_(); return local; }
 }
@@ -13382,6 +13398,11 @@ async function syncChecksFromGAS(opts){
     if(typeof applyCheckWorkersToState_==='function') applyCheckWorkersToState_();  // 🏷 最終確認の作業担当(全員共有)を反映(v1.30.95・キャッシュ即適用)
     // 🔄 再同期時は修繕担当の最新オーバーレイも取りに行く→他PCの担当変更が即反映(v1.30.93)
     if(typeof fetchRepairOverrides_==='function') fetchRepairOverrides_({silent:true}).catch(()=>{});
+    // 🗓 v1.30.595(鈴木報告): **立会の担当上書きだけ再同期リストから漏れていた**(修繕は上の行で入っていた)。
+    //   起動時と5分ごとのsetIntervalしか無く、iPhoneのホーム画面起動(PWA)は裏でタイマーが凍る=
+    //   アプリを開き直しても立会の担当色だけ何日も古いままになりうる。GC_KEYSバッチ同乗なので追加往復ゼロ。
+    if(typeof fetchTaikyoOverrides_==='function') fetchTaikyoOverrides_({silent:true}).catch(()=>{});
+    if(typeof fetchTaikyoComments_==='function') fetchTaikyoComments_({silent:true}).catch(()=>{});
     // 🏷 再同期時は最終確認の作業担当も最新を取りに行く(v1.30.95)
     if(typeof fetchCheckWorkers_==='function') fetchCheckWorkers_({silent:true}).catch(()=>{});
     // 📞 再同期時は電話番も最新を取りに行く(v1.30.111)
