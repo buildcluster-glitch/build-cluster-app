@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.597</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.598</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8251,6 +8251,12 @@ function deleteLeaveComment_(leaveId, commentId){
     saveLeaveCommentsMap_(map);
   }
   mutateLeaveCommentsRemote_(leaveId, list => list.filter(x=>x.id!==commentId));
+}
+// 🖱 v1.30.598(山田報告「コメント内容がホバーしない」): **バッジ自身のtitleが親チップのtitleを上書きする**。
+//   💬にカーソルを合わせるのが一番自然な動作なのに、そこだけ件数しか出ていなかった。バッジにも本文を持たせる。
+function leaveCommentsBadgeTitle_(leaveId){
+  const tip = (typeof leaveCommentsTip_==='function') ? leaveCommentsTip_(leaveId) : '';
+  return 'クリックで開く' + tip;
 }
 // 🖱 ホバー用: コメントをツールチップの行に(最大3件・古い順)
 function leaveCommentsTip_(leaveId){
@@ -14683,7 +14689,7 @@ function renderLeaveBand(){
     const __lvcTip = (typeof leaveCommentsTip_==='function') ? leaveCommentsTip_(l.id) : '';   // 💬 v1.30.596
     const tooltip = `${display} ${typeLabel} ${range}${l.memo&&l.type!=="振休"?'\n'+l.memo:''}${__lvcTip}`;
     const __lvcN = (typeof leaveComments_==='function') ? leaveComments_(l.id).length : 0;
-    const __lvcBadge = __lvcN ? `<span class="lb-task" title="💬 コメント${__lvcN}件">💬${__lvcN>1?__lvcN:''}</span>` : '';
+    const __lvcBadge = __lvcN ? `<span class="lb-task" title="${escapeHtml(leaveCommentsBadgeTitle_(l.id))}">💬${__lvcN>1?__lvcN:''}</span>` : '';
     const rangeHtml = withRange ? ` <span class="lb-range">${range}</span>` : "";
     const _tp = staffTaskProgress_(l.staff);
     const __lbMsgAlert = (typeof staffHasUnackMsg_==='function' && staffHasUnackMsg_(l.staff)) ? `<span class="msg-alert" title="💬 業務連絡(未確認) — リアクションで確認済みに">🔔</span>` : "";
@@ -14703,7 +14709,7 @@ function renderLeaveBand(){
     const __lvcTip = (typeof leaveCommentsTip_==='function') ? leaveCommentsTip_(l.id) : '';   // 💬 v1.30.596
     const tooltip = `${display} ${typeLabel} ${range}${l.memo&&l.type!=="振休"?'\n'+l.memo:''}${__lvcTip}`;
     const __lvcN = (typeof leaveComments_==='function') ? leaveComments_(l.id).length : 0;
-    const __lvcBadge = __lvcN ? `<span class="lb-task" title="💬 コメント${__lvcN}件">💬${__lvcN>1?__lvcN:''}</span>` : '';
+    const __lvcBadge = __lvcN ? `<span class="lb-task" title="${escapeHtml(leaveCommentsBadgeTitle_(l.id))}">💬${__lvcN>1?__lvcN:''}</span>` : '';
     const _tp = staffTaskProgress_(l.staff);
     const __lbMsgAlert = (typeof staffHasUnackMsg_==='function' && staffHasUnackMsg_(l.staff)) ? `<span class="msg-alert" title="💬 業務連絡(未確認) — リアクションで確認済みに">🔔</span>` : "";
     const taskBadge = `<span class="lb-task${__lbMsgAlert?' has-msg-alert':''}" data-task-staff="${escapeHtml(l.staff)}" title="📋 事務タスク${_tp.has?' ('+_tp.dn+'/'+_tp.tt+')':''}">📋${__lbMsgAlert}</span>`;
@@ -14882,7 +14888,7 @@ function renderCalendar(){
       const __ctip = (typeof leaveCommentsTip_==='function') ? leaveCommentsTip_(l.id) : '';   // 💬 v1.30.596
       const tt = `${l.staff} ${typeLabel} ${range}${l.memo&&l.type!=="振休"?'\n'+l.memo:''}${__ctip}`;
       const __cn = (typeof leaveComments_==='function') ? leaveComments_(l.id).length : 0;
-      return `<span class="leave-badge" data-leave-id="${l.id}" style="background:${bg};color:${fg}" title="${escapeHtml(tt)}"><span class="lb-staff">${escapeHtml(l.staff)}</span><span class="lb-type">${escapeHtml(typeLabel)}</span>${__cn?`<span class="lb-task" title="💬 コメント${__cn}件">💬${__cn>1?__cn:''}</span>`:''}</span>`;
+      return `<span class="leave-badge" data-leave-id="${l.id}" style="background:${bg};color:${fg}" title="${escapeHtml(tt)}"><span class="lb-staff">${escapeHtml(l.staff)}</span><span class="lb-type">${escapeHtml(typeLabel)}</span>${__cn?`<span class="lb-task" title="${escapeHtml(leaveCommentsBadgeTitle_(l.id))}">💬${__cn>1?__cn:''}</span>`:''}</span>`;
     }).join("");
     // 修繕アポ (responseDate がこの列の日付に一致) — Phase3 カレンダー連携
     // responseTime が "10:00" 等の正確な時刻パース可能なら時間グリッドに配置、不可なら終日帯に
