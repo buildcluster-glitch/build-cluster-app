@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.609</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.610</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8985,6 +8985,10 @@ async function heartbeatPresence_(opts={}){
 //   書込は 読み直し→適用→保存→**読み戻し検証**(朝の同時打刻で他人の記録を巻き込まないため)+失敗は再送キュー(v592と同型)
 // 車両: 各自ほぼ固定(まどかは運転なし=対象外)。車名マスタ=shared-config `alcohol_cars` {staff:carName}(山田が⚙で編集)
 const ALC_DRIVERS = STAFF.filter(s=>s!=='まどか');
+// 📅 運用開始日(社長決定 2026-08-24: 9月第2週から)。この日より前は🚗?の督促を出さない
+//   =本番前に「出っぱなしの警告」に慣れて無視されるのを防ぐ。記録自体は開始前でも練習で押せる。
+const ALC_START_DATE = '2026-09-07';
+function alcStarted_(){ try{ return fmtDate(new Date()) >= ALC_START_DATE; }catch(_){ return true; } }
 // 🚙 車両マスタ(東京海上日動の保険証券から転記・2026-08-24)。CSVの「自動車登録番号」列はここから入る。
 //   増減した時はここに1行足す/消すだけ。label=画面表示・plate=法定記録用の登録番号
 const ALC_CAR_MASTER = [
@@ -9111,6 +9115,7 @@ setInterval(()=>alcRetryPending_(), 5*60*1000);
 function alcTodayOf_(staff, when){ const d=fmtDate(new Date()); return alcLoad_(alcMonthKey_())[alcId_(d, staff, when)] || null; }
 // 🚗? バッジ判定: 運転スタッフで今日の朝チェックが無い(17時以降は帰社チェック無しも)。休みの人は除外
 function alcNeedsCheck_(staff){
+  if(!alcStarted_()) return false;                    // 📅 運用開始前は督促しない(v1.30.610)
   if(!ALC_DRIVERS.includes(staff)) return false;
   const today=fmtDate(new Date());
   const onLeave=(state.leaves||[]).some(l=>l.staff===staff && today>=l.start && today<=l.end && !/当番|出社/.test(l.type||''));
@@ -9135,6 +9140,7 @@ function ensureAlcModal_(){
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <b style="font-size:15px">🚗 運転前後チェック</b>
       <span style="font-size:11px;color:var(--muted)">検知器で確認してから押す。社用車通勤なので<b>朝=家を出る前</b>・<b>夕=家に着いたら</b>でOK(全員共有・1年保存)</span>
+      <div id="alc-start-note" style="display:none;flex-basis:100%;font-size:11.5px;font-weight:700;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:5px 9px;margin-top:6px"></div>
       <button id="alc-close" class="btn" style="margin-left:auto;font-size:12px;padding:4px 12px">閉じる</button>
     </div>
     <div id="alc-self" style="margin-top:10px"></div>
@@ -9154,6 +9160,18 @@ function ensureAlcModal_(){
 }
 function alcRenderModal_(){
   const bk=document.getElementById('alcModal'); if(!bk) return;
+  // 📅 開始前は「いつから始まるか」を出す(練習で押すのはOK)
+  {
+    const note=bk.querySelector('#alc-start-note');
+    if(note){
+      if(!alcStarted_()){
+        const d=new Date(ALC_START_DATE+'T00:00:00');
+        const left=Math.ceil((d-new Date())/86400000);
+        note.style.display='';
+        note.textContent=`📅 本番の運用開始は ${d.getMonth()+1}/${d.getDate()}(${DOW_JA[d.getDay()]}) から${left>0?`(あと${left}日)`:''}。それまでは練習で押してみてOKです(記録は残ります)`;
+      } else note.style.display='none';
+    }
+  }
   const me=(typeof getMyself==='function')?getMyself():'';
   const today=fmtDate(new Date());
   const self=bk.querySelector('#alc-self');
