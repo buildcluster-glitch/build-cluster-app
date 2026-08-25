@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.613</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.614</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -10736,7 +10736,9 @@ function showEventStaffPicker(el, ev){
   const __evSelTime = (ev.timeMode==='timed') ? (ev.start||'') : '';
   // 🌗 AM中/PM中(v1.30.445 山田要望): 時刻は決めないが午前/午後は決まっている予定。timeMode='am'/'pm'(同期列は既存timeMode=GAS変更不要)
   const __evNote0 = (typeof timeNoteGet_==='function') ? ((timeNoteGet_(ev.id)||{}).text||'') : '';   // ✏️ 時刻の自由入力メモ(v1.30.589)
-  let __evTimeOptsHtml = `<option value=""${(!__evSelTime && ev.timeMode!=='am' && ev.timeMode!=='pm' && !__evNote0)?' selected':''}>時間未定</option>`
+  const __evIsAllday = (ev.timeMode==='allday' || ev.allday===true);   // 📅 v1.30.614
+  let __evTimeOptsHtml = `<option value=""${(!__evSelTime && !__evIsAllday && ev.timeMode!=='am' && ev.timeMode!=='pm' && !__evNote0)?' selected':''}>時間未定</option>`
+    + `<option value="__allday__"${__evIsAllday?' selected':''}>📅終日</option>`
     + `<option value="__am__"${ev.timeMode==='am'?' selected':''}>AM中</option>`
     + `<option value="__pm__"${ev.timeMode==='pm'?' selected':''}>PM中</option>`
     + `<option value="__free__"${__evNote0?' selected':''}>✏️自由入力(早め 等)</option>`;
@@ -10978,26 +10980,35 @@ function showEventStaffPicker(el, ev){
       real.date = nd;
       // ✏️ 時刻の自由入力メモ(v1.30.589): 自由入力=時間未定扱い+赤字ラベル。他の選択に変えたら古いメモは消す
       const __ntxApply = (nt==='__free__') ? (((pop.querySelector('#evDtNote')||{}).value||'').trim()) : null;
+      // 📅 終日(v1.30.614): 終日の start は "00:00" 固定なので、他へ変える時は置き位置を9時へ戻す
+      //   (戻さないと時間グリッド(7:00〜)の枠外=真夜中に飛ぶ)
+      const __wasAllday = !!(real.allday || real.timeMode==='allday');
+      const __leaveAllday = ()=>{ if(__wasAllday){ real.start = '09:00'; real.end = '10:00'; } };
       if(nt==='__free__'){
-        real.timeMode = 'anytime'; real.allday = false;   // 置き位置(start/end)は現状維持=時間未定と同じ扱い
+        real.timeMode = 'anytime'; real.allday = false; __leaveAllday();   // 置き位置(start/end)は現状維持=時間未定と同じ扱い
         if(typeof setTimeNote_==='function') setTimeNote_(ev.id, __ntxApply).catch(()=>{});
       }
       else if(typeof timeNoteGet_==='function' && timeNoteGet_(ev.id) && typeof setTimeNote_==='function'){ setTimeNote_(ev.id, '').catch(()=>{}); }
-      if(nt==='__am__' || nt==='__pm__'){
+      if(nt==='__allday__'){
+        // 📅 終日(v1.30.614): 詳細フォーム/クイック追加の終日と同じ形
+        real.timeMode = 'allday'; real.allday = true; real.start = '00:00'; real.end = '23:59';
+        if(typeof real.freeTop !== 'number') real.freeTop = 0;
+      }
+      else if(nt==='__am__' || nt==='__pm__'){
         // 🌗 AM中/PM中: 時刻なし扱いだが表示位置アンカーとしてstart/endを午前/午後に置く(v1.30.445)
         const isAm = nt==='__am__';
         real.timeMode = isAm ? 'am' : 'pm'; real.allday = false;
         real.start = isAm ? '09:00' : '13:00'; real.end = isAm ? '10:00' : '14:00';
       }
       else if(nt && nt!=='__free__'){ real.start = nt; real.end = __evEndOf(nt); real.timeMode = 'timed'; real.allday = false; }
-      else if(!nt){ real.timeMode = 'anytime'; real.allday = false; }
+      else if(!nt){ real.timeMode = 'anytime'; real.allday = false; __leaveAllday(); }
       real.updatedAt = new Date().toISOString();
       saveState();
       if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(real,'upsert'); }catch(_){} }
       render();
       if(typeof flashEventChip_==='function') flashEventChip_(real.id);
       __evDtApply.textContent = '✓ 変更'; setTimeout(()=>{ try{ __evDtApply.textContent='変更'; }catch(_){} }, 1200);
-      if(typeof showAutoSyncToast==='function'){ const dd=parseDate(nd); const tLabel = nt==='__am__' ? ' AM中' : nt==='__pm__' ? ' PM中' : nt==='__free__' ? ` ✏️${__ntxApply||'(時間未定)'}` : nt ? ` ${nt}` : '(時間未定)'; showAutoSyncToast(`✅ 予定を ${(dd&&!isNaN(dd))?`${dd.getMonth()+1}/${dd.getDate()}`:nd}${tLabel} に変更`); }
+      if(typeof showAutoSyncToast==='function'){ const dd=parseDate(nd); const tLabel = nt==='__allday__' ? ' 終日' : nt==='__am__' ? ' AM中' : nt==='__pm__' ? ' PM中' : nt==='__free__' ? ` ✏️${__ntxApply||'(時間未定)'}` : nt ? ` ${nt}` : '(時間未定)'; showAutoSyncToast(`✅ 予定を ${(dd&&!isNaN(dd))?`${dd.getMonth()+1}/${dd.getDate()}`:nd}${tLabel} に変更`); }
     };
   }
   // 🕔 v1.30.311: ワンタップで時間未定にする + 未定バッジ付与
@@ -11010,6 +11021,7 @@ function showEventStaffPicker(el, ev){
       const real = (state.events||[]).find(x=>x.id===ev.id);
       if(!real){ return; }
       if(typeof pushHistory==='function') pushHistory();
+      if(real.allday || real.timeMode==='allday'){ real.start = '09:00'; real.end = '10:00'; }   // 📅 終日→未定は置き位置を9時へ(v1.30.614)
       real.timeMode = 'anytime';
       real.allday = false;   // anytime は時間グリッド配置
       real.undecidedBadge = !real.undecidedBadge;   // トグル
