@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.612</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.613</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -20103,7 +20103,7 @@ document.querySelectorAll(".view-switch button").forEach(b=>{
 // 📋 テンプレ予定(v1.30.520・山田): 「＋予定」でよく入れるものをプルダウンから一発で入れる。
 //   増やす時はここに1行足すだけ。title は必須、category / time は省略可(省略=触らない)。
 //     category: カテゴリボタンの値("" = 未分類 / "立会" "修繕" "事務" 等)
-//     time    : "" = 時間未定 / "__am__" = AM中 / "__pm__" = PM中 / "09:00" のような時刻
+//     time    : "" = 時間未定 / "__allday__" = 終日 / "__am__" = AM中 / "__pm__" = PM中 / "09:00" のような時刻
 // ⚠ クイック登録シート→✏️詳細フォームへのアラート持ち越し(v1.30.588)。詳細フォームの「保存」確定時にだけ共有へ書く
 let __qaPendingAlert = null;
 const QUICK_TEMPLATES = [
@@ -20129,15 +20129,20 @@ function showQuickAddSheet_(defaults={}, editEv=null){
   const titleV = isEdit ? (editEv.title||"") : "";
   // クリック位置(アクティブセル/ダブルクリック)。位置だけ posStart に保持 → 時間未定でも選んだ位置(例11:45)に表示(v1.30.65)
   // 編集時は時刻指定ならその時刻を初期選択、時間未定/終日なら「時間未定」(位置は元のstartを保持)
-  const posStart = isEdit ? (editEv.start||"") : (defaults.start || "");
+  // 📅 v1.30.613: 終日予定の start は "00:00" 固定なので、時間未定等へ変える時の置き位置には使わない
+  //   (使うと時間グリッドの真夜中=枠外に飛ばされる)
+  const posStart = isEdit ? ((editEv.allday || editEv.timeMode==='allday') ? "" : (editEv.start||"")) : (defaults.start || "");
   // 🌗 AM中/PM中(v1.30.446): timeMode='am'/'pm'。編集時は該当センチネルを初期選択
   const selTime = isEdit
-    ? (editEv.timeMode==="timed" ? (editEv.start||"") : editEv.timeMode==="am" ? "__am__" : editEv.timeMode==="pm" ? "__pm__" : "")
+    ? (editEv.timeMode==="timed" ? (editEv.start||"")
+      : (editEv.timeMode==="allday" || editEv.allday) ? "__allday__"
+      : editEv.timeMode==="am" ? "__am__" : editEv.timeMode==="pm" ? "__pm__" : "")
     : "";
   // ✏️ 時刻の自由入力メモ(v1.30.589): 既存メモがあれば「自由入力」を初期選択
   const __noteInit = (isEdit && typeof timeNoteGet_==='function') ? ((timeNoteGet_(editEv.id)||{}).text||'') : '';
   const timeOpts = [
     `<option value=""${(selTime||__noteInit)?"":" selected"}>時間未定</option>`,
+    `<option value="__allday__"${selTime==="__allday__"?" selected":""}>📅終日</option>`,
     `<option value="__am__"${selTime==="__am__"?" selected":""}>AM中</option>`,
     `<option value="__pm__"${selTime==="__pm__"?" selected":""}>PM中</option>`,
     `<option value="__free__"${__noteInit?" selected":""}>✏️自由入力(早め 等)</option>`,
@@ -20280,12 +20285,13 @@ function showQuickAddSheet_(defaults={}, editEv=null){
     const d = bd.querySelector('#qa-date').value;
     const st = bd.querySelector('#qa-time').value;
     const __ampm = (st==='__am__' || st==='__pm__');   // 🌗 AM中/PM中は時刻扱いにしない(詳細フォームへtimeMode渡す)
-    const __realSt = __ampm ? (st==='__am__' ? '09:00' : '13:00') : (st==='__free__' ? '' : st);   // ✏️自由入力は時刻扱いしない(v1.30.589)
+    const __allday = (st==='__allday__');              // 📅 終日も時刻扱いしない(v1.30.613)
+    const __realSt = __ampm ? (st==='__am__' ? '09:00' : '13:00') : ((st==='__free__' || __allday) ? '' : st);   // ✏️自由入力は時刻扱いしない(v1.30.589)
     const posS = __realSt || posStart || "";   // 時間未定でもクリック位置を引き継ぐ
     { const __alV = __alertJoined(); __qaPendingAlert = (__alV !== __alertLines0.join('\n')) ? __alV : null; }   // ⚠ 持ち越し(詳細フォーム保存時に確定)v1.30.588
     bd.remove();
     if(isEdit){ openEventModal(editEv); return; }   // 編集: 従来フォームで詳細編集
-    openEventModal(null, {date:d||undefined, staff:selStaff[0]||undefined, participants:selStaff.slice(1), start:posS||undefined, end:posS?endOf(posS):undefined, category:selCat||undefined, timeMode: __ampm ? (st==='__am__'?'am':'pm') : undefined});
+    openEventModal(null, {date:d||undefined, staff:selStaff[0]||undefined, participants:selStaff.slice(1), start:posS||undefined, end:posS?endOf(posS):undefined, category:selCat||undefined, timeMode: __allday ? 'allday' : __ampm ? (st==='__am__'?'am':'pm') : undefined});
     try{ if(t) document.getElementById('ev-title').value = t; }catch(_){}
     // 🚗 直行/直帰の選択を詳細フォームへ引き継ぎ
     try{ document.getElementById('ev-commute-go').checked = selCommute.go; document.getElementById('ev-commute-home').checked = selCommute.home; }catch(_){}
@@ -20307,10 +20313,15 @@ function showQuickAddSheet_(defaults={}, editEv=null){
       if(!target){ bd.remove(); return; }
       if(typeof pushHistory==='function') pushHistory();
       target.title = title; target.category = selCat||""; target.staff = selStaff[0]||""; target.participants = selStaff.slice(1); target.date = d; target.commute = __commuteStr();
-      if(st==='__am__' || st==='__pm__'){ const isAm = st==='__am__'; target.timeMode = isAm?'am':'pm'; target.allday = false; target.start = isAm?'09:00':'13:00'; target.end = isAm?'10:00':'14:00'; }   // 🌗 v1.30.446
+      // 📅 終日→他へ切り替える時は元のstart("00:00")を置き位置に使わない(枠外に飛ぶ)v1.30.613
+      const __wasAllday = !!(target.allday || target.timeMode==='allday');
+      const __posBase = posStart || (__wasAllday ? "09:00" : (target.start || "09:00"));
+      if(st==='__allday__'){ target.timeMode='allday'; target.allday=true; target.start='00:00'; target.end='23:59'; if(typeof target.freeTop!=='number') target.freeTop=0; }   // 📅 v1.30.613
+      else if(st==='__am__' || st==='__pm__'){ const isAm = st==='__am__'; target.timeMode = isAm?'am':'pm'; target.allday = false; target.start = isAm?'09:00':'13:00'; target.end = isAm?'10:00':'14:00'; }   // 🌗 v1.30.446
       else if(st && st!=='__free__'){ target.start = st; target.end = endOf(st); target.timeMode = "timed"; target.allday = false; }
-      else if(st==='__free__'){ const posS = posStart || target.start || "09:00"; target.start = posS; target.end = endOf(posS); target.timeMode = "anytime"; target.allday = false; }   // ✏️自由入力=時間未定扱い(位置は維持)v1.30.589
-      else { const posS = posStart || target.start || "09:00"; target.start = posS; target.end = endOf(posS); target.timeMode = target.allday ? (target.timeMode||"allday") : "anytime"; }
+      else if(st==='__free__'){ target.start = __posBase; target.end = endOf(__posBase); target.timeMode = "anytime"; target.allday = false; }   // ✏️自由入力=時間未定扱い(位置は維持)v1.30.589
+      // 「時間未定」を選んだ=終日を明示的に解除(v1.30.613で終日が選べるようになったので、ここで温存しない)
+      else { target.start = __posBase; target.end = endOf(__posBase); target.timeMode = "anytime"; target.allday = false; }
       target.updatedAt = new Date().toISOString();
       saveState();
       __alertCommit(target.id);   // ⚠ アラート確定(setAlert_はローカル即時反映→直後のrenderで見える)v1.30.588
@@ -20320,13 +20331,16 @@ function showQuickAddSheet_(defaults={}, editEv=null){
       return;
     }
     // 🌗 AM中/PM中(v1.30.446): 時刻扱いにせずtimeMode=am/pm、配置アンカーは午前9時/午後1時
+    // 📅 終日(v1.30.613): 詳細フォームの「終日」と同じ形(allday=true / 00:00-23:59 / freeTop=0)で作る
+    const __allday = (st==='__allday__');
     const __ampm = (st==='__am__' || st==='__pm__');
-    const __tMode = __ampm ? (st==='__am__'?'am':'pm') : ((st && st!=='__free__') ? "timed" : "anytime");   // ✏️自由入力=anytime(v1.30.589)
+    const __tMode = __allday ? "allday" : __ampm ? (st==='__am__'?'am':'pm') : ((st && st!=='__free__') ? "timed" : "anytime");   // ✏️自由入力=anytime(v1.30.589)
     // 表示位置: 時刻を選べばその時刻(timed) / AM中PM中=午前午後アンカー / 時間未定・自由入力でもクリック位置(posStart)があればそこ / 無ければ09:00
-    const posS = __ampm ? (st==='__am__'?'09:00':'13:00') : (((st && st!=='__free__') ? st : posStart) || "09:00");
+    const posS = __allday ? "00:00" : __ampm ? (st==='__am__'?'09:00':'13:00') : (((st && st!=='__free__') ? st : posStart) || "09:00");
     const ev = {
       id: uid(), title, category: selCat||"", contractor:"", staff: selStaff[0]||"", participants: selStaff.slice(1),
-      date: d, start: posS, end: endOf(posS), allday: false, timeMode: __tMode,
+      date: d, start: posS, end: __allday ? "23:59" : endOf(posS), allday: __allday, timeMode: __tMode,
+      ...(__allday ? {freeTop:0} : {}),
       color:"", memo:"", commute: __commuteStr(), importance: [], updatedAt: new Date().toISOString(),
     };
     if(typeof pushHistory==='function') pushHistory();
