@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.614</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.615</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -9986,11 +9986,47 @@ function editAnnounce_(id, newText){   // 投稿者が本文を編集(v1.30.307)
 //   自分がまだ✓確認していない連絡があれば、画面をふさぐダイアログで出す。
 //   ⚠閉じる手段は「✓確認しました」だけ(背景クリック・Esc・✕では閉じない)。
 //   スマホはバー自体が非表示(v1.30.305)なので、ここが唯一の連絡導線になる。
+// ⏰ 連絡事項「あとで確認する」(v1.30.615・山田要望)
+//   ✓確認しました = 全員共有(acked=誰が読んだかの記録)。
+//   こちらは**この端末だけ**の先送りで、共有もしないし acked も付けない。
+//   共有しない理由 = 「あとで」を全端末に配ると、別の端末で開いた時も出なくなり
+//   「確認したつもりで誰も読んでいない」状態を作る(確認漏れの温床)。端末を変えれば必ず出る。
+const ANNOUNCE_SNOOZE_KEY   = 'bc_announce_snooze';
+const ANNOUNCE_SNOOZE_MS    = 60*60*1000;   // 1時間。長くしすぎると「確認するまで閉じられない」の意味が消える
+const ANNOUNCE_SNOOZE_LABEL = '1時間';
+function loadAnnounceSnooze_(){
+  try{ const o=JSON.parse(localStorage.getItem(ANNOUNCE_SNOOZE_KEY)||'{}'); return (o&&typeof o==='object')?o:{}; }catch(_){ return {}; }
+}
+function announceIsSnoozed_(id){
+  const t=loadAnnounceSnooze_()[id];
+  return !!(t && Date.now() < new Date(t).getTime());
+}
+function announceSnoozeUntil_(id){
+  const t=loadAnnounceSnooze_()[id]; if(!t) return '';
+  const d=new Date(t); if(isNaN(d)) return '';
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+function snoozeAnnounce_(ids, ms){
+  const o=loadAnnounceSnooze_();
+  const until=new Date(Date.now()+(ms||ANNOUNCE_SNOOZE_MS)).toISOString();
+  (ids||[]).forEach(id=>{ if(id) o[id]=until; });
+  // 🧹 消えた連絡・期限切れの記録は捨てる(localStorageは共有資源=ゴミを溜めない・v605の教訓)
+  try{
+    const alive=new Set((announceActiveItems_()||[]).map(x=>x.id));
+    Object.keys(o).forEach(k=>{ if(!alive.has(k) && new Date(o[k]).getTime() < Date.now()) delete o[k]; });
+  }catch(_){}
+  try{ localStorage.setItem(ANNOUNCE_SNOOZE_KEY, JSON.stringify(o)); }catch(_){}
+}
+function unsnoozeAnnounce_(id){
+  const o=loadAnnounceSnooze_(); delete o[id];
+  try{ localStorage.setItem(ANNOUNCE_SNOOZE_KEY, JSON.stringify(o)); }catch(_){}
+}
 function myUnreadAnnounces_(){
   const me=(typeof getMyself==='function')?getMyself():"";
   if(!me) return [];
   // 🎯 宛先に自分が入っているものだけ(個別宛は無関係な人をブロックしない)v1.30.488
-  return announceActiveItems_().filter(it=> announceIsForMe_(it, me) && !((it.acked||[]).includes(me)));
+  //  ⏰「あとで確認する」を押したものは、この端末では期限まで出さない(v1.30.615)
+  return announceActiveItems_().filter(it=> announceIsForMe_(it, me) && !((it.acked||[]).includes(me)) && !announceIsSnoozed_(it.id));
 }
 function renderAnnouncePopup_(){
   const me=(typeof getMyself==='function')?getMyself():"";
@@ -10024,7 +10060,10 @@ function renderAnnouncePopup_(){
       <button class="btn primary" data-ap-ack="${escapeHtml(it.id)}" style="margin-top:10px;width:100%;padding:11px;font-size:15px;font-weight:800;background:#16a34a;border-color:#16a34a">✓ 確認しました</button>
     </div>`;
   }).join('');
-  foot.innerHTML=`<span style="font-size:11px;color:var(--muted)">※ 確認するまで閉じられません（確認すると自分の画面からは消えます）</span>`;
+  // ⏰ v1.30.615: 「あとで確認する」= この端末だけ ANNOUNCE_SNOOZE_LABEL 先送り(確認済みにはしない)
+  //   ⚠ スマホ(375px)でも切れないよう、ボタンは1行占有(✓確認しましたと同じ横幅いっぱい)にする
+  foot.innerHTML=`<button class="btn" id="apLater" style="flex:1 1 100%;font-size:13px;padding:9px 12px">⏰ あとで確認する<span style="font-weight:400;opacity:.75">（${ANNOUNCE_SNOOZE_LABEL}後にまた出ます）</span></button>`
+    + `<span style="flex:1 1 100%;font-size:11px;color:var(--muted);text-align:center">※ ⏰あとで は「確認」になりません</span>`;
   body.querySelectorAll('[data-ap-ack]').forEach(b=>{
     b.onclick=()=>{
       b.disabled=true; b.textContent='確認中…';
@@ -10033,6 +10072,17 @@ function renderAnnouncePopup_(){
       if(!body.querySelector('.ap-item')) ov.classList.remove('show');   // 全部確認したら閉じる
     };
   });
+  const __apLater=foot.querySelector('#apLater');
+  if(__apLater) __apLater.onclick=()=>{
+    const ids=[...body.querySelectorAll('.ap-item')].map(x=>x.dataset.aid).filter(Boolean);
+    if(!ids.length){ ov.classList.remove('show'); return; }
+    snoozeAnnounce_(ids);
+    ov.classList.remove('show');
+    // 期限が来たら自分で出し直す(2分ごとのfetchでも復活するが、待たせない)
+    setTimeout(()=>{ try{ renderAnnounceBar_(); }catch(_){} }, ANNOUNCE_SNOOZE_MS + 1000);
+    try{ renderAnnounceBar_(); }catch(_){}   // バーに⏰あとでを出す(PCは連絡が見える状態で残る)
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast(`⏰ ${ANNOUNCE_SNOOZE_LABEL}後にまた表示します（まだ確認していません）`);
+  };
   ov.classList.add('show');
 }
 function renderAnnounceBar_(){
@@ -10070,6 +10120,7 @@ function renderAnnounceBar_(){
       <span class="announce-meta">${escapeHtml(disp(it.by||''))} ${dt}${it.editedAt?' (編集済)':''} ・ 確認 ${ackN}/${tg.length}</span>
       ${announceAllAcked_(it) ? `<span class="announce-acked" style="background:#dcfce7;color:#166534;padding:1px 8px;border-radius:8px" title="宛先全員が確認しました。🗑で消してください">✅ 全員確認済み → 🗑で消す</span>` : ''}
       ${notYet.length?`<span class="announce-notyet-wrap">未:${notYet.map(s=>`<span class="announce-badge" title="${escapeHtml(disp(s))} 未確認">${escapeHtml(surnameOf_(s))}</span>`).join('')}</span>`:''}
+      ${(!iAcked && typeof announceIsSnoozed_==='function' && announceIsSnoozed_(it.id)) ? `<button class="announce-later" data-aid="${it.id}" title="⏰あとで確認する 中です。押すと解除して、いま確認画面を出します" style="background:#fef3c7;border:1px solid #f59e0b;color:#92400e;font-size:11px;font-weight:700;padding:1px 8px;border-radius:8px;cursor:pointer">⏰あとで(${escapeHtml(announceSnoozeUntil_(it.id))}まで)</button>` : ''}
       ${iAcked ? `<span class="announce-acked">✓確認済</span>` : `<button class="announce-ack" data-aid="${it.id}">✓ 確認</button>`}
       ${mine ? `<button class="announce-edit" data-aid="${it.id}" title="編集">✎</button>` : ''}
       ${mine ? `<button class="announce-del" data-aid="${it.id}" title="削除">🗑</button>` : ''}
@@ -10084,6 +10135,8 @@ function renderAnnounceBar_(){
   if(tg) tg.onclick=()=>{ try{ localStorage.setItem('bc_announce_collapsed', collapsed?'0':'1'); }catch(_){} renderAnnounceBar_(); };
   if(!collapsed){
     bar.querySelectorAll('.announce-ack').forEach(b=>b.onclick=()=>ackAnnounce_(b.dataset.aid));
+    // ⏰ あとで確認する を解除して、いま確認画面を出す(v1.30.615)
+    bar.querySelectorAll('.announce-later').forEach(b=>b.onclick=()=>{ if(typeof unsnoozeAnnounce_==='function') unsnoozeAnnounce_(b.dataset.aid); renderAnnounceBar_(); });
     bar.querySelectorAll('.announce-del').forEach(b=>b.onclick=()=>{ if(confirm('この連絡事項を削除しますか？(全員から消えます)')) deleteAnnounce_(b.dataset.aid); });
     // ✎ 投稿者の本文編集(インライン・Enter確定/Shift+Enter改行/Esc取消)v1.30.307
     bar.querySelectorAll('.announce-edit').forEach(b=>b.onclick=()=>{
