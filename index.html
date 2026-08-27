@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.631</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.632</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8924,7 +8924,9 @@ function computeDashboard_(){
     if(st==="done") o.fin++; else if(st==="wip") o.wip++; else o.todo++;
     let fd=null; if(p.finalDate){ const d=parseDate(p.finalDate); if(!isNaN(d)) fd=d; }
     if(fd && fd>=today && fd<soonLimit) o.soon++;
-    o.items.push({id:p.id, name:p.name, room:p.room, pr, st, fd, movein:(typeof restoMoveinRaw_==='function')?restoMoveinRaw_(p):(p.moveinRaw||p.moveinDate||"")});
+    o.items.push({id:p.id, name:p.name, room:p.room, pr, st, fd,
+      vol: p.workVolume || (p.workloadStatus && p.workloadStatus.level) || "",   // 🛠 工事ボリューム(激重/重/普/軽)v1.30.632
+      movein:(typeof restoMoveinRaw_==='function')?restoMoveinRaw_(p):(p.moveinRaw||p.moveinDate||"")});
   });
   // 各グループ内: 最終確認日の近い順(無しは最後)
   restoGroups.forEach(o=>o.items.sort((a,b)=>(a.fd?a.fd.getTime():9e15)-(b.fd?b.fd.getTime():9e15)));
@@ -9108,11 +9110,19 @@ function renderDashboard_(){
              <span style="font-size:10px;color:var(--muted);white-space:nowrap">${it.pr.done}/${it.pr.total}</span>
            </div>`
         : `<span style="flex:0 1 130px;min-width:76px;font-size:10px;color:#cbd5e1">自社工事なし</span>`;
+      // 🛠 工事ボリューム(重い/軽い)バッジ(v1.30.632・山田): 色は既存の__VOL_COLORSと同じ対応
+      const __VC={"激重":"#dc2626","激":"#dc2626","重":"#ea580c","普":"#eab308","普通":"#eab308","中":"#eab308","軽":"#16a34a","小":"#16a34a"};
+      const volHtml=(it.vol && it.vol!=="無")?`<span style="background:${__VC[it.vol]||'#6b7280'};color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:6px;white-space:nowrap" title="工事ボリューム">${escapeHtml(it.vol)}</span>`:'';
+      // 🏠 入居情報(v1.30.632・山田): 「9/5予定」等の予定表記も出す(parseLooseMovein_=v612と同じゆるいパース)
+      const __mi=(typeof parseLooseMovein_==='function')?parseLooseMovein_(it.movein):null;
+      const miHtml=__mi?`<span style="font-size:10.5px;font-weight:700;color:#dc2626;white-space:nowrap" title="${escapeHtml((typeof moveinTip_==='function')?moveinTip_(__mi):'入居日')}">${escapeHtml(__mi.text)}</span>`:'';
       return `<div class="dash-row" data-dr-resto="${escapeHtml(it.id)}" style="display:flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid #bfdbfe;border-left:4px solid #3b82f6;background:#fff;border-radius:8px;margin-bottom:4px;cursor:pointer;flex-wrap:wrap">
         <span style="flex:1 1 150px;min-width:120px;font-size:12px;font-weight:600;word-break:break-word">${escapeHtml(it.name)}${it.room?` <span style="font-weight:400">${escapeHtml(it.room)}</span>`:''}</span>
+        ${volHtml}
         <span style="background:${sc};color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:6px;white-space:nowrap">${sl}</span>
         ${bar}
         ${fdHtml}
+        ${miHtml}
       </div>`;
     }).join('');
     return head+rows;
