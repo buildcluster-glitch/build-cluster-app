@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.616</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.617</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -2882,7 +2882,7 @@
   <button class="nav-btn icon-only" id="gasSettingsBtnHeader" title="⚙ 設定 (GAS URL/Token)">⚙</button>
   <!-- 🚫 リセット(⟳ 全データ消去)ボタンは誤爆事故防止で撤去(山田 v1.30.222)。データ消去が必要なら Console で localStorage.removeItem("buildcluster_schedule_v1") -->
   <button class="nav-btn" id="announceBtn" title="📢 連絡事項を出す(全員 or 個別宛・確認状況を見て出した本人が🗑で消します)">📢 連絡</button>
-  <button class="nav-btn" id="addLeaveBtn" title="有給・休暇・別件を追加">＋休</button>
+  <!-- ＋休ボタンは撤去(山田 v1.30.617)。休暇の登録口は残り3つ=①日付ヘッダクリック(ホバーで＋休表示) ②🏖休日/終日帯のダブルクリック ③休暇スタッフ行の「＋」 -->
   <button class="nav-btn primary" id="addBtn">＋予定</button>
 </header>
 
@@ -19326,7 +19326,7 @@ function renderLeaveChat_(leaveId){
 }
 function closeLeaveModal(){ leaveModal.classList.remove("show"); editingLeaveId=null; }
 document.getElementById("lv-cancel").onclick = closeLeaveModal;
-document.getElementById("addLeaveBtn").onclick = ()=>openLeaveModal(null);
+// ＋休ヘッダボタンは撤去(v1.30.617)。openLeaveModalは日付ヘッダ/終日帯/休暇スタッフ行から開く
 // 📢 全員への連絡事項を追加(v1.30.302)
 // 📢 連絡事項の作成ダイアログ(v1.30.488・山田「個別宛に出したい時もある」)
 //   prompt()だと宛先を選べないため専用モーダルに。宛先=全員(既定) or 選んだ人だけ。
