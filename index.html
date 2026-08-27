@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.615</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.616</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -10799,6 +10799,7 @@ function showEventStaffPicker(el, ev){
   const __evEndOf = st => st ? `${String(Math.min(+st.slice(0,2)+1,23)).padStart(2,'0')}:${st.slice(3)}` : '10:00';
   pop.innerHTML = `
     <div class="qp-title">🚗 担当を選択 <span style="font-size:11px;color:#64748b;font-weight:400">${escapeHtml(titleLine)}</span></div>
+    ${(typeof evAuthorLine_==='function') ? evAuthorLine_(ev, {dark:false}) : ""}
     <div class="qp-sec">
       <div class="qp-label">📝 予定 <span style="font-weight:400;color:#94a3b8;font-size:10px">(フォーカスを外すと保存 / Ctrl+Enterでも)</span></div>
       <textarea id="evTitleEdit" rows="1" style="width:100%;box-sizing:border-box;padding:6px 8px;font-size:13px;border:1px solid var(--border-strong);border-radius:6px;resize:vertical;min-height:32px;line-height:1.4">${escapeHtml(ev.title||"")}</textarea>
@@ -17211,6 +17212,26 @@ function buildTipChat_(tip, headHtml, api){
   // ホバーコメントは単独Enter=改行・送信はCtrl/⌘+Enter or 送信ボタン(v1.30.380・山田「こめんとも改行できるように」)
   if(inp) inp.onkeydown=e=>{ if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)&&!e.isComposing&&e.keyCode!==229){e.preventDefault();send();} };
 }
+// 📝 予定の「誰がいつ登録したか」表示(v1.30.616・山田要望)
+//   createdBy/createdAt はクラウド同期の列として元から往復している(denormalize/normalize両対応・GAS setup.gsに列あり)。
+//   ただし従来は「push時に getMyself() で埋める」だけで、アプリ内では作っても表示してもいなかった。
+//   古い予定は createdBy が空のことがある(未ログイン端末からのpush等)→ その時は日時だけ・両方無ければ行ごと出さない。
+function evAuthorLine_(ev, opts){
+  if(!ev || ev.source === "taikyo-shared") return "";   // 立会はスプシ由来=登録者の概念が別(立会表)
+  const fmt = iso => { const d=new Date(iso); if(isNaN(d)) return ""; const p=n=>String(n).padStart(2,'0');
+    return `${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+  const by = String(ev.createdBy||"").trim();
+  const at = ev.createdAt ? fmt(ev.createdAt) : "";
+  if(!by && !at) return "";
+  const parts = [`📝 登録: ${escapeHtml(by||"?")}${at?` ${escapeHtml(at)}`:""}`];
+  // 更新が登録から5分以上あとなら「最終更新」も出す(誰が、はクラウドの列に無いので日時のみ)
+  if(ev.updatedAt && ev.createdAt){
+    const du=new Date(ev.updatedAt).getTime(), dc=new Date(ev.createdAt).getTime();
+    if(!isNaN(du) && !isNaN(dc) && du-dc > 5*60*1000) parts.push(`更新 ${escapeHtml(fmt(ev.updatedAt))}`);
+  }
+  const dark = !opts || opts.dark !== false;   // 既定=黒ポップ用の明色
+  return `<div style="font-size:10px;color:${dark?'#9ca3af':'#94a3b8'};margin-top:3px">${parts.join(' ・ ')}</div>`;
+}
 function showChipTip(ev, mouseX, mouseY){
   const tip = ensureChipTip();
   const cont = contractorInfo(ev.contractor);
@@ -17306,9 +17327,9 @@ function showChipTip(ev, mouseX, mouseY){
     const __headHtml = ()=>{
       const done = __doneEligible && typeof isEventDone_==='function' && isEventDone_(ev.id);
       const info = (done && typeof eventDoneInfo_==='function') ? eventDoneInfo_(ev.id) : null;
-      const t = done
+      const t = (done
         ? `<div class="tt-title">${escapeHtml(ev.title || "(無題)")} ✅</div>`
-        : titleHtml;
+        : titleHtml) + ((typeof evAuthorLine_==='function') ? evAuthorLine_(ev) : "");   // 📝 誰がいつ登録したか(v1.30.616)
       if(!__doneEligible) return t;
       const btn = done
         ? `<button class="tt-done-btn" style="background:#16a34a;color:#fff;border:0;border-radius:6px;font-size:11.5px;font-weight:700;padding:5px 10px;cursor:pointer">✓ 完了済み（タップで取消）</button>${(info&&info.by)?`<span style="font-size:10px;color:#9ca3af;margin-left:6px">${escapeHtml(info.by)}</span>`:''}`
@@ -17343,7 +17364,7 @@ function showChipTip(ev, mouseX, mouseY){
     buildTipChat_(tip, titleHtml, api);   // 立会も通常予定と同様、詳細行は省きコメント中心(v1.30.79)
   } else {
     tip.classList.remove('interactive');
-    tip.innerHTML = titleHtml + rows.join("") + memoHtml + commentsHtml;
+    tip.innerHTML = titleHtml + ((typeof evAuthorLine_==='function') ? evAuthorLine_(ev) : "") + rows.join("") + memoHtml + commentsHtml;
   }
   // 位置決め(マウス右下、ウィンドウ範囲チェック)
   const margin = 14;
@@ -19192,6 +19213,9 @@ document.getElementById("ev-save").onclick = ()=>{
   const importance = impSel ? [impSel] : []; // 配列形式は維持(既存表示コード互換)
   const data = {
     id: editingEventId || uid(),
+    // 📝 登録者/登録日時(v1.30.616): 編集では既存値を保持(従来はここで消えて次のpullまで空白だった)・新規は刻印
+    createdBy: existing?.createdBy || ((typeof getMyself==='function' ? getMyself() : "") || ""),
+    createdAt: existing?.createdAt || new Date().toISOString(),
     title,
     category: document.getElementById("ev-category").value,
     contractor: document.getElementById("ev-contractor").value,
@@ -20407,6 +20431,8 @@ function showQuickAddSheet_(defaults={}, editEv=null){
       date: d, start: posS, end: __allday ? "23:59" : endOf(posS), allday: __allday, timeMode: __tMode,
       ...(__allday ? {freeTop:0} : {}),
       color:"", memo:"", commute: __commuteStr(), importance: [], updatedAt: new Date().toISOString(),
+      // 📝 誰がいつ登録したか(v1.30.616)。従来はpush時にgetMyself()で埋めていた=作成時に刻印する方が正確
+      createdBy: (typeof getMyself==='function' ? getMyself() : "") || "", createdAt: new Date().toISOString(),
     };
     if(typeof pushHistory==='function') pushHistory();
     state.events.push(ev);
