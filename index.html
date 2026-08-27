@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.630</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.631</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -2921,6 +2921,7 @@
   <button data-mnav="inventory">📦<span>在庫</span></button>
   <button data-mnav="material">🧾<span>材料</span></button>
   <button data-mnav="tanka">💴<span>単価</span></button>
+  <button data-mnav="dash">📊<span>全体進捗</span></button>
   <button data-mnav="gantt">📊<span>進捗</span></button>
 </nav>
 
@@ -20461,6 +20462,7 @@ function openGanttModal_(){
 document.querySelectorAll('#mobileNav button').forEach(b=>{
   b.onclick = ()=>{
     const k = b.dataset.mnav;
+    if(k === 'dash'){ openDashboard_(); return; }    // 📊 全体進捗もモーダル(v1.30.631・スマホ下部ナビに追加)
     if(k === 'tanka'){ openTankaModal_(); return; }   // 💴 単価表はビュー切替でなくモーダル
     if(k === 'gantt'){ openGanttModal_(); return; }   // 📊 進捗ガントも同様にモーダル
     if(k === 'material'){ openMaterialModal_(); return; }   // 🧾 材料注文の報告(v1.30.540)
