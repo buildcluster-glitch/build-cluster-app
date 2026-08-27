@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.623</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.624</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8957,7 +8957,7 @@ function ensureDashboardModal_(){
       <div class="modal-header">📊 全体進捗 <span style="font-weight:400;font-size:11px;color:var(--muted)">元請け別の案件量と進捗(全員向け)</span></div>
       <div class="modal-body" id="dash-body" style="max-height:76vh;overflow:auto"></div>
       <div class="modal-footer">
-        <span style="font-size:10px;color:var(--muted);margin-right:auto">完了処理済みの案件は数えていません。行タップでその案件へ飛びます</span>
+        <span style="font-size:10px;color:var(--muted);margin-right:auto">完了処理済みの案件は数えていません。行タップで詳細が開きます</span>
         <button class="btn" id="dash-close">閉じる</button>
       </div>
     </div>`;
@@ -9080,8 +9080,10 @@ function renderDashboard_(){
     render();
   });
   body.querySelectorAll('[data-dr-rep]').forEach(el=>el.onclick=()=>{
-    ov.classList.remove('show');
-    currentView='repair'; render();
+    ov.classList.remove('show');   // ⚠ 同じz700のmodal-overlay同士でダッシュボードが上に重なるため、閉じてから開く
+    // 🔧 v1.30.624(山田): タブ切替でなく、その修繕の詳細シート(進捗・ステータス・チャットを直接変えられる)を開く
+    if(typeof openRepairSheet==='function'){ try{ openRepairSheet(el.dataset.drRep); return; }catch(e){ console.warn('[dash] 修繕シート失敗', e); } }
+    currentView='repair'; render();   // フォールバック(シートが開けない時だけ従来の修繕タブへ)
   });
 }
 function openDashboard_(){
