@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.627</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.628</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8955,6 +8955,48 @@ function computeDashboard_(){
   repGroups.forEach(o=>{ tot.repN+=o.items.length; tot.apoMi+=o.apoMi; });
   return {restoGroups, repGroups, restoOrder:order(restoGroups), repOrder:order(repGroups), tot, today, soonLimit};
 }
+// 📈 忙しさの日次記録(v1.30.628・山田「いつが一番忙しいか記録とりたい」)
+//   1日1回、全体進捗と同じ集計値を shared-config 'workload_history' に書く(全端末共有)。
+//   書くのは「その日の記録がまだ無い」と気づいた最初の端末だけ(端末側に既記録メモ)=書込は全社で1回/日。
+//   形式: { "2026-08-27": {r,td,w,f,tt,tdn,s,m,a}, ... } r=原状回復件数/td=未着手/w=施工中/f=工事済/
+//   tt=タスク総数/tdn=タスク完了数/s=最確7日内/m=修繕件数/a=アポ未。400日で剪定(セル上限対策)。
+//   ⚠DB(Supabase)への保存はまだできない: アプリ→DBの書き込み経路が無い(切替とロールバック手順書の穴B・
+//   authenticatedはSELECTのみ)。9月の書き込み切替でDBテーブル化する前提で、それまでの記録をここに貯める。
+const WORKLOAD_KEY='workload_history';
+let __workloadHist=null;   // date→rec (メモリキャッシュ)
+function __workloadToday_(){ const d=new Date(); return fmtDate(d); }
+async function fetchWorkloadHistory_(opts={}){
+  const s2=loadGasSettings();
+  if(!s2.url||!s2.token) return __workloadHist||{};
+  try{
+    const res=await fetch(`${s2.url}?action=get-shared-config&key=${WORKLOAD_KEY}&token=${encodeURIComponent(s2.token)}&t=${Date.now()}`,{redirect:'follow'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const d=await res.json(); let raw=d.value;
+    if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(_){ raw=null; } }
+    __workloadHist=(raw&&typeof raw==='object'&&!Array.isArray(raw))?raw:{};
+  }catch(e){ if(!opts.silent) console.warn('[workload] fetch失敗:', e.message); if(!__workloadHist) __workloadHist={}; }
+  return __workloadHist;
+}
+async function maybeRecordWorkload_(){
+  try{
+    const today=__workloadToday_();
+    if(localStorage.getItem('bc_workload_recorded')===today) return;   // この端末は今日確認済み
+    const s2=loadGasSettings(); if(!s2.url||!s2.token) return;
+    const hist=await fetchWorkloadHistory_({silent:true});
+    if(hist[today]){ try{ localStorage.setItem('bc_workload_recorded', today); }catch(_){} return; }   // 他端末が記録済み
+    const {tot}=computeDashboard_();
+    if(!tot.restoN && !tot.repN && !tot.taskTotal) return;   // 同期前の空stateを記録しない(0件の日を偽造しない)
+    hist[today]={r:tot.restoN, td:tot.todo, w:tot.wip, f:tot.fin, tt:tot.taskTotal, tdn:tot.taskDone, s:tot.soon, m:tot.repN, a:tot.apoMi};
+    // 400日より古い記録は剪定
+    const lim=new Date(); lim.setDate(lim.getDate()-400); const limIso=fmtDate(lim);
+    Object.keys(hist).forEach(k=>{ if(k<limIso) delete hist[k]; });
+    await fetch(s2.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({action:'save-shared-config',key:WORKLOAD_KEY,value:JSON.stringify(hist),token:s2.token,savedBy:'calendar-app'})});
+    __workloadHist=hist;
+    try{ localStorage.setItem('bc_workload_recorded', today); }catch(_){}
+    console.log('[workload] 本日の稼働記録を保存:', today, hist[today]);
+  }catch(e){ console.warn('[workload] 記録失敗(明日また試す):', e.message); }
+}
 function ensureDashboardModal_(){
   if(document.getElementById('dashboardModal')) return;
   const ov=document.createElement('div'); ov.className='modal-overlay'; ov.id='dashboardModal';
@@ -8970,6 +9012,30 @@ function ensureDashboardModal_(){
   document.body.appendChild(ov);
   ov.onclick=e=>{ if(e.target===ov) ov.classList.remove('show'); };
   ov.querySelector('#dash-close').onclick=()=>ov.classList.remove('show');
+}
+// 📈 直近14日の忙しさ(全体進捗の最下段)。元請け/種別フィルタは効かせない=会社全体の定点観測
+function __workloadSectionHtml_(){
+  const hist=__workloadHist;
+  if(hist===null) return `<div style="margin-top:14px;font-size:11px;color:var(--muted)">📈 忙しさの記録を読み込み中…</div>`;
+  const days=Object.keys(hist).sort().slice(-14);
+  const head=`<div style="font-size:13px;font-weight:800;margin:16px 0 2px;padding-bottom:3px;border-bottom:2px solid #64748b">📈 忙しさの記録 <span style="font-weight:400;font-size:10px;color:var(--muted)">毎日自動で保存(全端末共有)・原状回復+修繕の抱え数</span></div>`;
+  if(!days.length) return head+`<div style="font-size:11px;color:var(--muted);padding:6px 0">まだ記録がありません。今日から毎日1回、同期のタイミングで自動保存されます</div>`;
+  const totals=days.map(d=>({d, rec:hist[d], sum:(hist[d].r||0)+(hist[d].m||0)}));
+  const max=Math.max(1, ...totals.map(x=>x.sum));
+  const rows=totals.slice().reverse().map(x=>{
+    const dt=parseDate(x.d); const lbl=isNaN(dt)?x.d:`${dt.getMonth()+1}/${dt.getDate()}(${DOW_JA[dt.getDay()]})`;
+    const isMax=x.sum===max && totals.length>1;
+    const remain=(x.rec.tt||0)-(x.rec.tdn||0);
+    return `<div style="display:flex;align-items:center;gap:7px;margin-bottom:3px" title="原状回復${x.rec.r}件(未${x.rec.td}/中${x.rec.w}/済${x.rec.f}) ・ 修繕${x.rec.m}件(アポ未${x.rec.a}) ・ タスク残${remain} ・ 最確7日内${x.rec.s}">
+      <span style="width:66px;flex-shrink:0;font-size:10.5px;color:var(--muted);white-space:nowrap">${lbl}</span>
+      <div style="flex:1;height:13px;background:#f1f5f9;border-radius:5px;overflow:hidden;display:flex">
+        <div style="width:${Math.round((x.rec.r||0)/max*100)}%;background:#3b82f6" title="原状回復"></div>
+        <div style="width:${Math.round((x.rec.m||0)/max*100)}%;background:#ec4899" title="修繕"></div>
+      </div>
+      <span style="width:88px;text-align:right;font-size:10.5px;white-space:nowrap;${isMax?'color:#dc2626;font-weight:800':'color:var(--muted)'}">${isMax?'🔥':''}計${x.sum}<span style="opacity:.7">(残${remain})</span></span>
+    </div>`;
+  }).join('');
+  return head+rows+`<div style="font-size:9.5px;color:var(--muted);margin-top:2px">青=原状回復 / 桃=修繕。行にマウスで内訳。⚠DB保存は9月の書き込み切替後に移行予定(それまでここに蓄積)</div>`;
 }
 let __dashClientFilter = '';   // 📊 元請け絞り込み(''=全て・セッション中は記憶)v1.30.621
 let __dashKindFilter = '';     // 📊 種別絞り込み(''=両方 / 'resto'=原状回復 / 'rep'=修繕)v1.30.623
@@ -9074,7 +9140,10 @@ function renderDashboard_(){
     + (showRep ? `<div style="border:2px solid #ec4899;border-radius:12px;background:#fdf2f8;padding:0 8px 6px">
          <div style="background:#ec4899;color:#fff;font-size:13.5px;font-weight:800;padding:6px 12px;border-radius:0 0 9px 9px;margin:0 -8px 8px;display:flex;align-items:center;gap:8px">🔧 修繕 <span style="font-size:11px;font-weight:700;background:rgba(255,255,255,.25);padding:1px 8px;border-radius:8px">${tot.repN}件</span><span style="font-size:10px;font-weight:400;opacity:.85">入居中の修理対応</span></div>
          ${repHtml}
-       </div>` : '');
+       </div>` : '')
+    + __workloadSectionHtml_();
+  // 📈 記録の遅延取得: キャッシュ未取得なら取りに行き、開いたまま待っている人に描き足す
+  if(__workloadHist===null){ fetchWorkloadHistory_({silent:true}).then(()=>{ const m=document.getElementById('dashboardModal'); if(m&&m.classList.contains('show')) renderDashboard_(); }); }
   // 🏢 元請けタブ切替(再描画・スクロール位置は先頭へ)
   body.querySelectorAll('[data-dcf]').forEach(b=>b.onclick=()=>{ __dashClientFilter=b.dataset.dcf; renderDashboard_(); body.scrollTop=0; });
   body.querySelectorAll('[data-dkf]').forEach(b=>b.onclick=()=>{ __dashKindFilter=b.dataset.dkf; renderDashboard_(); body.scrollTop=0; });
@@ -14385,6 +14454,8 @@ async function syncChecksFromGAS(opts){
     if(!__partial) localStorage.setItem("buildcluster_drive_full_at", String(Date.now()));
     lastAutoSyncAt = Date.now();
     __drvRetryN = 0;   // 🔁 成功したらリトライ回数リセット(v1.30.539)
+    // 📈 忙しさの日次記録(v1.30.628): 同期直後=データが新しい時に1日1回だけ。失敗しても本流に影響なし
+    setTimeout(()=>{ try{ if(typeof maybeRecordWorkload_==='function') maybeRecordWorkload_(); }catch(_){} }, 3000);
     render();
     if(silent){
       if(_drvSilentShown) hideSyncIndicator("success", "ドライブ同期完了");   // 遅延表示してたら閉じる(✅はhideSyncIndicatorが付与)
