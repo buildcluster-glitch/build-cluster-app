@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.619</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.620</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8906,54 +8906,58 @@ function __dashClientColor_(name){
   return `hsl(${h%360},55%,45%)`;
 }
 function computeDashboard_(){
-  const groups=new Map();
-  const g=k=>{ if(!groups.has(k)) groups.set(k,{restoN:0,todo:0,wip:0,fin:0,taskDone:0,taskTotal:0,soon:0,repN:0,apoMi:0}); return groups.get(k); };
   const today=new Date(); today.setHours(0,0,0,0);
   const soonLimit=new Date(today); soonLimit.setDate(soonLimit.getDate()+7);
-  // 🏠 原状回復(完了処理済み=completeDateあり は除外・工程持ち修繕(_repairResto)は修繕側で数える)
+  // 🏠 原状回復(完了処理済み=completeDateあり は除外・工程持ち修繕(_repairResto)は修繕でなく原状回復にも入れない)
+  const restoGroups=new Map(), repGroups=new Map();
+  const g=(m,k)=>{ if(!m.has(k)) m.set(k,{items:[],taskDone:0,taskTotal:0,todo:0,wip:0,fin:0,apoMi:0,soon:0}); return m.get(k); };
   (state.restorations||[]).forEach(p=>{
     if(!p || p._repairResto || restoIsArchived(p)) return;
-    const o=g(__dashClientKey_(p.client, p.clientCat));
-    o.restoN++;
+    const o=g(restoGroups,__dashClientKey_(p.client, p.clientCat));
     const pr=restoProgress(p); o.taskDone+=pr.done; o.taskTotal+=pr.total;
     const st=restoDominantStatus(p);
     if(st==="done") o.fin++; else if(st==="wip") o.wip++; else o.todo++;
-    if(p.finalDate){ const d=parseDate(p.finalDate); if(!isNaN(d)&&d>=today&&d<soonLimit) o.soon++; }
+    let fd=null; if(p.finalDate){ const d=parseDate(p.finalDate); if(!isNaN(d)) fd=d; }
+    if(fd && fd>=today && fd<soonLimit) o.soon++;
+    o.items.push({id:p.id, name:p.name, room:p.room, pr, st, fd, movein:(typeof restoMoveinRaw_==='function')?restoMoveinRaw_(p):(p.moveinRaw||p.moveinDate||"")});
   });
-  // 🔧 修繕(完了日ありは除外。extractRepairsが「アクティブのみ」に絞った後のstate.repairsが母集団)
+  // 各グループ内: 最終確認日の近い順(無しは最後)
+  restoGroups.forEach(o=>o.items.sort((a,b)=>(a.fd?a.fd.getTime():9e15)-(b.fd?b.fd.getTime():9e15)));
+  // 🔧 修繕(完了日ありは除外)
   (state.repairs||[]).forEach(r=>{
     if(!r || r.completeDate) return;
-    const o=g(__dashClientKey_(r.contractor));
-    o.repN++;
-    if((r.workflowStatus||"アポ・手配 未")==="アポ・手配 未") o.apoMi++;
+    const o=g(repGroups,__dashClientKey_(r.contractor));
+    const wf=r.workflowStatus||"アポ・手配 未";
+    if(wf==="アポ・手配 未") o.apoMi++;
+    let ad=null; if(r.responseDate){ const d=parseDate(r.responseDate); if(!isNaN(d)) ad=d; }
+    o.items.push({id:r.id, name:r.name, room:r.room, wf, ad, time:r.responseTime||"", worker:firstWorker_(r.worker||""), desc:(r.requestDesc||"").slice(0,30)});
   });
-  // 並び: 固定3(山一/みどり/自社) → 案件数の多い順 → その他(未指定)
-  const FIXED=["山一地所","みどり不動産","自社工事"];
-  const keys=[...groups.keys()];
-  const dyn=keys.filter(k=>!FIXED.includes(k)&&k!=="その他(未指定)").sort((a,b)=>{ const A=groups.get(a),B=groups.get(b); return (B.restoN+B.repN)-(A.restoN+A.repN); });
-  const ordered=[...FIXED.filter(k=>groups.has(k)), ...dyn, ...(groups.has("その他(未指定)")?["その他(未指定)"]:[])];
-  // 👷 スタッフ負荷(今日から7日間の割当件数: 予定+共有立会+最終確認+修繕アポ)
-  const inWeek=iso=>{ if(!iso) return false; const d=parseDate(String(iso).slice(0,10)); return !isNaN(d)&&d>=today&&d<soonLimit; };
-  const load=new Map(); (typeof STAFF!=='undefined'?STAFF:[]).forEach(s2=>load.set(s2,0));
-  const add=name=>{ const n=String(name||"").trim(); if(n&&load.has(n)) load.set(n,load.get(n)+1); };
-  (state.events||[]).forEach(ev=>{ if(!ev||!inWeek(ev.date)) return; add(ev.staff); (ev.participants||[]).forEach(add); });
-  try{ ((typeof buildTaikyoVirtuals_==='function')?buildTaikyoVirtuals_():[]).forEach(v=>{ if(v&&inWeek(v.date)) parseWorkers_(v.staff||"").forEach(add); }); }catch(_){}
-  (state.checks||[]).forEach(ck=>{ if(ck&&inWeek(ck.checkDate)) parseWorkers_(ck.staff||"").forEach(add); });
-  (state.repairs||[]).forEach(r=>{ if(r&&!r.completeDate&&inWeek(r.responseDate)) add(firstWorker_(r.worker||"")); });
-  // 合計
+  // 各グループ内: アポ未を先頭 → アポ日の近い順
+  repGroups.forEach(o=>o.items.sort((a,b)=>{
+    const au=a.wf==="アポ・手配 未"?0:1, bu=b.wf==="アポ・手配 未"?0:1;
+    if(au!==bu) return au-bu;
+    return (a.ad?a.ad.getTime():9e15)-(b.ad?b.ad.getTime():9e15);
+  }));
+  const order=m=>{
+    const FIXED=["山一地所","みどり不動産","自社工事"];
+    const keys=[...m.keys()];
+    const dyn=keys.filter(k=>!FIXED.includes(k)&&k!=="その他(未指定)").sort((a,b)=>m.get(b).items.length-m.get(a).items.length);
+    return [...FIXED.filter(k=>m.has(k)), ...dyn, ...(m.has("その他(未指定)")?["その他(未指定)"]:[])];
+  };
   const tot={restoN:0,todo:0,wip:0,fin:0,taskDone:0,taskTotal:0,soon:0,repN:0,apoMi:0};
-  groups.forEach(o=>{ for(const k in tot) tot[k]+=o[k]; });
-  return {groups, ordered, tot, load};
+  restoGroups.forEach(o=>{ tot.restoN+=o.items.length; tot.todo+=o.todo; tot.wip+=o.wip; tot.fin+=o.fin; tot.taskDone+=o.taskDone; tot.taskTotal+=o.taskTotal; tot.soon+=o.soon; });
+  repGroups.forEach(o=>{ tot.repN+=o.items.length; tot.apoMi+=o.apoMi; });
+  return {restoGroups, repGroups, restoOrder:order(restoGroups), repOrder:order(repGroups), tot, today, soonLimit};
 }
 function ensureDashboardModal_(){
   if(document.getElementById('dashboardModal')) return;
   const ov=document.createElement('div'); ov.className='modal-overlay'; ov.id='dashboardModal';
   ov.innerHTML=`
-    <div class="modal" style="max-width:680px;width:96vw">
-      <div class="modal-header">📊 全体進捗 <span style="font-weight:400;font-size:11px;color:var(--muted)">元請け別の案件量と進捗・今週のスタッフ負荷</span></div>
+    <div class="modal" style="max-width:720px;width:96vw">
+      <div class="modal-header">📊 全体進捗 <span style="font-weight:400;font-size:11px;color:var(--muted)">元請け別の案件量と進捗(全員向け)</span></div>
       <div class="modal-body" id="dash-body" style="max-height:76vh;overflow:auto"></div>
       <div class="modal-footer">
-        <span style="font-size:10px;color:var(--muted);margin-right:auto">完了処理済みの案件は数えていません。開いた時点の同期データで計算します</span>
+        <span style="font-size:10px;color:var(--muted);margin-right:auto">完了処理済みの案件は数えていません。行タップでその案件へ飛びます</span>
         <button class="btn" id="dash-close">閉じる</button>
       </div>
     </div>`;
@@ -8963,51 +8967,85 @@ function ensureDashboardModal_(){
 }
 function renderDashboard_(){
   const body=document.getElementById('dash-body'); if(!body) return;
-  const {groups, ordered, tot, load}=computeDashboard_();
+  const {restoGroups, repGroups, restoOrder, repOrder, tot, today, soonLimit}=computeDashboard_();
   const pct=(d,t)=>t?Math.round(d/t*100):0;
   const pctBg=v=>v===100?"#16a34a":v>=50?"#3b82f6":"#94a3b8";
+  const md=d=>d?`${d.getMonth()+1}/${d.getDate()}`:"";
   const tile=(icon,label,big,sub,color)=>`<div style="flex:1 1 130px;min-width:0;border:1px solid var(--border);border-radius:10px;padding:8px 10px;background:#fff">
     <div style="font-size:11px;color:var(--muted);white-space:nowrap">${icon} ${label}</div>
     <div style="font-size:22px;font-weight:800;color:${color||'#0f172a'};line-height:1.2">${big}</div>
     ${sub?`<div style="font-size:10px;color:var(--muted)">${sub}</div>`:''}
   </div>`;
   const taskRemain=tot.taskTotal-tot.taskDone;
-  const tiles=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+  const tiles=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
     ${tile('🏠','原状回復 進行中', tot.restoN+'件', `未着手${tot.todo} ・ 施工中${tot.wip} ・ 工事済${tot.fin}`)}
     ${tile('🛠','自社工事タスク 残', taskRemain, `全${tot.taskTotal} (${pct(tot.taskDone,tot.taskTotal)}%完了)`, taskRemain>=60?'#dc2626':taskRemain>=30?'#d97706':'#16a34a')}
     ${tile('🔧','修繕 対応中', tot.repN+'件', `うちアポ未 ${tot.apoMi}件`, tot.apoMi>=8?'#dc2626':tot.apoMi>=4?'#d97706':'#0f172a')}
     ${tile('📋','7日以内の最終確認', tot.soon+'件','', tot.soon>=8?'#dc2626':'#0f172a')}
   </div>`;
-  // 元請け別テーブル(行=カード。スマホでも折り返して読める)
-  const rows=ordered.map(k=>{
-    const o=groups.get(k); const col=__dashClientColor_(k); const p2=pct(o.taskDone,o.taskTotal);
-    const bar=o.taskTotal?`<div style="flex:1 1 120px;min-width:90px;display:flex;align-items:center;gap:5px">
-        <div style="flex:1;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden"><div style="width:${p2}%;height:100%;background:${pctBg(p2)}"></div></div>
-        <span style="font-size:10px;color:var(--muted);white-space:nowrap">自社${o.taskDone}/${o.taskTotal}(${p2}%)</span>
-      </div>`:`<div style="flex:1 1 120px;min-width:90px;font-size:10px;color:var(--muted)">自社工事なし</div>`;
-    return `<div style="border:1px solid var(--border);border-radius:9px;padding:7px 10px;margin-bottom:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <span style="background:${col};color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;white-space:nowrap">${escapeHtml(k)}</span>
-      <span style="font-size:12px;white-space:nowrap">🏠 <b>${o.restoN}</b>件${o.restoN?`<span style="font-size:10px;color:var(--muted)">（未${o.todo}・中${o.wip}・済${o.fin}）</span>`:''}</span>
-      ${bar}
-      <span style="font-size:12px;white-space:nowrap">🔧 <b>${o.repN}</b>件${o.apoMi?`<span style="font-size:10px;color:#dc2626;font-weight:700">（アポ未${o.apoMi}）</span>`:''}</span>
-      ${o.soon?`<span style="font-size:10px;background:#fef3c7;color:#92400e;font-weight:700;padding:1px 7px;border-radius:6px;white-space:nowrap">最確7日内 ${o.soon}</span>`:''}
+  const ST_PILL={todo:['未着手','#94a3b8'], wip:['施工中','#3b82f6'], done:['工事済','#16a34a']};
+  const groupHead=(k,extra)=>`<div style="display:flex;align-items:center;gap:7px;margin:9px 0 4px">
+      <span style="background:${__dashClientColor_(k)};color:#fff;font-size:11px;font-weight:700;padding:2px 9px;border-radius:6px">${escapeHtml(k)}</span>${extra||''}
     </div>`;
-  }).join('') || '<div style="text-align:center;padding:18px;color:var(--muted)">進行中の案件がありません</div>';
-  // 👷 スタッフ負荷(今週の割当件数)
-  const loads=[...load.entries()].filter(([n])=>!/外注|失注/.test(n));
-  const maxL=Math.max(1, ...loads.map(([,v])=>v));
-  const staffRows=loads.sort((a,b)=>b[1]-a[1]).map(([n,v])=>{
-    const c=STAFF_COLORS[n]||STAFF_COLORS[normalizeStaffName(n)]||'#9ca3af';
-    return `<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px">
-      <span style="width:74px;flex-shrink:0;font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(n)}</span>
-      <div style="flex:1;height:12px;background:#f1f5f9;border-radius:6px;overflow:hidden"><div style="width:${Math.round(v/maxL*100)}%;height:100%;background:${c};min-width:${v?4:0}px"></div></div>
-      <span style="width:34px;text-align:right;font-size:11px;font-weight:700">${v}件</span>
-    </div>`;
-  }).join('');
+  // 🏠 原状回復: 元請けごとに物件リスト(行タップで原状回復タブの詳細へ)
+  const restoHtml = restoOrder.map(k=>{
+    const o=restoGroups.get(k); const p2=pct(o.taskDone,o.taskTotal);
+    const head=groupHead(k, `<span style="font-size:11px;color:var(--muted)"><b>${o.items.length}</b>件 ・ 自社${o.taskDone}/${o.taskTotal}(${p2}%)</span>`);
+    const rows=o.items.map(it=>{
+      const [sl,sc]=ST_PILL[it.st]||ST_PILL.todo;
+      const fdSoon = it.fd && it.fd>=today && it.fd<soonLimit;
+      const fdOver = it.fd && it.fd<today;
+      const fdHtml = it.fd
+        ? `<span style="font-size:10.5px;font-weight:700;white-space:nowrap;color:${fdOver?'#dc2626':fdSoon?'#d97706':'var(--muted)'}">${fdOver?'⚠':''}最確${md(it.fd)}</span>`
+        : `<span style="font-size:10.5px;color:#cbd5e1;white-space:nowrap">最確なし</span>`;
+      const bar = it.pr.total
+        ? `<div style="flex:0 1 130px;min-width:76px;display:flex;align-items:center;gap:4px">
+             <div style="flex:1;height:7px;background:#e5e7eb;border-radius:4px;overflow:hidden"><div style="width:${it.pr.pct}%;height:100%;background:${pctBg(it.pr.pct)}"></div></div>
+             <span style="font-size:10px;color:var(--muted);white-space:nowrap">${it.pr.done}/${it.pr.total}</span>
+           </div>`
+        : `<span style="flex:0 1 130px;min-width:76px;font-size:10px;color:#cbd5e1">自社工事なし</span>`;
+      return `<div class="dash-row" data-dr-resto="${escapeHtml(it.id)}" style="display:flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid var(--border);border-radius:8px;margin-bottom:4px;cursor:pointer;flex-wrap:wrap">
+        <span style="flex:1 1 150px;min-width:120px;font-size:12px;font-weight:600;word-break:break-word">${escapeHtml(it.name)}${it.room?` <span style="font-weight:400">${escapeHtml(it.room)}</span>`:''}</span>
+        <span style="background:${sc};color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:6px;white-space:nowrap">${sl}</span>
+        ${bar}
+        ${fdHtml}
+      </div>`;
+    }).join('');
+    return head+rows;
+  }).join('') || '<div style="color:var(--muted);font-size:12px;padding:8px">進行中の原状回復はありません</div>';
+  // 🔧 修繕: 元請けごとに物件リスト(行タップで修繕タブへ)
+  const WF_COLORS={"アポ・手配 済":"#16a34a","アポ・手配 未":"#dc2626","待機":"#eab308","長期連絡なし":"#dc2626"};
+  const repHtml = repOrder.map(k=>{
+    const o=repGroups.get(k);
+    const head=groupHead(k, `<span style="font-size:11px;color:var(--muted)"><b>${o.items.length}</b>件${o.apoMi?` ・ <span style="color:#dc2626;font-weight:700">アポ未${o.apoMi}</span>`:''}</span>`);
+    const rows=o.items.map(it=>{
+      const wc=WF_COLORS[it.wf]||'#0891b2';
+      const apo = it.ad ? `<span style="font-size:10.5px;font-weight:700;white-space:nowrap;color:${it.ad<today?'#dc2626':'var(--muted)'}">📞${md(it.ad)}${it.time?` ${escapeHtml(it.time)}`:''}</span>` : '';
+      return `<div class="dash-row" data-dr-rep="${escapeHtml(it.id)}" style="display:flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid var(--border);border-radius:8px;margin-bottom:4px;cursor:pointer;flex-wrap:wrap">
+        <span style="flex:1 1 150px;min-width:120px;font-size:12px;font-weight:600;word-break:break-word">${escapeHtml(it.name)}${it.room?` <span style="font-weight:400">${escapeHtml(it.room)}</span>`:''}
+          ${it.desc?`<span style="font-weight:400;font-size:10px;color:var(--muted)"> ${escapeHtml(it.desc)}</span>`:''}</span>
+        <span style="background:${wc};color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:6px;white-space:nowrap">${escapeHtml(it.wf)}</span>
+        ${apo}
+        ${it.worker?`<span style="font-size:10.5px;color:var(--muted);white-space:nowrap">👷${escapeHtml(it.worker)}</span>`:''}
+      </div>`;
+    }).join('');
+    return head+rows;
+  }).join('') || '<div style="color:var(--muted);font-size:12px;padding:8px">対応中の修繕はありません</div>';
   body.innerHTML = tiles
-    + `<div style="font-size:12px;font-weight:700;margin:2px 0 6px">🏢 元請け別</div>` + rows
-    + `<div style="font-size:12px;font-weight:700;margin:12px 0 6px">👷 今週のスタッフ負荷 <span style="font-weight:400;font-size:10px;color:var(--muted)">(今日から7日間の割当: 予定+立会+最終確認+修繕アポ)</span></div>`
-    + staffRows;
+    + `<div style="font-size:13px;font-weight:800;margin:2px 0 2px;padding-bottom:3px;border-bottom:2px solid #3b82f6">🏠 原状回復</div>` + restoHtml
+    + `<div style="font-size:13px;font-weight:800;margin:16px 0 2px;padding-bottom:3px;border-bottom:2px solid #ec4899">🔧 修繕</div>` + repHtml;
+  // 行タップ: その案件へ飛ぶ(原状回復=詳細ダイアログ / 修繕=修繕タブ)
+  const ov=document.getElementById('dashboardModal');
+  body.querySelectorAll('[data-dr-resto]').forEach(el=>el.onclick=()=>{
+    ov.classList.remove('show');
+    currentView='resto'; if(typeof restoTaskStatusFilter!=='undefined') restoTaskStatusFilter=null;
+    restoDetailId=el.dataset.drResto;
+    render();
+  });
+  body.querySelectorAll('[data-dr-rep]').forEach(el=>el.onclick=()=>{
+    ov.classList.remove('show');
+    currentView='repair'; render();
+  });
 }
 function openDashboard_(){
   ensureDashboardModal_();
