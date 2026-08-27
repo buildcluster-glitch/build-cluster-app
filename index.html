@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.622</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.623</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8966,6 +8966,7 @@ function ensureDashboardModal_(){
   ov.querySelector('#dash-close').onclick=()=>ov.classList.remove('show');
 }
 let __dashClientFilter = '';   // 📊 元請け絞り込み(''=全て・セッション中は記憶)v1.30.621
+let __dashKindFilter = '';     // 📊 種別絞り込み(''=両方 / 'resto'=原状回復 / 'rep'=修繕)v1.30.623
 function renderDashboard_(){
   const body=document.getElementById('dash-body'); if(!body) return;
   let {restoGroups, repGroups, restoOrder, repOrder, tot, today, soonLimit}=computeDashboard_();
@@ -8976,6 +8977,11 @@ function renderDashboard_(){
     <button data-dcf="" style="border:1px solid var(--border-strong);border-radius:14px;padding:3px 11px;font-size:11px;font-weight:700;cursor:pointer;${__dashClientFilter===''?'background:#0f172a;color:#fff':'background:#fff;color:#334155'}">全て</button>
     ${allKeys.map(k=>{ const on=__dashClientFilter===k; const c=__dashClientColor_(k);
       return `<button data-dcf="${escapeHtml(k)}" style="border:1px solid ${c};border-radius:14px;padding:3px 11px;font-size:11px;font-weight:700;cursor:pointer;${on?`background:${c};color:#fff`:`background:#fff;color:${c}`}">${escapeHtml(k)}</button>`;
+    }).join('')}
+    <span style="flex-basis:100%;height:0"></span>
+    ${[['','両方','#0f172a'],['resto','🏠 原状回復','#3b82f6'],['rep','🔧 修繕','#ec4899']].map(([v,l,c])=>{
+      const on=__dashKindFilter===v;
+      return `<button data-dkf="${v}" style="border:1px solid ${c};border-radius:14px;padding:3px 11px;font-size:11px;font-weight:700;cursor:pointer;${on?`background:${c};color:#fff`:`background:#fff;color:${c}`}">${l}</button>`;
     }).join('')}
   </div>`;
   if(__dashClientFilter){
@@ -8995,11 +9001,13 @@ function renderDashboard_(){
     ${sub?`<div style="font-size:10px;color:var(--muted)">${sub}</div>`:''}
   </div>`;
   const taskRemain=tot.taskTotal-tot.taskDone;
+  const showResto = __dashKindFilter!=='rep';
+  const showRep   = __dashKindFilter!=='resto';
   const tiles=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-    ${tile('🏠','原状回復 進行中', tot.restoN+'件', `未着手${tot.todo} ・ 施工中${tot.wip} ・ 工事済${tot.fin}`)}
-    ${tile('🛠','自社工事タスク 残', taskRemain, `全${tot.taskTotal} (${pct(tot.taskDone,tot.taskTotal)}%完了)`, taskRemain>=60?'#dc2626':taskRemain>=30?'#d97706':'#16a34a')}
-    ${tile('🔧','修繕 対応中', tot.repN+'件', `うちアポ未 ${tot.apoMi}件`, tot.apoMi>=8?'#dc2626':tot.apoMi>=4?'#d97706':'#0f172a')}
-    ${tile('📋','7日以内の最終確認', tot.soon+'件','', tot.soon>=8?'#dc2626':'#0f172a')}
+    ${showResto?tile('🏠','原状回復 進行中', tot.restoN+'件', `未着手${tot.todo} ・ 施工中${tot.wip} ・ 工事済${tot.fin}`):''}
+    ${showResto?tile('🛠','自社工事タスク 残', taskRemain, `全${tot.taskTotal} (${pct(tot.taskDone,tot.taskTotal)}%完了)`, taskRemain>=60?'#dc2626':taskRemain>=30?'#d97706':'#16a34a'):''}
+    ${showRep?tile('🔧','修繕 対応中', tot.repN+'件', `うちアポ未 ${tot.apoMi}件`, tot.apoMi>=8?'#dc2626':tot.apoMi>=4?'#d97706':'#0f172a'):''}
+    ${showResto?tile('📋','7日以内の最終確認', tot.soon+'件','', tot.soon>=8?'#dc2626':'#0f172a'):''}
   </div>`;
   const ST_PILL={todo:['未着手','#94a3b8'], wip:['施工中','#3b82f6'], done:['工事済','#16a34a']};
   const groupHead=(k,extra)=>`<div style="display:flex;align-items:center;gap:7px;margin:9px 0 4px">
@@ -9052,16 +9060,17 @@ function renderDashboard_(){
   // 🏠と🔧を「色の違う箱」で明確に分ける(v1.30.622・山田「区別がわからない」):
   //   見出しはベタ塗りバナー+件数、セクション全体を淡色パネルで包み、行にも左帯(青/桃)を付ける
   body.innerHTML = filterBar + tiles
-    + `<div style="border:2px solid #3b82f6;border-radius:12px;background:#eff6ff;padding:0 8px 6px;margin-bottom:14px">
+    + (showResto ? `<div style="border:2px solid #3b82f6;border-radius:12px;background:#eff6ff;padding:0 8px 6px;margin-bottom:14px">
          <div style="background:#3b82f6;color:#fff;font-size:13.5px;font-weight:800;padding:6px 12px;border-radius:0 0 9px 9px;margin:0 -8px 8px;display:flex;align-items:center;gap:8px">🏠 原状回復 <span style="font-size:11px;font-weight:700;background:rgba(255,255,255,.25);padding:1px 8px;border-radius:8px">${tot.restoN}件</span><span style="font-size:10px;font-weight:400;opacity:.85">退去後の空室工事</span></div>
          ${restoHtml}
-       </div>`
-    + `<div style="border:2px solid #ec4899;border-radius:12px;background:#fdf2f8;padding:0 8px 6px">
+       </div>` : '')
+    + (showRep ? `<div style="border:2px solid #ec4899;border-radius:12px;background:#fdf2f8;padding:0 8px 6px">
          <div style="background:#ec4899;color:#fff;font-size:13.5px;font-weight:800;padding:6px 12px;border-radius:0 0 9px 9px;margin:0 -8px 8px;display:flex;align-items:center;gap:8px">🔧 修繕 <span style="font-size:11px;font-weight:700;background:rgba(255,255,255,.25);padding:1px 8px;border-radius:8px">${tot.repN}件</span><span style="font-size:10px;font-weight:400;opacity:.85">入居中の修理対応</span></div>
          ${repHtml}
-       </div>`;
+       </div>` : '');
   // 🏢 元請けタブ切替(再描画・スクロール位置は先頭へ)
   body.querySelectorAll('[data-dcf]').forEach(b=>b.onclick=()=>{ __dashClientFilter=b.dataset.dcf; renderDashboard_(); body.scrollTop=0; });
+  body.querySelectorAll('[data-dkf]').forEach(b=>b.onclick=()=>{ __dashKindFilter=b.dataset.dkf; renderDashboard_(); body.scrollTop=0; });
   // 行タップ: その案件へ飛ぶ(原状回復=詳細ダイアログ / 修繕=修繕タブ)
   const ov=document.getElementById('dashboardModal');
   body.querySelectorAll('[data-dr-resto]').forEach(el=>el.onclick=()=>{
