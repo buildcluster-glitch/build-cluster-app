@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.617</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.618</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -2877,6 +2877,7 @@
   <button class="nav-btn icon-only" id="searchBtn" title="🔍 予定・立会・修繕・最終確認・休暇を横断検索 (/)">🔍</button>
   <button class="nav-btn icon-only" id="yearStatsBtn" title="📊 休日管理 (有給・休日年間集計)">📊</button>
   <button class="nav-btn icon-only" id="bugReportBtn" title="🐞 バグ・要望の報告 (全員共有・見積アプリの報告と同様)">🐞<span id="bugReportBadge" class="al-count" style="display:none"></span></button>
+  <button class="nav-btn icon-only" id="dashboardBtn" title="📊 稼働状況 — 元請け別の案件量と進捗・今週のスタッフ負荷(全員向け)">📊</button>
   <button class="nav-btn icon-only" id="changelogBtn" title="📜 変更の記録 — 誰がいつ 立会/修繕/タスク/予定 を変えた・消したか(全員共有)">📜</button>
   <!-- ☁ 全同期は「今日」の隣へ移設済み(v1.30.527・山田「大事だから」)。ここには置かない -->
   <button class="nav-btn icon-only" id="gasSettingsBtnHeader" title="⚙ 設定 (GAS URL/Token)">⚙</button>
@@ -8885,6 +8886,135 @@ function openChangelog_(){
   renderChangelog_();
   fetchChlog_({silent:true}).then(()=>renderChangelog_()).catch(()=>{});
 }
+
+// ====================================================================
+// 📊 稼働状況ダッシュボード(v1.30.618・山田要望)
+//   「今どの元請けから原状回復・修繕がどれくらい来ていて、どのくらい進んでいるか」を1画面で。
+//   スタッフ全員が会社のリソース逼迫度を測れるようにする。データは既存のstateから計算するだけ
+//   (サーバー呼び出し無し・開いた瞬間のtask-sync済みデータが材料)。
+// ====================================================================
+function __dashClientKey_(name, cat){
+  const c = cat || autoDetectClientCat(name||"");
+  if(c==="山一地所"||c==="みどり不動産"||c==="自社工事") return c;
+  const n = String(name||"").trim();
+  return n ? (typeof shortenCompany==='function' ? shortenCompany(n) : n) : "その他(未指定)";
+}
+function __dashClientColor_(name){
+  const fixed={"山一地所":"#7c3aed","みどり不動産":"#16a34a","自社工事":"#f59e0b","その他(未指定)":"#64748b"};
+  if(fixed[name]) return fixed[name];
+  let h=0; for(const ch of name) h=(h*31+ch.charCodeAt(0))>>>0;
+  return `hsl(${h%360},55%,45%)`;
+}
+function computeDashboard_(){
+  const groups=new Map();
+  const g=k=>{ if(!groups.has(k)) groups.set(k,{restoN:0,todo:0,wip:0,fin:0,taskDone:0,taskTotal:0,soon:0,repN:0,apoMi:0}); return groups.get(k); };
+  const today=new Date(); today.setHours(0,0,0,0);
+  const soonLimit=new Date(today); soonLimit.setDate(soonLimit.getDate()+7);
+  // 🏠 原状回復(完了処理済み=completeDateあり は除外・工程持ち修繕(_repairResto)は修繕側で数える)
+  (state.restorations||[]).forEach(p=>{
+    if(!p || p._repairResto || restoIsArchived(p)) return;
+    const o=g(__dashClientKey_(p.client, p.clientCat));
+    o.restoN++;
+    const pr=restoProgress(p); o.taskDone+=pr.done; o.taskTotal+=pr.total;
+    const st=restoDominantStatus(p);
+    if(st==="done") o.fin++; else if(st==="wip") o.wip++; else o.todo++;
+    if(p.finalDate){ const d=parseDate(p.finalDate); if(!isNaN(d)&&d>=today&&d<soonLimit) o.soon++; }
+  });
+  // 🔧 修繕(完了日ありは除外。extractRepairsが「アクティブのみ」に絞った後のstate.repairsが母集団)
+  (state.repairs||[]).forEach(r=>{
+    if(!r || r.completeDate) return;
+    const o=g(__dashClientKey_(r.contractor));
+    o.repN++;
+    if((r.workflowStatus||"アポ・手配 未")==="アポ・手配 未") o.apoMi++;
+  });
+  // 並び: 固定3(山一/みどり/自社) → 案件数の多い順 → その他(未指定)
+  const FIXED=["山一地所","みどり不動産","自社工事"];
+  const keys=[...groups.keys()];
+  const dyn=keys.filter(k=>!FIXED.includes(k)&&k!=="その他(未指定)").sort((a,b)=>{ const A=groups.get(a),B=groups.get(b); return (B.restoN+B.repN)-(A.restoN+A.repN); });
+  const ordered=[...FIXED.filter(k=>groups.has(k)), ...dyn, ...(groups.has("その他(未指定)")?["その他(未指定)"]:[])];
+  // 👷 スタッフ負荷(今日から7日間の割当件数: 予定+共有立会+最終確認+修繕アポ)
+  const inWeek=iso=>{ if(!iso) return false; const d=parseDate(String(iso).slice(0,10)); return !isNaN(d)&&d>=today&&d<soonLimit; };
+  const load=new Map(); (typeof STAFF!=='undefined'?STAFF:[]).forEach(s2=>load.set(s2,0));
+  const add=name=>{ const n=String(name||"").trim(); if(n&&load.has(n)) load.set(n,load.get(n)+1); };
+  (state.events||[]).forEach(ev=>{ if(!ev||!inWeek(ev.date)) return; add(ev.staff); (ev.participants||[]).forEach(add); });
+  try{ ((typeof buildTaikyoVirtuals_==='function')?buildTaikyoVirtuals_():[]).forEach(v=>{ if(v&&inWeek(v.date)) parseWorkers_(v.staff||"").forEach(add); }); }catch(_){}
+  (state.checks||[]).forEach(ck=>{ if(ck&&inWeek(ck.checkDate)) parseWorkers_(ck.staff||"").forEach(add); });
+  (state.repairs||[]).forEach(r=>{ if(r&&!r.completeDate&&inWeek(r.responseDate)) add(firstWorker_(r.worker||"")); });
+  // 合計
+  const tot={restoN:0,todo:0,wip:0,fin:0,taskDone:0,taskTotal:0,soon:0,repN:0,apoMi:0};
+  groups.forEach(o=>{ for(const k in tot) tot[k]+=o[k]; });
+  return {groups, ordered, tot, load};
+}
+function ensureDashboardModal_(){
+  if(document.getElementById('dashboardModal')) return;
+  const ov=document.createElement('div'); ov.className='modal-overlay'; ov.id='dashboardModal';
+  ov.innerHTML=`
+    <div class="modal" style="max-width:680px;width:96vw">
+      <div class="modal-header">📊 稼働状況 <span style="font-weight:400;font-size:11px;color:var(--muted)">元請け別の案件量と進捗・今週のスタッフ負荷</span></div>
+      <div class="modal-body" id="dash-body" style="max-height:76vh;overflow:auto"></div>
+      <div class="modal-footer">
+        <span style="font-size:10px;color:var(--muted);margin-right:auto">完了処理済みの案件は数えていません。開いた時点の同期データで計算します</span>
+        <button class="btn" id="dash-close">閉じる</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.onclick=e=>{ if(e.target===ov) ov.classList.remove('show'); };
+  ov.querySelector('#dash-close').onclick=()=>ov.classList.remove('show');
+}
+function renderDashboard_(){
+  const body=document.getElementById('dash-body'); if(!body) return;
+  const {groups, ordered, tot, load}=computeDashboard_();
+  const pct=(d,t)=>t?Math.round(d/t*100):0;
+  const pctBg=v=>v===100?"#16a34a":v>=50?"#3b82f6":"#94a3b8";
+  const tile=(icon,label,big,sub,color)=>`<div style="flex:1 1 130px;min-width:0;border:1px solid var(--border);border-radius:10px;padding:8px 10px;background:#fff">
+    <div style="font-size:11px;color:var(--muted);white-space:nowrap">${icon} ${label}</div>
+    <div style="font-size:22px;font-weight:800;color:${color||'#0f172a'};line-height:1.2">${big}</div>
+    ${sub?`<div style="font-size:10px;color:var(--muted)">${sub}</div>`:''}
+  </div>`;
+  const taskRemain=tot.taskTotal-tot.taskDone;
+  const tiles=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+    ${tile('🏠','原状回復 進行中', tot.restoN+'件', `未着手${tot.todo} ・ 施工中${tot.wip} ・ 工事済${tot.fin}`)}
+    ${tile('🛠','自社工事タスク 残', taskRemain, `全${tot.taskTotal} (${pct(tot.taskDone,tot.taskTotal)}%完了)`, taskRemain>=60?'#dc2626':taskRemain>=30?'#d97706':'#16a34a')}
+    ${tile('🔧','修繕 対応中', tot.repN+'件', `うちアポ未 ${tot.apoMi}件`, tot.apoMi>=8?'#dc2626':tot.apoMi>=4?'#d97706':'#0f172a')}
+    ${tile('📋','7日以内の最終確認', tot.soon+'件','', tot.soon>=8?'#dc2626':'#0f172a')}
+  </div>`;
+  // 元請け別テーブル(行=カード。スマホでも折り返して読める)
+  const rows=ordered.map(k=>{
+    const o=groups.get(k); const col=__dashClientColor_(k); const p2=pct(o.taskDone,o.taskTotal);
+    const bar=o.taskTotal?`<div style="flex:1 1 120px;min-width:90px;display:flex;align-items:center;gap:5px">
+        <div style="flex:1;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden"><div style="width:${p2}%;height:100%;background:${pctBg(p2)}"></div></div>
+        <span style="font-size:10px;color:var(--muted);white-space:nowrap">自社${o.taskDone}/${o.taskTotal}(${p2}%)</span>
+      </div>`:`<div style="flex:1 1 120px;min-width:90px;font-size:10px;color:var(--muted)">自社工事なし</div>`;
+    return `<div style="border:1px solid var(--border);border-radius:9px;padding:7px 10px;margin-bottom:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span style="background:${col};color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;white-space:nowrap">${escapeHtml(k)}</span>
+      <span style="font-size:12px;white-space:nowrap">🏠 <b>${o.restoN}</b>件${o.restoN?`<span style="font-size:10px;color:var(--muted)">（未${o.todo}・中${o.wip}・済${o.fin}）</span>`:''}</span>
+      ${bar}
+      <span style="font-size:12px;white-space:nowrap">🔧 <b>${o.repN}</b>件${o.apoMi?`<span style="font-size:10px;color:#dc2626;font-weight:700">（アポ未${o.apoMi}）</span>`:''}</span>
+      ${o.soon?`<span style="font-size:10px;background:#fef3c7;color:#92400e;font-weight:700;padding:1px 7px;border-radius:6px;white-space:nowrap">最確7日内 ${o.soon}</span>`:''}
+    </div>`;
+  }).join('') || '<div style="text-align:center;padding:18px;color:var(--muted)">進行中の案件がありません</div>';
+  // 👷 スタッフ負荷(今週の割当件数)
+  const loads=[...load.entries()].filter(([n])=>!/外注|失注/.test(n));
+  const maxL=Math.max(1, ...loads.map(([,v])=>v));
+  const staffRows=loads.sort((a,b)=>b[1]-a[1]).map(([n,v])=>{
+    const c=STAFF_COLORS[n]||STAFF_COLORS[normalizeStaffName(n)]||'#9ca3af';
+    return `<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px">
+      <span style="width:74px;flex-shrink:0;font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(n)}</span>
+      <div style="flex:1;height:12px;background:#f1f5f9;border-radius:6px;overflow:hidden"><div style="width:${Math.round(v/maxL*100)}%;height:100%;background:${c};min-width:${v?4:0}px"></div></div>
+      <span style="width:34px;text-align:right;font-size:11px;font-weight:700">${v}件</span>
+    </div>`;
+  }).join('');
+  body.innerHTML = tiles
+    + `<div style="font-size:12px;font-weight:700;margin:2px 0 6px">🏢 元請け別</div>` + rows
+    + `<div style="font-size:12px;font-weight:700;margin:12px 0 6px">👷 今週のスタッフ負荷 <span style="font-weight:400;font-size:10px;color:var(--muted)">(今日から7日間の割当: 予定+立会+最終確認+修繕アポ)</span></div>`
+    + staffRows;
+}
+function openDashboard_(){
+  ensureDashboardModal_();
+  document.getElementById('dashboardModal').classList.add('show');
+  try{ renderDashboard_(); }catch(e){ console.warn('[dash] render失敗', e); }
+}
+{ const __db=document.getElementById("dashboardBtn"); if(__db) __db.onclick=()=>{ try{ openDashboard_(); }catch(_){} }; }
 
 // 🟢 プレゼンス(誰が今開いているか・全員共有 shared-config 'calendar_presence') v1.30.289
 //   value = JSON { presence:{ [staff]: lastSeenISO }, updatedAt }。表示中の端末が60秒ごとにハートビート、直近2分以内=オンライン。
