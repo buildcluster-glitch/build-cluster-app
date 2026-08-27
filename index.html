@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.626</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.627</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8931,8 +8931,9 @@ function computeDashboard_(){
   (state.repairs||[]).forEach(r=>{
     // isRepairDone_=修繕タブと同じ完了判定(status=完了/完工/完成)。完了日が空でも「完了」は出さない(v1.30.626)
     if(!r || r.completeDate || (typeof isRepairDone_==='function' && isRepairDone_(r)) || __dashClosed(r.status)) return;
-    const o=g(repGroups,__dashClientKey_(r.contractor));
     const wf=r.workflowStatus||"アポ・手配 未";
+    if(wf==="待機") return;   // 意図的な保留は「いまのリソース」に数えない(山田 v1.30.627)
+    const o=g(repGroups,__dashClientKey_(r.contractor));
     if(wf==="アポ・手配 未") o.apoMi++;
     let ad=null; if(r.responseDate){ const d=parseDate(r.responseDate); if(!isNaN(d)) ad=d; }
     o.items.push({id:r.id, name:r.name, room:r.room, wf, ad, time:r.responseTime||"", worker:firstWorker_(r.worker||""), desc:(r.requestDesc||"").slice(0,30)});
