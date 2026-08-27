@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.624</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.625</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8967,6 +8967,7 @@ function ensureDashboardModal_(){
 }
 let __dashClientFilter = '';   // 📊 元請け絞り込み(''=全て・セッション中は記憶)v1.30.621
 let __dashKindFilter = '';     // 📊 種別絞り込み(''=両方 / 'resto'=原状回復 / 'rep'=修繕)v1.30.623
+let __dashReturn = false;      // 📊 個別ダイアログを閉じたら全体進捗へ戻る(行タップで立てる)v1.30.625
 function renderDashboard_(){
   const body=document.getElementById('dash-body'); if(!body) return;
   let {restoGroups, repGroups, restoOrder, repOrder, tot, today, soonLimit}=computeDashboard_();
@@ -9075,6 +9076,8 @@ function renderDashboard_(){
   const ov=document.getElementById('dashboardModal');
   body.querySelectorAll('[data-dr-resto]').forEach(el=>el.onclick=()=>{
     ov.classList.remove('show');
+    // 🏠 v1.30.625(山田): ビュー切替でなく既存の独立ダイアログ(openRestoDialog)で開き、閉じたら全体進捗へ戻る
+    if(typeof openRestoDialog==='function'){ try{ __dashReturn=true; openRestoDialog(el.dataset.drResto); return; }catch(e){ __dashReturn=false; console.warn('[dash] restoダイアログ失敗', e); } }
     currentView='resto'; if(typeof restoTaskStatusFilter!=='undefined') restoTaskStatusFilter=null;
     restoDetailId=el.dataset.drResto;
     render();
@@ -9082,7 +9085,7 @@ function renderDashboard_(){
   body.querySelectorAll('[data-dr-rep]').forEach(el=>el.onclick=()=>{
     ov.classList.remove('show');   // ⚠ 同じz700のmodal-overlay同士でダッシュボードが上に重なるため、閉じてから開く
     // 🔧 v1.30.624(山田): タブ切替でなく、その修繕の詳細シート(進捗・ステータス・チャットを直接変えられる)を開く
-    if(typeof openRepairSheet==='function'){ try{ openRepairSheet(el.dataset.drRep); return; }catch(e){ console.warn('[dash] 修繕シート失敗', e); } }
+    if(typeof openRepairSheet==='function'){ try{ __dashReturn=true; openRepairSheet(el.dataset.drRep); return; }catch(e){ __dashReturn=false; console.warn('[dash] 修繕シート失敗', e); } }
     currentView='repair'; render();   // フォールバック(シートが開けない時だけ従来の修繕タブへ)
   });
 }
@@ -24186,7 +24189,10 @@ function openRepairSheet(id){
   }
   repairSheet.classList.add("show");
 }
-function closeRepairSheet(){ repairSheet.classList.remove("show"); editingRepairId = null; __refreshOpenRepairCommentUI_ = null; }
+function closeRepairSheet(){ repairSheet.classList.remove("show"); editingRepairId = null; __refreshOpenRepairCommentUI_ = null;
+  // 📊 全体進捗から開いた時は戻る(最新stateで描き直すので進捗変更も即反映)v1.30.625
+  if(typeof __dashReturn!=='undefined' && __dashReturn){ __dashReturn=false; try{ openDashboard_(); }catch(_){} }
+}
 // 💬 修繕 進捗チャット描画(全員共有 repair_comments)v1.30.184
 function renderRepairChat_(container, repairId){
   if(!container) return;
@@ -24609,6 +24615,8 @@ function closeRestoDialog(){
   document.getElementById("restoDialog").classList.remove("show");
   restoDetailAsModal = false;
   restoDetailId = null;
+  // 📊 全体進捗から開いた時は戻る(最新stateで描き直すので進捗変更も即反映)v1.30.625
+  if(typeof __dashReturn!=='undefined' && __dashReturn){ __dashReturn=false; try{ openDashboard_(); }catch(_){} }
 }
 
 function renderRestoView(){
