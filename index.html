@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.625</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.626</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8911,8 +8911,12 @@ function computeDashboard_(){
   // 🏠 原状回復(完了処理済み=completeDateあり は除外・工程持ち修繕(_repairResto)は修繕でなく原状回復にも入れない)
   const restoGroups=new Map(), repGroups=new Map();
   const g=(m,k)=>{ if(!m.has(k)) m.set(k,{items:[],taskDone:0,taskTotal:0,todo:0,wip:0,fin:0,apoMi:0,soon:0}); return m.get(k); };
+  // 「終わった扱い」の判定(v1.30.626・山田「ステータス完了のやつも表示されてる?」):
+  //   completeDate だけでは不十分だった。台帳ステータスが完了系(完了/完工/完成/クローズ)や
+  //   失注/キャンセルでも除外する。⚠「清掃完了」は工程の途中(最終確認待ち)なので完了扱いしない
+  const __dashClosed=st=>{ const s2=String(st||""); return s2!=="清掃完了" && /完了|完工|完成|クローズ|失注|キャンセル/.test(s2); };
   (state.restorations||[]).forEach(p=>{
-    if(!p || p._repairResto || restoIsArchived(p)) return;
+    if(!p || p._repairResto || restoIsArchived(p) || __dashClosed(p.status)) return;
     const o=g(restoGroups,__dashClientKey_(p.client, p.clientCat));
     const pr=restoProgress(p); o.taskDone+=pr.done; o.taskTotal+=pr.total;
     const st=restoDominantStatus(p);
@@ -8925,7 +8929,8 @@ function computeDashboard_(){
   restoGroups.forEach(o=>o.items.sort((a,b)=>(a.fd?a.fd.getTime():9e15)-(b.fd?b.fd.getTime():9e15)));
   // 🔧 修繕(完了日ありは除外)
   (state.repairs||[]).forEach(r=>{
-    if(!r || r.completeDate) return;
+    // isRepairDone_=修繕タブと同じ完了判定(status=完了/完工/完成)。完了日が空でも「完了」は出さない(v1.30.626)
+    if(!r || r.completeDate || (typeof isRepairDone_==='function' && isRepairDone_(r)) || __dashClosed(r.status)) return;
     const o=g(repGroups,__dashClientKey_(r.contractor));
     const wf=r.workflowStatus||"アポ・手配 未";
     if(wf==="アポ・手配 未") o.apoMi++;
