@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.618</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.619</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -2861,6 +2861,7 @@
   <div class="nav-date" id="navDate"></div>
   <div class="view-switch">
     <button data-view="task">📋 タスク</button>
+    <button data-view="__dash__" id="dashboardBtn" title="📊 全体進捗 — 元請け別の案件量と進捗・今週のスタッフ負荷(全員向け)">📊 全体進捗</button>
     <button data-view="repair">🔧 修繕</button>
     <button data-view="resto">🏠 原状回復</button>
     <button data-view="inventory">📦 在庫管理</button>
@@ -2877,7 +2878,6 @@
   <button class="nav-btn icon-only" id="searchBtn" title="🔍 予定・立会・修繕・最終確認・休暇を横断検索 (/)">🔍</button>
   <button class="nav-btn icon-only" id="yearStatsBtn" title="📊 休日管理 (有給・休日年間集計)">📊</button>
   <button class="nav-btn icon-only" id="bugReportBtn" title="🐞 バグ・要望の報告 (全員共有・見積アプリの報告と同様)">🐞<span id="bugReportBadge" class="al-count" style="display:none"></span></button>
-  <button class="nav-btn icon-only" id="dashboardBtn" title="📊 稼働状況 — 元請け別の案件量と進捗・今週のスタッフ負荷(全員向け)">📊</button>
   <button class="nav-btn icon-only" id="changelogBtn" title="📜 変更の記録 — 誰がいつ 立会/修繕/タスク/予定 を変えた・消したか(全員共有)">📜</button>
   <!-- ☁ 全同期は「今日」の隣へ移設済み(v1.30.527・山田「大事だから」)。ここには置かない -->
   <button class="nav-btn icon-only" id="gasSettingsBtnHeader" title="⚙ 設定 (GAS URL/Token)">⚙</button>
@@ -8950,7 +8950,7 @@ function ensureDashboardModal_(){
   const ov=document.createElement('div'); ov.className='modal-overlay'; ov.id='dashboardModal';
   ov.innerHTML=`
     <div class="modal" style="max-width:680px;width:96vw">
-      <div class="modal-header">📊 稼働状況 <span style="font-weight:400;font-size:11px;color:var(--muted)">元請け別の案件量と進捗・今週のスタッフ負荷</span></div>
+      <div class="modal-header">📊 全体進捗 <span style="font-weight:400;font-size:11px;color:var(--muted)">元請け別の案件量と進捗・今週のスタッフ負荷</span></div>
       <div class="modal-body" id="dash-body" style="max-height:76vh;overflow:auto"></div>
       <div class="modal-footer">
         <span style="font-size:10px;color:var(--muted);margin-right:auto">完了処理済みの案件は数えていません。開いた時点の同期データで計算します</span>
@@ -9014,8 +9014,6 @@ function openDashboard_(){
   document.getElementById('dashboardModal').classList.add('show');
   try{ renderDashboard_(); }catch(e){ console.warn('[dash] render失敗', e); }
 }
-{ const __db=document.getElementById("dashboardBtn"); if(__db) __db.onclick=()=>{ try{ openDashboard_(); }catch(_){} }; }
-
 // 🟢 プレゼンス(誰が今開いているか・全員共有 shared-config 'calendar_presence') v1.30.289
 //   value = JSON { presence:{ [staff]: lastSeenISO }, updatedAt }。表示中の端末が60秒ごとにハートビート、直近2分以内=オンライン。
 //   ⚠ 真のリアルタイム同期(即時プッシュ)はGASでは不可。これはポーリング型の「在席表示」。ON/OFFは⚙設定(この端末のみ)。
@@ -20311,6 +20309,7 @@ document.querySelectorAll('#mobileNav button').forEach(b=>{
 });
 document.querySelectorAll(".view-switch button").forEach(b=>{
   b.onclick = ()=>{
+    if(b.dataset.view==='__dash__'){ openDashboard_(); return; }    // 📊 全体進捗はモーダル(ビュー切替でない・v1.30.619)
     if(b.dataset.view==='__tanka__'){ openTankaModal_(); return; }   // 💴 単価表はモーダル(ビュー切替でない)
     if(b.dataset.view==='__gantt__'){ openGanttModal_(); return; }   // 📊 進捗ガントも同様
     if(b.dataset.view==='__material__'){ openMaterialModal_(); return; }   // 🧾 材料注文(v1.30.540)
