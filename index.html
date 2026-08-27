@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.629</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.630</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -9051,7 +9051,9 @@ function renderDashboard_(){
   const filterBar = `<div id="dash-filter" style="position:sticky;top:-1px;z-index:2;background:var(--bg,#fff);display:flex;gap:4px;flex-wrap:wrap;padding:2px 0 8px;margin-bottom:2px;border-bottom:1px solid var(--border)">
     <button data-dcf="" style="border:1px solid var(--border-strong);border-radius:14px;padding:3px 11px;font-size:11px;font-weight:700;cursor:pointer;${__dashClientFilter===''?'background:#0f172a;color:#fff':'background:#fff;color:#334155'}">全て</button>
     ${allKeys.map(k=>{ const on=__dashClientFilter===k; const c=__dashClientColor_(k);
-      return `<button data-dcf="${escapeHtml(k)}" style="border:1px solid ${c};border-radius:14px;padding:3px 11px;font-size:11px;font-weight:700;cursor:pointer;${on?`background:${c};color:#fff`:`background:#fff;color:${c}`}">${escapeHtml(k)} <span style="font-weight:400;opacity:.75">${__dashKeyN(k)}</span></button>`;
+      const rN=(restoGroups.get(k)||{items:[]}).items.length, mN=(repGroups.get(k)||{items:[]}).items.length;
+      const cnt=[rN?`🏠${rN}`:'', mN?`🔧${mN}`:''].filter(Boolean).join('･');
+      return `<button data-dcf="${escapeHtml(k)}" style="border:1px solid ${c};border-radius:14px;padding:3px 11px;font-size:11px;font-weight:700;cursor:pointer;${on?`background:${c};color:#fff`:`background:#fff;color:${c}`}">${escapeHtml(k)} <span style="font-weight:400;opacity:.8;font-size:10px">${cnt}</span></button>`;
     }).join('')}
     <span style="flex-basis:100%;height:0"></span>
     ${[['','両方','#0f172a'],['resto','🏠 原状回復','#3b82f6'],['rep','🔧 修繕','#ec4899']].map(([v,l,c])=>{
