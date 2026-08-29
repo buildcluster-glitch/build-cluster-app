@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.633</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.634</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -17666,7 +17666,29 @@ function showChipTip(ev, mouseX, mouseY){
     let __tkInfo = "";
     {
       const memoLines = String(ev.memo||"").split(/\n/);
-      const addr = (memoLines.find(l=>l.startsWith('📍'))||"").replace(/^📍\s*/,'').trim();
+      let addr = (memoLines.find(l=>l.startsWith('📍'))||"").replace(/^📍\s*/,'').trim();
+      // 🏠 v1.30.634(山田「立会表に住所入ってない→台帳で作ってる立会情報を見て」):
+      //   立会表の住所は空が普通 → 台帳側から補完する。順=①立会表 ②台帳射影(原状回復レコード)
+      //   ③発注書ヘッダ ④物件マスタ(state.bukken)。タイトル(物件名+号室)で突合(既存の照合関数を流用)
+      // ⚠ findEventResto_はrenderCalendarスコープ内でここから見えない→ここで簡易照合(hover毎1回なので全走査で十分軽い)
+      if(!addr){ try{
+        const tN=String(ev.title||'').normalize('NFKC').replace(/\s|　/g,'');
+        let best=null;
+        (state.restorations||[]).forEach(r0=>{
+          if(!r0||!r0.name||!r0.address) return;
+          const nN=String(r0.name).normalize('NFKC').replace(/\s|　/g,'');
+          if(!nN||!tN.includes(nN)) return;
+          const rm=String(r0.room||'').normalize('NFKC').replace(/[\s　号室]/g,'');
+          if(rm && !tN.includes(rm)) return;                       // 号室が明示され食い違うものは弾く
+          if(!best || nN.length>best.len) best={len:nN.length, addr:r0.address};   // 長い物件名一致を優先
+        });
+        if(best) addr=String(best.addr).trim();
+      }catch(_){} }
+      if(!addr){ try{ const h0=(typeof findHatchushoByTitle_==='function')?findHatchushoByTitle_(ev):null; const a0=h0&&h0.header&&h0.header.address; if(a0) addr=String(a0).trim(); }catch(_){} }
+      if(!addr){ try{
+        const nk=String(ev._bukken||String(ev.title||'').split(/[\s　]/)[0]||'').normalize('NFKC').replace(/\s|　/g,'');
+        if(nk){ const b0=(state.bukken||[]).find(b=>b&&b.name&&String(b.name).normalize('NFKC').replace(/\s|　/g,'')===nk&&b.address); if(b0) addr=String(b0.address).trim(); }
+      }catch(_){} }
       const timeNote = (memoLines.find(l=>l.startsWith('時刻:'))||"").trim();
       const parts=[];
       if(addr) parts.push(`<div style="margin-top:2px"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}" target="_blank" rel="noopener" style="color:#93c5fd;font-size:11.5px;text-decoration:underline">📍 ${escapeHtml(addr)}</a></div>`);
