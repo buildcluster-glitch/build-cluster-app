@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.641</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.642</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8956,7 +8956,12 @@ function computeDashboard_(){
     if(fd && fd>=today && fd<soonLimit) o.soon++;
     o.items.push({id:p.id, name:p.name, room:p.room, pr, st, fd,
       vol: p.workVolume || (p.workloadStatus && p.workloadStatus.level) || "",   // 🛠 工事ボリューム(激重/重/普/軽)v1.30.632
-      od: p.orderDate || "",                                                     // 📅 発注日(新規発注順ソート用)v1.30.638
+      // 📅 発注日(v1.30.642・山田「発注日でてなくない」): 台帳のorderDate(工事指示日)は空が多い。
+      //   フォールバック=①orderDate ②発注書の発行日(issueDate) ③見積ID(E20260624_…)に埋まっている作成日
+      od: p.orderDate
+        || (function(){ try{ const h=(typeof findHatchushoForResto_==='function')?findHatchushoForResto_(p):null; return (h&&h.issueDate)||""; }catch(_){ return ""; } })()
+        || (function(){ const m=String(p.extEstimateId||p.id||"").match(/E(\d{4})(\d{2})(\d{2})_/); return m?`${m[1]}-${m[2]}-${m[3]}`:""; })(),
+      odExact: !!p.orderDate,                                                    // true=台帳の発注日そのもの/false=推定
       movein:(typeof restoMoveinRaw_==='function')?restoMoveinRaw_(p):(p.moveinRaw||p.moveinDate||"")});
   });
   // 各グループ内の並び(v1.30.638・山田「新規発注順に並び替えとかできる?」):
@@ -9157,7 +9162,7 @@ function renderDashboard_(){
       // 🏠 入居情報(v1.30.632・山田): 「9/5予定」等の予定表記も出す(parseLooseMovein_=v612と同じゆるいパース)
       const __mi=(typeof parseLooseMovein_==='function')?parseLooseMovein_(it.movein):null;
       const miHtml=__mi?`<span style="font-size:10.5px;font-weight:700;color:#dc2626;white-space:nowrap" title="${escapeHtml((typeof moveinTip_==='function')?moveinTip_(__mi):'入居日')}">${escapeHtml(__mi.text)}</span>`:'';
-      const odHtml=it.od?`<span style="font-size:10px;color:#1d4ed8;font-weight:700;white-space:nowrap" title="発注日">発注${escapeHtml(String(it.od).slice(5).replace('-','/'))}</span>`:'';   // 常時表示(山田 v1.30.639)
+      const odHtml=it.od?`<span style="font-size:10px;color:#1d4ed8;font-weight:700;white-space:nowrap;${it.odExact?'':'opacity:.75'}" title="${it.odExact?'発注日(台帳の工事指示日)':'発注日の推定(発注書の発行日または見積作成日。台帳の工事指示日が空のため)'}">発注${escapeHtml(String(it.od).slice(5).replace('-','/'))}${it.odExact?'':'頃'}</span>`:'';   // 常時表示(v639)+推定フォールバック(v642)
       return `<div class="dash-row" data-dr-resto="${escapeHtml(it.id)}" style="display:flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid #bfdbfe;border-left:4px solid #3b82f6;background:#fff;border-radius:8px;margin-bottom:4px;cursor:pointer;flex-wrap:wrap">
         <span style="flex:1 1 150px;min-width:120px;font-size:12px;font-weight:600;word-break:break-word">${escapeHtml(it.name)}${it.room?` <span style="font-weight:400">${escapeHtml(it.room)}</span>`:''}</span>
         ${odHtml}
