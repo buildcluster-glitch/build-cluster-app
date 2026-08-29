@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.637</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.638</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8956,10 +8956,15 @@ function computeDashboard_(){
     if(fd && fd>=today && fd<soonLimit) o.soon++;
     o.items.push({id:p.id, name:p.name, room:p.room, pr, st, fd,
       vol: p.workVolume || (p.workloadStatus && p.workloadStatus.level) || "",   // 🛠 工事ボリューム(激重/重/普/軽)v1.30.632
+      od: p.orderDate || "",                                                     // 📅 発注日(新規発注順ソート用)v1.30.638
       movein:(typeof restoMoveinRaw_==='function')?restoMoveinRaw_(p):(p.moveinRaw||p.moveinDate||"")});
   });
-  // 各グループ内: 最終確認日の近い順(無しは最後)
-  restoGroups.forEach(o=>o.items.sort((a,b)=>(a.fd?a.fd.getTime():9e15)-(b.fd?b.fd.getTime():9e15)));
+  // 各グループ内の並び(v1.30.638・山田「新規発注順に並び替えとかできる?」):
+  //   'final'=最終確認日の近い順(既定・無しは最後) / 'order'=発注日の新しい順(無しは最後)
+  const __rSort = (typeof __dashRestoSort!=='undefined' && __dashRestoSort==='order')
+    ? (a,b)=> String(b.od||'').localeCompare(String(a.od||''))
+    : (a,b)=> (a.fd?a.fd.getTime():9e15)-(b.fd?b.fd.getTime():9e15);
+  restoGroups.forEach(o=>o.items.sort(__rSort));
   // 🔧 修繕(完了日ありは除外)
   (state.repairs||[]).forEach(r=>{
     // isRepairDone_=修繕タブと同じ完了判定(status=完了/完工/完成)。完了日が空でも「完了」は出さない(v1.30.626)
@@ -9073,6 +9078,7 @@ function __workloadSectionHtml_(){
 let __dashClientFilter = '';   // 📊 元請け絞り込み(''=全て・セッション中は記憶)v1.30.621
 let __dashKindFilter = '';     // 📊 種別絞り込み(''=両方 / 'resto'=原状回復 / 'rep'=修繕)v1.30.623
 let __dashReturn = false;      // 📊 個別ダイアログを閉じたら全体進捗へ戻る(行タップで立てる)v1.30.625
+let __dashRestoSort = 'final'; // 📊 原状回復の並び('final'=最確が近い順 / 'order'=発注日が新しい順)v1.30.638
 function renderDashboard_(){
   const body=document.getElementById('dash-body'); if(!body) return;
   let {restoGroups, repGroups, restoOrder, repOrder, tot, today, soonLimit}=computeDashboard_();
@@ -9146,8 +9152,10 @@ function renderDashboard_(){
       // 🏠 入居情報(v1.30.632・山田): 「9/5予定」等の予定表記も出す(parseLooseMovein_=v612と同じゆるいパース)
       const __mi=(typeof parseLooseMovein_==='function')?parseLooseMovein_(it.movein):null;
       const miHtml=__mi?`<span style="font-size:10.5px;font-weight:700;color:#dc2626;white-space:nowrap" title="${escapeHtml((typeof moveinTip_==='function')?moveinTip_(__mi):'入居日')}">${escapeHtml(__mi.text)}</span>`:'';
+      const odHtml=(__dashRestoSort==='order'&&it.od)?`<span style="font-size:10px;color:#1d4ed8;font-weight:700;white-space:nowrap" title="発注日">発注${escapeHtml(String(it.od).slice(5).replace('-','/'))}</span>`:'';
       return `<div class="dash-row" data-dr-resto="${escapeHtml(it.id)}" style="display:flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid #bfdbfe;border-left:4px solid #3b82f6;background:#fff;border-radius:8px;margin-bottom:4px;cursor:pointer;flex-wrap:wrap">
         <span style="flex:1 1 150px;min-width:120px;font-size:12px;font-weight:600;word-break:break-word">${escapeHtml(it.name)}${it.room?` <span style="font-weight:400">${escapeHtml(it.room)}</span>`:''}</span>
+        ${odHtml}
         ${volHtml}
         <span style="background:${sc};color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:6px;white-space:nowrap">${sl}</span>
         ${bar}
@@ -9179,7 +9187,11 @@ function renderDashboard_(){
   //   見出しはベタ塗りバナー+件数、セクション全体を淡色パネルで包み、行にも左帯(青/桃)を付ける
   body.innerHTML = filterBar + tiles
     + (showResto ? `<div style="border:2px solid #3b82f6;border-radius:12px;background:#eff6ff;padding:0 8px 6px;margin-bottom:14px">
-         <div style="background:#3b82f6;color:#fff;font-size:13.5px;font-weight:800;padding:6px 12px;border-radius:0 0 9px 9px;margin:0 -8px 8px;display:flex;align-items:center;gap:8px">🏠 原状回復 <span style="font-size:11px;font-weight:700;background:rgba(255,255,255,.25);padding:1px 8px;border-radius:8px">${tot.restoN}件</span><span style="font-size:10px;font-weight:400;opacity:.85">退去後の空室工事</span></div>
+         <div style="background:#3b82f6;color:#fff;font-size:13.5px;font-weight:800;padding:6px 12px;border-radius:0 0 9px 9px;margin:0 -8px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">🏠 原状回復 <span style="font-size:11px;font-weight:700;background:rgba(255,255,255,.25);padding:1px 8px;border-radius:8px">${tot.restoN}件</span><span style="font-size:10px;font-weight:400;opacity:.85">退去後の空室工事</span>
+           <span style="margin-left:auto;display:flex;gap:3px">
+             <button data-drs="final" style="border:0;border-radius:9px;font-size:10px;font-weight:700;padding:2px 9px;cursor:pointer;${__dashRestoSort!=='order'?'background:#fff;color:#1d4ed8':'background:rgba(255,255,255,.25);color:#fff'}">最確順</button>
+             <button data-drs="order" style="border:0;border-radius:9px;font-size:10px;font-weight:700;padding:2px 9px;cursor:pointer;${__dashRestoSort==='order'?'background:#fff;color:#1d4ed8':'background:rgba(255,255,255,.25);color:#fff'}">新規発注順</button>
+           </span></div>
          ${restoHtml}
        </div>` : '')
     + (showRep ? `<div style="border:2px solid #ec4899;border-radius:12px;background:#fdf2f8;padding:0 8px 6px">
@@ -9192,6 +9204,7 @@ function renderDashboard_(){
   // 🏢 元請けタブ切替(再描画・スクロール位置は先頭へ)
   body.querySelectorAll('[data-dcf]').forEach(b=>b.onclick=()=>{ __dashClientFilter=b.dataset.dcf; renderDashboard_(); body.scrollTop=0; });
   body.querySelectorAll('[data-dkf]').forEach(b=>b.onclick=()=>{ __dashKindFilter=b.dataset.dkf; renderDashboard_(); body.scrollTop=0; });
+  body.querySelectorAll('[data-drs]').forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); __dashRestoSort=b.dataset.drs; renderDashboard_(); });
   // 行タップ: その案件へ飛ぶ(原状回復=詳細ダイアログ / 修繕=修繕タブ)
   const ov=document.getElementById('dashboardModal');
   body.querySelectorAll('[data-dr-resto]').forEach(el=>el.onclick=()=>{
