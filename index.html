@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.634</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.635</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -17775,7 +17775,25 @@ function showRepairTip(r, mouseX, mouseY){
     onEdit:(cid,text,rr)=>{ if(!apiR.me){alert('先に「👤 自分」を設定してください');return;} if(typeof editRepairComment_==='function') editRepairComment_(r.id, cid, text, apiR.me); rr(); },
     onDelete:(cid,rr)=>{ if(!apiR.me){alert('先に「👤 自分」を設定してください');return;} if(typeof deleteRepairComment_==='function') deleteRepairComment_(r.id, cid); rr(); }
   };
-  buildTipChat_(tip, titleHtml, apiR);   // 修繕も詳細行は省きコメント中心(v1.30.79)
+  // 📍 修繕の吹き出しにも住所・依頼内容・お客様連絡先(v1.30.635・山田「修繕も出せる?」)。
+  //   修繕は台帳由来なのでr.addressがほぼ入っている。空なら物件マスタで補完。TELはタップで発信(アポの本業)
+  let __rpInfo = "";
+  {
+    let addr=String(r.address||"").trim();
+    if(!addr){ try{
+      const nk=String(r.name||'').normalize('NFKC').replace(/\s|　/g,'');
+      if(nk){ const b0=(state.bukken||[]).find(b=>b&&b.name&&String(b.name).normalize('NFKC').replace(/\s|　/g,'')===nk&&b.address); if(b0) addr=String(b0.address).trim(); }
+    }catch(_){} }
+    const parts=[];
+    if(addr) parts.push(`<div style="margin-top:2px"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}" target="_blank" rel="noopener" style="color:#93c5fd;font-size:11.5px;text-decoration:underline">📍 ${escapeHtml(addr)}</a></div>`);
+    if(r.requestDesc) parts.push(`<div style="font-size:11px;color:#e5e7eb;margin-top:2px">📝 ${escapeHtml(String(r.requestDesc).slice(0,60))}${String(r.requestDesc).length>60?'…':''}</div>`);
+    if(r.customerName||r.customerTel){
+      const tel=String(r.customerTel||'').trim();
+      parts.push(`<div style="font-size:11px;color:#e5e7eb;margin-top:2px">👤 ${escapeHtml(r.customerName||'')}${tel?` <a href="tel:${escapeHtml(tel.replace(/[^0-9+]/g,''))}" style="color:#93c5fd;text-decoration:underline">${escapeHtml(tel)}</a>`:''}</div>`);
+    }
+    __rpInfo = parts.join('');
+  }
+  buildTipChat_(tip, titleHtml + __rpInfo, apiR);   // 修繕=タイトル+住所/依頼/お客様+コメント(v1.30.635)
   // 位置決め
   const margin = 14;
   tip.style.left = "0px"; tip.style.top = "0px";
