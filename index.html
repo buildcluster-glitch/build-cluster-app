@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.638</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.639</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -9152,7 +9152,7 @@ function renderDashboard_(){
       // 🏠 入居情報(v1.30.632・山田): 「9/5予定」等の予定表記も出す(parseLooseMovein_=v612と同じゆるいパース)
       const __mi=(typeof parseLooseMovein_==='function')?parseLooseMovein_(it.movein):null;
       const miHtml=__mi?`<span style="font-size:10.5px;font-weight:700;color:#dc2626;white-space:nowrap" title="${escapeHtml((typeof moveinTip_==='function')?moveinTip_(__mi):'入居日')}">${escapeHtml(__mi.text)}</span>`:'';
-      const odHtml=(__dashRestoSort==='order'&&it.od)?`<span style="font-size:10px;color:#1d4ed8;font-weight:700;white-space:nowrap" title="発注日">発注${escapeHtml(String(it.od).slice(5).replace('-','/'))}</span>`:'';
+      const odHtml=it.od?`<span style="font-size:10px;color:#1d4ed8;font-weight:700;white-space:nowrap" title="発注日">発注${escapeHtml(String(it.od).slice(5).replace('-','/'))}</span>`:'';   // 常時表示(山田 v1.30.639)
       return `<div class="dash-row" data-dr-resto="${escapeHtml(it.id)}" style="display:flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid #bfdbfe;border-left:4px solid #3b82f6;background:#fff;border-radius:8px;margin-bottom:4px;cursor:pointer;flex-wrap:wrap">
         <span style="flex:1 1 150px;min-width:120px;font-size:12px;font-weight:600;word-break:break-word">${escapeHtml(it.name)}${it.room?` <span style="font-weight:400">${escapeHtml(it.room)}</span>`:''}</span>
         ${odHtml}
