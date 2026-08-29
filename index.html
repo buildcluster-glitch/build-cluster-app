@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.640</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.641</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -2860,7 +2860,7 @@
   <span id="headerDutyBox" class="header-duty-box"></span>
   <div class="nav-date" id="navDate"></div>
   <div class="view-switch">
-    <button data-view="task">📋 タスク</button>
+    <!-- 📋タスクのタブは撤去(山田 v1.30.641)。タスクビュー自体は健在=スマホ下部ナビの📋から。戻す時はこの行を復活 -->
     <button data-view="__dash__" id="dashboardBtn" title="📊 全体進捗 — 元請け別の案件量と進捗・今週のスタッフ負荷(全員向け)">📊 全体進捗</button>
     <button data-view="repair">🔧 修繕</button>
     <button data-view="resto">🏠 原状回復</button>
