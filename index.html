@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.636</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.637</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8362,7 +8362,7 @@ function applyRemindersToState_(){
   const m = loadRemindersMap_();
   (state.events||[]).forEach(e=>{ if(e){ if(e.reminder) delete e.reminder; if(e.taskReminders) e.taskReminders={}; } });
   Object.keys(m).forEach(k=>{
-    const v=m[k]; if(!v||!v.on) return;
+    const v=m[k]; if(!v||!v.on||v.done) return;   // 🗒 済み(done)はバッジ/点滅の対象外(v1.30.637)
     if(k.indexOf('ev:')===0){ const id=k.slice(3); const e=(state.events||[]).find(x=>x.id===id); if(e) e.reminder={on:v.on,by:v.by||''}; }
     else if(k.indexOf('tk:')===0){ const rest=k.slice(3); const sep=rest.indexOf('::'); if(sep<0) return; const id=rest.slice(0,sep); const tk=rest.slice(sep+2); const e=(state.events||[]).find(x=>x.id===id); if(e){ if(!e.taskReminders) e.taskReminders={}; e.taskReminders[tk]={on:v.on,by:v.by||''}; } }
   });
@@ -8380,11 +8380,18 @@ async function fetchReminders_(opts={}){
     return remote;
   }catch(err){ if(!opts.silent) console.warn('[calendar_reminders] fetch失敗:',err.message); applyRemindersToState_(); return loadRemindersMap_(); }
 }
+// 🗒 済みリマインドの保持期限(v1.30.637): ✓完了しても消さず60日残す=「通知の内容をあとから振り返る」ため
+const REMINDER_DONE_KEEP_DAYS = 60;
+function pruneDoneReminders_(mp){
+  const lim=new Date(); lim.setDate(lim.getDate()-REMINDER_DONE_KEEP_DAYS); const limIso=lim.toISOString();
+  Object.keys(mp).forEach(k=>{ const v=mp[k]; if(v&&v.done&&String(v.done)<limIso) delete mp[k]; });
+  return mp;
+}
 // リマインドを設定/解除(obj={on,by}|null)。楽観的に即反映→最新remoteにこの1件だけ適用してpush(他端末の他キーを消さない)
 async function setReminderShared_(rkey, obj){
   let map=loadRemindersMap_();
   // v1.30.377: title/staff/kind も保存(修繕/立会は仮想でstateから引けないため一覧はこの値を使う)
-  const applyToMap=(mp)=>{ if(obj&&obj.on){ mp[rkey]={on:obj.on,by:(obj.by||''),at:new Date().toISOString(),title:(obj.title||''),staff:(obj.staff||''),kind:(obj.kind||'')}; } else { delete mp[rkey]; } return mp; };
+  const applyToMap=(mp)=>{ if(obj&&obj.on){ mp[rkey]={on:obj.on,by:(obj.by||''),at:new Date().toISOString(),title:(obj.title||''),staff:(obj.staff||''),kind:(obj.kind||'')}; } else { delete mp[rkey]; } return pruneDoneReminders_(mp); };
   applyToMap(map); saveRemindersMap_(map); applyRemindersToState_(); if(typeof render==='function') render();
   const s=(typeof loadGasSettings==='function')?loadGasSettings():{};
   if(!s.url||!s.token) return map;
@@ -8394,6 +8401,29 @@ async function setReminderShared_(rkey, obj){
     if(res.ok){ const d=await res.json(); let raw=d.value; if(typeof raw==='string'){ try{raw=JSON.parse(raw);}catch(_){raw=null;} } if(raw&&raw.reminders&&typeof raw.reminders==='object'){ map=applyToMap(raw.reminders); saveRemindersMap_(map); applyRemindersToState_(); } }
   }catch(_){ /* オフライン等: ローカルを土台に続行 */ }
   try{ await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'calendar_reminders',value:JSON.stringify({reminders:map,updatedAt:new Date().toISOString()}),token:s.token,savedBy:'calendar-app'})}); }
+  catch(e){ console.warn('[calendar_reminders] push失敗:',e.message); }
+  return map;
+}
+// ⏰→🗒 ✓完了(v1.30.637・山田「通知あとからでも見れるように」): 物理削除せず done を刻んで60日残す。
+//   snap={title,kind,staff}=完了時点の表示内容を焼き付ける(ev:/tk:はイベントが消えると題名を引けなくなるため)。
+//   LINE実話: 通知内容を見た数分後に忘れて聞き直し→履歴が無く答えられなかった、の再発防止。
+async function completeReminder_(rkey, snap){
+  let map=loadRemindersMap_();
+  const me=(typeof getMyself==='function')?getMyself():'';
+  const applyToMap=(mp)=>{
+    const ex=mp[rkey]||{};
+    mp[rkey]={...ex, title:(snap&&snap.title)||ex.title||'', kind:(snap&&snap.kind)||ex.kind||'', staff:(snap&&snap.staff)||ex.staff||'',
+      done:new Date().toISOString(), doneBy:me};
+    return pruneDoneReminders_(mp);
+  };
+  applyToMap(map); saveRemindersMap_(map); applyRemindersToState_(); if(typeof render==='function') render();
+  const s2=(typeof loadGasSettings==='function')?loadGasSettings():{};
+  if(!s2.url||!s2.token) return map;
+  try{
+    const res=await fetch(`${s2.url}?action=get-shared-config&key=calendar_reminders&token=${encodeURIComponent(s2.token)}&t=${Date.now()}`,{redirect:'follow'});
+    if(res.ok){ const d=await res.json(); let raw=d.value; if(typeof raw==='string'){ try{raw=JSON.parse(raw);}catch(_){raw=null;} } if(raw&&raw.reminders&&typeof raw.reminders==='object'){ map=applyToMap(raw.reminders); saveRemindersMap_(map); applyRemindersToState_(); } }
+  }catch(_){}
+  try{ await fetch(s2.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'calendar_reminders',value:JSON.stringify({reminders:map,updatedAt:new Date().toISOString()}),token:s2.token,savedBy:'calendar-app'})}); }
   catch(e){ console.warn('[calendar_reminders] push失敗:',e.message); }
   return map;
 }
@@ -11648,7 +11678,7 @@ function staffHasActiveReminder_(staff){
 // 予定イベント自身のリマインド(ev.reminder={on})
 function eventReminderActive_(ev){ return !!(ev && ev.reminder && ev.reminder.on && reminderTodayStr_() >= ev.reminder.on); }
 // 任意キーのリマインド取得/期限到来判定(修繕rp:/立会tv: 等・共有mapから)v1.30.377
-function reminderGet_(rkey){ const m=(typeof loadRemindersMap_==='function')?loadRemindersMap_():{}; return m[rkey]||null; }
+function reminderGet_(rkey){ const m=(typeof loadRemindersMap_==='function')?loadRemindersMap_():{}; const v=m[rkey]; return (v&&!v.done)?v:null; }   // 済みは「無し」扱い(再設定で上書き可)v1.30.637
 function reminderActiveKey_(rkey){ const r=reminderGet_(rkey); return !!(r && r.on && reminderTodayStr_() >= r.on); }
 // ⏰ そのスタッフのリマインド一覧(予定+事務タスク・共有mapから収集)v1.30.375。担当=イベントのstaff or participants。
 function remindersForStaff_(staff){
@@ -11657,7 +11687,7 @@ function remindersForStaff_(staff){
   const out = [];
   const __hasStaff=(s)=> s && (s===staff || (typeof parseWorkers_==='function' ? parseWorkers_(s).includes(staff) : String(s).split(/[,、]/).map(x=>x.trim()).includes(staff)));
   Object.keys(map).forEach(k=>{
-    const v=map[k]; if(!v||!v.on) return;
+    const v=map[k]; if(!v||!v.on||v.done) return;   // 🗒 済みは履歴側(v1.30.637)
     let title='', kind='', involved=false;
     if(k.indexOf('ev:')===0){ const id=k.slice(3); const ev=(state.events||[]).find(x=>x.id===id); if(!ev) return; title=String(ev.title||'').split(/\r?\n/)[0]||'(予定)'; kind='予定'; involved=(ev.staff===staff || (ev.participants||[]).includes(staff)); }
     else if(k.indexOf('tk:')===0){ const rest=k.slice(3); const sep=rest.indexOf('::'); if(sep<0) return; const id=rest.slice(0,sep); const ev=(state.events||[]).find(x=>x.id===id); if(!ev) return; title=rest.slice(sep+2); kind='タスク'; involved=(ev.staff===staff || (ev.participants||[]).includes(staff)); }
@@ -11670,25 +11700,52 @@ function remindersForStaff_(staff){
   out.sort((a,b)=> (a.due?0:1)-(b.due?0:1) || String(a.on).localeCompare(String(b.on)));   // 期限到来を上・以降は日付順
   return out;
 }
+// 🗒 そのスタッフの「済み」リマインド履歴(v1.30.637)。doneが付いた60日分・新しい順。
+//   関与判定=完了時に焼き付けたstaff/doneBy/by(イベントが消えても題名・担当は残る)
+function doneRemindersForStaff_(staff){
+  const map=(typeof loadRemindersMap_==='function')?loadRemindersMap_():{};
+  const __hasStaff=(s2)=> s2 && (s2===staff || (typeof parseWorkers_==='function' ? parseWorkers_(s2).includes(staff) : String(s2).split(/[,、]/).map(x=>x.trim()).includes(staff)));
+  const out=[];
+  Object.keys(map).forEach(k=>{
+    const v=map[k]; if(!v||!v.done) return;
+    if(!(__hasStaff(v.staff) || v.doneBy===staff || v.by===staff)) return;
+    out.push({rkey:k, title:v.title||'(題名不明)', kind:v.kind||'', on:v.on||'', done:v.done, doneBy:v.doneBy||''});
+  });
+  out.sort((a,b)=>String(b.done).localeCompare(String(a.done)));
+  return out.slice(0,50);
+}
 // ⏰ 担当ごとのリマインド一覧ポップ(v1.30.375)。期限到来=点滅・各行に完了ボタンで消す。
+//   v1.30.637: ✓完了は消さずに🗒済み履歴へ(60日保持)。「🗒済み」トグルであとから内容を振り返れる。
 function openStaffRemindersPopup_(staff, anchorEl){
   document.querySelectorAll('.quick-pop.remind-list-pop').forEach(p=>p.remove());
   const rp=document.createElement('div'); rp.className='quick-pop remind-list-pop';
   const disp=(typeof getStaffDisplayName==='function')?getStaffDisplayName(staff):staff;
+  let showHist=false;
   const draw=()=>{
     const rems=remindersForStaff_(staff);
+    const hist=doneRemindersForStaff_(staff);
+    const fmtDT=iso=>{ const d=new Date(iso); if(isNaN(d)) return ''; return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
     const rows = rems.length ? rems.map(r=>{
       const d=parseDate(r.on); const md=(d&&!isNaN(d))?`${d.getMonth()+1}/${d.getDate()}`:r.on;
       return `<div class="rlp-row ${r.due?'due':''}">
         <span class="rlp-icon">⏰</span>
         <span class="rlp-body"><span class="rlp-title">${escapeHtml(r.title)}</span><span class="rlp-meta">${escapeHtml(r.kind)}・${escapeHtml(md)}${r.due?' <b>期限</b>':''}</span></span>
-        <button class="rlp-done" data-rk="${escapeHtml(r.rkey)}" title="完了(このリマインドを消す)">✓完了</button>
+        <button class="rlp-done" data-rk="${escapeHtml(r.rkey)}" data-rt="${escapeHtml(r.title)}" data-rn="${escapeHtml(r.kind)}" title="完了(🗒済み履歴に60日残ります)">✓完了</button>
       </div>`;
     }).join('') : '<div class="rlp-empty">リマインドはありません</div>';
-    rp.innerHTML = `<div class="qp-title">⏰ ${escapeHtml(disp)} のリマインド <span style="font-weight:400;font-size:11px;color:var(--muted)">${rems.length}件</span></div>
-      <div class="rlp-list">${rows}</div>
+    const histRows = hist.length ? hist.map(h=>`<div class="rlp-row" style="opacity:.85">
+        <span class="rlp-icon">🗒</span>
+        <span class="rlp-body"><span class="rlp-title" style="text-decoration:line-through;text-decoration-color:#94a3b8">${escapeHtml(h.title)}</span><span class="rlp-meta">${escapeHtml(h.kind)}${h.on?`・期日${escapeHtml(h.on.slice(5))}`:''}・✓${escapeHtml(fmtDT(h.done))}${h.doneBy?` ${escapeHtml(h.doneBy)}`:''}</span></span>
+        <button class="rlp-done" data-undo="${escapeHtml(h.rkey)}" data-rt="${escapeHtml(h.title)}" data-rn="${escapeHtml(h.kind)}" title="リマインドとして復活(期日=今日)" style="background:#eff6ff;color:#1d4ed8;border-color:#93c5fd">↩戻す</button>
+      </div>`).join('') : '<div class="rlp-empty">済みの履歴はありません</div>';
+    rp.innerHTML = `<div class="qp-title">⏰ ${escapeHtml(disp)} のリマインド <span style="font-weight:400;font-size:11px;color:var(--muted)">${rems.length}件</span>
+        <button id="rlp-hist-toggle" style="float:right;border:1px solid var(--border-strong);background:${showHist?'#0f172a':'#fff'};color:${showHist?'#fff':'#334155'};font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:10px;cursor:pointer">🗒 済み ${hist.length}</button></div>
+      <div class="rlp-list">${showHist?histRows:rows}</div>
+      ${showHist?`<div style="font-size:9.5px;color:var(--muted);padding:2px 4px">✓完了した通知の内容を${REMINDER_DONE_KEEP_DAYS}日残します(全端末共有)</div>`:''}
       <div class="qp-actions"><button class="qp-close" data-role="close">閉じる</button></div>`;
-    rp.querySelectorAll('.rlp-done').forEach(b=>{ b.onclick=()=>{ if(typeof setReminderShared_==='function') setReminderShared_(b.dataset.rk, null); if(typeof showAutoSyncToast==='function') showAutoSyncToast('⏰ 完了にしました'); draw(); }; });
+    rp.querySelector('#rlp-hist-toggle').onclick=()=>{ showHist=!showHist; draw(); };
+    rp.querySelectorAll('.rlp-done[data-rk]').forEach(b=>{ b.onclick=()=>{ if(typeof completeReminder_==='function') completeReminder_(b.dataset.rk, {title:b.dataset.rt, kind:b.dataset.rn, staff}); if(typeof showAutoSyncToast==='function') showAutoSyncToast('⏰ 完了にしました(🗒済み履歴に残ります)'); draw(); }; });
+    rp.querySelectorAll('.rlp-done[data-undo]').forEach(b=>{ b.onclick=()=>{ if(typeof setReminderShared_==='function') setReminderShared_(b.dataset.undo, {on:reminderTodayStr_(), by:(typeof getMyself==='function'?getMyself():''), title:b.dataset.rt, kind:b.dataset.rn, staff}); if(typeof showAutoSyncToast==='function') showAutoSyncToast('↩ リマインドを復活しました(期日=今日)'); showHist=false; draw(); }; });
     rp.querySelector('[data-role="close"]').onclick=()=>rp.remove();
   };
   document.body.appendChild(rp); draw();
