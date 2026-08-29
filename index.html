@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.632</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.633</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -17661,7 +17661,21 @@ function showChipTip(ev, mouseX, mouseY){
       onEdit:(cid,text,rr)=>{ if(!api.me){alert('先に「👤 自分」を設定してください');return;} editTaikyoComment_(tkId,cid,text,api.me); rr(); },
       onDelete:(cid,rr)=>{ if(!api.me){alert('先に「👤 自分」を設定してください');return;} deleteTaikyoComment_(tkId,cid); rr(); }
     };
-    buildTipChat_(tip, titleHtml, api);   // 立会も通常予定と同様、詳細行は省きコメント中心(v1.30.79)
+    // 📍 立会の吹き出しに住所・時刻・元請けを出す(v1.30.633・山田「住所とかわかれば出るように」)。
+    //   住所は立会表由来(ev.memoの📍行)。タップでGoogleマップが開く(現地への移動が立会の本業なので)
+    let __tkInfo = "";
+    {
+      const memoLines = String(ev.memo||"").split(/\n/);
+      const addr = (memoLines.find(l=>l.startsWith('📍'))||"").replace(/^📍\s*/,'').trim();
+      const timeNote = (memoLines.find(l=>l.startsWith('時刻:'))||"").trim();
+      const parts=[];
+      if(addr) parts.push(`<div style="margin-top:2px"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}" target="_blank" rel="noopener" style="color:#93c5fd;font-size:11.5px;text-decoration:underline">📍 ${escapeHtml(addr)}</a></div>`);
+      if(timeNote) parts.push(`<div style="font-size:11px;color:#e5e7eb;margin-top:2px">🕐 ${escapeHtml(timeNote.replace(/^時刻:\s*/,''))}</div>`);
+      else if(ev.start && ev.timeMode!=='anytime') parts.push(`<div style="font-size:11px;color:#e5e7eb;margin-top:2px">🕐 ${escapeHtml(ev.start)}${ev.end?`〜${escapeHtml(ev.end)}`:''}</div>`);
+      if(ev._motouke) parts.push(`<div style="font-size:10.5px;color:#9ca3af;margin-top:2px">元請け: ${escapeHtml(ev._motouke)}</div>`);
+      __tkInfo = parts.join('');
+    }
+    buildTipChat_(tip, titleHtml + __tkInfo, api);   // 立会=タイトル+住所/時刻/元請け+コメント(v1.30.633)
   } else {
     tip.classList.remove('interactive');
     tip.innerHTML = titleHtml + ((typeof evAuthorLine_==='function') ? evAuthorLine_(ev) : "") + rows.join("") + memoHtml + commentsHtml;
