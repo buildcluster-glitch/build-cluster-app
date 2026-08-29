@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.639</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.640</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8974,14 +8974,18 @@ function computeDashboard_(){
     const o=g(repGroups,__dashClientKey_(r.contractor));
     if(wf==="アポ・手配 未") o.apoMi++;
     let ad=null; if(r.responseDate){ const d=parseDate(r.responseDate); if(!isNaN(d)) ad=d; }
-    o.items.push({id:r.id, name:r.name, room:r.room, wf, ad, time:r.responseTime||"", worker:firstWorker_(r.worker||""), desc:(r.requestDesc||"").slice(0,30)});
+    o.items.push({id:r.id, name:r.name, room:r.room, wf, ad, time:r.responseTime||"", worker:firstWorker_(r.worker||""), desc:(r.requestDesc||"").slice(0,30),
+      rq:r.requestDate||""});   // 📅 依頼日(新規依頼順ソート用)v1.30.640
   });
-  // 各グループ内: アポ未を先頭 → アポ日の近い順
-  repGroups.forEach(o=>o.items.sort((a,b)=>{
-    const au=a.wf==="アポ・手配 未"?0:1, bu=b.wf==="アポ・手配 未"?0:1;
-    if(au!==bu) return au-bu;
-    return (a.ad?a.ad.getTime():9e15)-(b.ad?b.ad.getTime():9e15);
-  }));
+  // 各グループ内の並び(v1.30.640): 'apo'=アポ未先頭→アポ日順(既定) / 'req'=依頼日の新しい順(無しは最後)
+  const __pSort = (typeof __dashRepSort!=='undefined' && __dashRepSort==='req')
+    ? (a,b)=> String(b.rq||'').localeCompare(String(a.rq||''))
+    : (a,b)=>{
+        const au=a.wf==="アポ・手配 未"?0:1, bu=b.wf==="アポ・手配 未"?0:1;
+        if(au!==bu) return au-bu;
+        return (a.ad?a.ad.getTime():9e15)-(b.ad?b.ad.getTime():9e15);
+      };
+  repGroups.forEach(o=>o.items.sort(__pSort));
   const order=m=>{
     const FIXED=["山一地所","みどり不動産","自社工事"];
     const keys=[...m.keys()];
@@ -9079,6 +9083,7 @@ let __dashClientFilter = '';   // 📊 元請け絞り込み(''=全て・セッ�
 let __dashKindFilter = '';     // 📊 種別絞り込み(''=両方 / 'resto'=原状回復 / 'rep'=修繕)v1.30.623
 let __dashReturn = false;      // 📊 個別ダイアログを閉じたら全体進捗へ戻る(行タップで立てる)v1.30.625
 let __dashRestoSort = 'final'; // 📊 原状回復の並び('final'=最確が近い順 / 'order'=発注日が新しい順)v1.30.638
+let __dashRepSort = 'apo';     // 📊 修繕の並び('apo'=アポ未先頭→アポ日順 / 'req'=依頼日が新しい順)v1.30.640
 function renderDashboard_(){
   const body=document.getElementById('dash-body'); if(!body) return;
   let {restoGroups, repGroups, restoOrder, repOrder, tot, today, soonLimit}=computeDashboard_();
@@ -9173,9 +9178,11 @@ function renderDashboard_(){
     const rows=o.items.map(it=>{
       const wc=WF_COLORS[it.wf]||'#0891b2';
       const apo = it.ad ? `<span style="font-size:10.5px;font-weight:700;white-space:nowrap;color:${it.ad<today?'#dc2626':'var(--muted)'}">📞${md(it.ad)}${it.time?` ${escapeHtml(it.time)}`:''}</span>` : '';
+      const rqHtml = it.rq ? `<span style="font-size:10px;color:#be185d;font-weight:700;white-space:nowrap" title="依頼日">依頼${escapeHtml(String(it.rq).slice(5).replace('-','/'))}</span>` : '';   // 常時表示(v1.30.640)
       return `<div class="dash-row" data-dr-rep="${escapeHtml(it.id)}" style="display:flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid #fbcfe8;border-left:4px solid #ec4899;background:#fff;border-radius:8px;margin-bottom:4px;cursor:pointer;flex-wrap:wrap">
         <span style="flex:1 1 150px;min-width:120px;font-size:12px;font-weight:600;word-break:break-word">${escapeHtml(it.name)}${it.room?` <span style="font-weight:400">${escapeHtml(it.room)}</span>`:''}
           ${it.desc?`<span style="font-weight:400;font-size:10px;color:var(--muted)"> ${escapeHtml(it.desc)}</span>`:''}</span>
+        ${rqHtml}
         <span style="background:${wc};color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:6px;white-space:nowrap">${escapeHtml(it.wf)}</span>
         ${apo}
         ${it.worker?`<span style="font-size:10.5px;color:var(--muted);white-space:nowrap">👷${escapeHtml(it.worker)}</span>`:''}
@@ -9195,7 +9202,11 @@ function renderDashboard_(){
          ${restoHtml}
        </div>` : '')
     + (showRep ? `<div style="border:2px solid #ec4899;border-radius:12px;background:#fdf2f8;padding:0 8px 6px">
-         <div style="background:#ec4899;color:#fff;font-size:13.5px;font-weight:800;padding:6px 12px;border-radius:0 0 9px 9px;margin:0 -8px 8px;display:flex;align-items:center;gap:8px">🔧 修繕 <span style="font-size:11px;font-weight:700;background:rgba(255,255,255,.25);padding:1px 8px;border-radius:8px">${tot.repN}件</span><span style="font-size:10px;font-weight:400;opacity:.85">入居中の修理対応</span></div>
+         <div style="background:#ec4899;color:#fff;font-size:13.5px;font-weight:800;padding:6px 12px;border-radius:0 0 9px 9px;margin:0 -8px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">🔧 修繕 <span style="font-size:11px;font-weight:700;background:rgba(255,255,255,.25);padding:1px 8px;border-radius:8px">${tot.repN}件</span><span style="font-size:10px;font-weight:400;opacity:.85">入居中の修理対応</span>
+           <span style="margin-left:auto;display:flex;gap:3px">
+             <button data-dps="apo" style="border:0;border-radius:9px;font-size:10px;font-weight:700;padding:2px 9px;cursor:pointer;${__dashRepSort!=='req'?'background:#fff;color:#be185d':'background:rgba(255,255,255,.25);color:#fff'}">アポ順</button>
+             <button data-dps="req" style="border:0;border-radius:9px;font-size:10px;font-weight:700;padding:2px 9px;cursor:pointer;${__dashRepSort==='req'?'background:#fff;color:#be185d':'background:rgba(255,255,255,.25);color:#fff'}">新規依頼順</button>
+           </span></div>
          ${repHtml}
        </div>` : '')
     + __workloadSectionHtml_();
@@ -9205,6 +9216,7 @@ function renderDashboard_(){
   body.querySelectorAll('[data-dcf]').forEach(b=>b.onclick=()=>{ __dashClientFilter=b.dataset.dcf; renderDashboard_(); body.scrollTop=0; });
   body.querySelectorAll('[data-dkf]').forEach(b=>b.onclick=()=>{ __dashKindFilter=b.dataset.dkf; renderDashboard_(); body.scrollTop=0; });
   body.querySelectorAll('[data-drs]').forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); __dashRestoSort=b.dataset.drs; renderDashboard_(); });
+  body.querySelectorAll('[data-dps]').forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); __dashRepSort=b.dataset.dps; renderDashboard_(); });
   // 行タップ: その案件へ飛ぶ(原状回復=詳細ダイアログ / 修繕=修繕タブ)
   const ov=document.getElementById('dashboardModal');
   body.querySelectorAll('[data-dr-resto]').forEach(el=>el.onclick=()=>{
