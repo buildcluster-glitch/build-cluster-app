@@ -315,6 +315,8 @@
   .sanpai-badge .spb-slot{background:rgba(0,0,0,.08);border-radius:5px;padding:0 4px}
   .sanpai-badge .spb-plan{border:1px dashed currentColor;border-radius:5px;padding:0 4px;font-size:9px}
   .sanpai-badge .spb-kago{opacity:.85}
+  /* 🏢 法人契約(立会チップ)v1.30.652。現地承諾NG=当日の持ち物が変わる合図 */
+  .chip-houjin{flex-shrink:0;background:#1e40af;color:#fff;font-size:9px;font-weight:700;padding:0 5px;border-radius:3px;margin-left:3px;white-space:nowrap}
   /* 登録ポップ内のボタンピッカー(依頼者・籠数) */
   .sanpai-pick{display:flex;flex-wrap:wrap;gap:5px}
   .sanpai-pick button{font-size:12px;border:1px solid var(--border-strong);background:#fff;border-radius:8px;padding:4px 10px;cursor:pointer;font-weight:600;color:#0f172a}
@@ -2856,7 +2858,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.651</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.652</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -6951,6 +6953,98 @@ async function fetchTaikyoSchedule(opts={}){
     }
   })();
   return __taikyoScheduleInFlight;
+}
+// ===========================================================
+// 🏢 立会の契約区分ヒント(v1.30.652・山田「立会予定、個人法人って判別できてるんだっけ」)
+//   ★背景: 契約区分は台帳の meta.taikyo.contractorType に**立会前から入っている**(佳織さんが現場情報タブに入力)。
+//   だが task-sync の射影は「原状回復は発注書が確定するまで properties に載せない」ため、
+//   立会前の案件はカレンダーから存在ごと見えない(実測: 今日以降の立会57件中、propertiesに0件)。
+//   → 見積GAS ver85(9/6)が **properties とは別枠の軽量配列 `tachiaiHints`** で送ってくれる。
+//   形= { bukken, roomNo, taikyoStart, contractorType, corpName|daikoCorp, fileId } ・実測27件≒3KB。
+//   ⚠ver85までフィールドは来ない=その間このモジュールは何もしない(無害)。
+//   ⚠**個人は既定値**(選択肢に「未設定」が無い)ため、🏢は法人/代行→法人のときだけ。個人側は無表示。
+// ===========================================================
+const TACHIAI_HINTS_KEY = "buildcluster_tachiai_hints";
+function loadTachiaiHints_(){
+  try{ const o=JSON.parse(localStorage.getItem(TACHIAI_HINTS_KEY)||"null"); return (o&&Array.isArray(o.items))?o:{items:[],fetchedAt:""}; }
+  catch(e){ return {items:[],fetchedAt:""}; }
+}
+function saveTachiaiHints_(items){
+  try{ localStorage.setItem(TACHIAI_HINTS_KEY, JSON.stringify({items:items||[], fetchedAt:new Date().toISOString()})); }
+  catch(e){ if(typeof __lsQuotaWarnOnce_==='function') __lsQuotaWarnOnce_(); }
+  __tkHintIndex = null;   // 索引を作り直す
+}
+// 🔤 突合キー(9/1の読み合わせ用に実測して決めた正規化)。⚠物件名と号室でルールが違う。
+//   物件名: NFKC → 空白(半/全)除去 → 棟番号の表記ゆれを算用数字へ寄せる
+//     実測=立会側57件に全角スペース6件(「ディークレスト太子堂駅前　East」)・ローマ数字5件、
+//         台帳側にローマ数字40件・番館/棟20件。漢数字の棟名も実在(ウッディランド弐番館/ホープヒル壱番館)
+//   ⚠ローマ数字の変換は**前後が英字でないとき限定**(「VIP仙台二日町」のVを壊さないため)
+function tkNameKey_(s){
+  let x = String(s||'').normalize('NFKC').replace(/[\s　]/g,'');
+  if(!x) return '';
+  // NFKCで Ⅲ→III(英字)になっている。英字に挟まれていないローマ数字だけ算用数字へ
+  x = x.replace(/(^|[^A-Za-z0-9])(VIII|VII|VI|IV|IX|XII|XI|X|V|III|II|I)(?![A-Za-z0-9])/g,
+                (m,pre,rom)=> pre + ({I:'1',II:'2',III:'3',IV:'4',V:'5',VI:'6',VII:'7',VIII:'8',IX:'9',X:'10',XI:'11',XII:'12'}[rom]||rom));
+  x = x.replace(/[壱弐参肆伍]/g, c=>({'壱':'1','弐':'2','参':'3','肆':'4','伍':'5'}[c]));
+  x = x.replace(/[一二三四五六七八九十](?=(番館|号棟|棟))/g, c=>({'一':'1','二':'2','三':'3','四':'4','五':'5','六':'6','七':'7','八':'8','九':'9','十':'10'}[c]));
+  return x;
+}
+//   号室: NFKC → 空白/「号室」「号」除去 → **先頭ゼロ除去**(台帳の「0508」⇄立会の「508」・実測16件が該当)
+//         数字でないもの(テナント/B/2FA/氏名)は大文字化してそのまま比較
+function tkRoomKey_(s){
+  const x = String(s||'').normalize('NFKC').replace(/[\s　]/g,'').replace(/号室|号/g,'');
+  if(!x) return '';
+  return /^\d+$/.test(x) ? String(parseInt(x,10)) : x.toUpperCase();
+}
+let __tkHintIndex = null;
+function tkHintIndex_(){
+  if(__tkHintIndex) return __tkHintIndex;
+  const m = new Map();
+  (loadTachiaiHints_().items||[]).forEach(h=>{
+    if(!h || !h.bukken) return;
+    const k = tkNameKey_(h.bukken) + '|' + tkRoomKey_(h.roomNo != null ? h.roomNo : h.room);
+    if(!m.has(k)) m.set(k, []);
+    m.get(k).push(h);
+  });
+  __tkHintIndex = m;
+  return m;
+}
+// 立会イベント(物件名+号室)→ヒント。同名同室が複数ある時だけ立会日をタイブレークに使う
+//   (⚠日付は一致条件にしない: カレンダーの立会日=立会表由来 / ヒント=meta.taikyo.taikyoStart 由来でズレ得る)
+function findTachiaiHint_(bukken, room, dateIso){
+  const idx = tkHintIndex_();
+  if(!idx.size) return null;
+  const arr = idx.get(tkNameKey_(bukken) + '|' + tkRoomKey_(room));
+  if(!arr || !arr.length) return null;
+  if(arr.length === 1) return arr[0];
+  if(!dateIso) return arr[0];
+  let best = arr[0], bestD = Infinity;
+  arr.forEach(h=>{
+    const d = (typeof normalizeDate==='function') ? normalizeDate(h.taikyoStart||'') : '';
+    if(!d) return;
+    const diff = Math.abs(new Date(d) - new Date(dateIso));
+    if(diff < bestD){ bestD = diff; best = h; }
+  });
+  return best;
+}
+// 🏢 表示するのは法人/代行→法人だけ(個人は初期値=「個人と確認済み」ではないため何も出さない)
+function tachiaiHoujin_(bukken, room, dateIso){
+  const h = findTachiaiHint_(bukken, room, dateIso);
+  if(!h) return null;
+  const t = String(h.contractorType||'').trim();
+  if(!/法人/.test(t)) return null;                      // 個人・空 は無表示
+  const daiko = /代行/.test(t);
+  return { type:t, daiko, corp: String(h.corpName || h.daikoCorp || '').trim(), fileId: h.fileId||'' };
+}
+// 🔍 診断用: ヒントのうち、いまカレンダーが持っている立会と突き合わせられた数(表記ゆれの発見器)
+//   ⚠黙って空振りさせない(v1.30.644の教訓)。未マッチが出たら9/1の読み合わせで詰めた正規化を疑う
+function tachiaiHintMatchStats_(){
+  const items = loadTachiaiHints_().items || [];
+  if(!items.length) return { total:0, matched:0, unmatched:[] };
+  const evKeys = new Set((state.taikyoEvents||[]).map(r=> tkNameKey_(r.bukken)+'|'+tkRoomKey_(r.room)));
+  const unmatched = items.filter(h=> !evKeys.has(tkNameKey_(h.bukken)+'|'+tkRoomKey_(h.roomNo!=null?h.roomNo:h.room)))
+                         .map(h=> `${h.bukken} ${h.roomNo||h.room||''}`.trim());
+  return { total: items.length, matched: items.length - unmatched.length, unmatched };
 }
 // 🎨 退去立会の上書き (担当・日時) — 全員共有(shared-config 'taikyo_overrides' = Drive json)
 //   見積アプリ/クラ助が流す元レコードに対し、カレンダー側で担当や日時を割り当て直す。
@@ -14508,6 +14602,13 @@ async function syncChecksFromGAS(opts){
     const data = await res.json();
     if(data.error){ throw new Error(data.error); }
     const properties = data.properties || [];
+    // 🏢 立会の契約区分ヒント(v1.30.652・見積GAS ver85から届く別枠)。
+    //   ⚠差分同期の応答に欄が無い時は前回の値を残す(Arrayの時だけ差し替え)=消えない
+    if(Array.isArray(data.tachiaiHints)){
+      saveTachiaiHints_(data.tachiaiHints);
+      const __st = (typeof tachiaiHintMatchStats_==='function') ? tachiaiHintMatchStats_() : null;
+      if(__st) console.log(`[tachiaiHints] ${__st.matched}/${__st.total}件が立会と一致${__st.unmatched.length?` ・未一致: ${__st.unmatched.join(' / ')}`:''}`);
+    }
     // 🔁 差分レスポンス(v1.30.213): since指定 かつ GASが partial:true を返した時だけ差分マージ。partial欄が無い旧GAS→フル扱い(forward-compatible)
     const __partial  = (data.partial === true) && !!__since;
     const __allIds   = Array.isArray(data.allIds) ? data.allIds : null;
@@ -16724,6 +16825,14 @@ function renderCalendar(){
             ? `<span class="chip-shiryo ready" title="📄 立会資料 作成済(見積アプリ)">📄済</span>`
             : `<span class="chip-shiryo" title="📄 立会資料 未作成">📄未</span>`)
         : "";
+      // 🏢 法人契約バッジ(v1.30.652・山田)。**法人/代行→法人のときだけ**出す(個人は既定値なので無表示)。
+      //   実務上の意味=**法人は現地承諾が使えない**(見積アプリの承諾書分岐: 個人×現地承諾→現地承諾書 /
+      //   それ以外→立会のみ承諾書)。既存の🔴現地承諾(赤文字・v1.30.227/238)と並べて「当日の持ち物が変わる」を1目で。
+      const __hj = (ev.source === "taikyo-shared" && typeof tachiaiHoujin_==='function')
+        ? tachiaiHoujin_(ev._bukken || ev.title, ev._room, ev.date) : null;
+      const houjinBadge = __hj
+        ? `<span class="chip-houjin" title="${escapeHtml(`🏢 ${__hj.type}契約${__hj.corp?`（${__hj.corp}）`:''}\n現地承諾は使えません＝「立会のみ承諾書」を持参`)}">🏢${__hj.daiko?'代行':''}</span>`
+        : "";
       // 💬 立会コメント数バッジ (全員共有・taikyo_comments)
       const __tkCmtN = (ev.source === "taikyo-shared" && typeof taikyoCommentCount_==='function')
         ? taikyoCommentCount_(ev._taikyoRawId || ev.id) : 0;
@@ -16789,7 +16898,7 @@ function renderCalendar(){
           : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;
         // 参加者バッジ/見積行は title 外(チップ直下)に独立行として配置。工事ボリュームは号室の隣(__volBadge)。
         // ※複数行タイトル時は staffBadges を __titleInner 内に入れ込み済みなので外側では出さない(v1.30.170)
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${__skipBadge}${isMulti ? '' : staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${__remindBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${__alertHtml}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${__skipBadge}${isMulti ? '' : staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${__remindBadge}${houjinBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${__alertHtml}`;
         // 担当色がある(1名でも)ならチップ全面を着色(v1.30.124: 単独担当で半分しか色が付かない問題)。色無し+複数バッジは薄グレー地
         if(__willCard){ el.classList.add('chip-has-staffs'); el.style.setProperty('--card-bg', chipBg); }
         if(__jizenSkip) el.classList.add('chip-skip-visit');
@@ -16807,7 +16916,7 @@ function renderCalendar(){
               ? `<span class="ct-text" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${compactTaskHtml}</span>`
               : `<span style="display:inline-flex;min-width:0;flex:0 1 auto;align-items:baseline"><span class="ct-text" style="min-width:0;${__wrapName ? 'white-space:normal;display:-webkit-box;-webkit-line-clamp:'+__nameLines+';-webkit-box-orient:vertical;overflow:hidden;word-break:break-word' : 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap'}">${escapeHtml(__nameMain)}</span>${__roomTail ? `<span class="ct-room" style="flex-shrink:0;font-weight:600">${escapeHtml(__roomTail)}</span>` : ""}</span>`);
         const timeBox = isJizen ? "" : (isAnytime ? "" : `<span class="chip-time">終日</span>`);   // 事前は時間バッジ無し(v1.30.327・山田)
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${__skipBadge}${isMulti ? '' : staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${__remindBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${__alertHtml}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${__skipBadge}${isMulti ? '' : staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${__remindBadge}${houjinBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${__alertHtml}`;
         // 担当色がある(1名でも)ならチップ全面を着色(v1.30.124: 単独担当で半分しか色が付かない問題)。色無し+複数バッジは薄グレー地
         if(__willCard){ el.classList.add('chip-has-staffs'); el.style.setProperty('--card-bg', chipBg); }
         if(__jizenSkip) el.classList.add('chip-skip-visit');
@@ -16825,7 +16934,7 @@ function renderCalendar(){
           : `${(typeof isJizenEvent_==='function' && isJizenEvent_(ev))
                 ? (commuteInline ? `<div class="time">${commuteInline}</div>` : '')   /* 📌事前は時刻を出さない(v1.30.327・山田)・直帰等があれば残す */
                 : `<div class="time">${window.innerWidth<=700 ? ev.start : `${ev.start}〜${ev.end}`}${commuteInline}</div>`}
-             <div class="title">${inlineCatPrefix}${titleHtmlMulti}${progIcon}${__progStaffBadge}${shiryoBadge}${taikyoCmtBadge}${__linkInfoHtml}${__jizenKojiHtml}</div>
+             <div class="title">${inlineCatPrefix}${titleHtmlMulti}${progIcon}${__progStaffBadge}${houjinBadge}${shiryoBadge}${taikyoCmtBadge}${__linkInfoHtml}${__jizenKojiHtml}</div>
              ${showStaff ? (multi ? participantsHtml : (ev.staff ? `<div class="staff">${staffShortLabel}</div>`:"")) : ""}`;
         el.title = fullTooltip;
       }
@@ -23692,6 +23801,15 @@ async function runTaikyoColorDiag_(){
       + (!before ? `\n自動掃除(${cleaned||'掃除なし'})→再テスト: ${after?'✅成功':'❌まだ失敗(このスマホのブラウザのサイトデータ削除が必要)'}` : '')
       + `\n内訳TOP8:\n${top}`);
   }catch(e){ sections.push('【📦ストレージ】検査失敗: '+e.message); }
+  // 🏢 立会の契約区分ヒント(v1.30.652): 突合できなかった分を必ず数えて出す=物件名/号室の表記ゆれの発見器。
+  //   ver85(9/6)前は total=0 で「まだ届いていません」と出るのが正常。
+  try{
+    const __hs = (typeof tachiaiHintMatchStats_==='function') ? tachiaiHintMatchStats_() : null;
+    if(__hs){
+      sections.push(`【🏢契約区分ヒント】${__hs.total?`${__hs.matched}/${__hs.total}件が立会と一致`:'まだ届いていません(見積GAS ver85=9/6予定)'}`
+        + (__hs.unmatched.length ? `\n⚠未一致(物件名/号室の表記ゆれの疑い):\n  ${__hs.unmatched.join('\n  ')}` : ''));
+    }
+  }catch(e){ sections.push('【🏢契約区分ヒント】検査失敗: '+e.message); }
   const head = `🔍色の診断 (${(typeof appVersion_==='function')?appVersion_():''} / ${(typeof deviceInfo_==='function')?deviceInfo_():''})`;
   try{
     await mutateCalReport_(uid(), { type:'normal', text:`${head}\n${sections.join('\n\n')}`, status:'open',
