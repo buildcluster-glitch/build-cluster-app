@@ -304,6 +304,17 @@
   .sanpai-btn:hover{background:#f1f5f9;border-color:#0f172a}
   /* 未登録は赤で急かさない=通常の黒字(山田 v1.30.429)。産廃回収は日が決まってないのが普通の状態 */
   .sanpai-btn .sp-kago{color:#b45309;margin-left:3px}
+  /* 🕐 時間帯・確度(v1.30.651) */
+  .sanpai-btn .sp-slot{color:#0369a1;margin-left:4px;font-weight:700}
+  .sanpai-btn .sp-plan{color:#7c3aed;margin-left:4px;font-size:10px;border:1px dashed #a78bfa;border-radius:5px;padding:0 4px}
+  /* 🗑 休日帯に出すごみ回収バッジ(v1.30.651・山田「休みのしたあたり」) */
+  .sanpai-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;white-space:nowrap;
+    background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:7px;padding:1px 7px;margin:1px 2px;cursor:pointer}
+  .sanpai-badge:hover{background:#fde68a}
+  .sanpai-badge.plan{background:#faf5ff;color:#6d28d9;border:1px dashed #c4b5fd}   /* 予定=未確定は点線 */
+  .sanpai-badge .spb-slot{background:rgba(0,0,0,.08);border-radius:5px;padding:0 4px}
+  .sanpai-badge .spb-plan{border:1px dashed currentColor;border-radius:5px;padding:0 4px;font-size:9px}
+  .sanpai-badge .spb-kago{opacity:.85}
   /* 登録ポップ内のボタンピッカー(依頼者・籠数) */
   .sanpai-pick{display:flex;flex-wrap:wrap;gap:5px}
   .sanpai-pick button{font-size:12px;border:1px solid var(--border-strong);background:#fff;border-radius:8px;padding:4px 10px;cursor:pointer;font-weight:600;color:#0f172a}
@@ -2845,7 +2856,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.650</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.651</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -7422,15 +7433,28 @@ function loadSanpai_(){ try{ const o=JSON.parse(localStorage.getItem(SANPAI_KEY)
 function saveSanpai_(map){ try{ localStorage.setItem(SANPAI_KEY, JSON.stringify(map||{})); }catch(e){} }
 function mergeSanpaiMaps_(a,b){ return lwwMergeZombieSafe_(a,b); }   // 🧟 v1.30.600: ゾンビ排除つきLWWに統一
 // 次回(今日以降で最も近い回収日)。過ぎた分は返さない=ヘッダーから自動で消える
+// ⚠キーは日付(YYYY-MM-DD)だけを見る。過去のLWWマージで "3" "5" 等のゴミキーが実際に混ざっており、
+//   文字列比較では "3" >= "2026-08-31" が真になる=「次回の回収日が3」になり得る(v1.30.651で防御)
+const SANPAI_DATE_KEY = /^\d{4}-\d{2}-\d{2}$/;
 function nextSanpai_(){
   const map=loadSanpai_(); const today=(typeof fmtDate==='function')?fmtDate(new Date()):new Date().toISOString().slice(0,10);
-  const ds=Object.keys(map).filter(d=>map[d] && !map[d].deleted && d>=today).sort();
+  const ds=Object.keys(map).filter(d=>SANPAI_DATE_KEY.test(d) && map[d] && !map[d].deleted && d>=today).sort();
   return ds.length ? Object.assign({date:ds[0]}, map[ds[0]]) : null;
+}
+// 🕐 時間帯と確度(v1.30.651・山田「午前午後不明とか予定とかも選べるように」)。
+//   slot: 'am'=午前 / 'pm'=午後 / ''=時間未定(不明)  ※既存レコード(slot無し)は自動で「時間未定」
+//   plan: true=まだ確定していない「予定」。カレンダー/ヘッダーで(予定)と点線表示にして確定と見分ける
+const SANPAI_SLOTS = [['am','午前'],['pm','午後'],['','不明']];
+function sanpaiSlotLabel_(s){ return s==='am' ? '午前' : s==='pm' ? '午後' : '時間未定'; }
+function sanpaiForDate_(d){
+  if(!d || !SANPAI_DATE_KEY.test(d)) return null;
+  const e = loadSanpai_()[d];
+  return (e && !e.deleted) ? Object.assign({date:d}, e) : null;
 }
 // 履歴(新しい順・既定5件)
 function sanpaiHistory_(n){
   const map=loadSanpai_(); const today=(typeof fmtDate==='function')?fmtDate(new Date()):new Date().toISOString().slice(0,10);
-  return Object.keys(map).filter(d=>map[d] && !map[d].deleted && d<today).sort().reverse().slice(0, n||5).map(d=>Object.assign({date:d}, map[d]));
+  return Object.keys(map).filter(d=>SANPAI_DATE_KEY.test(d) && map[d] && !map[d].deleted && d<today).sort().reverse().slice(0, n||5).map(d=>Object.assign({date:d}, map[d]));
 }
 async function fetchSanpai_(opts={}){
   const s=loadGasSettings(); const local=loadSanpai_();
@@ -15562,8 +15586,9 @@ function renderHeaderDuty_(){
     if(nx){
       const d = parseDate(nx.date);
       const ds = (d && !isNaN(d)) ? `${d.getMonth()+1}/${d.getDate()}(${DOW_JA[d.getDay()]})` : nx.date;
-      label = `🗑産廃回収 ${ds}${nx.kago?`<span class="sp-kago">籠${nx.kago}台</span>`:''}${nx.denkyu?' 💡':''}`;
-      tip = `次回の産廃回収\n回収日: ${nx.date}\n依頼者: ${nx.by||'(未設定)'}\n籠数: ${nx.kago?nx.kago+'台':'-'}${nx.denkyu?'\n💡 電球回収あり':''}\n\nクリックで編集`;
+      const __sl = (typeof sanpaiSlotLabel_==='function') ? sanpaiSlotLabel_(nx.slot) : '';   // 🕐 v1.30.651
+      label = `🗑産廃回収 ${ds}<span class="sp-slot">${__sl}</span>${nx.plan?'<span class="sp-plan">予定</span>':''}${nx.kago?`<span class="sp-kago">籠${nx.kago}台</span>`:''}${nx.denkyu?' 💡':''}`;
+      tip = `次回の産廃回収\n回収日: ${nx.date} ${__sl}${nx.plan?'(予定=まだ未確定)':'(確定)'}\n依頼者: ${nx.by||'(未設定)'}\n籠数: ${nx.kago?nx.kago+'台':'-'}${nx.denkyu?'\n💡 電球回収あり':''}\n\nクリックで編集`;
       cls = '';
     }else{
       label = '🗑産廃回収 次回未定';
@@ -15583,13 +15608,18 @@ function renderHeaderDuty_(){
 
 // 🗑 産廃回収の登録ポップ(v1.30.428・山田「ボタン形式で登録できるように 依頼者・回収籠数・+電球回収」)
 //   回収日=date input＋クイックボタン / 依頼者・籠数=ボタンピッカー / 電球回収=トグル。全端末共有(shared-config 'sanpai')。
-function openSanpaiPop_(anchorEl){
+//   dateHint を渡すとその日の登録を編集する(カレンダーの🗑バッジ/空セルから開くとき)v1.30.651
+function openSanpaiPop_(anchorEl, dateHint){
   document.querySelectorAll('.quick-pop.sanpai-pop').forEach(p=>p.remove());
-  const nx = (typeof nextSanpai_==='function') ? nextSanpai_() : null;
+  // dateHint あり=その日を編集(未登録ならその日で新規) / なし=従来どおり「次回」を編集
+  const nx = dateHint
+    ? ((typeof sanpaiForDate_==='function' && sanpaiForDate_(dateHint)) || null)
+    : ((typeof nextSanpai_==='function') ? nextSanpai_() : null);
   const disp = (typeof getStaffDisplayName==='function') ? getStaffDisplayName : (x=>x);
   const me = (typeof getMyself==='function') ? getMyself() : "";
-  // 編集中の状態(既存の次回があればそれを、無ければ新規=依頼者は自分・籠数1)
-  let st = { date: nx ? nx.date : "", by: nx ? (nx.by||"") : (me||""), kago: nx ? (nx.kago||1) : 1, denkyu: nx ? !!nx.denkyu : false };
+  // 編集中の状態(既存があればそれを、無ければ新規=依頼者は自分・籠数1・時間帯は不明)
+  let st = { date: nx ? nx.date : (dateHint||""), by: nx ? (nx.by||"") : (me||""), kago: nx ? (nx.kago||1) : 1,
+             denkyu: nx ? !!nx.denkyu : false, slot: nx ? (nx.slot||"") : "", plan: nx ? !!nx.plan : false };
   const origDate = nx ? nx.date : "";
   const pop = document.createElement('div');
   pop.className = 'quick-pop sanpai-pop';
@@ -15600,6 +15630,19 @@ function openSanpaiPop_(anchorEl){
       <div class="qp-sec">
         <div class="qp-label">📅 回収日</div>
         <input type="date" id="sp-date" value="${escapeHtml(st.date)}" style="width:100%;box-sizing:border-box;padding:5px 6px;font-size:12px;border:1px solid var(--border-strong);border-radius:6px">
+      </div>
+      <div class="qp-sec">
+        <div class="qp-label">🕐 時間帯 <span style="font-weight:400;color:#94a3b8;font-size:10px">(業者が来るのが午前か午後か)</span></div>
+        <div class="sanpai-pick" id="sp-slot">
+          ${SANPAI_SLOTS.map(([v,l])=>`<button data-sl="${v}" class="${v===st.slot?'on':''}">${l}</button>`).join('')}
+        </div>
+      </div>
+      <div class="qp-sec">
+        <div class="qp-label">📌 確度</div>
+        <div class="sanpai-pick" id="sp-plan">
+          <button data-pl="0" class="${!st.plan?'on':''}">確定</button>
+          <button data-pl="1" class="${st.plan?'on':''}">予定（未確定）</button>
+        </div>
       </div>
       <div class="qp-sec">
         <div class="qp-label">🙋 依頼者 <span style="font-weight:400;color:#94a3b8;font-size:10px">(業者に手配した人)</span></div>
@@ -15628,6 +15671,8 @@ function openSanpaiPop_(anchorEl){
         <button class="qp-close" id="sp-save" style="background:#0f172a;color:#fff">✓ 保存</button>
       </div>`;
     pop.querySelector('#sp-date').onchange = (e)=>{ st.date = e.target.value; };
+    pop.querySelectorAll('#sp-slot button').forEach(b=>{ b.onclick=()=>{ st.slot = b.dataset.sl; draw(); }; });
+    pop.querySelectorAll('#sp-plan button').forEach(b=>{ b.onclick=()=>{ st.plan = b.dataset.pl==='1'; draw(); }; });
     pop.querySelectorAll('#sp-by button').forEach(b=>{ b.onclick=()=>{ st.by = (st.by===b.dataset.s) ? "" : b.dataset.s; draw(); }; });
     pop.querySelectorAll('#sp-kago button').forEach(b=>{ b.onclick=()=>{ st.kago = parseInt(b.dataset.k,10)||1; draw(); }; });
     pop.querySelector('#sp-denkyu').onclick = ()=>{ st.denkyu = !st.denkyu; draw(); };
@@ -15647,9 +15692,9 @@ function openSanpaiPop_(anchorEl){
       try{
         // 日付を変更した場合は旧レコードを削除(同じ予定が2件残らないように)
         if(origDate && origDate !== dv && typeof setSanpai_==='function') await setSanpai_(origDate, null).catch(()=>{});
-        if(typeof setSanpai_==='function') await setSanpai_(dv, { by:st.by, kago:st.kago, denkyu:!!st.denkyu });
+        if(typeof setSanpai_==='function') await setSanpai_(dv, { by:st.by, kago:st.kago, denkyu:!!st.denkyu, slot:st.slot||"", plan:!!st.plan });
         pop.remove(); if(typeof render==='function') render();
-        if(typeof showAutoSyncToast==='function') showAutoSyncToast(`🗑 産廃回収を登録しました（${dv} 籠${st.kago}台${st.denkyu?' 💡電球あり':''}）`);
+        if(typeof showAutoSyncToast==='function') showAutoSyncToast(`🗑 産廃回収を登録しました（${dv} ${sanpaiSlotLabel_(st.slot)}${st.plan?'・予定':''} 籠${st.kago}台${st.denkyu?' 💡電球あり':''}）`);
       }catch(e){ btn.disabled=false; btn.textContent='✓ 保存'; alert('保存に失敗: '+(e&&e.message||e)); }
     };
   };
@@ -15987,7 +16032,7 @@ function renderCalendar(){
   // const は外で window.wfBgMap で公開済
   const dayRepairsForGrid = []; // 時間グリッドに配置する修繕アポ {r, hh, mm, colKey}
   const jizenRepairByCol = {};  // 時刻なし修繕アポ(自動登録)は休日帯でなく事前帯へ(v1.30.293・山田)
-  cols.forEach(c=>{
+  cols.forEach((c,__ci)=>{
     const colLeaves = state.leaves.filter(c.filterLeave);
     let inner = colLeaves.map(l=>{
       const bg = STAFF_COLORS[l.staff] || "#fde68a";
@@ -15999,6 +16044,23 @@ function renderCalendar(){
       const __cn = (typeof leaveComments_==='function') ? leaveComments_(l.id).length : 0;
       return `<span class="leave-badge" data-leave-id="${l.id}" style="background:${bg};color:${fg}" title="${escapeHtml(tt)}"><span class="lb-staff">${escapeHtml(l.staff)}</span><span class="lb-type">${escapeHtml(typeLabel)}</span>${__cn?`<span class="lb-task" title="${escapeHtml(leaveCommentsBadgeTitle_(l.id))}">💬${__cn>1?__cn:''}</span>`:''}</span>`;
     }).join("");
+    // 🗑 産廃(ごみ)回収(v1.30.651・山田「ごみ回収予定を登録したらカレンダーの予定にも出して。休みのしたあたり」)
+    //   休暇バッジのすぐ後ろ=🏖休日帯の中に置く。クリックでその日の登録ポップ(編集)を開く。
+    //   ⚠スタッフ別ビューは全列が同じ日付なので、先頭列だけに出す(人数分ぶら下がるのを防ぐ)
+    if(c.contextDate && typeof sanpaiForDate_==='function' && (currentView!=="staff" || __ci===0)){
+      const __sp = sanpaiForDate_(c.contextDate);
+      if(__sp){
+        const __sl = sanpaiSlotLabel_(__sp.slot);
+        const __by = (typeof getStaffDisplayName==='function') ? getStaffDisplayName(__sp.by||'') : (__sp.by||'');
+        const __tip = `🗑 産廃(ごみ)回収 ${__sl}${__sp.plan?'（予定=まだ未確定）':'（確定）'}\n籠${__sp.kago||'-'}台${__sp.denkyu?'\n💡 電球回収あり':''}\n依頼者: ${__by||'(未設定)'}\n\nクリックで編集`;
+        inner += `<span class="sanpai-badge${__sp.plan?' plan':''}" data-sanpai-date="${escapeHtml(c.contextDate)}" title="${escapeHtml(__tip)}">`
+          + `🗑ごみ回収<span class="spb-slot">${escapeHtml(__sl)}</span>`
+          + (__sp.plan?'<span class="spb-plan">予定</span>':'')
+          + (__sp.kago?`<span class="spb-kago">籠${__sp.kago}</span>`:'')
+          + (__sp.denkyu?'<span class="spb-kago">💡</span>':'')
+          + `</span>`;
+      }
+    }
     // 修繕アポ (responseDate がこの列の日付に一致) — Phase3 カレンダー連携
     // responseTime が "10:00" 等の正確な時刻パース可能なら時間グリッドに配置、不可なら終日帯に
     // ★ドラッグ不可仕様: 上記グリッド配置側コメント参照
@@ -16109,6 +16171,10 @@ function renderCalendar(){
     alldayHtml += `<div class="allday-cell ${c.cellCls}" data-allday-date="${c.contextDate||''}" data-allday-staff="${c.contextStaff||''}" title="ダブルクリック: 休暇/有給を登録">${inner}</div>`;
   });
   allday.innerHTML = alldayHtml;
+  // 🗑 ごみ回収バッジ → その日の登録ポップ(v1.30.651)
+  allday.querySelectorAll("[data-sanpai-date]").forEach(el=>{
+    el.onclick = (e)=>{ e.stopPropagation(); if(typeof openSanpaiPop_==='function') openSanpaiPop_(el, el.dataset.sanpaiDate); };
+  });
   allday.querySelectorAll("[data-leave-id]").forEach(el=>{
     el.onclick = (e)=>{
       e.stopPropagation();
@@ -16120,7 +16186,7 @@ function renderCalendar(){
   allday.querySelectorAll(".allday-cell").forEach(cell=>{
     cell.ondblclick = (e)=>{
       // 既存チップ上のダブルクリックは無視 (チップ自身のhandlerが優先)
-      if(e.target.closest("[data-leave-id], [data-repair-id], .event")) return;
+      if(e.target.closest("[data-leave-id], [data-repair-id], [data-sanpai-date], .event")) return;
       const date = cell.dataset.alldayDate || "";
       const staff = cell.dataset.alldayStaff || "";
       openLeaveModal(null, { start: date, end: date, staff });
