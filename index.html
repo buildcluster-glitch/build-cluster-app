@@ -2845,7 +2845,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.649</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.650</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8949,12 +8949,31 @@ function __dashClientColor_(name){
 //   例=発注書8/17発行 → 外注(FKKMOTORS)の工期8/22〜 → **8/17〜8/21が自社工事(事前補修等)を差し込める期間**。
 //   ここを逃すと部屋が業者の工程で埋まり、自社工事は工事の後ろへ押し出される。
 //   窓 = 発注日 〜 「外注の最も早い工期開始日」の前日。
+// ⚡ どの外注が入ったら事前チャンスが終わるか(v1.30.650・山田「内装工事以外だったらかぶったら
+//   事前チャンスに含めてOK。クマガイハウス、はやでん、千葉住建など」)。
+//   ★考え方=部屋を占有する工事(内装=クロス/床/襖/塗装 と 清掃)が入ったら事前補修はもう差し込めない。
+//   設備・電気・建具・ガラス・処分などは同時進行できるので、先に始まっていてもチャンスは続く。
+//   判定順: ①通す業者に載っている→通す ②閉じる業者に載っている→閉じる ③知らない業者は工事名で判定。
+//   ⚠業者が増えたらこの2本のリストに足すだけでよい(工事名判定が保険として先に効く)。
+const CHANCE_PASS_VENDORS  = /クマガイ|はやでん|千葉住建|ヒラヤマ|庄弘|アルファブレイン|庭遊|美咲|ワップ|宮城日化|元請手配|ビルドクラスタ/;
+const CHANCE_BLOCK_VENDORS = /思綺|ムラカベ|赤間|ハルノデザイン|M\.?S\s*塗装|戸引|マジカルケーニッヒ|FKK|OMsONE/i;
+const CHANCE_BLOCK_WORK    = /クロス|壁紙|アクセント|クッションフロア|CF貼|CF施工|フローリング|長尺|巾木|床貼|床張|床下地|下地調整|パテ|襖|障子|畳表|畳新規|畳裏返|清掃|クリーニング|ワックス|ポリッシャー/;
+const CHANCE_OUTSIDE_WORK  = /外壁|外部|屋根|ベランダ|バルコニー|外構/;   // 室内を塞がない工事は通す
+function chanceBlocksTask_(t){
+  const nm = String((t&&t.name)||'');
+  const v  = String((t&&t.contractor)||'').trim();
+  if(CHANCE_OUTSIDE_WORK.test(nm)) return false;
+  if(v && CHANCE_PASS_VENDORS.test(v)) return false;
+  if(v && CHANCE_BLOCK_VENDORS.test(v)) return true;
+  return CHANCE_BLOCK_WORK.test(nm);
+}
 function restoEarliestOutsource_(p){
   let best='', vendor='', name='';
   ((p&&p.tasks)||[]).forEach(t=>{
     const cat = (typeof restoEffCategory==='function') ? restoEffCategory(t) : t.category;
     if(cat !== 'outsource') return;
     if(typeof isExcludedRestoTask==='function' && isExcludedRestoTask(t)) return;   // 減工事/提案は工程に入らない
+    if(!chanceBlocksTask_(t)) return;                                               // 内装・清掃以外は同時進行できる
     // ⚠periodStartは「8/22」「8/22(金)」等の自由記入。normalizeDateが曜日除去+年推定まで面倒を見る
     const iso = (typeof normalizeDate==='function') ? normalizeDate(t.periodStart || t.schedule || '') : '';
     if(!iso) return;
@@ -8984,7 +9003,7 @@ function __chancePill_(w, pr, md){
   const canPast = w.state==='past' && pr && pr.total && pr.done < pr.total;   // 過ぎた分は自社工事が残っている時だけ
   if(w.state!=='now' && w.state!=='future' && !canPast) return '';
   const range = `${md(w.start)}〜${md(w.end)}`;
-  const tip = `事前チャンス ${range}(${w.days}日間)／発注書 ${md(w.start)} → 外注着工 ${md(w.vendorStart)}${w.vendor?`(${w.vendor})`:''}`;
+  const tip = `事前チャンス ${range}(${w.days}日間)／発注書 ${md(w.start)} → 内装・清掃の着工 ${md(w.vendorStart)}${w.vendor?`(${w.vendor}${w.work?` ${w.work}`:''})`:''}\n※設備・電気・建具など内装以外の業者は同時進行できるので数えていません`;
   const sty = w.state==='now'    ? 'background:#7c3aed;color:#fff;padding:1px 8px;border-radius:6px'
             : w.state==='future' ? 'background:#ede9fe;color:#6d28d9;padding:1px 8px;border-radius:6px'
             : 'color:#a1a1aa';
@@ -9281,12 +9300,12 @@ function renderDashboard_(){
       <span style="flex:1 1 150px;min-width:120px;font-size:12.5px;font-weight:700;word-break:break-word">${escapeHtml(it.name)}${it.room?` <span style="font-weight:400">${escapeHtml(it.room)}</span>`:''}</span>
       <span style="background:${urgent?'#dc2626':'#7c3aed'};color:#fff;font-size:11px;font-weight:800;padding:2px 9px;border-radius:6px;white-space:nowrap">${w.remain<=1?'今日まで':`あと${w.remain}日`}</span>
       <span style="font-size:10.5px;color:#6d28d9;font-weight:700;white-space:nowrap">${md(w.start)}〜${md(w.end)}</span>
-      <span style="font-size:10.5px;color:var(--muted);white-space:nowrap" title="この日から業者が入る">🚧外注${md(w.vendorStart)}${w.vendor?` ${escapeHtml(shortenCompany(w.vendor))}`:''}</span>
+      <span style="font-size:10.5px;color:var(--muted);white-space:nowrap" title="この日から内装(または清掃)が入るので事前補修は入れられなくなる${w.work?`／${escapeHtml(w.work)}`:''}">🚧内装${md(w.vendorStart)}${w.vendor?` ${escapeHtml(shortenCompany(w.vendor))}`:''}</span>
       <span style="font-size:10.5px;font-weight:700;white-space:nowrap;color:${it.pr.total && it.pr.done<it.pr.total ? '#dc2626':'#16a34a'}">${it.pr.total?`自社${it.pr.done}/${it.pr.total}`:'自社工事なし'}</span>
     </div>`;
   }).join('');
   const chanceBox = !showResto ? '' : `<div style="border:2px solid #7c3aed;border-radius:12px;background:#f5f3ff;padding:0 8px 6px;margin-bottom:14px">
-      <div style="background:#7c3aed;color:#fff;font-size:13.5px;font-weight:800;padding:6px 12px;border-radius:0 0 9px 9px;margin:0 -8px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">⚡ 事前チャンス <span style="font-size:11px;font-weight:700;background:rgba(255,255,255,.25);padding:1px 8px;border-radius:8px">${chanceItems.length}件</span><span style="font-size:10px;font-weight:400;opacity:.9">発注書を出してから業者が入るまで＝事前補修を入れられる期間</span></div>
+      <div style="background:#7c3aed;color:#fff;font-size:13.5px;font-weight:800;padding:6px 12px;border-radius:0 0 9px 9px;margin:0 -8px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">⚡ 事前チャンス <span style="font-size:11px;font-weight:700;background:rgba(255,255,255,.25);padding:1px 8px;border-radius:8px">${chanceItems.length}件</span><span style="font-size:10px;font-weight:400;opacity:.9">発注書を出してから内装・清掃が入るまで＝事前補修を入れられる期間（設備・電気・建具などは同時進行OK）</span></div>
       ${chanceRows || '<div style="color:#6d28d9;font-size:12px;padding:4px 4px 6px">いま事前チャンス中の案件はありません（業者の着工日が決まると、発注書の発行日からその前日までがここに出ます）</div>'}
     </div>`;
   // 🏠と🔧を「色の違う箱」で明確に分ける(v1.30.622・山田「区別がわからない」):
