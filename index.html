@@ -2838,7 +2838,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.643</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.644</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -17428,6 +17428,18 @@ function renderMonth(){
 
 // ===== インライン時刻ステッパー =====
 function showTimeStepperPopup(ev, anchorEl, target /* "start"|"end" */){
+  // 🤝 v1.30.644(最上報告「±15が反応しない」): 立会(taikyo-shared)は state.events に実体が無い仮想イベント
+  //   =ステッパーは黙って空振りしていた。正しい入口(立会ピッカーの🔄日時変更=変更跡が全員共有)へ誘導する。
+  if(ev && (ev.source === 'taikyo-shared' || ev._readOnly)){
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast('🤝 立会の時間変更はこのポップの「📅 日時変更」からどうぞ(変更跡が全員に共有されます)');
+    if(typeof showTaikyoStaffPicker==='function'){ try{ showTaikyoStaffPicker(anchorEl.closest('[data-ev-id]')||anchorEl, ev); }catch(_){} }
+    return;
+  }
+  // その他の仮想イベント(再アポ跡など)も実体が無ければ開かない(空振りポップを出さない)
+  if(!(state.events||[]).find(x=>x.id===ev.id)){
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast('この予定の時刻はここからは変更できません');
+    return;
+  }
   document.querySelectorAll('.time-stepper-popup').forEach(p=>p.remove());
   const rect = anchorEl.getBoundingClientRect();
   const popup = document.createElement('div');
