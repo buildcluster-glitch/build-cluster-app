@@ -2858,7 +2858,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.652</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.653</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -6979,22 +6979,25 @@ function saveTachiaiHints_(items){
 //     実測=立会側57件に全角スペース6件(「ディークレスト太子堂駅前　East」)・ローマ数字5件、
 //         台帳側にローマ数字40件・番館/棟20件。漢数字の棟名も実在(ウッディランド弐番館/ホープヒル壱番館)
 //   ⚠ローマ数字の変換は**前後が英字でないとき限定**(「VIP仙台二日町」のVを壊さないため)
+//   ⚠2026-08-31夜: 見積アプリ側が本番データで実走(27/57一致)した正規化に**両者の手順を揃えた**。
+//     追加分= ①「番館/棟/号」を除去 ②最後に小文字化。同じルールを両側(ヒント/立会)に適用する。
 function tkNameKey_(s){
   let x = String(s||'').normalize('NFKC').replace(/[\s　]/g,'');
   if(!x) return '';
-  // NFKCで Ⅲ→III(英字)になっている。英字に挟まれていないローマ数字だけ算用数字へ
-  x = x.replace(/(^|[^A-Za-z0-9])(VIII|VII|VI|IV|IX|XII|XI|X|V|III|II|I)(?![A-Za-z0-9])/g,
-                (m,pre,rom)=> pre + ({I:'1',II:'2',III:'3',IV:'4',V:'5',VI:'6',VII:'7',VIII:'8',IX:'9',X:'10',XI:'11',XII:'12'}[rom]||rom));
+  // NFKCで Ⅲ→III(英字)になっている。英字に挟まれていないローマ数字だけ算用数字へ(「VIP仙台二日町」を壊さない)
+  x = x.replace(/(^|[^A-Za-z0-9])(VIII|VII|VI|IV|IX|XII|XI|X|V|III|II|I)(?![A-Za-z0-9])/gi,
+                (m,pre,rom)=> pre + ({I:'1',II:'2',III:'3',IV:'4',V:'5',VI:'6',VII:'7',VIII:'8',IX:'9',X:'10',XI:'11',XII:'12'}[String(rom).toUpperCase()]||rom));
   x = x.replace(/[壱弐参肆伍]/g, c=>({'壱':'1','弐':'2','参':'3','肆':'4','伍':'5'}[c]));
-  x = x.replace(/[一二三四五六七八九十](?=(番館|号棟|棟))/g, c=>({'一':'1','二':'2','三':'3','四':'4','五':'5','六':'6','七':'7','八':'8','九':'9','十':'10'}[c]));
-  return x;
+  x = x.replace(/[一二三四五六七八九十]/g, c=>({'一':'1','二':'2','三':'3','四':'4','五':'5','六':'6','七':'7','八':'8','九':'9','十':'10'}[c]));
+  x = x.replace(/番館|号棟|棟|号/g,'');            // 棟の呼び方のゆれ(3番館/3棟/3)を吸収
+  return x.toLowerCase();                          // DKM西公園 ⇄ dkm西公園
 }
 //   号室: NFKC → 空白/「号室」「号」除去 → **先頭ゼロ除去**(台帳の「0508」⇄立会の「508」・実測16件が該当)
 //         数字でないもの(テナント/B/2FA/氏名)は大文字化してそのまま比較
 function tkRoomKey_(s){
-  const x = String(s||'').normalize('NFKC').replace(/[\s　]/g,'').replace(/号室|号/g,'');
+  const x = String(s||'').normalize('NFKC').replace(/[\s　]/g,'').replace(/(号室|号)$/,'');
   if(!x) return '';
-  return /^\d+$/.test(x) ? String(parseInt(x,10)) : x.toUpperCase();
+  return /^\d+$/.test(x) ? String(parseInt(x,10)) : x.toLowerCase();   // 非数字は小文字化(見積アプリ側と同一ルール)
 }
 let __tkHintIndex = null;
 function tkHintIndex_(){
