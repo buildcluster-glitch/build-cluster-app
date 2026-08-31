@@ -2845,7 +2845,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.648</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.649</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8978,6 +8978,21 @@ function restoInhouseWindow_(p, odIso, today){
   if(today > e)  return Object.assign(base, {state:'past'});
   return Object.assign(base, {state:'now', remain: Math.round((e - today)/DAY) + 1});
 }
+// ⚡ 事前チャンスのピル(v1.30.649)。物件行に出す小さいバッジ。md=日付整形関数(renderDashboard_のもの)
+function __chancePill_(w, pr, md){
+  if(!w) return '';
+  const canPast = w.state==='past' && pr && pr.total && pr.done < pr.total;   // 過ぎた分は自社工事が残っている時だけ
+  if(w.state!=='now' && w.state!=='future' && !canPast) return '';
+  const range = `${md(w.start)}〜${md(w.end)}`;
+  const tip = `事前チャンス ${range}(${w.days}日間)／発注書 ${md(w.start)} → 外注着工 ${md(w.vendorStart)}${w.vendor?`(${w.vendor})`:''}`;
+  const sty = w.state==='now'    ? 'background:#7c3aed;color:#fff;padding:1px 8px;border-radius:6px'
+            : w.state==='future' ? 'background:#ede9fe;color:#6d28d9;padding:1px 8px;border-radius:6px'
+            : 'color:#a1a1aa';
+  const lbl = w.state==='now'    ? `⚡事前チャンス ${w.remain<=1?'今日まで':`あと${w.remain}日`}`
+            : w.state==='future' ? `⚡事前チャンス ${range}`
+            : `事前チャンス終了(${md(w.end)}まで)`;
+  return `<span style="font-size:10px;font-weight:700;white-space:nowrap;${sty}" title="${escapeHtml(tip)}">${escapeHtml(lbl)}</span>`;
+}
 function computeDashboard_(){
   const today=new Date(); today.setHours(0,0,0,0);
   const soonLimit=new Date(today); soonLimit.setDate(soonLimit.getDate()+7);
@@ -9179,7 +9194,7 @@ function renderDashboard_(){
   const tiles=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
     ${showResto?tile('🏠','原状回復 進行中', tot.restoN+'件', `未着手${tot.todo} ・ 施工中${tot.wip} ・ 工事済${tot.fin}`):''}
     ${showResto?tile('🛠','自社工事タスク 残', taskRemain, `全${tot.taskTotal} (${pct(tot.taskDone,tot.taskTotal)}%完了)`, taskRemain>=60?'#dc2626':taskRemain>=30?'#d97706':'#16a34a'):''}
-    ${showResto?tile('🔨','自社工事の枠 いま', tot.chance+'件', '外注が入る前に差し込める', tot.chance>0?'#d97706':'#94a3b8'):''}
+    ${showResto?tile('⚡','事前チャンス 今', tot.chance+'件', '外注が入る前に事前補修', tot.chance>0?'#7c3aed':'#94a3b8'):''}
     ${showRep?tile('🔧','修繕 対応中', tot.repN+'件', `うちアポ未 ${tot.apoMi}件`, tot.apoMi>=8?'#dc2626':tot.apoMi>=4?'#d97706':'#0f172a'):''}
     ${showResto?tile('📋','7日以内の最終確認', tot.soon+'件','', tot.soon>=8?'#dc2626':'#0f172a'):''}
   </div>`;
@@ -9211,22 +9226,12 @@ function renderDashboard_(){
       const __mi=(typeof parseLooseMovein_==='function')?parseLooseMovein_(it.movein):null;
       const miHtml=__mi?`<span style="font-size:10.5px;font-weight:700;color:#dc2626;white-space:nowrap" title="${escapeHtml((typeof moveinTip_==='function')?moveinTip_(__mi):'入居日')}">${escapeHtml(__mi.text)}</span>`:'';
       const odHtml=it.od?`<span style="font-size:10px;color:#1d4ed8;font-weight:700;white-space:nowrap;${it.odExact?'':'opacity:.75'}" title="${it.odExact?'発注日(台帳の工事指示日)':'発注日の推定(発注書の発行日または見積作成日。台帳の工事指示日が空のため)'}">発注${escapeHtml(String(it.od).slice(5).replace('-','/'))}${it.odExact?'':'頃'}</span>`:'';   // 常時表示(v639)+推定フォールバック(v642)
-      // 🔨 自社工事の枠(v1.30.648・山田): 発注書を出してから外注の工期が始まるまで=自社工事を差し込める期間。
-      //   出すのは「いま枠の中」「これから開く」と、「枠は過ぎたのに自社工事が残っている」だけ。
-      //   枠を過ぎて自社も終わっている案件は何も出さない(進行中20件超に灰色バッジが並ぶとノイズになる)。
+      // ⚡ 事前チャンス(v1.30.649で命名・山田「事前チャンスみたいな感じで分かりやすく」)。
+      //   発注書を出してから外注の工期が始まるまで=カテゴリ「事前」(事前補修)を差し込める期間。
+      //   色は予定カテゴリ「事前」と同じ紫(#7c3aed)に合わせる=カレンダーと同じ言葉・同じ色で読める。
+      //   出すのは「いま」「これから」と、「過ぎたのに自社工事が残っている」だけ(終わった案件は非表示)。
       const __w = it.win;
-      let winHtml='';
-      if(__w && (__w.state==='now' || __w.state==='future' || (__w.state==='past' && it.pr.total && it.pr.done < it.pr.total))){
-        const __wr = `${md(__w.start)}〜${md(__w.end)}`;
-        const __tip = `自社工事の枠 ${__wr}(${__w.days}日間)／発注日 ${md(__w.start)} → 外注着工 ${md(__w.vendorStart)}${__w.vendor?`(${__w.vendor})`:''}`;
-        const __sty = __w.state==='now' ? 'background:#d97706;color:#fff;padding:1px 7px;border-radius:6px'
-                    : __w.state==='future' ? 'background:#e0f2fe;color:#0369a1;padding:1px 7px;border-radius:6px'
-                    : 'color:#94a3b8';
-        const __lbl = __w.state==='now' ? `🔨自社枠 残${__w.remain}日`
-                    : __w.state==='future' ? `🔨自社枠 ${__wr}`
-                    : `🔨自社枠 終了(〜${md(__w.end)})`;
-        winHtml = `<span style="font-size:10px;font-weight:700;white-space:nowrap;${__sty}" title="${escapeHtml(__tip)}">${escapeHtml(__lbl)}</span>`;
-      }
+      const winHtml = __chancePill_(__w, it.pr, md);
       return `<div class="dash-row" data-dr-resto="${escapeHtml(it.id)}" style="display:flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid #bfdbfe;border-left:4px solid #3b82f6;background:#fff;border-radius:8px;margin-bottom:4px;cursor:pointer;flex-wrap:wrap">
         <span style="flex:1 1 150px;min-width:120px;font-size:12px;font-weight:600;word-break:break-word">${escapeHtml(it.name)}${it.room?` <span style="font-weight:400">${escapeHtml(it.room)}</span>`:''}</span>
         ${odHtml}
@@ -9260,9 +9265,33 @@ function renderDashboard_(){
     }).join('');
     return head+rows;
   }).join('') || '<div style="color:var(--muted);font-size:12px;padding:8px">対応中の修繕はありません</div>';
+  // ⚡ 事前チャンス帯(v1.30.649・山田「事前チャンスみたいな感じで分かりやすく」):
+  //   物件行のバッジだけだと長いリストに埋もれる。**いま入れられる案件だけ**を一番上に抜き出して並べる。
+  //   色/言葉は予定カテゴリ「事前」(=事前補修・紫#7c3aed)と揃える。行タップは通常行と同じ詳細ダイアログ。
+  const chanceItems = [];
+  restoOrder.forEach(k=>{ (restoGroups.get(k)||{items:[]}).items.forEach(it=>{
+    if(it.win && it.win.state==='now') chanceItems.push({it, k});
+  }); });
+  chanceItems.sort((a,b)=> a.it.win.remain - b.it.win.remain);   // 締切が近い順
+  const chanceRows = chanceItems.map(({it,k})=>{
+    const w = it.win;
+    const urgent = w.remain<=2;
+    return `<div class="dash-row" data-dr-resto="${escapeHtml(it.id)}" style="display:flex;align-items:center;gap:7px;padding:6px 9px;border:1px solid #ddd6fe;border-left:4px solid #7c3aed;background:#fff;border-radius:8px;margin-bottom:4px;cursor:pointer;flex-wrap:wrap">
+      <span style="background:${__dashClientColor_(k)};color:#fff;font-size:9px;font-weight:700;padding:1px 6px;border-radius:5px;white-space:nowrap">${escapeHtml(k)}</span>
+      <span style="flex:1 1 150px;min-width:120px;font-size:12.5px;font-weight:700;word-break:break-word">${escapeHtml(it.name)}${it.room?` <span style="font-weight:400">${escapeHtml(it.room)}</span>`:''}</span>
+      <span style="background:${urgent?'#dc2626':'#7c3aed'};color:#fff;font-size:11px;font-weight:800;padding:2px 9px;border-radius:6px;white-space:nowrap">${w.remain<=1?'今日まで':`あと${w.remain}日`}</span>
+      <span style="font-size:10.5px;color:#6d28d9;font-weight:700;white-space:nowrap">${md(w.start)}〜${md(w.end)}</span>
+      <span style="font-size:10.5px;color:var(--muted);white-space:nowrap" title="この日から業者が入る">🚧外注${md(w.vendorStart)}${w.vendor?` ${escapeHtml(shortenCompany(w.vendor))}`:''}</span>
+      <span style="font-size:10.5px;font-weight:700;white-space:nowrap;color:${it.pr.total && it.pr.done<it.pr.total ? '#dc2626':'#16a34a'}">${it.pr.total?`自社${it.pr.done}/${it.pr.total}`:'自社工事なし'}</span>
+    </div>`;
+  }).join('');
+  const chanceBox = !showResto ? '' : `<div style="border:2px solid #7c3aed;border-radius:12px;background:#f5f3ff;padding:0 8px 6px;margin-bottom:14px">
+      <div style="background:#7c3aed;color:#fff;font-size:13.5px;font-weight:800;padding:6px 12px;border-radius:0 0 9px 9px;margin:0 -8px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">⚡ 事前チャンス <span style="font-size:11px;font-weight:700;background:rgba(255,255,255,.25);padding:1px 8px;border-radius:8px">${chanceItems.length}件</span><span style="font-size:10px;font-weight:400;opacity:.9">発注書を出してから業者が入るまで＝事前補修を入れられる期間</span></div>
+      ${chanceRows || '<div style="color:#6d28d9;font-size:12px;padding:4px 4px 6px">いま事前チャンス中の案件はありません（業者の着工日が決まると、発注書の発行日からその前日までがここに出ます）</div>'}
+    </div>`;
   // 🏠と🔧を「色の違う箱」で明確に分ける(v1.30.622・山田「区別がわからない」):
   //   見出しはベタ塗りバナー+件数、セクション全体を淡色パネルで包み、行にも左帯(青/桃)を付ける
-  body.innerHTML = filterBar + tiles
+  body.innerHTML = filterBar + tiles + chanceBox
     + (showResto ? `<div style="border:2px solid #3b82f6;border-radius:12px;background:#eff6ff;padding:0 8px 6px;margin-bottom:14px">
          <div style="background:#3b82f6;color:#fff;font-size:13.5px;font-weight:800;padding:6px 12px;border-radius:0 0 9px 9px;margin:0 -8px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">🏠 原状回復 <span style="font-size:11px;font-weight:700;background:rgba(255,255,255,.25);padding:1px 8px;border-radius:8px">${tot.restoN}件</span><span style="font-size:10px;font-weight:400;opacity:.85">退去後の空室工事</span>
            <span style="margin-left:auto;display:flex;gap:3px">
