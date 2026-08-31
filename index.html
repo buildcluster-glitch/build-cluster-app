@@ -2845,7 +2845,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.647</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.648</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8945,12 +8945,45 @@ function __dashClientColor_(name){
   let h=0; for(const ch of name) h=(h*31+ch.charCodeAt(0))>>>0;
   return `hsl(${h%360},55%,45%)`;
 }
+// 🔨 自社工事の枠(v1.30.648・山田「発注書を出してから外注の工期が始まるまでが社内工事を進めるチャンス」)
+//   例=発注書8/17発行 → 外注(FKKMOTORS)の工期8/22〜 → **8/17〜8/21が自社工事(事前補修等)を差し込める期間**。
+//   ここを逃すと部屋が業者の工程で埋まり、自社工事は工事の後ろへ押し出される。
+//   窓 = 発注日 〜 「外注の最も早い工期開始日」の前日。
+function restoEarliestOutsource_(p){
+  let best='', vendor='', name='';
+  ((p&&p.tasks)||[]).forEach(t=>{
+    const cat = (typeof restoEffCategory==='function') ? restoEffCategory(t) : t.category;
+    if(cat !== 'outsource') return;
+    if(typeof isExcludedRestoTask==='function' && isExcludedRestoTask(t)) return;   // 減工事/提案は工程に入らない
+    // ⚠periodStartは「8/22」「8/22(金)」等の自由記入。normalizeDateが曜日除去+年推定まで面倒を見る
+    const iso = (typeof normalizeDate==='function') ? normalizeDate(t.periodStart || t.schedule || '') : '';
+    if(!iso) return;
+    if(!best || iso < best){ best = iso; vendor = t.contractor || ''; name = t.name || ''; }
+  });
+  return best ? {iso:best, vendor, name} : null;
+}
+//   戻り: null(発注日か外注着工日が不明) / {state:'none'}=枠なし(外注が発注書より先に着工) /
+//         {state:'now'|'future'|'past', start,end,days,remain,vendorStart,vendor}
+function restoInhouseWindow_(p, odIso, today){
+  const ev = restoEarliestOutsource_(p);
+  if(!odIso || !ev) return null;
+  const s = parseDate(String(odIso).slice(0,10)), e0 = parseDate(ev.iso);
+  if(isNaN(s) || isNaN(e0)) return null;
+  const e = new Date(e0); e.setDate(e.getDate()-1); e.setHours(0,0,0,0); s.setHours(0,0,0,0);
+  const DAY = 86400000;
+  const days = Math.round((e - s)/DAY) + 1;
+  const base = {start:s, end:e, days, vendorStart:e0, vendor:ev.vendor, work:ev.name};
+  if(days <= 0) return Object.assign(base, {state:'none'});        // 発注書より先に業者が入っている
+  if(today < s)  return Object.assign(base, {state:'future'});
+  if(today > e)  return Object.assign(base, {state:'past'});
+  return Object.assign(base, {state:'now', remain: Math.round((e - today)/DAY) + 1});
+}
 function computeDashboard_(){
   const today=new Date(); today.setHours(0,0,0,0);
   const soonLimit=new Date(today); soonLimit.setDate(soonLimit.getDate()+7);
   // 🏠 原状回復(完了処理済み=completeDateあり は除外・工程持ち修繕(_repairResto)は修繕でなく原状回復にも入れない)
   const restoGroups=new Map(), repGroups=new Map();
-  const g=(m,k)=>{ if(!m.has(k)) m.set(k,{items:[],taskDone:0,taskTotal:0,todo:0,wip:0,fin:0,apoMi:0,soon:0}); return m.get(k); };
+  const g=(m,k)=>{ if(!m.has(k)) m.set(k,{items:[],taskDone:0,taskTotal:0,todo:0,wip:0,fin:0,apoMi:0,soon:0,chance:0}); return m.get(k); };
   // 「終わった扱い」の判定(v1.30.626・山田「ステータス完了のやつも表示されてる?」):
   //   completeDate だけでは不十分だった。台帳ステータスが完了系(完了/完工/完成/クローズ)や
   //   失注/キャンセルでも除外する。⚠「清掃完了」は工程の途中(最終確認待ち)なので完了扱いしない
@@ -8963,14 +8996,19 @@ function computeDashboard_(){
     if(st==="done") o.fin++; else if(st==="wip") o.wip++; else o.todo++;
     let fd=null; if(p.finalDate){ const d=parseDate(p.finalDate); if(!isNaN(d)) fd=d; }
     if(fd && fd>=today && fd<soonLimit) o.soon++;
+    // 📅 発注日(v1.30.642・山田「発注日でてなくない」): 台帳のorderDate(工事指示日)は空が多い。
+    //   フォールバック=①orderDate ②発注書の発行日(issueDate) ③見積ID(E20260624_…)に埋まっている作成日
+    //   ⚠実測(2026-08-31・進行中24件): ①=0件 ②=18件 ③=6件。②が主戦力なので②を外さないこと
+    const __od = p.orderDate
+      || (function(){ try{ const h=(typeof findHatchushoForResto_==='function')?findHatchushoForResto_(p):null; return (h&&h.issueDate)||""; }catch(_){ return ""; } })()
+      || (function(){ const m=String(p.extEstimateId||p.id||"").match(/E(\d{4})(\d{2})(\d{2})_/); return m?`${m[1]}-${m[2]}-${m[3]}`:""; })();
+    const __win = restoInhouseWindow_(p, __od, today);            // 🔨 自社工事の枠(v1.30.648)
+    if(__win && __win.state==='now') o.chance++;
     o.items.push({id:p.id, name:p.name, room:p.room, pr, st, fd,
       vol: p.workVolume || (p.workloadStatus && p.workloadStatus.level) || "",   // 🛠 工事ボリューム(激重/重/普/軽)v1.30.632
-      // 📅 発注日(v1.30.642・山田「発注日でてなくない」): 台帳のorderDate(工事指示日)は空が多い。
-      //   フォールバック=①orderDate ②発注書の発行日(issueDate) ③見積ID(E20260624_…)に埋まっている作成日
-      od: p.orderDate
-        || (function(){ try{ const h=(typeof findHatchushoForResto_==='function')?findHatchushoForResto_(p):null; return (h&&h.issueDate)||""; }catch(_){ return ""; } })()
-        || (function(){ const m=String(p.extEstimateId||p.id||"").match(/E(\d{4})(\d{2})(\d{2})_/); return m?`${m[1]}-${m[2]}-${m[3]}`:""; })(),
+      od: __od,
       odExact: !!p.orderDate,                                                    // true=台帳の発注日そのもの/false=推定
+      win: __win,
       movein:(typeof restoMoveinRaw_==='function')?restoMoveinRaw_(p):(p.moveinRaw||p.moveinDate||"")});
   });
   // 各グループ内の並び(v1.30.638・山田「新規発注順に並び替えとかできる?」):
@@ -9006,8 +9044,8 @@ function computeDashboard_(){
     const dyn=keys.filter(k=>!FIXED.includes(k)&&k!=="その他(未指定)").sort((a,b)=>m.get(b).items.length-m.get(a).items.length);
     return [...FIXED.filter(k=>m.has(k)), ...dyn, ...(m.has("その他(未指定)")?["その他(未指定)"]:[])];
   };
-  const tot={restoN:0,todo:0,wip:0,fin:0,taskDone:0,taskTotal:0,soon:0,repN:0,apoMi:0};
-  restoGroups.forEach(o=>{ tot.restoN+=o.items.length; tot.todo+=o.todo; tot.wip+=o.wip; tot.fin+=o.fin; tot.taskDone+=o.taskDone; tot.taskTotal+=o.taskTotal; tot.soon+=o.soon; });
+  const tot={restoN:0,todo:0,wip:0,fin:0,taskDone:0,taskTotal:0,soon:0,repN:0,apoMi:0,chance:0};
+  restoGroups.forEach(o=>{ tot.restoN+=o.items.length; tot.todo+=o.todo; tot.wip+=o.wip; tot.fin+=o.fin; tot.taskDone+=o.taskDone; tot.taskTotal+=o.taskTotal; tot.soon+=o.soon; tot.chance+=o.chance; });
   repGroups.forEach(o=>{ tot.repN+=o.items.length; tot.apoMi+=o.apoMi; });
   return {restoGroups, repGroups, restoOrder:order(restoGroups), repOrder:order(repGroups), tot, today, soonLimit};
 }
@@ -9123,8 +9161,8 @@ function renderDashboard_(){
     restoOrder=restoOrder.filter(k=>k===__dashClientFilter);
     repOrder=repOrder.filter(k=>k===__dashClientFilter);
     // サマリー4枚も選択中の元請けだけで数え直す(全体と混ざると誤読する)
-    tot={restoN:0,todo:0,wip:0,fin:0,taskDone:0,taskTotal:0,soon:0,repN:0,apoMi:0};
-    restoOrder.forEach(k=>{ const o=restoGroups.get(k); tot.restoN+=o.items.length; tot.todo+=o.todo; tot.wip+=o.wip; tot.fin+=o.fin; tot.taskDone+=o.taskDone; tot.taskTotal+=o.taskTotal; tot.soon+=o.soon; });
+    tot={restoN:0,todo:0,wip:0,fin:0,taskDone:0,taskTotal:0,soon:0,repN:0,apoMi:0,chance:0};
+    restoOrder.forEach(k=>{ const o=restoGroups.get(k); tot.restoN+=o.items.length; tot.todo+=o.todo; tot.wip+=o.wip; tot.fin+=o.fin; tot.taskDone+=o.taskDone; tot.taskTotal+=o.taskTotal; tot.soon+=o.soon; tot.chance+=o.chance; });
     repOrder.forEach(k=>{ const o=repGroups.get(k); tot.repN+=o.items.length; tot.apoMi+=o.apoMi; });
   }
   const pct=(d,t)=>t?Math.round(d/t*100):0;
@@ -9141,6 +9179,7 @@ function renderDashboard_(){
   const tiles=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
     ${showResto?tile('🏠','原状回復 進行中', tot.restoN+'件', `未着手${tot.todo} ・ 施工中${tot.wip} ・ 工事済${tot.fin}`):''}
     ${showResto?tile('🛠','自社工事タスク 残', taskRemain, `全${tot.taskTotal} (${pct(tot.taskDone,tot.taskTotal)}%完了)`, taskRemain>=60?'#dc2626':taskRemain>=30?'#d97706':'#16a34a'):''}
+    ${showResto?tile('🔨','自社工事の枠 いま', tot.chance+'件', '外注が入る前に差し込める', tot.chance>0?'#d97706':'#94a3b8'):''}
     ${showRep?tile('🔧','修繕 対応中', tot.repN+'件', `うちアポ未 ${tot.apoMi}件`, tot.apoMi>=8?'#dc2626':tot.apoMi>=4?'#d97706':'#0f172a'):''}
     ${showResto?tile('📋','7日以内の最終確認', tot.soon+'件','', tot.soon>=8?'#dc2626':'#0f172a'):''}
   </div>`;
@@ -9172,9 +9211,26 @@ function renderDashboard_(){
       const __mi=(typeof parseLooseMovein_==='function')?parseLooseMovein_(it.movein):null;
       const miHtml=__mi?`<span style="font-size:10.5px;font-weight:700;color:#dc2626;white-space:nowrap" title="${escapeHtml((typeof moveinTip_==='function')?moveinTip_(__mi):'入居日')}">${escapeHtml(__mi.text)}</span>`:'';
       const odHtml=it.od?`<span style="font-size:10px;color:#1d4ed8;font-weight:700;white-space:nowrap;${it.odExact?'':'opacity:.75'}" title="${it.odExact?'発注日(台帳の工事指示日)':'発注日の推定(発注書の発行日または見積作成日。台帳の工事指示日が空のため)'}">発注${escapeHtml(String(it.od).slice(5).replace('-','/'))}${it.odExact?'':'頃'}</span>`:'';   // 常時表示(v639)+推定フォールバック(v642)
+      // 🔨 自社工事の枠(v1.30.648・山田): 発注書を出してから外注の工期が始まるまで=自社工事を差し込める期間。
+      //   出すのは「いま枠の中」「これから開く」と、「枠は過ぎたのに自社工事が残っている」だけ。
+      //   枠を過ぎて自社も終わっている案件は何も出さない(進行中20件超に灰色バッジが並ぶとノイズになる)。
+      const __w = it.win;
+      let winHtml='';
+      if(__w && (__w.state==='now' || __w.state==='future' || (__w.state==='past' && it.pr.total && it.pr.done < it.pr.total))){
+        const __wr = `${md(__w.start)}〜${md(__w.end)}`;
+        const __tip = `自社工事の枠 ${__wr}(${__w.days}日間)／発注日 ${md(__w.start)} → 外注着工 ${md(__w.vendorStart)}${__w.vendor?`(${__w.vendor})`:''}`;
+        const __sty = __w.state==='now' ? 'background:#d97706;color:#fff;padding:1px 7px;border-radius:6px'
+                    : __w.state==='future' ? 'background:#e0f2fe;color:#0369a1;padding:1px 7px;border-radius:6px'
+                    : 'color:#94a3b8';
+        const __lbl = __w.state==='now' ? `🔨自社枠 残${__w.remain}日`
+                    : __w.state==='future' ? `🔨自社枠 ${__wr}`
+                    : `🔨自社枠 終了(〜${md(__w.end)})`;
+        winHtml = `<span style="font-size:10px;font-weight:700;white-space:nowrap;${__sty}" title="${escapeHtml(__tip)}">${escapeHtml(__lbl)}</span>`;
+      }
       return `<div class="dash-row" data-dr-resto="${escapeHtml(it.id)}" style="display:flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid #bfdbfe;border-left:4px solid #3b82f6;background:#fff;border-radius:8px;margin-bottom:4px;cursor:pointer;flex-wrap:wrap">
         <span style="flex:1 1 150px;min-width:120px;font-size:12px;font-weight:600;word-break:break-word">${escapeHtml(it.name)}${it.room?` <span style="font-weight:400">${escapeHtml(it.room)}</span>`:''}</span>
         ${odHtml}
+        ${winHtml}
         ${volHtml}
         <span style="background:${sc};color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:6px;white-space:nowrap">${sl}</span>
         ${bar}
