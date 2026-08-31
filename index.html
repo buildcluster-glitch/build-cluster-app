@@ -1163,6 +1163,9 @@
   .al-item .al-room{color:#475569;font-weight:600;font-size:12px}
   .al-item .al-wf{color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;flex-shrink:0;white-space:nowrap}
   .al-item .al-cont{font-size:10px;color:#64748b;flex-shrink:0}
+  /* 📅 依頼日(v1.30.646・山田要望)。📊全体進捗の「依頼MM/DD」(v1.30.640)と同じ色・同じ元データ */
+  .al-item .al-req{font-size:10px;color:#be185d;font-weight:700;flex-shrink:0;white-space:nowrap}
+  .al-item .al-req.est{color:#c084a6;font-weight:600}   /* 「頃」=見積IDからの推定(台帳の依頼日が空) */
   /* 📞 アポ者(連絡者・自社) v1.30.355 */
   .al-item .al-apo{font-size:10px;font-weight:700;padding:1px 7px;border-radius:9px;flex-shrink:0;white-space:nowrap;background:#e2e8f0;color:#475569}
   .al-item .al-desc{flex-basis:100%;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -2838,7 +2841,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.645</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.646</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24516,6 +24519,20 @@ function openActionList(){
       const wfBar = (window.wfBgMap && window.wfBgMap[r.workflowStatus||"アポ・手配 未"]) || "#ec4899";
       const desc = (r.requestDesc || r.requestDescFull || "").trim();
       const descShort = desc ? (desc.length>46 ? desc.slice(0,46)+"…" : desc) : "";
+      // 📅 依頼日(v1.30.646・山田「依頼日だしてほしい」): このリストは日程が決まっていない案件の集まり=
+      //   「いつ来た依頼か」がそのまま優先度になる。見た目は📊全体進捗の「依頼MM/DD」(v1.30.640)と揃える。
+      //   ⚠実データを数えたら requestDate は台帳全体で43/381・**要対応14件は0件**だった(v638の発注日と同じ穴)。
+      //   → 📊の発注日(v1.30.642)と同じ手で、見積ID(EYYYYMMDD=案件を台帳に起こした日)を「頃」付きで代用する。
+      const __rqRaw = String(r.requestDate||'').trim();
+      const __estM  = String(r.extEstimateId||'').match(/^E(\d{4})(\d{2})(\d{2})/);
+      let rqHtml = '';
+      if(__rqRaw){
+        const __t = /^\d{4}-\d{2}-\d{2}/.test(__rqRaw) ? __rqRaw.slice(5).replace('-','/').replace(/^0/,'').replace('/0','/') : __rqRaw;
+        rqHtml = `<span class="al-req" title="依頼日 ${escapeHtml(__rqRaw)}(台帳の依頼日)">依頼${escapeHtml(__t)}</span>`;
+      } else if(__estM){
+        const __t = `${Number(__estM[2])}/${Number(__estM[3])}`;
+        rqHtml = `<span class="al-req est" title="依頼日が台帳に未入力のため、案件を台帳に起こした日(${__estM[1]}/${__estM[2]}/${__estM[3]})から推定">依頼${escapeHtml(__t)}頃</span>`;
+      }
       // 📞 アポ者(連絡者・自社)。スタッフ名ならスタッフ色で色分け(v1.30.355・山田)
       const apo = (r.contactPerson||'').trim();
       let apoHtml = '';
@@ -24554,6 +24571,7 @@ function openActionList(){
         + `<span class="al-wf" style="background:${wfBar}">📞要日程</span>`
         + __stHtml + __wfHtml
         + (r.contractor?`<span class="al-cont">${escapeHtml(shortenCompany(r.contractor))}</span>`:'')
+        + rqHtml
         + (descShort?`<span class="al-desc">${escapeHtml(descShort)}</span>`:'')
         + progHtml
         + `</div>`;
