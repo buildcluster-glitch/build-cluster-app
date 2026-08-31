@@ -1166,6 +1166,10 @@
   /* 📅 依頼日(v1.30.646・山田要望)。📊全体進捗の「依頼MM/DD」(v1.30.640)と同じ色・同じ元データ */
   .al-item .al-req{font-size:10px;color:#be185d;font-weight:700;flex-shrink:0;white-space:nowrap}
   .al-item .al-req.est{color:#c084a6;font-weight:600}   /* 「頃」=見積IDからの推定(台帳の依頼日が空) */
+  /* 🔀 並び替えトグル(v1.30.646)。📊全体進捗のトグル(v1.30.640)と同じ役割・白背景ヘッダ用の配色 */
+  .modal-actionlist .modal-header{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .al-sortbtn{border:1px solid var(--border-strong);background:#fff;color:#64748b;border-radius:9px;font-size:10px;font-weight:700;padding:3px 10px;cursor:pointer;font-family:inherit}
+  .al-sortbtn.on{background:#be185d;border-color:#be185d;color:#fff}
   /* 📞 アポ者(連絡者・自社) v1.30.355 */
   .al-item .al-apo{font-size:10px;font-weight:700;padding:1px 7px;border-radius:9px;flex-shrink:0;white-space:nowrap;background:#e2e8f0;color:#475569}
   .al-item .al-desc{flex-basis:100%;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -2841,7 +2845,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.646</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.647</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -3002,7 +3006,9 @@
 <!-- 🗓 要対応リスト(アポ日未設定の修繕)モーダル v1.30.183 -->
 <div class="modal-overlay" id="actionListModal">
   <div class="modal modal-actionlist">
-    <div class="modal-header">🗓 要対応リスト <span style="font-weight:400;font-size:11px;color:var(--muted)">アポ日未設定の修繕（要日程調整）— クリックで詳細</span></div>
+    <div class="modal-header">🗓 要対応リスト <span style="font-weight:400;font-size:11px;color:var(--muted)">アポ日未設定の修繕（要日程調整）— クリックで詳細</span>
+      <!-- 🔀 並び替え(v1.30.646・山田): 既定=依頼が古い順(放置が上に来る) / 元請け順=従来(同じ物件をまとめて回る用) -->
+      <span id="al-sort" style="margin-left:auto;display:flex;gap:3px"></span></div>
     <div class="al-body" id="al-body"></div>
     <div style="display:flex;justify-content:flex-end;padding:10px 14px;border-top:1px solid var(--border)"><button class="btn" id="al-close">閉じる</button></div>
   </div>
@@ -24496,6 +24502,18 @@ function getActionRepairs_(){
     return true;
   });
 }
+// 📅 依頼日アンカー(v1.30.646)。表示と並び替えの両方がこの1本を見る=見た目と順番が食い違わない。
+//   台帳のrequestDate(normalizeDate済=ISO)を優先。空なら見積ID(EYYYYMMDD=案件を台帳に起こした日)で代用し est=true。
+//   ⚠代用が要る理由: 実データでrequestDateは全381件中43件・要対応14件は0件だった(2026-08-31実測)。
+function alReqAnchor_(r){
+  const raw = String(r && r.requestDate || '').trim();
+  if(/^\d{4}-\d{2}-\d{2}/.test(raw)) return { iso: raw.slice(0,10), est:false };
+  const m = String(r && r.extEstimateId || '').match(/^E(\d{4})(\d{2})(\d{2})/);
+  if(m) return { iso: `${m[1]}-${m[2]}-${m[3]}`, est:true };
+  return { iso: raw, est:false };   // ISOにできない自由入力はそのまま出す(並びでは最後尾)
+}
+// 🔀 要対応リストの並び(v1.30.646)。'old'=依頼が古い順(既定・放置を上に) / 'cont'=元請け→物件名(従来)
+let __alSort = (()=>{ try{ return localStorage.getItem('bc_al_sort') || 'old'; }catch(e){ return 'old'; } })();
 function updateActionListCount_(){
   const n = (typeof getActionRepairs_==='function') ? getActionRepairs_().length : 0;
   const el = document.getElementById('actionListCount');
@@ -24504,11 +24522,31 @@ function updateActionListCount_(){
   if(btn) btn.classList.toggle('has-items', n > 0);
 }
 function openActionList(){
-  const list = getActionRepairs_().slice().sort((a,b)=>{
+  const byCont = (a,b)=>{
     const ca = a.contractor||"", cb = b.contractor||"";
     if(ca !== cb) return ca < cb ? -1 : 1;
     return (a.name||"") < (b.name||"") ? -1 : 1;
+  };
+  const list = getActionRepairs_().slice().sort(__alSort==='cont' ? byCont : (a,b)=>{
+    // 依頼が古い順。日付が取れないものは最後尾へ(推定日でも順番には使う=全件に順位が付く)
+    const ia = alReqAnchor_(a).iso, ib = alReqAnchor_(b).iso;
+    const va = /^\d{4}-\d{2}-\d{2}/.test(ia) ? ia : '9999-99-99';
+    const vb = /^\d{4}-\d{2}-\d{2}/.test(ib) ? ib : '9999-99-99';
+    if(va !== vb) return va < vb ? -1 : 1;
+    return byCont(a,b);
   });
+  // 🔀 並び替えトグル
+  const sortBox = document.getElementById('al-sort');
+  if(sortBox){
+    sortBox.innerHTML = `<button class="al-sortbtn${__alSort!=='cont'?' on':''}" data-als="old" title="依頼が古い案件を上に(放置の発見用)">古い順</button>`
+      + `<button class="al-sortbtn${__alSort==='cont'?' on':''}" data-als="cont" title="元請け→物件名(同じ物件をまとめて回る用・従来の並び)">元請け順</button>`;
+    sortBox.querySelectorAll('[data-als]').forEach(b=>b.onclick=(e)=>{
+      e.stopPropagation();
+      __alSort = b.dataset.als;
+      try{ localStorage.setItem('bc_al_sort', __alSort); }catch(err){}
+      openActionList();   // 開いたまま並べ直す
+    });
+  }
   const body = document.getElementById('al-body');
   if(!list.length){
     body.innerHTML = `<div class="al-empty">🎉 要対応（アポ日未設定）の修繕はありません</div>`;
@@ -24523,15 +24561,15 @@ function openActionList(){
       //   「いつ来た依頼か」がそのまま優先度になる。見た目は📊全体進捗の「依頼MM/DD」(v1.30.640)と揃える。
       //   ⚠実データを数えたら requestDate は台帳全体で43/381・**要対応14件は0件**だった(v638の発注日と同じ穴)。
       //   → 📊の発注日(v1.30.642)と同じ手で、見積ID(EYYYYMMDD=案件を台帳に起こした日)を「頃」付きで代用する。
-      const __rqRaw = String(r.requestDate||'').trim();
-      const __estM  = String(r.extEstimateId||'').match(/^E(\d{4})(\d{2})(\d{2})/);
+      const __an = alReqAnchor_(r);
       let rqHtml = '';
-      if(__rqRaw){
-        const __t = /^\d{4}-\d{2}-\d{2}/.test(__rqRaw) ? __rqRaw.slice(5).replace('-','/').replace(/^0/,'').replace('/0','/') : __rqRaw;
-        rqHtml = `<span class="al-req" title="依頼日 ${escapeHtml(__rqRaw)}(台帳の依頼日)">依頼${escapeHtml(__t)}</span>`;
-      } else if(__estM){
-        const __t = `${Number(__estM[2])}/${Number(__estM[3])}`;
-        rqHtml = `<span class="al-req est" title="依頼日が台帳に未入力のため、案件を台帳に起こした日(${__estM[1]}/${__estM[2]}/${__estM[3]})から推定">依頼${escapeHtml(__t)}頃</span>`;
+      if(/^\d{4}-\d{2}-\d{2}/.test(__an.iso)){
+        const __t = `${Number(__an.iso.slice(5,7))}/${Number(__an.iso.slice(8,10))}`;
+        rqHtml = __an.est
+          ? `<span class="al-req est" title="依頼日が台帳に未入力のため、案件を台帳に起こした日(${escapeHtml(__an.iso)})から推定">依頼${escapeHtml(__t)}頃</span>`
+          : `<span class="al-req" title="依頼日 ${escapeHtml(__an.iso)}(台帳の依頼日)">依頼${escapeHtml(__t)}</span>`;
+      } else if(__an.iso){
+        rqHtml = `<span class="al-req" title="台帳の依頼日(自由入力)">依頼${escapeHtml(__an.iso)}</span>`;
       }
       // 📞 アポ者(連絡者・自社)。スタッフ名ならスタッフ色で色分け(v1.30.355・山田)
       const apo = (r.contactPerson||'').trim();
