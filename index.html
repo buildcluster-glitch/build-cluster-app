@@ -2858,7 +2858,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.655</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.656</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -13417,6 +13417,47 @@ function findHatchushoByTitle_(ev){
   for(const r of recs){ const h=r.header||{}; if(normNR(h.bukken,h.room)===pk) return r; }
   const nk = String(bukken||"").normalize("NFKC").replace(/\s|　/g,"");
   if(nk) for(const r of recs){ const h=r.header||{}; if(String(h.bukken||"").normalize("NFKC").replace(/\s|　/g,"")===nk) return r; } // 号室不問で物件名一致
+  // 🐞 v1.30.656(まどか報告「DADAが手打ちでやっても出て来ない」・山田調査): ここまでの照合は
+  //   titleRoom_ が「末尾トークンに2桁以上の数字」でないと号室と認めないため、**号室が数字でない物件**
+  //   (DADA CUBE 03 の "F" / A棟 / 2FA / テナント 等)は号室が物件名側に残り、発注書の
+  //   {物件名=DADA CUBE 03, 号室=F} と一致しない。**自動カードの命名「事前 DADA CUBE 03 F」でも外れる**
+  //   =書き方の問題ではなく照合器の穴だった(スペースや半角を変えても直らない、の正体)。
+  //   → 末尾のトークンを順に号室候補として切り出し、9/1に決めた正規化(tkNameKey_/tkRoomKey_=
+  //     全角空白・ローマ数字・漢数字棟名・先頭ゼロ対応)で突合する。長い物件名から順に試す=誤マッチ防止。
+  return findHatchushoLoose_(String((ev&&ev.title)||""));
+}
+// タイトル→(物件名, 号室)の切り出し候補。末尾の「事前/立会/最終確認」も剥がす(まどか式の後置表記)
+function titleBukkenRoomCandidates_(title){
+  let t = String(title||"").split(/\r?\n/)[0]
+    .replace(/^(事前|立会|修繕|見積|商談|事務|最終確認)[\s　]*/,"")
+    .replace(/[\s　]*(事前|立会|最終確認)$/,"")
+    .trim();
+  const out = [];
+  if(!t) return out;
+  const toks = t.split(/[\s　]+/);
+  for(let i=toks.length; i>=1; i--) out.push({ bukken: toks.slice(0,i).join(" "), room: toks.slice(i).join("") });
+  // 「DADA CUBE03F」のように空白なしで書かれた場合: 末尾の英数字を1〜5文字ずつ号室候補にして総当たり
+  //   (短い号室から試す=「03F」より「F」を先に見る。物件名側を削りすぎた誤マッチを避ける)
+  const tail = (t.match(/[0-9A-Za-z]+$/)||[])[0] || "";
+  for(let n=1; n<=Math.min(5, tail.length); n++){
+    const room = tail.slice(-n);
+    const bukken = t.slice(0, t.length-n).trim();
+    if(bukken) out.push({ bukken, room });
+  }
+  return out;
+}
+function findHatchushoLoose_(title){
+  const recs = __hatchushoRecords || [];
+  if(!recs.length || typeof tkNameKey_!=='function') return null;
+  const cands = titleBukkenRoomCandidates_(title);
+  for(const c of cands){
+    const nk = tkNameKey_(c.bukken), rk = tkRoomKey_(c.room);
+    if(!nk) continue;
+    for(const r of recs){
+      const h = r.header||{};
+      if(tkNameKey_(h.bukken)===nk && tkRoomKey_(h.room)===rk) return r;
+    }
+  }
   return null;
 }
 // 事前予定の発注書を直接開く(原状回復データに紐づいていない場合)。未取得なら一度だけ取得。
