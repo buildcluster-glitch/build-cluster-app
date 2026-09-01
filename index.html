@@ -2858,7 +2858,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.653</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.654</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -7251,9 +7251,26 @@ function loadRepairOverrides_(){
 function saveRepairOverrides_(map){ try{ localStorage.setItem(REPAIR_OVERRIDE_KEY, JSON.stringify(map||{})); }catch(e){ __lsQuotaWarnOnce_(); } }
 function mergeRepairOverrideMaps_(a,b){ return lwwMergeZombieSafe_(a,b); }   // 🧟 v1.30.600: ゾンビ排除つきLWWに統一
 // オーバーレイを state.repairs.worker に反映(クラウド共有値が真値)
+// 🚗 v1.30.654(山田報告・クラ助セッション診断): 再アポで日付が変わっても直行が付いたままだった。
+//   repair_overrides のキーは案件idだけで日付を持たないため、responseDate と無関係に commute が復活していた。
+//   ★整理: worker/vendor は「誰が行くか」=日をまたいで有効 / **commute(直行・直帰)は「その日の行き方」=日付の属性**。
+//   → 直行を付けた時の responseDate を forDate に刻み、**同じ日のときだけ**適用する(不一致=再アポ→自動解除)。
+//   ⚠後方互換: forDate が無い既存エントリは有効扱い(いま付いている直行を一斉に消さない)。新しいタップから世代交代。
+function commuteStillValid_(entry, curDate){
+  if(!entry) return false;
+  if(entry.forDate === undefined || entry.forDate === null || entry.forDate === "") return true;   // 旧エントリ
+  return String(entry.forDate) === String(curDate||"");
+}
 function applyRepairOverridesToState_(){
   const map = loadRepairOverrides_();
-  (state.repairs||[]).forEach(r=>{ const e=map[r.id]; if(e && e.at){ r.worker = e.worker||""; r.commute = e.commute||""; if(e.vendor) r.responseContractor = e.vendor; } });
+  (state.repairs||[]).forEach(r=>{
+    const e=map[r.id];
+    if(e && e.at){
+      r.worker = e.worker||"";
+      r.commute = commuteStillValid_(e, r.responseDate) ? (e.commute||"") : "";
+      if(e.vendor) r.responseContractor = e.vendor;
+    }
+  });
 }
 // 🛠 対応業者(responseContractor)をカレンダー側で上書き(全員共有)。worker/commuteは保持。vendor=""で解除(台帳値に戻る)
 async function setRepairVendorOverride_(repairId, vendor){
@@ -7261,7 +7278,8 @@ async function setRepairVendorOverride_(repairId, vendor){
   const __rec = (state.repairs||[]).find(x=>x.id===repairId);
   const __keepW = __curOv.at ? (__curOv.worker||'') : (__rec ? (__rec.worker||'') : '');
   const __keepCm = __curOv.commute || '';
-  const stamp = ()=>({ worker: __keepW, commute: __keepCm, vendor: (vendor||'').trim(), at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
+  const __keepFD = __curOv.forDate;   // 🚗 v1.30.654: 直行の日付印を落とさない(落とすと旧エントリ扱いで直行が復活する)
+  const stamp = ()=>({ worker: __keepW, commute: __keepCm, vendor: (vendor||'').trim(), forDate: __keepFD, at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
   let map = loadRepairOverrides_(); map[repairId] = stamp(); saveRepairOverrides_(map);
   const s = loadGasSettings();
   if(s.url && s.token){
@@ -7316,7 +7334,8 @@ async function setRepairWorkerOverride_(repairId, worker){
   const __ov0 = loadRepairOverrides_()[repairId]||{};
   const __keepCm = __ov0.commute || '';
   const __keepV = __ov0.vendor || '';
-  const stamp = ()=>({ worker: worker||'', commute: __keepCm, vendor: __keepV, at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
+  const __keepFD2 = __ov0.forDate;   // 🚗 v1.30.654: 同上(この関数の既存エントリは __ov0)
+  const stamp = ()=>({ worker: worker||'', commute: __keepCm, vendor: __keepV, forDate: __keepFD2, at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
   let map = loadRepairOverrides_();
   map[repairId] = stamp();                 // 楽観的にローカル即更新
   saveRepairOverrides_(map);
@@ -7349,7 +7368,8 @@ async function setRepairCommuteOverride_(repairId, commute){
   const __rec = (state.repairs||[]).find(x=>x.id===repairId);
   const __keepW = __curOv.at ? (__curOv.worker||'') : (__rec ? (__rec.worker||'') : '');
   const __keepV = __curOv.vendor || '';
-  const stamp = ()=>({ worker: __keepW, commute: commute||'', vendor: __keepV, at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
+  const __forDate = (__rec && __rec.responseDate) || '';   // 🚗 v1.30.654: この直行は「この日」のもの
+  const stamp = ()=>({ worker: __keepW, commute: commute||'', vendor: __keepV, forDate: __forDate, at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
   let map = loadRepairOverrides_();
   map[repairId] = stamp();
   saveRepairOverrides_(map);
@@ -7390,7 +7410,8 @@ function applyCheckWorkersToState_(){
     if(ck.estimatorName===undefined){ ck.estimatorName = ck.staff||""; ck.staff=""; }
     const e = map[ck.id];
     ck.staff = (e && e.at) ? (e.worker||"") : "";
-    ck.commute = (e && e.at) ? (e.commute||"") : "";   // 🚗 直行/直帰(全員共有)
+    // 🚗 v1.30.654: 修繕と同型。最終確認日が動いたら直行は自動解除(forDate無しの旧エントリは有効扱い)
+    ck.commute = (e && e.at && commuteStillValid_(e, ck.checkDate)) ? (e.commute||"") : "";
   });
 }
 async function fetchCheckWorkers_(opts={}){
@@ -7425,7 +7446,8 @@ async function pushCheckWorkersMap_(map){
 // 最新remote取得→自分の変更を最新atで上書き→push(他端末の割当を消さない)。worker=カンマ区切り文字列。
 async function setCheckWorkerOverride_(checkId, worker){
   const __keepCm = (loadCheckWorkers_()[checkId]||{}).commute || '';
-  const stamp = ()=>({ worker: worker||'', commute: __keepCm, at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
+  const __keepFD3 = (loadCheckWorkers_()[checkId]||{}).forDate;   // 🚗 v1.30.654: 日付印を落とさない
+  const stamp = ()=>({ worker: worker||'', commute: __keepCm, forDate: __keepFD3, at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
   let map = loadCheckWorkers_();
   map[checkId] = stamp();
   saveCheckWorkers_(map);
@@ -7452,7 +7474,8 @@ async function setCheckCommuteOverride_(checkId, commute){
   const __curOv = loadCheckWorkers_()[checkId] || {};
   const __ck = (state.checks||[]).find(x=>x.id===checkId);
   const __keepW = __curOv.at ? (__curOv.worker||'') : (__ck ? (__ck.staff||'') : '');
-  const stamp = ()=>({ worker: __keepW, commute: commute||'', at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
+  const __forDate = (__ck && __ck.checkDate) || '';   // 🚗 v1.30.654: この直行は「この最終確認日」のもの
+  const stamp = ()=>({ worker: __keepW, commute: commute||'', forDate: __forDate, at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
   let map = loadCheckWorkers_();
   map[checkId] = stamp();
   saveCheckWorkers_(map);
