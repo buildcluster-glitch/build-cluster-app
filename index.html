@@ -2858,7 +2858,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.656</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.657</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -16469,8 +16469,10 @@ function renderCalendar(){
     const n = String(r.name).trim();
     const room = String(r.room||"").trim();
     if(room){
-      __restoMatchList.push({ key: `${n} ${room}`, resto: r });
-      __restoMatchList.push({ key: `${n}${room}`, resto: r });
+      // withRoom=true: このキーは物件名+号室。当たった時点で「号室がタイトルに入っている」証拠なので
+      //   後段の号室ガード(2桁以上しか見ない)を通す必要がない(v1.30.657)
+      __restoMatchList.push({ key: `${n} ${room}`, resto: r, withRoom: true });
+      __restoMatchList.push({ key: `${n}${room}`, resto: r, withRoom: true });
     }
     __restoMatchList.push({ key: n, resto: r });
   });
@@ -16532,6 +16534,11 @@ function renderCalendar(){
       let hit = t.includes(m.key);
       if(!hit){ const kNorm = m.key.replace(/\s+/g,""); hit = kNorm && tNorm.includes(kNorm); }
       if(!hit) continue;
+      // 🐞 v1.30.657(山田「アスコットみたいな表示カードにしてほしい」・まどか報告の続き):
+      //   物件名+号室のキーで当たったなら号室はタイトルに入っている=ガード不要。
+      //   これが無いと**号室が1文字の物件**(DADA CUBE 03/04 の "F"・A棟・C棟等)が下の
+      //   「rRoom.length>=2」条件を満たせず弾かれ、連携情報/見積バッジ/進捗バーが出ない素のチップになっていた。
+      if(m.withRoom){ found = m.resto; break; }
       const rRoom = normRoom_(m.resto.room);
       const rRoomInTitle = rRoom && rRoom.length>=2 && tNorm.includes(rRoom);   // restoの号室がタイトル中にあるか
       // 🔒 号室ガード(号室が明示され食い違う→スキップ)。ただしrestoの号室がタイトルに含まれていれば正しい照合なので弾かない
