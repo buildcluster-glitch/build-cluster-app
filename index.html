@@ -2872,7 +2872,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.666</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.667</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -5126,7 +5126,8 @@ const SNAP_SLOTS = [9, 13, 18];
 //   原状回復/物件マスタ/立会/修繕/最終確認はクラウド/Driveから再取得できるのでバックアップに含めない。
 //   軽くなったので保持期間・件数を元に戻す(2週間×3枠ぶん)。
 const SNAP_KEEP_DAYS = 7;    // v1.30.291: 14→7(予定が増え1個≒86KBに肥大→枠を絞る)
-const SNAP_MAX_COUNT = 5;    // v1.30.516: 10→5。予定351件で1個≒170KBまで肥大し8個で約1.4MB=localStorage(上限5MB)の3割を占めていた(山田の実測)。⏪復元は直近5世代+☁サーバーバックアップ14世代で足りる
+const SNAP_MAX_COUNT = 3;    // v1.30.667: 5→3。672件で1本≒320KB・09-02実測で6本(=MAX+1のoff-by-one)1.9MB/合計3.18MBと警告3.5MBの目前。☁サーバー14世代があるので3で足りる
+// (旧)v1.30.516: 10→5。予定351件で1個≒170KBまで肥大し8個で約1.4MB=localStorage(上限5MB)の3割を占めていた(山田の実測)。⏪復元は直近5世代+☁サーバーバックアップ14世代で足りる
 // 🪶 軽量バックアップの中身: ローカル編集で失うと困るデータだけ(events に事務タスクも含まれる)
 function buildLightSnap_(){
   return JSON.stringify({
@@ -5155,7 +5156,8 @@ function pruneSnapshots_(){
   });
   // 件数上限: 直近 SNAP_MAX_COUNT 件だけ残す(古い順に削除)v1.30.122
   let ks = listSnapshots_();
-  while(ks.length > SNAP_MAX_COUNT){ localStorage.removeItem(ks.shift()); }
+  // v1.30.667: この関数は「撮る直前」に呼ばれるので MAX-1 まで落とす=撮った後にちょうど MAX 本(従来は MAX+1 本残っていた)
+  while(ks.length > Math.max(0, SNAP_MAX_COUNT-1)){ localStorage.removeItem(ks.shift()); }
 }
 // v1.30.153: 軽量化したので「9/13/18時の枠」ではなく、内容が変わったら最短8分間隔でこまめにバックアップ。
 //   →スロット間(例14時)に追加して消えたタスクも数分以内にバックアップされ、消失しても戻せる。
@@ -9606,7 +9608,14 @@ async function heartbeatPresence_(opts={}){
   let meta = (typeof rawPresenceMeta==='object' && rawPresenceMeta) ? rawPresenceMeta : {};
   Object.keys(meta).forEach(st=>{ if(!map[st]) delete meta[st]; });   // 居なくなった人は落とす
   if(opts.leave) delete meta[me];
-  else meta[me] = { ver:(typeof appVersion_==='function'?appVersion_():''), dev:(typeof deviceInfo_==='function'?deviceInfo_():''), at:new Date().toISOString() };
+  else {
+    // 📡 v1.30.667(山田要望): 予定の読み元も一緒に共有=9/9の全端末切替後「誰がDBで読めて誰がGASに落ちたか」を🐞画面で一望
+    const __rs = (typeof __eventsReadStat!=='undefined' && __eventsReadStat) ? __eventsReadStat : null;
+    meta[me] = { ver:(typeof appVersion_==='function'?appVersion_():''), dev:(typeof deviceInfo_==='function'?deviceInfo_():''), at:new Date().toISOString(),
+      rs: __rs ? __rs.src : ((typeof eventsDbReadOn_==='function' && eventsDbReadOn_()) ? 'db?' : 'gas'),   // db / gas / db?(ON直後で未読)
+      rsN: __rs ? __rs.n : null, rsMs: __rs ? __rs.ms : null, rsFb: __rs ? (__rs.fallback||'') : '',
+      rsOn: (typeof eventsDbReadOn_==='function') ? eventsDbReadOn_() : false };
+  }
   try{ localStorage.setItem('buildcluster_presence_meta', JSON.stringify(meta)); }catch(_){}
   try{
     await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:PRESENCE_KEY,value:JSON.stringify({presence:map,meta:meta,updatedAt:new Date().toISOString()}),token:s.token,savedBy:'calendar-app'})});
@@ -24033,10 +24042,22 @@ function renderDeviceVersions_(){
     const m = meta[n] || {};
     const old = mine && m.ver && typeof __verLt_==='function' && __verLt_(m.ver, mine);
     const d = new Date(m.at); const ds = isNaN(d) ? '' : `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-    return `<span title="${escapeHtml((m.dev||'') + (ds?(' / 最終 '+ds):''))}" style="display:inline-flex;align-items:center;gap:4px;border:1px solid ${old?'#fca5a5':'var(--border)'};background:${old?'#fee2e2':'#fff'};color:${old?'#b91c1c':'#334155'};border-radius:12px;padding:2px 9px;font-size:11px;font-weight:${old?'700':'500'}">${escapeHtml(n)} <b style="font-weight:700">${escapeHtml(m.ver||'?')}</b>${old?' ⚠旧版':''}</span>`;
+    // 📡 読み元バッジ(v1.30.667): rs=db(緑)/gas(灰)。スイッチONなのにGAS=フォールバック中(橙・理由をtitleに)
+    let rsHtml = '';
+    if(m.rs){
+      const fb = !!(m.rsOn && m.rs!=='db');
+      const bg = m.rs==='db' ? '#dcfce7' : (fb ? '#ffedd5' : '#f1f5f9');
+      const fg = m.rs==='db' ? '#166534' : (fb ? '#9a3412' : '#64748b');
+      const lbl = m.rs==='db' ? '📡DB' : (m.rs==='db?' ? '📡…' : 'GAS');
+      const tip = `予定の読み元: ${m.rs==='db'?'DB直読み':(m.rs==='db?'?'DBスイッチON(まだ読んでいない)':'GAS(従来)')}${m.rsN!=null?` ${m.rsN}件`:''}${m.rsMs!=null?` ${m.rsMs}ms`:''}${m.rsFb?`\n⚠フォールバック: ${m.rsFb}`:''}${m.rsOn&&m.rs==='gas'?'\n(スイッチはONなのにGAS=要確認)':''}`;
+      rsHtml = `<span title="${escapeHtml(tip)}" style="font-size:9.5px;font-weight:700;padding:0 5px;border-radius:7px;background:${bg};color:${fg}">${lbl}</span>`;
+    }
+    return `<span title="${escapeHtml((m.dev||'') + (ds?(' / 最終 '+ds):''))}" style="display:inline-flex;align-items:center;gap:4px;border:1px solid ${old?'#fca5a5':'var(--border)'};background:${old?'#fee2e2':'#fff'};color:${old?'#b91c1c':'#334155'};border-radius:12px;padding:2px 9px;font-size:11px;font-weight:${old?'700':'500'}">${escapeHtml(n)} <b style="font-weight:700">${escapeHtml(m.ver||'?')}</b>${old?' ⚠旧版':''}${rsHtml}</span>`;
   }).join('');
   const oldN = names.filter(n=>{ const m=meta[n]||{}; return mine && m.ver && typeof __verLt_==='function' && __verLt_(m.ver, mine); }).length;
-  host.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:4px">📱 各端末の版 <span style="font-weight:400">(最近ひらいた人・カーソルで端末情報)</span>${oldN?` — <b style="color:#b91c1c">${oldN}人が旧版のまま（リロードを案内してください）</b>`:''}</div><div style="display:flex;flex-wrap:wrap;gap:5px">${rows}</div>`;
+  const fbN = names.filter(n=>{ const m=meta[n]||{}; return m.rsOn && m.rs && m.rs!=='db'; }).length;   // 📡 スイッチONなのにDBで読めていない端末
+  const dbN = names.filter(n=>{ const m=meta[n]||{}; return m.rs==='db'; }).length;
+  host.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:4px">📱 各端末の版 <span style="font-weight:400">(最近ひらいた人・カーソルで端末情報)</span>${oldN?` — <b style="color:#b91c1c">${oldN}人が旧版のまま（リロードを案内してください）</b>`:''}${dbN?` — 📡DB読み ${dbN}人`:''}${fbN?` — <b style="color:#9a3412">⚠${fbN}人がGASにフォールバック中</b>`:''}</div><div style="display:flex;flex-wrap:wrap;gap:5px">${rows}</div>`;
 }
 // 🔍 v1.30.599: 立会の担当色 診断+自己修復。押した端末の中身とサーバーを突き合わせ、
 //   食い違いを**通常報告として自動送信**(=山田/Claudeが遠隔で読める)+ローカルをサーバー基準に修復して描き直す。
