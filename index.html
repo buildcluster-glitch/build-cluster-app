@@ -2860,7 +2860,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.662</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.663</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4501,7 +4501,7 @@
   //   v1.30.526: 小さいのに単発で往復していた5キーをバッチへ追加(山田「読み込みが重い」の実測対応)。
   //   起動時に同じGASへ10本近い並列リクエストが集中し、一部が404/60秒タイムアウトしていた。
   //   ⚠ calendar_reports(画像込み1.1MB)と hatchusho_data(149KB)は重いので今後もバッチに入れない。
-  var GC_KEYS = ['staffMaster','staffAvailability','taikyo_tachiai_schedule','taikyo_overrides','taikyo_comments','taikyo_shiryo_ready','repair_overrides','repair_comments','repair_pos','check_workers','phone_duty','toban_done','alerts','skip_visit','staff_leaves','event_deletions','jimu_messages','jizen_schedule','calendar_reminders','reschedule_traces','jimu_task_comments','jimu_task_tombstones','calendar_changelog','event_done','sanpai','check_seisou','calendar_required_version','leave_comments','time_notes'];
+  var GC_KEYS = ['staffMaster','staffAvailability','taikyo_tachiai_schedule','taikyo_overrides','taikyo_comments','taikyo_shiryo_ready','repair_overrides','repair_comments','repair_pos','check_workers','phone_duty','toban_done','alerts','skip_visit','staff_leaves','event_deletions','jimu_messages','jizen_schedule','calendar_reminders','reschedule_traces','jimu_task_comments','jimu_task_tombstones','calendar_changelog','event_done','sanpai','check_seisou','calendar_required_version','leave_comments','time_notes','calendar_flags'];
   var TTL = 45000; // 起動バーストを束ねる窓(45秒)
   var _cache = null, _cacheAt = 0, _inflight = null, _unsupported = false;
   // 🔄 手動全同期で「今すぐ最新」を取るため、45秒キャッシュを外から無効化できるようにする(v1.30.224)
@@ -8043,6 +8043,8 @@ function showVersionGate_(req, mine, msg){
   document.body.appendChild(ov);
   document.getElementById('verGateReload').onclick = ()=>{ try{ location.replace(location.pathname + '?vg=' + Date.now()); }catch(_){ location.reload(); } };
 }
+// 🚩 遠隔スイッチ(calendar_flags)は要求バージョンと同じタイミングで読む(GC_KEYSバッチ同乗=追加往復なし)
+async function checkCalendarFlags_(){ try{ await fetchCalendarFlags_(); }catch(_){} }
 async function checkRequiredVersion_(){
   try{
     const s = loadGasSettings(); if(!s.url || !s.token) return;
@@ -21975,12 +21977,34 @@ async function cloudSyncPull({ replace=false, signal=null, prefetched=null }={})
   // prefetched = 直前の push の応答に同梱されてきた取得結果(v1.30.529)。
   // 有るときは取りに行かない＝GAS呼び出しが1回ぶん減る。中身の扱いは以降まったく同じ。
   let data;
-  if(prefetched){
-    data = prefetched;
-  } else {
+  const __gasPull = async ()=>{
+    const t0 = Date.now();
     const res = await fetch(cloudSync.url, { cache:'no-store', signal });   // signal=ハング打ち切り用(v1.30.343)
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    data = await res.json();
+    const d = await res.json();
+    __lastGasEventsPullAt = Date.now();
+    return { d, ms: Date.now()-t0 };
+  };
+  if(prefetched){
+    data = prefetched;   // pushの応答同梱(GAS由来)はそのまま使う=取得元の混在はここだけ・問題なし(GASは正のDrive/シート)
+  } else if(!replace && eventsDbReadOn_() && __lastGasEventsPullAt===0){
+    // 初回だけはGASフル(properties/members/logs も揃えるため)。以降は下のDB経路+10分ごとGAS
+    const g = await __gasPull(); data = g.d; __setEventsReadStat_({ src:'gas', n:(data.events||[]).length, ms:g.ms, note:'初回はGAS(物件/メンバーも取得)' });
+  } else if(!replace && eventsDbReadOn_() && (Date.now()-__lastGasEventsPullAt) <= EVENTS_GAS_REFRESH_MS){
+    // 📡 DB直読み。失敗/0件はGASへ(条件②③)。properties/members はGASの前回値のまま=マージは追加/更新のみなので欠けても消えない
+    const r = await fetchEventsFromDb_({ signal });
+    if(r.ok && r.events.length > 0){
+      data = { events: r.events };
+      __setEventsReadStat_({ src:'db', n:r.events.length, total:r.total, ms:r.ms });
+    } else {
+      const g = await __gasPull(); data = g.d;
+      const gasN = (data.events||[]).length;
+      const why = r.ok ? (gasN>0 ? 'DB0件→GAS非0=役割(bc_role)未付与の疑い' : 'DB0件・GASも0件') : r.reason + (r.status?`(${r.status})`:'') + (r.reason==='count-mismatch'?` got=${r.got}/total=${r.total}`:'');
+      __setEventsReadStat_({ src:'gas', n:gasN, ms:(r.ms||0)+g.ms, fallback: why });
+    }
+  } else {
+    const g = await __gasPull(); data = g.d;
+    if(eventsDbReadOn_()) __setEventsReadStat_({ src:'gas', n:(data.events||[]).length, ms:g.ms, note:'10分ごとのGASフル(wt取りこぼしの保険)' });
   }
   if(data.error) throw new Error(data.error);
 
@@ -22732,6 +22756,88 @@ function sbLogout_(){
   if(__sbRefreshTimer){ clearTimeout(__sbRefreshTimer); __sbRefreshTimer=null; }
   renderAuthState_();
 }
+
+// ============================================================================
+// 📡 予定(events)の読み直結 — Supabase REST から calendar_events.doc を読む (v1.30.663・山田GO 2026-09-02)
+//   狙い: 60秒ごとのGAS doGet(約3〜4秒/370KB)を DB直読み(0.2〜0.5秒)に。書き込みは従来どおりGAS経由
+//   (GASがwrite-throughでDBにも書いているので読み先を変えても辻褄は合う=8/30の台帳「読み先行」と同型)。
+//   ★台帳DBセッションの条件3つ(2026-09-02)を全部ここで守る:
+//     ①wtの取りこぼし(0.45%)が「他人の画面に予定が無い」に化ける → 公開と同時にGAS側をDB先行書きに(別途)。
+//       それまでの保険として **10分ごとにGAS経由のフル取得も混ぜる**(取りこぼしは最長10分で埋まる)
+//     ②PostgRESTは上限超えを黙って206で切り詰める → Prefer:count=exact + Content-Range総件数と受信件数の一致を必須。
+//       不一致はGASへフォールバック。最初からページング(1000件/頁)で全件取る
+//     ③役割(bc_role)未付与は「エラーでなく静かに0件」 → 0件ならGASでも読み、非0なら採用+🔍診断に警告
+//   スイッチ: 遠隔 shared-config 'calendar_flags' {"eventsDbRead":true} (全端末・即時) ＞ 端末上書き localStorage
+//   'bc_flag_eventsDbRead'='1'|'0'(検証用) ＞ 既定OFF。公開日(9/9予定)まで誰の挙動も変わらない。
+//   黙って空振りしない: 毎回 __eventsReadStat に読み元/件数/所要/フォールバック理由を残し、🔍色の診断に出す。
+// ============================================================================
+let __calFlags = null;
+async function fetchCalendarFlags_(){
+  try{
+    const g = loadGasSettings(); if(!g.url || !g.token) return __calFlags;
+    const url = `${g.url}?action=get-shared-config&key=calendar_flags&token=${encodeURIComponent(g.token)}&t=${Date.now()}`;
+    const res = await fetch(url, {method:'GET', redirect:'follow'});
+    if(!res.ok) return __calFlags;
+    const d = await res.json(); let v = d && d.value;
+    if(typeof v === 'string'){ try{ v = v ? JSON.parse(v) : {}; }catch(_){ v = {}; } }
+    __calFlags = (v && typeof v === 'object') ? v : {};
+  }catch(_){}
+  return __calFlags;
+}
+function eventsDbReadOn_(){
+  try{ const o = localStorage.getItem('bc_flag_eventsDbRead'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
+  return !!(__calFlags && __calFlags.eventsDbRead === true);
+}
+// 管理者用(コンソール): 端末だけ切替 / 全端末を切替
+window.setEventsDbReadLocal_ = function(on){ try{ if(on==null) localStorage.removeItem('bc_flag_eventsDbRead'); else localStorage.setItem('bc_flag_eventsDbRead', on?'1':'0'); }catch(_){} console.log('[events-read] 端末上書き =', on); };
+window.setEventsDbReadRemote_ = async function(on){
+  const g = loadGasSettings(); if(!g.url||!g.token){ console.warn('GAS未設定'); return; }
+  const cur = Object.assign({}, __calFlags||{}, { eventsDbRead: !!on, updatedAt: new Date().toISOString(), by: (typeof getMyself==='function'?getMyself():'')||'' });
+  const r = await fetch(g.url, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({action:'save-shared-config', key:'calendar_flags', value: JSON.stringify(cur), token:g.token, savedBy:'calendar-admin'})});
+  const d = await r.json().catch(()=>null); __calFlags = cur; console.log('[events-read] 全端末スイッチ =', on, d); return d;
+};
+const EVENTS_DB_PAGE = 1000;
+const EVENTS_GAS_REFRESH_MS = 10*60*1000;   // ①の保険: 10分に1回はGAS経由フルも混ぜる(GAS側DB先行書きが入ったら伸ばせる)
+let __eventsReadStat = null;                 // 直近の読み取り診断 {src, n, total, ms, fallback, at, note}
+let __lastGasEventsPullAt = 0;
+function __parseJsonSafe_(x){ if(x && typeof x==='object') return x; if(typeof x==='string'){ try{ return JSON.parse(x); }catch(_){ return null; } } return null; }
+async function fetchEventsFromDb_({signal}={}){
+  const t0 = Date.now();
+  let s = sbSession_();
+  if(!s || !s.access_token) return { ok:false, reason:'no-session', ms:Date.now()-t0 };
+  if(s.expires_at && (s.expires_at*1000 - Date.now()) < 60000){ try{ await sbRefresh_(); }catch(_){} s = sbSession_(); }
+  if(!s || !s.access_token) return { ok:false, reason:'no-session', ms:Date.now()-t0 };
+  const base = `${SB_AUTH.url}/rest/v1/calendar_events?select=doc&is_deleted=eq.false&order=id.asc`;
+  const hdr = tok => ({ 'apikey': SB_AUTH.key, 'Authorization': 'Bearer '+tok, 'Prefer': 'count=exact', 'Accept': 'application/json' });
+  const all = []; let total = null, from = 0, retriedAuth = false;
+  while(true){
+    let res;
+    try{
+      res = await fetch(base, { headers: Object.assign({ 'Range': `${from}-${from+EVENTS_DB_PAGE-1}`, 'Range-Unit':'items' }, hdr(s.access_token)), cache:'no-store', signal });
+    }catch(e){ return { ok:false, reason: (e && e.name==='AbortError') ? 'abort' : 'network', detail: e && e.message, ms:Date.now()-t0 }; }
+    if((res.status===401 || res.status===403) && !retriedAuth){        // 期限切れ直後など: 1回だけ更新して再試行
+      retriedAuth = true; try{ await sbRefresh_(); }catch(_){} s = sbSession_();
+      if(!s || !s.access_token) return { ok:false, reason:'auth', status:res.status, ms:Date.now()-t0 };
+      continue;
+    }
+    if(res.status===401 || res.status===403) return { ok:false, reason:'auth', status:res.status, ms:Date.now()-t0 };
+    if(!res.ok && res.status!==206) return { ok:false, reason:'http', status:res.status, ms:Date.now()-t0 };
+    const cr = res.headers.get('content-range') || '';                   // 例 "0-999/1684" / "*/0"
+    const m = cr.match(/\/(\d+|\*)\s*$/); if(m && m[1] !== '*') total = parseInt(m[1],10);
+    let rows; try{ rows = await res.json(); }catch(_){ return { ok:false, reason:'shape', ms:Date.now()-t0 }; }
+    if(!Array.isArray(rows)) return { ok:false, reason:'shape', ms:Date.now()-t0 };
+    for(const r of rows){ const d = __parseJsonSafe_(r && r.doc); if(d && d.id) all.push(d); }
+    from += EVENTS_DB_PAGE;
+    if(rows.length < EVENTS_DB_PAGE) break;
+    if(total != null && all.length >= total) break;
+    if(from > 50000) return { ok:false, reason:'runaway', ms:Date.now()-t0 };
+  }
+  // ②総件数一致を最終判定(206で黙って切り詰められた=過去2回の消失事故と同じ絵、を必ず検知)
+  if(total != null && all.length !== total) return { ok:false, reason:'count-mismatch', got:all.length, total, ms:Date.now()-t0 };
+  return { ok:true, events: all, total: (total!=null?total:all.length), ms:Date.now()-t0 };
+}
+function __setEventsReadStat_(o){ __eventsReadStat = Object.assign({ at:new Date().toISOString() }, o); try{ console.log(`[events-read] ${o.src} ${o.n}件${o.total!=null&&o.total!==o.n?`(総${o.total})`:''} ${o.ms}ms${o.fallback?` ⚠${o.fallback}`:''}${o.note?` ${o.note}`:''}`); }catch(_){} }
 // 🔐 ヘッダーの入口(v1.30.575): 未ログインの時だけ出す。ログイン画面が消えても迷子にならないように
 function updateAuthHeaderBtn_(){
   const b = document.getElementById('authLoginBtn');
@@ -23935,6 +24041,14 @@ async function runTaikyoColorDiag_(){
         + (__hs.unmatched.length ? `\n⚠未一致(物件名/号室の表記ゆれの疑い):\n  ${__hs.unmatched.join('\n  ')}` : ''));
     }
   }catch(e){ sections.push('【🏢契約区分ヒント】検査失敗: '+e.message); }
+  // 📡 予定の読み元(v1.30.663): DB直読みが効いているか・フォールバックが起きていないかを必ず残す
+  try{
+    const st = __eventsReadStat;
+    const on = (typeof eventsDbReadOn_==='function') ? eventsDbReadOn_() : false;
+    const sess = (typeof sbSession_==='function') ? sbSession_() : null;
+    sections.push(`【📡予定の読み元】スイッチ=${on?'DB直読み':'GAS(従来)'} / ログイン=${sess?(sess.email||'済')+(sess.role?`(${sess.role})`:''):'未'}`
+      + (st ? `\n直近: ${st.src.toUpperCase()} ${st.n}件${st.total!=null&&st.total!==st.n?`(総${st.total})`:''} ${st.ms}ms ${String(st.at).slice(11,19)}${st.fallback?`\n⚠フォールバック: ${st.fallback}`:''}${st.note?`\n${st.note}`:''}` : '\n直近: (まだ読んでいません)'));
+  }catch(e){ sections.push('【📡予定の読み元】検査失敗: '+e.message); }
   const head = `🔍色の診断 (${(typeof appVersion_==='function')?appVersion_():''} / ${(typeof deviceInfo_==='function')?deviceInfo_():''})`;
   try{
     await mutateCalReport_(uid(), { type:'normal', text:`${head}\n${sections.join('\n\n')}`, status:'open',
@@ -28312,6 +28426,10 @@ setTimeout(()=>afterOpenSync_(()=>{
         checkRequiredVersion_();
         setInterval(()=>checkRequiredVersion_(), 30*60*1000);
         window.addEventListener('focus', ()=>checkRequiredVersion_());
+        // 🚩 遠隔スイッチ(calendar_flags・v1.30.663)も同じ周期で(GC_KEYSバッチ同乗)
+        checkCalendarFlags_();
+        setInterval(()=>checkCalendarFlags_(), 10*60*1000);
+        window.addEventListener('focus', ()=>checkCalendarFlags_());
       }
       // 📮 未共有の工事進捗を自動再送(v1.30.563)=起動15秒後+5分ごと+フォーカス時
       if(typeof retryPendingProgress_==='function'){
