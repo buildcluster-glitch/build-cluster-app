@@ -1038,7 +1038,9 @@
   /* 💬 インライン編集(v1.30.664・鈴木) */
   .quick-pop.task-pop .tp-cmt-line.mine .tp-cmt-txt{cursor:text;border-bottom:1px dashed transparent}
   .quick-pop.task-pop .tp-cmt-line.mine:hover .tp-cmt-txt{border-bottom-color:#94a3b8}
-  .quick-pop.task-pop .tp-cmt-line .tp-cmt-x{margin-left:auto;border:0;background:transparent;color:#cbd5e1;cursor:pointer;font-size:11px;padding:0 2px;line-height:1}
+  .quick-pop.task-pop .tp-cmt-line .tp-cmt-e{margin-left:auto;border:0;background:transparent;color:#94a3b8;cursor:pointer;font-size:11px;padding:0 2px;line-height:1}
+  .quick-pop.task-pop .tp-cmt-line .tp-cmt-e:hover{color:#1d4ed8}
+  .quick-pop.task-pop .tp-cmt-line .tp-cmt-x{border:0;background:transparent;color:#cbd5e1;cursor:pointer;font-size:11px;padding:0 2px;line-height:1}
   .quick-pop.task-pop .tp-cmt-line:hover .tp-cmt-x{color:#ef4444}
   .quick-pop.task-pop .tp-cmt-edit{width:100%;font-size:13px;line-height:1.5;padding:4px 8px;border:1px solid #93c5fd;border-radius:6px;resize:vertical;min-height:30px;box-sizing:border-box;font-family:inherit}
   .quick-pop.task-pop .tp-cmt-addrow{display:flex}
@@ -2870,7 +2872,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.665</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.666</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -12801,7 +12803,7 @@ function showTaskChecklistPopup(el, ev, opts){
       // v1.30.664(鈴木): 一覧の行の下で直接 追加/編集/削除。0件でも入力欄は常設(完了・ゴミ箱の行には出さない)
       const __meC = (typeof getMyself==='function')?getMyself():'';
       const __ck = taskCKey_(t.text);
-      const __cmtLines = __cs.map((c,ci)=>`<div class="tp-cmt-line${c.author===__meC?' mine':''}" data-cidx="${ci}"><b>${escapeHtml(c.author||'?')}</b><span class="tp-cmt-txt" ${c.author===__meC?'title="クリックで編集"':''}>${escapeHtml(c.text||'')}</span><span class="tp-cmt-time">${escapeHtml(__fmtCmtT_(c.at))}${c.editedAt?' (編集済)':''}</span>${c.author===__meC?`<button class="tp-cmt-x" title="このコメントを削除">✕</button>`:''}</div>`).join('');
+      const __cmtLines = __cs.map((c,ci)=>`<div class="tp-cmt-line${c.author===__meC?' mine':''}" data-cidx="${ci}"><b>${escapeHtml(c.author||'?')}</b><span class="tp-cmt-txt" ${c.author===__meC?'title="クリックで編集"':''}>${escapeHtml(c.text||'')}</span><span class="tp-cmt-time">${escapeHtml(__fmtCmtT_(c.at))}${c.editedAt?' (編集済)':''}</span>${c.author===__meC?`<button class="tp-cmt-e" title="このコメントを編集">✎</button><button class="tp-cmt-x" title="このコメントを削除">✕</button>`:''}</div>`).join('');
       const __cmtInput = (!t.done && !t.trashed) ? `<div class="tp-cmt-addrow"><input class="tp-cmt-add" data-ckey="${escapeHtml(__ck)}" data-line="${t.index}" placeholder="💬 コメントを追加… (Enterで送信)"></div>` : '';
       const __cmtBlock = (__cs.length || __cmtInput) ? `<div class="tp-cmt-inline" data-ckey="${escapeHtml(__ck)}">${__cmtLines}${__cmtInput}</div>` : '';
       // 🔀 並び替え(v1.30.461): 同グループ(進行中フラグ＋優先度が同じ)に相手がいる時だけグリップ表示。
@@ -12976,6 +12978,7 @@ function showTaskChecklistPopup(el, ev, opts){
       };
       inp.onpointerdown = (e)=> e.stopPropagation();   // 行のドラッグ/クリック編集を誤発火させない
     });
+    pop.querySelectorAll('.tp-cmt-line.mine .tp-cmt-e').forEach(b=>{ b.onclick=(e)=>{ e.stopPropagation(); const sp=b.closest('.tp-cmt-line').querySelector('.tp-cmt-txt'); if(sp && sp.onclick) sp.onclick(e); }; });   // ✎=本文クリックと同じ(v1.30.666・見つけやすさ)
     pop.querySelectorAll('.tp-cmt-line.mine .tp-cmt-txt').forEach(sp=>{
       sp.onclick = (e)=>{
         e.stopPropagation();
