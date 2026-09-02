@@ -1035,6 +1035,16 @@
   .quick-pop.task-pop .tp-cmt-line > b{color:#1d4ed8;font-size:11px;flex-shrink:0}
   .quick-pop.task-pop .tp-cmt-line .tp-cmt-txt{flex:1;min-width:0;word-break:break-word;white-space:pre-wrap}
   .quick-pop.task-pop .tp-cmt-line .tp-cmt-time{font-size:10px;color:#94a3b8;flex-shrink:0}
+  /* 💬 インライン編集(v1.30.664・鈴木) */
+  .quick-pop.task-pop .tp-cmt-line.mine .tp-cmt-txt{cursor:text;border-bottom:1px dashed transparent}
+  .quick-pop.task-pop .tp-cmt-line.mine:hover .tp-cmt-txt{border-bottom-color:#94a3b8}
+  .quick-pop.task-pop .tp-cmt-line .tp-cmt-x{margin-left:auto;border:0;background:transparent;color:#cbd5e1;cursor:pointer;font-size:11px;padding:0 2px;line-height:1}
+  .quick-pop.task-pop .tp-cmt-line:hover .tp-cmt-x{color:#ef4444}
+  .quick-pop.task-pop .tp-cmt-edit{width:100%;font-size:13px;line-height:1.5;padding:4px 8px;border:1px solid #93c5fd;border-radius:6px;resize:vertical;min-height:30px;box-sizing:border-box;font-family:inherit}
+  .quick-pop.task-pop .tp-cmt-addrow{display:flex}
+  .quick-pop.task-pop .tp-cmt-add{flex:1;font-size:12px;padding:3px 8px;border:1px dashed var(--border-strong);border-radius:6px;background:#fff;color:#0f172a;font-family:inherit}
+  .quick-pop.task-pop .tp-cmt-add:focus{border-style:solid;border-color:#3b82f6;outline:none}
+  .quick-pop.task-pop .tp-cmt-add::placeholder{color:#b0b8c4}
   /* 💬コメントポップアップ側も同じ大きさに揃える(v1.30.580) */
   .quick-pop .tcp-list .ev-comment-card{font-size:13px !important;line-height:1.5;padding:5px 8px !important}
   .quick-pop .tcp-list .tcp-text{font-size:13px;color:#0f172a}
@@ -2860,7 +2870,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.663</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.664</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -12654,6 +12664,34 @@ function showTaskChecklistPopup(el, ev, opts){
       mutateJimuTaskCommentsRemote_(staff, oldKey, ()=>[]);   // 旧キーを空に=他端末で復活しない
     }
   };
+  // 💬 v1.30.664(鈴木要望「タスク この画面から直接コメント編集できるようにしたい」):
+  //   追加/編集/削除の本体を1か所に集約し、💬ポップアップと**一覧の行の下(インライン)**の両方から呼ぶ。
+  //   永続化は従来どおり: 担当者(staff)があれば共有map jimu_task_comments を LWW更新(全端末)、無ければ ev を丸ごと保存。
+  const __tcSig_ = (c)=> (typeof tcSig_==='function') ? tcSig_(c) : `${c&&c.author||''}|${c&&c.text||''}|${c&&c.at||''}`;
+  const __tcPersistEv_ = ()=>{ const cev=(state.events||[]).find(e=>e.id===ev.id); if(cev){ cev.updatedAt=new Date().toISOString(); saveState(); if(typeof cloudQueueEventChange==='function') cloudQueueEventChange(cev,'upsert'); } };
+  const __tcStaff_ = ()=>{ const cev=(state.events||[]).find(e=>e.id===ev.id)||ev; return cev && cev.staff; };
+  const tcAdd_ = (key, text)=>{
+    text=String(text||'').trim(); if(!text) return null;
+    const me=(typeof getMyself==='function')?getMyself():''; const cev=(state.events||[]).find(e=>e.id===ev.id)||ev; const staff=__tcStaff_();
+    const c={ id:(typeof uid==='function'?uid():'c_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5)), author:(me||'?'), text, at:new Date().toISOString() };
+    if(!cev.taskComments) cev.taskComments={}; if(!Array.isArray(cev.taskComments[key])) cev.taskComments[key]=[]; cev.taskComments[key].push(c);
+    if(staff && typeof mutateJimuTaskCommentsRemote_==='function') mutateJimuTaskCommentsRemote_(staff, key, list=> list.some(x=>x&&x.id===c.id)?list:[...list,c]); else __tcPersistEv_();
+    return c;
+  };
+  const tcEdit_ = (key, target, newText)=>{
+    const nv=String(newText||'').replace(/\s+$/,''); if(!nv || nv===target.text) return false;
+    const staff=__tcStaff_(); const sig=__tcSig_(target);
+    target.text=nv; target.editedAt=new Date().toISOString();
+    if(staff && typeof mutateJimuTaskCommentsRemote_==='function') mutateJimuTaskCommentsRemote_(staff, key, list=> list.map(x=> __tcSig_(x)===sig ? Object.assign({},x,{text:nv,editedAt:target.editedAt}) : x)); else __tcPersistEv_();
+    return true;
+  };
+  const tcDel_ = (key, target)=>{
+    const cev=(state.events||[]).find(e=>e.id===ev.id)||ev; const staff=__tcStaff_();
+    const arr=(cev.taskComments&&cev.taskComments[key])||[]; const i=arr.indexOf(target); if(i<0) return false;
+    const sig=__tcSig_(target); arr.splice(i,1);
+    if(staff && typeof mutateJimuTaskCommentsRemote_==='function') mutateJimuTaskCommentsRemote_(staff, key, list=> list.filter(x=>__tcSig_(x)!==sig)); else __tcPersistEv_();
+    return true;
+  };
   const showTaskCommentPopup_ = (key, taskText, anchorEl)=>{
     document.querySelectorAll('.quick-pop.task-cmt-pop').forEach(p=>p.remove());
     const me = (typeof getMyself==='function')?getMyself():"";
@@ -12711,12 +12749,7 @@ function showTaskChecklistPopup(el, ev, opts){
       ta.onblur=commit;
     }; }); };
     const refresh = ()=>{ const l=cp.querySelector('.tcp-list'); if(l) l.innerHTML=renderList(); wireDel(); wireEdit(); };
-    const add = (text)=>{ text=String(text||'').trim(); if(!text) return; const cev=(state.events||[]).find(e=>e.id===ev.id)||ev; const staff=cevStaff_();
-      const c={ id:(typeof uid==='function'?uid():'c_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5)), author:(me||'?'), text, at:new Date().toISOString() };
-      if(!cev.taskComments) cev.taskComments={}; if(!Array.isArray(cev.taskComments[key])) cev.taskComments[key]=[]; cev.taskComments[key].push(c); refresh(); renderInner();   // 楽観表示
-      if(staff && typeof mutateJimuTaskCommentsRemote_==='function') mutateJimuTaskCommentsRemote_(staff, key, list=> list.some(x=>x&&x.id===c.id)?list:[...list,c]);
-      else persist();
-    };
+    const add = (text)=>{ if(tcAdd_(key, text)){ refresh(); renderInner(); } };   // v1.30.664: 本体は tcAdd_(インラインと共通)
     __refreshOpenTaskCmtUI_ = ()=>{ try{ refresh(); }catch(_){} };   // 他端末の更新を取得したら開いてる欄を再描画
     if(typeof fetchJimuTaskComments_==='function') fetchJimuTaskComments_({silent:true}).catch(()=>{});   // 開いたら最新取得
     wireDel(); wireEdit();
@@ -12765,7 +12798,12 @@ function showTaskChecklistPopup(el, ev, opts){
     const rowHtml = (t, moveUpTo, moveDownTo, groupKey)=>{
       // 💬 コメント常時表示(v1.30.265・鈴木要望「以前のように常時表示」): タスク行の下にインライン表示
       const __cs = getTaskCmts_(taskCKey_(t.text));
-      const __cmtBlock = __cs.length ? `<div class="tp-cmt-inline">${__cs.map(c=>`<div class="tp-cmt-line"><b>${escapeHtml(c.author||'?')}</b><span class="tp-cmt-txt">${escapeHtml(c.text||'')}</span><span class="tp-cmt-time">${escapeHtml(__fmtCmtT_(c.at))}</span></div>`).join('')}</div>` : '';
+      // v1.30.664(鈴木): 一覧の行の下で直接 追加/編集/削除。0件でも入力欄は常設(完了・ゴミ箱の行には出さない)
+      const __meC = (typeof getMyself==='function')?getMyself():'';
+      const __ck = taskCKey_(t.text);
+      const __cmtLines = __cs.map((c,ci)=>`<div class="tp-cmt-line${c.author===__meC?' mine':''}" data-cidx="${ci}"><b>${escapeHtml(c.author||'?')}</b><span class="tp-cmt-txt" ${c.author===__meC?'title="クリックで編集"':''}>${escapeHtml(c.text||'')}</span><span class="tp-cmt-time">${escapeHtml(__fmtCmtT_(c.at))}${c.editedAt?' (編集済)':''}</span>${c.author===__meC?`<button class="tp-cmt-x" title="このコメントを削除">✕</button>`:''}</div>`).join('');
+      const __cmtInput = (!t.done && !t.trashed) ? `<div class="tp-cmt-addrow"><input class="tp-cmt-add" data-ckey="${escapeHtml(__ck)}" data-line="${t.index}" placeholder="💬 コメントを追加… (Enterで送信)"></div>` : '';
+      const __cmtBlock = (__cs.length || __cmtInput) ? `<div class="tp-cmt-inline" data-ckey="${escapeHtml(__ck)}">${__cmtLines}${__cmtInput}</div>` : '';
       // 🔀 並び替え(v1.30.461): 同グループ(進行中フラグ＋優先度が同じ)に相手がいる時だけグリップ表示。
       //   グリップを掴んで上下ドラッグ→同グループ内で並び替え(離すと確定)。マウス/タッチ両対応。
       const __draggable = (moveUpTo!=null || moveDownTo!=null);
@@ -12925,6 +12963,42 @@ function showTaskChecklistPopup(el, ev, opts){
       };
     });
     // (✅全部完了ボタンは撤去 v1.30.382・山田「ぜんぶ完了ボタンいらない」。1件ずつの✓/ステータスで完了する)
+    // 💬 インラインのコメント操作(v1.30.664・鈴木)
+    pop.querySelectorAll('.tp-cmt-add').forEach(inp=>{
+      inp.onkeydown = (e)=>{
+        if(e.key==='Enter' && !e.shiftKey && !e.isComposing && e.keyCode!==229){   // IME確定Enterは除外(v1.30.262の教訓)
+          e.preventDefault(); const v=inp.value; if(!String(v||'').trim()) return;
+          tcAdd_(inp.dataset.ckey, v); inp.value='';
+          renderInner();
+          // 再描画後も同じ行の入力欄にフォーカスを戻す(連投しやすく)
+          const again = pop.querySelector(`.tp-cmt-add[data-line="${inp.dataset.line}"]`); if(again) again.focus();
+        }
+      };
+      inp.onpointerdown = (e)=> e.stopPropagation();   // 行のドラッグ/クリック編集を誤発火させない
+    });
+    pop.querySelectorAll('.tp-cmt-line.mine .tp-cmt-txt').forEach(sp=>{
+      sp.onclick = (e)=>{
+        e.stopPropagation();
+        const line = sp.closest('.tp-cmt-line'); const box = sp.closest('.tp-cmt-inline'); if(!line||!box) return;
+        const key = box.dataset.ckey; const arr = getTaskCmts_(key); const target = arr[parseInt(line.dataset.cidx,10)]; if(!target) return;
+        const ta=document.createElement('textarea'); ta.className='tp-cmt-edit'; ta.value=target.text||''; ta.rows=1;
+        sp.replaceWith(ta); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+        let done=false;
+        const commit=()=>{ if(done) return; done=true; tcEdit_(key, target, ta.value); renderInner(); };
+        ta.onkeydown=(ev2)=>{ if(ev2.key==='Enter'&&!ev2.shiftKey&&!ev2.isComposing&&ev2.keyCode!==229){ ev2.preventDefault(); commit(); } else if(ev2.key==='Escape'){ done=true; renderInner(); } };
+        ta.onblur=commit;
+        ta.onpointerdown=(ev2)=>ev2.stopPropagation();
+      };
+    });
+    pop.querySelectorAll('.tp-cmt-x').forEach(b=>{
+      b.onclick = (e)=>{
+        e.stopPropagation();
+        const line = b.closest('.tp-cmt-line'); const box = b.closest('.tp-cmt-inline'); if(!line||!box) return;
+        const key = box.dataset.ckey; const arr = getTaskCmts_(key); const target = arr[parseInt(line.dataset.cidx,10)]; if(!target) return;
+        if(!confirm('このコメントを削除しますか?')) return;
+        tcDel_(key, target); renderInner();
+      };
+    });
     pop.querySelectorAll('.tp-comment-btn').forEach(b=>{   // 💬 タスク個別コメント
       b.onclick = (e)=>{
         e.stopPropagation();
