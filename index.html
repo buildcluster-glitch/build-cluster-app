@@ -1243,6 +1243,8 @@
     display:none;align-items:center;justify-content:center;z-index:700;
     padding:16px;
   }
+  /* 👤自分の選択は他のどのモーダルより前面に(v1.30.661)。ここを塞がれると何も設定できなくなる=詰む */
+  #myselfModal{z-index:780}
   .modal-overlay.show{display:flex}
   .modal{
     background:#fff;border-radius:10px;width:100%;max-width:440px;
@@ -2858,7 +2860,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.660</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.661</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -10703,10 +10705,16 @@ function renderAnnouncePopup_(){
   const body=ov.querySelector('#apBody'), foot=ov.querySelector('#apFoot');
   const disp=s=>(typeof getStaffDisplayName==='function')?getStaffDisplayName(s):s;
   if(needSelf){
-    body.innerHTML=`<div style="padding:16px;font-size:15px;line-height:1.8">連絡事項が届いています。<br>確認するには、まず「👤 自分」を設定してください。</div>`;
-    foot.innerHTML=`<button class="btn primary" id="apSetMe">👤 自分を設定</button>`;
-    const sm=foot.querySelector('#apSetMe'); if(sm) sm.onclick=()=>{ if(typeof openMyself==='function') openMyself(); };
-    ov.classList.add('show');
+    // 🐞 v1.30.661(山田報告「自分を設定 通知のダイアログのせいでできない」):
+    //   この案内ポップアップが「👤自分を選択」モーダルの**上に重なって名前を選べなくなっていた**。
+    //   どちらも .modal-overlay(z700)で、announcePopupは実行時にbodyへ足す=後勝ちで前面に来るため。
+    //   → **未設定の間はこのポップアップを出さず、自分選択モーダルだけを見せる**(1回だけ自動で開く)。
+    //     設定して保存すると render() が走り renderAnnouncePopup_ が再実行=そこで連絡事項が出る。
+    ov.classList.remove('show');
+    if(!window.__announceSelfPrompted){
+      window.__announceSelfPrompted = true;
+      try{ if(typeof openMyself==='function') openMyself(); }catch(_){}
+    }
     return;
   }
   body.innerHTML=unread.map(it=>{
