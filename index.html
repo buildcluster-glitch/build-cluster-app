@@ -2858,7 +2858,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.657</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.658</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -9615,14 +9615,30 @@ const ALC_START_DATE = '2026-09-07';
 function alcStarted_(){ try{ return fmtDate(new Date()) >= ALC_START_DATE; }catch(_){ return true; } }
 // 🚙 車両マスタ(東京海上日動の保険証券から転記・2026-08-24)。CSVの「自動車登録番号」列はここから入る。
 //   増減した時はここに1行足す/消すだけ。label=画面表示・plate=法定記録用の登録番号
+//   shaken = 車検の有効期間の満了する日(車検証の記載をそのままISOで)。空=まだ聞けていない(v1.30.658・山田要望)
 const ALC_CAR_MASTER = [
-  { label:'ハイエース',      plate:'仙台333 ね 822'  },
-  { label:'N-VAN(あ2526)',  plate:'仙台483 あ 2526' },
-  { label:'N-VAN(け2951)',  plate:'仙台483 け 2951' },
-  { label:'N-VAN(ぬ358)',   plate:'仙台484 ぬ 358'  },
-  { label:'N-VAN(い217)',   plate:'仙台483 い 217'  },
-  { label:'N-VAN(え726)',   plate:'仙台483 え 726'  },   // ⚠2026-08-24 社長口頭。分類番号483は他のN-VANからの推定=証券で要確認
+  { label:'ハイエース',      plate:'仙台333 ね 822',  shaken:'' },
+  { label:'N-VAN(あ2526)',  plate:'仙台483 あ 2526', shaken:'' },
+  { label:'N-VAN(け2951)',  plate:'仙台483 け 2951', shaken:'' },
+  { label:'N-VAN(ぬ358)',   plate:'仙台484 ぬ 358',  shaken:'2028-03-05' },   // 車検証実物で確認(記録年月日 令和8年2月16日・令和10年3月5日満了)
+  { label:'N-VAN(い217)',   plate:'仙台483 い 217',  shaken:'' },
+  { label:'N-VAN(え726)',   plate:'仙台483 え 726',  shaken:'' },   // ⚠2026-08-24 社長口頭。分類番号483は他のN-VANからの推定=証券で要確認
 ];
+// 🔧 車検の残り日数(満了日当日=0・過ぎたらマイナス)。未登録はnull
+function shakenDaysLeft_(iso){
+  if(!iso) return null;
+  const d = (typeof parseDate==='function') ? parseDate(String(iso).slice(0,10)) : new Date(iso);
+  if(!d || isNaN(d)) return null;
+  const t = new Date(); t.setHours(0,0,0,0); d.setHours(0,0,0,0);
+  return Math.round((d - t)/86400000);
+}
+// 満了が近い順(未登録は最後)。60日以内があればヘッダーに出す用
+function shakenSoonList_(withinDays){
+  return ALC_CAR_MASTER
+    .map(c=>({ ...c, left: shakenDaysLeft_(c.shaken) }))
+    .filter(c=> c.left!=null && (withinDays==null || c.left <= withinDays))
+    .sort((a,b)=> a.left - b.left);
+}
 function alcCarFull_(c){ return `${c.label} / ${c.plate}`; }
 const ALC_PENDING_KEY = 'bc_alcohol_pending';
 const ALC_CARS_KEY = 'bc_alcohol_cars';
@@ -9968,6 +9984,23 @@ function alcEditCars_(){
         </select>
       </div>`).join('')}</div>
     <div style="font-size:11px;color:var(--muted);margin-top:6px">※ 車が増減したら教えてください(マスタに追加します)。その日だけ違う車に乗る時は🚗画面の車両名をタップして変更できます。</div>
+    <!-- 🔧 車検の一覧(v1.30.658・山田「みんなの車の車検時期を把握しておきたい」)。
+         満了日は車検証の「有効期間の満了する日」。未登録は車検証を見て教えてもらう -->
+    <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px">
+      <b style="font-size:14px">🔧 車検の満了日</b>
+      <span style="font-size:11px;color:var(--muted);margin-left:6px">車検証の「有効期間の満了する日」</span>
+      <div style="margin-top:7px">${ALC_CAR_MASTER.map(c=>{
+        const left = shakenDaysLeft_(c.shaken);
+        const col = left==null ? '#94a3b8' : left<0 ? '#dc2626' : left<=30 ? '#dc2626' : left<=60 ? '#d97706' : '#16a34a';
+        const txt = left==null ? '未登録'
+          : `${String(c.shaken).slice(0,10).replace(/-/g,'/')}　<b>${left<0?`${-left}日超過`:`あと${left}日`}</b>`;
+        return `<div style="display:flex;gap:8px;align-items:baseline;font-size:12.5px;padding:3px 0;border-bottom:1px dotted var(--border)">
+          <span style="min-width:9em;font-weight:600">${escapeHtml(c.label)}</span>
+          <span style="font-size:10.5px;color:var(--muted);min-width:9em">${escapeHtml(c.plate)}</span>
+          <span style="color:${col};font-weight:700">${txt}</span></div>`;
+      }).join('')}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">※ 未登録の車は車検証(ダッシュボードの中)の写真を送ってください。60日前から色が変わり、30日前で赤になります。</div>
+    </div>
     <div style="display:flex;gap:8px;margin-top:12px">
       <button id="alc-cars-cancel" class="btn" style="flex:1">キャンセル</button>
       <button id="alc-cars-save" class="btn primary" style="flex:1">保存(全員に共有)</button>
