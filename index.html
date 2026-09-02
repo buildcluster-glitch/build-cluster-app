@@ -2858,7 +2858,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.658</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.659</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -9611,8 +9611,10 @@ async function heartbeatPresence_(opts={}){
 const ALC_DRIVERS = STAFF.filter(s=>s!=='まどか');
 // 📅 運用開始日(社長決定 2026-08-24: 9月第2週から)。この日より前は🚗?の督促を出さない
 //   =本番前に「出っぱなしの警告」に慣れて無視されるのを防ぐ。記録自体は開始前でも練習で押せる。
-const ALC_START_DATE = '2026-09-07';
-function alcStarted_(){ try{ return fmtDate(new Date()) >= ALC_START_DATE; }catch(_){ return true; } }
+// 📅 運用開始日。**空文字=未定(導入延期)**=督促を出さず、練習だけできる状態にする(v1.30.659・山田「まだ延期で」)。
+//   再開するときは日付を入れるだけ(例 '2026-10-01')。他の判定は全部 alcStarted_() を見ているのでここ1行で足りる。
+const ALC_START_DATE = '';   // ← 旧: '2026-09-07'
+function alcStarted_(){ try{ return !!ALC_START_DATE && fmtDate(new Date()) >= ALC_START_DATE; }catch(_){ return false; } }
 // 🚙 車両マスタ(東京海上日動の保険証券から転記・2026-08-24)。CSVの「自動車登録番号」列はここから入る。
 //   増減した時はここに1行足す/消すだけ。label=画面表示・plate=法定記録用の登録番号
 //   shaken = 車検の有効期間の満了する日(車検証の記載をそのままISOで)。空=まだ聞けていない(v1.30.658・山田要望)
@@ -9805,10 +9807,14 @@ function alcRenderModal_(){
     const note=bk.querySelector('#alc-start-note');
     if(note){
       if(!alcStarted_()){
-        const d=new Date(ALC_START_DATE+'T00:00:00');
-        const left=Math.ceil((d-new Date())/86400000);
         note.style.display='';
-        note.textContent=`📅 本番の運用開始は ${d.getMonth()+1}/${d.getDate()}(${DOW_JA[d.getDay()]}) から${left>0?`(あと${left}日)`:''}。それまでは練習で押してみてOKです(記録は残ります)`;
+        if(!ALC_START_DATE){
+          note.textContent='📅 本番の運用開始は未定です(導入を延期中)。それまでは練習で押してみてOKです(記録は残ります)';
+        }else{
+          const d=new Date(ALC_START_DATE+'T00:00:00');
+          const left=Math.ceil((d-new Date())/86400000);
+          note.textContent=`📅 本番の運用開始は ${d.getMonth()+1}/${d.getDate()}(${DOW_JA[d.getDay()]}) から${left>0?`(あと${left}日)`:''}。それまでは練習で押してみてOKです(記録は残ります)`;
+        }
       } else note.style.display='none';
     }
   }
