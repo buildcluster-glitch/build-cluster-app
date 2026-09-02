@@ -2870,7 +2870,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.664</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.665</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -16840,8 +16840,12 @@ function renderCalendar(){
       const __estRow = (__estText && !__foldEst) ? 15 : 0;   // 連携情報が無い時だけ見積を独立行に(16→15 v1.30.414)
       // ⚠ アラート(常時赤字・全員共有)。立会は_taikyoRawId、それ以外はev.idで引く(v1.30.115)
       const __alertKey = ev._taikyoRawId || ev.id;
-      const __alertHtml = (typeof alertChipHtml_==='function') ? alertChipHtml_(__alertKey) : "";
-      const __alertRow = __alertHtml ? 18 : 0;   // 行高16+余白2(v1.30.490で文字を9px→11.5pxに拡大したぶん確保)
+      // 📝 v1.30.665(鈴木報告「複数行(複数人)アラートを入力した時、予定表にも改行した状態で表示してほしい」):
+      //   v1.30.581で「チップは高さが命」として／区切り1行に畳んでいたが、複数人が書いた内容が末尾…で切れて読めない。
+      //   → カード(最終確認/原状回復)と同じ **1件1行(multiline)** をチップにも適用し、**行数ぶん高さを確保**する。
+      const __alertHtml = (typeof alertChipHtml_==='function') ? alertChipHtml_(__alertKey, {multiline:true}) : "";
+      const __alertN = (()=>{ try{ const a=(typeof getAlert_==='function')?getAlert_(__alertKey):null; return a ? Math.max(1, String(a.text||'').split(/\r?\n/).filter(x=>x.trim()).length) : 0; }catch(_){ return __alertHtml?1:0; } })();
+      const __alertRow = __alertHtml ? (16*__alertN + 2) : 0;   // 行高16×行数+余白2(1行なら従来どおり18)
       // 着色チップは「本文(色)と時刻ピルを分離」表示にする(修繕と同じ見た目)。
       //   サブ行(連携情報/工事/見積/アラート)が無いイベントは非カード化=el透明・本文だけ着色・時刻ピルは別箱に分離。
       //   サブ行があるイベントはそれらが透明地で読めなくなるためカード維持(一体化)。行かない(__jizenSkip)もカード維持。v1.30.175
