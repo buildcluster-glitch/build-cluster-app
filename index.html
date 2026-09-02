@@ -2860,7 +2860,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.661</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.662</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -9626,7 +9626,7 @@ const ALC_CAR_MASTER = [
   { label:'N-VAN(け2951)',  plate:'仙台483 け 2951', shaken:'2028-01-22' },   // 車検証実物で確認(記録年月日 令和8年1月23日・令和10年1月22日満了・初度検査 令和8年1月=新車)
   { label:'N-VAN(ぬ358)',   plate:'仙台484 ぬ 358',  shaken:'2028-03-05' },   // 車検証実物で確認(記録年月日 令和8年2月16日・令和10年3月5日満了)
   { label:'N-VAN(い217)',   plate:'仙台483 い 217',  shaken:'' },
-  { label:'N-VAN(え726)',   plate:'仙台483 え 726',  shaken:'' },   // ⚠2026-08-24 社長口頭。分類番号483は他のN-VANからの推定=証券で要確認
+  { label:'N-VAN(え726)',   plate:'仙台483 え 726',  shaken:'2028-06-22' },   // ✅2026-09-02 車検証実物で確認=分類番号483も確定(旧メモの「推定・要確認」は解消)。令和10年6月22日満了・自社所有
 ];
 // 🔧 車検の残り日数(満了日当日=0・過ぎたらマイナス)。未登録はnull
 function shakenDaysLeft_(iso){
