@@ -2873,7 +2873,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.669</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.670</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -9649,7 +9649,7 @@ const ALC_CAR_MASTER = [
   { label:'N-VAN(あ2526)',  plate:'仙台483 あ 2526', shaken:'2027-06-19' },   // ✅2026-09-03 車検証実物で確認(記録年月日 令和7年6月20日・令和9年6月19日満了・初度R3.6・自社所有)
   { label:'N-VAN(け2951)',  plate:'仙台483 け 2951', shaken:'2028-01-22' },   // 車検証実物で確認(記録年月日 令和8年1月23日・令和10年1月22日満了・初度検査 令和8年1月=新車)
   { label:'N-VAN(ぬ358)',   plate:'仙台484 ぬ 358',  shaken:'2028-03-05' },   // 車検証実物で確認(記録年月日 令和8年2月16日・令和10年3月5日満了)
-  { label:'N-VAN(い217)',   plate:'仙台483 い 217',  shaken:'' },
+  { label:'N-VAN(い217)',   plate:'仙台483 い 217',  shaken:'2026-11-10' },   // ✅2026-09-03 木村さんLINE報告「仙台483い・217 / 令和8年11月10日」=**6台で最も近い**(車検証写真は未・数字は本人申告)
   { label:'N-VAN(え726)',   plate:'仙台483 え 726',  shaken:'2028-06-22' },   // ✅2026-09-02 車検証実物で確認=分類番号483も確定(旧メモの「推定・要確認」は解消)。令和10年6月22日満了・自社所有
 ];
 // 🔧 車検の残り日数(満了日当日=0・過ぎたらマイナス)。未登録はnull
@@ -10339,12 +10339,38 @@ function __matRenderDraft_(){
   host.innerHTML=__matDraft.map((d,i)=>{
     const col=__matCatColor_(d.cat);
     return `<div class="mdraft-card" style="border-left-color:${col}">
-      <span style="flex:1;font-size:12.5px;font-weight:600;word-break:break-word">${escapeHtml(d.name)}${d.sku?` <span style="font-size:10px;color:var(--muted);font-weight:400">${escapeHtml(d.sku)}</span>`:''}</span>
+      <span class="mdraft-name" data-dname="${i}" title="タップで名前を変更" style="flex:1;font-size:12.5px;font-weight:600;word-break:break-word;cursor:text">${escapeHtml(d.name)}${d.sku?` <span style="font-size:10px;color:var(--muted);font-weight:400">${escapeHtml(d.sku)}</span>`:''} <span class="mdraft-pen" style="font-size:10px;color:#94a3b8;font-weight:400">✎</span></span>
       ${dest==='物件'?`<span class="mstock-badge ${d.forStock?'on':''}" data-dstock="${i}" title="この行は在庫用">📦在庫${d.forStock?'✓':''}</span>`:''}
       <span class="mstep"><button data-dminus="${i}">−</button><input data-dqty="${i}" value="${escapeHtml(String(d.qty))}" inputmode="numeric"><button data-dplus="${i}">＋</button></span>
       <button data-ddel="${i}" style="border:0;background:transparent;color:#cbd5e1;cursor:pointer;font-size:15px;padding:0 2px">✕</button>
     </div>`;
   }).join('');
+  // ✎ v1.30.670(鈴木要望「在庫追加リスト、追加済品目あとで名前変更できるようにしたい」): 名前タップでその場で書き換え。
+  //   ・Enter/欄外で確定、Escで取消、空なら元のまま
+  //   ・同じ名前の行が既にあれば数量を合算して1行にまとめる(追加時と同じ扱い)
+  //   ・📦在庫品目(sku付き)を別名にしたら sku を外す=在庫連携が別の品に付かないようにする(名前が一致する時だけ維持)
+  host.querySelectorAll('[data-dname]').forEach(sp=>sp.onclick=(e)=>{
+    e.stopPropagation();
+    const i=+sp.dataset.dname; const d=__matDraft[i]; if(!d) return;
+    const inp=document.createElement('input'); inp.type='text'; inp.value=d.name; inp.setAttribute('list','matItemsDl');
+    inp.style.cssText='flex:1;min-width:0;font-size:12.5px;font-weight:600;padding:4px 6px;border:1px solid #93c5fd;border-radius:6px;font-family:inherit';
+    sp.replaceWith(inp); inp.focus(); inp.select();
+    let done=false;
+    const commit=()=>{ if(done) return; done=true;
+      const nv=inp.value.trim();
+      if(nv && nv!==d.name){
+        const dup=__matDraft.find((x,j)=>j!==i && x.name===nv);
+        if(dup){ dup.qty=String((Number(dup.qty)||1)+(Number(d.qty)||1)); __matDraft.splice(i,1); }
+        else {
+          d.name=nv;
+          if(d.sku){ let master=null; try{ master=(typeof window.__invItems_==='function')?(window.__invItems_()||[]).find(x=>x && x.sku===d.sku):null; }catch(_){} if(!master || master.name!==nv) d.sku=''; }
+        }
+      }
+      __matRenderDraft_(); __matRenderCands_(); __matSyncInvSeg_();
+    };
+    inp.onkeydown=(ev)=>{ if(ev.key==='Enter' && !ev.isComposing && ev.keyCode!==229){ ev.preventDefault(); commit(); } else if(ev.key==='Escape'){ done=true; __matRenderDraft_(); } };
+    inp.onblur=commit;
+  });
   host.querySelectorAll('[data-dminus]').forEach(b=>b.onclick=()=>{ const d=__matDraft[+b.dataset.dminus]; const q=Math.max(1,(Number(d.qty)||1)-1); d.qty=String(q); __matRenderDraft_(); });
   host.querySelectorAll('[data-dplus]').forEach(b=>b.onclick=()=>{ const d=__matDraft[+b.dataset.dplus]; d.qty=String((Number(d.qty)||1)+1); __matRenderDraft_(); });
   host.querySelectorAll('[data-dqty]').forEach(inp=>inp.onchange=()=>{ const d=__matDraft[+inp.dataset.dqty]; d.qty=inp.value.trim()||'1'; });
