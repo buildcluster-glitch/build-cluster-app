@@ -2873,7 +2873,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.670</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.671</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -21305,6 +21305,10 @@ function showQuickAddSheet_(defaults={}, editEv=null){
     <div class="qa-label">⚠ アラート <span style="font-weight:400;color:var(--muted);font-size:10px">(任意・常時赤字でチップ表示・全員共有)</span></div>
     <div id="qa-alert-list" style="margin-bottom:6px"></div>
     <button type="button" id="qa-alert-add" style="margin-bottom:12px;font-size:11px;padding:3px 10px;border:1px solid var(--border-strong);background:#fff;border-radius:6px;cursor:pointer">＋ 項目を追加</button>
+    <!-- 💬 v1.30.671(山田「この時点でコメントも書けるようにしておきたい」): 登録と同時に1件目のコメント(チャット)を残す。
+         アラート=常時赤字で全員に見せる"注意書き" / コメント=💬チャット(履歴・返信・リアクション)。用途が違うので両方置く -->
+    <div class="qa-label">💬 コメント <span style="font-weight:400;color:var(--muted);font-size:10px">(任意・この予定のチャットに1件目として残る・全員共有)</span></div>
+    <textarea id="qa-comment" rows="2" placeholder="例: 鍵は管理人室で受取。駐車は裏の2番" style="width:100%;box-sizing:border-box;font-size:12.5px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px;font-family:inherit;resize:vertical;margin-bottom:12px"></textarea>
     <div class="qa-actions">
       <button id="qa-cancel" style="background:#f1f5f9;color:#334155">キャンセル</button>
       <button id="qa-detail" style="background:#e0e7ff;color:#3730a3">✏️ 詳細</button>
@@ -21421,6 +21425,16 @@ function showQuickAddSheet_(defaults={}, editEv=null){
     // 🚗 直行/直帰の選択を詳細フォームへ引き継ぎ
     try{ document.getElementById('ev-commute-go').checked = selCommute.go; document.getElementById('ev-commute-home').checked = selCommute.home; }catch(_){}
   };
+  // 💬 v1.30.671: 欄に書いてあれば予定の comments に1件目として積む(形は既存チャットと同じ {id,author,text,at})
+  const __commentCommit = (evObj)=>{
+    try{
+      const ta = bd.querySelector('#qa-comment'); const text = ta ? String(ta.value||'').trim() : '';
+      if(!text || !evObj) return;
+      const me = (typeof getMyself==='function' ? getMyself() : '') || '';
+      if(!Array.isArray(evObj.comments)) evObj.comments = [];
+      evObj.comments.push({ id:'c_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5), author: me||'?', text, at:new Date().toISOString() });
+    }catch(_){}
+  };
   bd.querySelector('#qa-save').onclick = ()=>{
     const title = bd.querySelector('#qa-title').value.trim();
     if(!title){ alert('タイトルを入れてください'); return; }
@@ -21448,6 +21462,7 @@ function showQuickAddSheet_(defaults={}, editEv=null){
       // 「時間未定」を選んだ=終日を明示的に解除(v1.30.613で終日が選べるようになったので、ここで温存しない)
       else { target.start = __posBase; target.end = endOf(__posBase); target.timeMode = "anytime"; target.allday = false; }
       target.updatedAt = new Date().toISOString();
+      __commentCommit(target);    // 💬 コメント(v1.30.671)
       saveState();
       __alertCommit(target.id);   // ⚠ アラート確定(setAlert_はローカル即時反映→直後のrenderで見える)v1.30.588
       __noteCommit(target.id);    // ✏️ 時刻メモ確定 v1.30.589
@@ -21470,6 +21485,7 @@ function showQuickAddSheet_(defaults={}, editEv=null){
       // 📝 誰がいつ登録したか(v1.30.616)。従来はpush時にgetMyself()で埋めていた=作成時に刻印する方が正確
       createdBy: (typeof getMyself==='function' ? getMyself() : "") || "", createdAt: new Date().toISOString(),
     };
+    __commentCommit(ev);    // 💬 コメント(v1.30.671)
     if(typeof pushHistory==='function') pushHistory();
     state.events.push(ev);
     __alertCommit(ev.id);   // ⚠ アラート確定(新規idに紐付け)v1.30.588
