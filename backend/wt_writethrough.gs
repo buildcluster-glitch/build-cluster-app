@@ -75,7 +75,9 @@ function wtSend_(rpcName, payloadObj) {
   } catch (e) {
     var msg = String(e && e.message || e);
     try { PropertiesService.getScriptProperties().setProperty('WT_LAST_ERR', 'exc:' + msg.slice(0, 160)); } catch (e2) {}
-    return /timed? ?out/i.test(msg) ? 'wt_timeout' : 'wt_error:' + msg.slice(0, 80);
+    // 2026-09-03: GASの例外文は**日本語ロケールだと「タイムアウト: <url>」**になる。英語だけ見ていたため
+    //   実際のタイムアウトが error 側に数えられていた(09-03の error:1 の正体)。日英どちらも timeout 扱いに。
+    return /timed? ?out|タイムアウト/i.test(msg) ? 'wt_timeout' : 'wt_error:' + msg.slice(0, 80);
   }
 }
 
