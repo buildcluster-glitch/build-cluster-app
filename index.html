@@ -1380,8 +1380,27 @@
     position:absolute; left:1px; right:1px; z-index:6; pointer-events:none;
     border:2px solid #2563eb; border-radius:4px; background:rgba(37,99,235,.10);
     box-shadow:0 0 0 1px rgba(255,255,255,.6), inset 0 0 0 9999px rgba(37,99,235,.04);
+    /* ✨ v1.30.675(山田「押したときの動きを少しリッチに・重くならないなら」): CSSだけ・GPU合成のみ(transform/opacity/box-shadow)。
+       押した瞬間: ほんの少し縮んだ状態から等倍へ(97%→100%)+フェードイン+外側に淡い光が1回だけ広がって消える(160ms)。
+       バウンドや0.3秒超の動きは入れない=くどくならない。動きを減らす設定(prefers-reduced-motion)の人は従来どおり静止。 */
+    transform-origin:center; will-change:transform,opacity;
+    animation: slotPop .16s cubic-bezier(.2,.8,.2,1) both, slotGlow .42s ease-out both;
   }
-  .hour-cell.active-cell{ box-shadow:inset 0 0 0 2px #2563eb; background:rgba(37,99,235,.08); }
+  @keyframes slotPop{ from{ transform:scale(.97); opacity:0 } to{ transform:scale(1); opacity:1 } }
+  @keyframes slotGlow{
+    0%  { box-shadow:0 0 0 1px rgba(255,255,255,.6), 0 0 0 0 rgba(37,99,235,.45), inset 0 0 0 9999px rgba(37,99,235,.04) }
+    100%{ box-shadow:0 0 0 1px rgba(255,255,255,.6), 0 0 0 9px rgba(37,99,235,0),   inset 0 0 0 9999px rgba(37,99,235,.04) }
+  }
+  .hour-cell.active-cell{ box-shadow:inset 0 0 0 2px #2563eb; background:rgba(37,99,235,.08); animation: cellPop .16s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes cellPop{ from{ box-shadow:inset 0 0 0 0 #2563eb; background:rgba(37,99,235,0) } to{ box-shadow:inset 0 0 0 2px #2563eb; background:rgba(37,99,235,.08) } }
+  /* 同じ動きの言葉で: ドロップ位置の線(すっと伸びる)・事前帯のドロップ先(ふわっと) */
+  .drop-indicator{ animation: lineIn .14s ease-out both; transform-origin:left center }
+  @keyframes lineIn{ from{ transform:scaleX(.6); opacity:0 } to{ transform:scaleX(1); opacity:1 } }
+  .jizen-cell{ transition: background .14s ease, outline-color .14s ease }
+  @media (prefers-reduced-motion: reduce){
+    .active-slot-marker, .hour-cell.active-cell, .drop-indicator{ animation:none !important }
+    .jizen-cell{ transition:none }
+  }
   #paste-banner b{ color:#93c5fd; }
   #paste-banner button{ background:#475569; color:#fff; border:none; border-radius:6px; padding:3px 9px; font-size:11px; font-weight:700; cursor:pointer; }
   #paste-banner button:hover{ background:#64748b; }
@@ -2873,7 +2892,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.674</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.675</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
