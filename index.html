@@ -2873,7 +2873,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.672</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.673</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -9645,7 +9645,7 @@ function alcStarted_(){ try{ return !!ALC_START_DATE && fmtDate(new Date()) >= A
 //   増減した時はここに1行足す/消すだけ。label=画面表示・plate=法定記録用の登録番号
 //   shaken = 車検の有効期間の満了する日(車検証の記載をそのままISOで)。空=まだ聞けていない(v1.30.658・山田要望)
 const ALC_CAR_MASTER = [
-  { label:'ハイエース',      plate:'仙台333 ね 822',  shaken:'' },
+  { label:'ハイエース',      plate:'仙台333 ね 822',  shaken:'2026-09-25', shakenEst:true },   // ⚠2026-09-03 推定: 電子車検証の表面に満了日は無い。初度登録 令和5年9月(交付9/26)・乗用登録(3ナンバー・定員10)=新車3年→初回車検は令和8年9月。記録事項シートで日を確定すること
   { label:'N-VAN(あ2526)',  plate:'仙台483 あ 2526', shaken:'2027-06-19' },   // ✅2026-09-03 車検証実物で確認(記録年月日 令和7年6月20日・令和9年6月19日満了・初度R3.6・自社所有)
   { label:'N-VAN(け2951)',  plate:'仙台483 け 2951', shaken:'2028-01-22' },   // 車検証実物で確認(記録年月日 令和8年1月23日・令和10年1月22日満了・初度検査 令和8年1月=新車)
   { label:'N-VAN(ぬ358)',   plate:'仙台484 ぬ 358',  shaken:'2028-03-05' },   // 車検証実物で確認(記録年月日 令和8年2月16日・令和10年3月5日満了)
@@ -10025,7 +10025,7 @@ function alcEditCars_(){
         const left = shakenDaysLeft_(c.shaken);
         const col = left==null ? '#94a3b8' : left<0 ? '#dc2626' : left<=30 ? '#dc2626' : left<=60 ? '#d97706' : '#16a34a';
         const txt = left==null ? '未登録'
-          : `${String(c.shaken).slice(0,10).replace(/-/g,'/')}　<b>${left<0?`${-left}日超過`:`あと${left}日`}</b>`;
+          : `${String(c.shaken).slice(0,10).replace(/-/g,'/')}${c.shakenEst?'<span style="font-size:10px;color:#b45309;margin-left:4px" title="電子車検証の表面に満了日が無いため初度登録から推定。記録事項シートで確定してください">(推定)</span>':''}　<b>${left<0?`${-left}日超過`:`あと${left}日`}</b>`;
         return `<div style="display:flex;gap:8px;align-items:baseline;font-size:12.5px;padding:3px 0;border-bottom:1px dotted var(--border)">
           <span style="min-width:9em;font-weight:600">${escapeHtml(c.label)}</span>
           <span style="font-size:10.5px;color:var(--muted);min-width:9em">${escapeHtml(c.plate)}</span>
