@@ -2873,7 +2873,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.671</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.672</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -21286,6 +21286,10 @@ function showQuickAddSheet_(defaults={}, editEv=null){
       ${QUICK_TEMPLATES.map(t=>`<option value="${escapeHtml(t.id)}">${escapeHtml(t.label)}</option>`).join('')}
     </select></div>`}
     <div class="qa-row"><textarea id="qa-title" rows="2" placeholder="タイトル (例: 〇〇 立会)  ※Enterで改行・2行まで" autocomplete="off">${escapeHtml(titleV)}</textarea></div>
+    <!-- 💬 v1.30.671→v1.30.672でタイトル直下に移動(山田「タイトル・コメント・アラートの順に」)(山田「この時点でコメントも書けるようにしておきたい」): 登録と同時に1件目のコメント(チャット)を残す。
+         アラート=常時赤字で全員に見せる"注意書き" / コメント=💬チャット(履歴・返信・リアクション)。用途が違うので両方置く -->
+    <div class="qa-label">💬 コメント <span style="font-weight:400;color:var(--muted);font-size:10px">(任意・この予定のチャットに1件目として残る・全員共有)</span></div>
+    <textarea id="qa-comment" rows="2" placeholder="例: 鍵は管理人室で受取。駐車は裏の2番" style="width:100%;box-sizing:border-box;font-size:12.5px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px;font-family:inherit;resize:vertical;margin-bottom:10px"></textarea>
     <div class="qa-row">
       <input type="date" id="qa-date" value="${escapeHtml(dateV)}">
       <select id="qa-time">${timeOpts.join('')}</select>
@@ -21305,10 +21309,7 @@ function showQuickAddSheet_(defaults={}, editEv=null){
     <div class="qa-label">⚠ アラート <span style="font-weight:400;color:var(--muted);font-size:10px">(任意・常時赤字でチップ表示・全員共有)</span></div>
     <div id="qa-alert-list" style="margin-bottom:6px"></div>
     <button type="button" id="qa-alert-add" style="margin-bottom:12px;font-size:11px;padding:3px 10px;border:1px solid var(--border-strong);background:#fff;border-radius:6px;cursor:pointer">＋ 項目を追加</button>
-    <!-- 💬 v1.30.671(山田「この時点でコメントも書けるようにしておきたい」): 登録と同時に1件目のコメント(チャット)を残す。
-         アラート=常時赤字で全員に見せる"注意書き" / コメント=💬チャット(履歴・返信・リアクション)。用途が違うので両方置く -->
-    <div class="qa-label">💬 コメント <span style="font-weight:400;color:var(--muted);font-size:10px">(任意・この予定のチャットに1件目として残る・全員共有)</span></div>
-    <textarea id="qa-comment" rows="2" placeholder="例: 鍵は管理人室で受取。駐車は裏の2番" style="width:100%;box-sizing:border-box;font-size:12.5px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px;font-family:inherit;resize:vertical;margin-bottom:12px"></textarea>
+
     <div class="qa-actions">
       <button id="qa-cancel" style="background:#f1f5f9;color:#334155">キャンセル</button>
       <button id="qa-detail" style="background:#e0e7ff;color:#3730a3">✏️ 詳細</button>
