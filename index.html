@@ -2892,7 +2892,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.675</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.676</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -5473,7 +5473,7 @@ const JP_HOLIDAYS = new Set([
   "2026-01-01","2026-01-12","2026-02-11","2026-02-23",
   "2026-03-20","2026-04-29","2026-05-03","2026-05-04",
   "2026-05-05","2026-05-06","2026-07-20","2026-08-11",
-  "2026-09-21","2026-09-23","2026-10-12","2026-11-03","2026-11-23",
+  "2026-09-21","2026-09-22","2026-09-23","2026-10-12","2026-11-03","2026-11-23",   // 9/22=国民の休日(敬老の日と秋分の日に挟まれた平日・まどか報告 2026-09-05 で追加)
   // 2027
   "2027-01-01","2027-01-11","2027-02-11","2027-02-23",
   "2027-03-21","2027-03-22","2027-04-29","2027-05-03",
@@ -5481,7 +5481,29 @@ const JP_HOLIDAYS = new Set([
   "2027-09-20","2027-09-23","2027-10-11","2027-11-03","2027-11-23",
 ]);
 function isHoliday(d){
-  return JP_HOLIDAYS.has(fmtDate(d));
+  const k = fmtDate(d);
+  if(JP_HOLIDAYS.has(k)) return true;
+  // 🗓 v1.30.676(まどか報告「9/22の祝日が平日になってました」): 表の抜けを構造で塞ぐ。
+  //   ①国民の休日=前日も翌日も祝日の平日(日曜以外)は休日(祝日法3条3項)。2026-09-22 がこれ(敬老9/21・秋分9/23)。
+  //   ②振替休日=日曜が祝日なら直後の平日が休日(同3条2項)。表に入れ忘れても拾う。
+  try{
+    const dt = (d instanceof Date) ? d : parseDate(k);
+    if(dt.getDay() !== 0){
+      const prev = new Date(dt); prev.setDate(prev.getDate()-1);
+      const next = new Date(dt); next.setDate(next.getDate()+1);
+      if(JP_HOLIDAYS.has(fmtDate(prev)) && JP_HOLIDAYS.has(fmtDate(next))) return true;   // ①
+      // ② 直前の日曜まで戻って「その日曜が祝日」かつ「間の日が全部祝日」なら振替
+      let q = new Date(dt); q.setDate(q.getDate()-1);
+      while(q.getDay()!==0 && JP_HOLIDAYS.has(fmtDate(q))) q.setDate(q.getDate()-1);
+      if(q.getDay()===0 && JP_HOLIDAYS.has(fmtDate(q)) && (dt - q) <= 7*86400000){
+        // dt と q の間がすべて祝日であることを確認
+        let ok=true; const x=new Date(q); x.setDate(x.getDate()+1);
+        while(x < dt){ if(!JP_HOLIDAYS.has(fmtDate(x))){ ok=false; break; } x.setDate(x.getDate()+1); }
+        if(ok) return true;
+      }
+    }
+  }catch(_){}
+  return false;
 }
 // 🏖 会社休日(お盆/GW/年末年始等・companyPeriods)がこの日を含むか。含めば期間を返す=全員休みマーカー用(v1.30.454)
 function companyHolidayFor_(dStr){
