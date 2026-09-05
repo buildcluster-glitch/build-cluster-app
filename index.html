@@ -49,7 +49,11 @@
     background:#ffffff;border-bottom:1px solid var(--border);
     display:flex;align-items:center;gap:6px;padding:6px 10px;
     flex-wrap:nowrap;overflow-x:auto;
+    /* 📱 v1.30.677(鈴木報告「上部タスクバーが不要な上下スクロールもできる」): 横スクロール帯なので縦は常に禁止。
+       中身が1行分より高くなった時(産廃チップの複数spanが折り返す等)に帯が縦にも動いていた */
+    overflow-y:hidden;
   }
+  header.app-header > *{flex-shrink:0}
   /* ↔ 横スクロールする帯を「スクロールできる」と分かる見た目に(v1.30.573・山田「スライドがわかりにくい」)
      ①細い実線のスクロールバーを常時表示 ②右端(左端)に影＝まだ続きがある合図。
      影は background-attachment:local のCSSだけの仕掛けで、端まで送ると自動で消える(JS不要)。 */
@@ -301,7 +305,8 @@
   .header-duty-box{display:inline-flex;align-items:center;gap:8px;flex-wrap:nowrap}
   .header-duty-box .hd-duty,.header-duty-box .hd-phone,.header-duty-box .hd-sanpai{display:inline-flex;align-items:center;gap:3px;white-space:nowrap}
   /* 🗑 産廃回収(次回)バッジ v1.30.428: クリックで登録ポップ。未登録は赤で気づかせる */
-  .sanpai-btn{font-size:11px;border:1.5px solid var(--border-strong);background:#fff;color:#0f172a;border-radius:8px;padding:1px 8px;cursor:pointer;white-space:nowrap;font-weight:700}
+  .sanpai-btn{font-size:11px;border:1.5px solid var(--border-strong);background:#fff;color:#0f172a;border-radius:8px;padding:1px 8px;cursor:pointer;white-space:nowrap;font-weight:700;display:inline-flex;align-items:center;gap:2px;line-height:1.25}   /* inline-flex+nowrap: 中のspan(時間帯/予定/籠)が折り返して帯を縦に伸ばさない(v1.30.677) */
+  .sanpai-btn > *{flex-shrink:0;white-space:nowrap}
   .sanpai-btn:hover{background:#f1f5f9;border-color:#0f172a}
   /* 未登録は赤で急かさない=通常の黒字(山田 v1.30.429)。産廃回収は日が決まってないのが普通の状態 */
   .sanpai-btn .sp-kago{color:#b45309;margin-left:3px}
@@ -2892,7 +2897,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.676</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.677</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
