@@ -2897,7 +2897,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.681</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.682</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -6465,7 +6465,7 @@ function attachCheckDragOrClick(el, ck){
       if(needsGasPush){
         pushFinalDateToGAS(target_ck.extDriveFileId, newDate).catch(e=>{
           console.warn("[D&D final-date] push failed:", e);
-          if(confirm(`Drive書き戻しに失敗:\n${e.message}\n\n元の日付(${oldDate})に戻しますか？`)){
+          if(confirm(`${ledgerWriteFailNotice_("台帳への書き戻し", e)}\n\n元の日付(${oldDate})に戻しますか？`)){
             const t = state.checks.find(c=>c.id===target_ck.id);
             if(t){ t.checkDate = oldDate; saveState(); render(); }
           }
@@ -6922,7 +6922,10 @@ function saveCachedStaffMaster(members, full){
 
 // 名前を詰め表記に正規化 (例: "山田 裕貴" → "山田裕貴")
 // master_sync staffMaster は氏名にスペース入り・STAFF 配列は詰め表記なので統一する
-function normalizeStaffName(s){ return String(s==null?'':s).replace(/\s+/g,''); }
+// 🔁 v1.30.682: 表記ゆれの別名表(山田「まどかに統一」)。心拍メタに「大村まどか」と「まどか」が別人で出ていた=別端末の自分設定が別名。
+//   ここで寄せれば 色/絞り込み/在席/休暇集計 が1人に戻る(元データは触らない)。増えたらこの表に足す。
+const STAFF_ALIASES = { '大村まどか':'まどか', '大村 まどか':'まどか' };
+function normalizeStaffName(s){ const k=String(s==null?'':s).replace(/\s+/g,''); return STAFF_ALIASES[k] || k; }
 // 姓だけ取り出す (山田裕貴→山田 / "山田 裕貴"→山田)。スペース無しは先頭2文字。見積バッジ表示用 v1.30.96
 function surnameOf_(n){ n=String(n||"").trim(); if(!n) return ""; if(/[\s　]/.test(n)) return n.split(/[\s　]+/)[0]; return n.length<=3 ? n : n.slice(0,2); }
 // 実在スタッフ名か (「光和工業」等の会社名はスタッフ扱いしない)
@@ -15360,7 +15363,7 @@ document.getElementById("ck-save").onclick = async ()=>{
   if(needsGasPush){
     pushFinalDateToGAS(data.extDriveFileId, newDate).catch(e=>{
       console.warn("[final-date] push failed:", e);
-      if(confirm(`Drive書き戻しに失敗しました:\n${e.message}\n\nローカル変更を元に戻しますか？`)){
+      if(confirm(`${ledgerWriteFailNotice_("台帳への書き戻し", e)}\n\nローカル変更を元に戻しますか？`)){
         // revert: 元の日付に戻す
         state.checks = state.checks.map(x => x.id===data.id ? {...x, checkDate:oldDate} : x);
         saveState(); render();
@@ -15374,6 +15377,20 @@ document.getElementById("ck-save").onclick = async ()=>{
 const WORKFLOW_STATUSES = ["アポ・手配 未","待機","アポ・手配 済","長期連絡なし","-"];
 // 🔄 アポ日時 変更理由(任意選択)。何回もずれる修繕で「なぜずれたか」を後から追えるように(山田要望)v1.30.350
 const REPAIR_RESCHEDULE_REASONS = ["ドタキャン(お客様都合)","追加対応が必要","業者都合","天候不良","日程調整","施工日決定","その他"];
+// 🔁 v1.30.682(山田「入れる」・鈴木の9/5報告『完了にするがエラー』=実は保存成功・応答だけ落ちた散発404型):
+//   台帳への書き戻しが「失敗」と返っても、GASでは実行済みのことがある(応答だけ落ちる機構は実測で確定済み)。
+//   従来は「Drive書き戻しに失敗」と断定してローカルを元に戻すだけ→『失敗と言ったのに書けている』を利用者に見せていた。
+//   → 文言を事実どおり(応答が返らなかった・保存されている場合がある)にし、**3秒後と12秒後に台帳を静かに再読み**して
+//     実際の状態に画面を揃える。呼び出し側の「元に戻す/確認する」流れはそのまま(再同期が真値で上書きする)。
+function ledgerWriteFailNotice_(what, err){
+  const msg = String((err && err.message) || err || '');
+  const isMaint = /maintenance|メンテナンス/i.test(msg);
+  const text = isMaint
+    ? `${what}: いまメンテナンス中で保存できませんでした。\n数分後にもう一度お試しください(入力は消えていません)。`
+    : `${what}: サーバーからの応答が返りませんでした。\n※実際には保存されている場合があります。数秒後に自動で確認して画面を揃えます。\n(${msg.slice(0,120)})`;
+  try{ [3000, 12000].forEach(ms=> setTimeout(()=>{ try{ if(typeof syncChecksFromGAS==='function') syncChecksFromGAS({silent:true, fromAuto:true}); }catch(_){} }, ms)); }catch(_){}
+  return text;
+}
 async function pushAppointmentToGAS(driveFileId, fields){
   const s = loadGasSettings();
   if(!s.url || !s.token) throw new Error("GAS URL/Token 未設定");
@@ -15501,7 +15518,7 @@ async function pushRestoCompleteToGAS_(p, done){
     }
   }catch(e){
     console.warn("[resto-complete push] failed:", e);
-    if(typeof showAutoSyncToast==='function') showAutoSyncToast("⚠ 台帳への完了書き戻しに失敗。ローカルは完了のままです(☁全同期で再試行できます)");
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast("⚠ 台帳への完了書き戻しの応答が返りませんでした(保存されている場合があります・数秒後に自動確認)"); ledgerWriteFailNotice_("完了の書き戻し", e);
   }
 }
 document.getElementById("ck-delete").onclick = async ()=>{
@@ -15528,7 +15545,7 @@ document.getElementById("ck-delete").onclick = async ()=>{
   if(ck.source==="gas-sync" && ck.extDriveFileId){
     pushFinalDateToGAS(ck.extDriveFileId, "").catch(e=>{
       console.warn("[final-date clear] push failed:", e);
-      if(confirm(`Drive書き戻しに失敗: ${e.message}\n元の日付(${oldDate})に戻しますか？`)){
+      if(confirm(`${ledgerWriteFailNotice_("台帳への書き戻し", e)}\n元の日付(${oldDate})に戻しますか？`)){
         state.checks = state.checks.map(x => x.id===targetId ? {...x, checkDate:oldDate} : x);
         saveState(); render();
       }
@@ -18798,7 +18815,7 @@ function attachRepairDateDrag_(el, r){
             if(typeof showAutoSyncToast==='function') showAutoSyncToast(`✅ 修繕アポ日を ${lbl} に変更`);
           }catch(err){
             Object.assign(r, prev); saveState(); render();
-            alert('Drive書き戻しに失敗（元に戻しました）:\n' + err.message);
+            alert(ledgerWriteFailNotice_('アポ日の書き戻し', err) + '\n(画面は元に戻しました)');
           }
         }
       } else if(posChanged){
@@ -19020,7 +19037,7 @@ function showRepairQuickPop(r, anchorEl){
       }catch(err){
         Object.assign(r, prev); saveState(); render();
         btn.textContent = '変更'; btn.disabled = false;
-        alert('Drive書き戻しに失敗(元に戻しました):\n' + err.message);
+        alert(ledgerWriteFailNotice_('台帳への書き戻し', err) + '\n(画面は元に戻しました)');
       }
     }else{
       btn.textContent = '✓ 変更済';
@@ -25060,7 +25077,7 @@ function openRepairStatusPop(id, anchor){
         }catch(err){
           r.status = prevSt; r.workflowStatus = prevWf;
           saveState(); renderRepairView();
-          alert("営業ステータスの書き戻しに失敗:\n" + err.message);
+          alert(ledgerWriteFailNotice_("営業ステータスの書き戻し", err));
         }
       }
     };
@@ -25104,7 +25121,7 @@ function openRepairWorkflowPop(id, anchor){
           r.workflowStatus = prev; // ロールバック
           saveState();
           renderRepairView();
-          alert("進行ステータスの書き戻しに失敗:\n" + err.message);
+          alert(ledgerWriteFailNotice_("進行ステータスの書き戻し", err));
         }
       }
     };
@@ -25462,7 +25479,7 @@ async function repairToggleComplete_(id){
     }catch(err){
       Object.assign(r, prev);
       saveState();
-      alert("Drive書き戻しに失敗:\n" + err.message);
+      alert(ledgerWriteFailNotice_("完了の書き戻し", err) + "\n(画面は元に戻しました)");
       renderRepairView();
       return;
     }
@@ -25518,7 +25535,7 @@ async function saveRepairSheet(){
         await pushAppointmentToGAS(r.extDriveFileId, fields);
       }catch(err){
         Object.assign(r, prev); saveState();
-        alert("Drive書き戻しに失敗:\n" + err.message);
+        alert(ledgerWriteFailNotice_("完了の書き戻し", err) + "\n(画面は元に戻しました)");
         renderRepairView();
         return;
       }
