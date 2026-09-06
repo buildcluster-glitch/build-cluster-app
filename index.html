@@ -1194,7 +1194,7 @@
   .al-item .al-room{color:#475569;font-weight:600;font-size:12px}
   .al-item .al-wf{color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;flex-shrink:0;white-space:nowrap}
   .al-item .al-cont{font-size:10px;color:#64748b;flex-shrink:0}
-  /* 📅 依頼日(v1.30.646・山田要望)。📊全体進捗の「依頼MM/DD」(v1.30.640)と同じ色・同じ元データ */
+  /* 📅 依頼日(v1.30.678・山田要望)。📊全体進捗の「依頼MM/DD」(v1.30.640)と同じ色・同じ元データ */
   .al-item .al-req{font-size:10px;color:#be185d;font-weight:700;flex-shrink:0;white-space:nowrap}
   .al-item .al-req.est{color:#c084a6;font-weight:600}   /* 「頃」=見積IDからの推定(台帳の依頼日が空) */
   /* 🔀 並び替えトグル(v1.30.646)。📊全体進捗のトグル(v1.30.640)と同じ役割・白背景ヘッダ用の配色 */
@@ -2897,7 +2897,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.677</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.678</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -3059,7 +3059,7 @@
 <div class="modal-overlay" id="actionListModal">
   <div class="modal modal-actionlist">
     <div class="modal-header">🗓 要対応リスト <span style="font-weight:400;font-size:11px;color:var(--muted)">アポ日未設定の修繕（要日程調整）— クリックで詳細</span>
-      <!-- 🔀 並び替え(v1.30.646・山田): 既定=依頼が古い順(放置が上に来る) / 元請け順=従来(同じ物件をまとめて回る用) -->
+      <!-- 🔀 並び替え(v1.30.678・山田): 既定=依頼が古い順(放置が上に来る) / 元請け順=従来(同じ物件をまとめて回る用) -->
       <span id="al-sort" style="margin-left:auto;display:flex;gap:3px"></span></div>
     <div class="al-body" id="al-body"></div>
     <div style="display:flex;justify-content:flex-end;padding:10px 14px;border-top:1px solid var(--border)"><button class="btn" id="al-close">閉じる</button></div>
@@ -11597,6 +11597,7 @@ function showEventStaffPicker(el, ev){
         <button id="evDtMitei" class="qp-detail" style="padding:6px 10px;flex-shrink:0;background:#fef3c7;color:#92400e" title="ワンタップで時間未定にする(現在位置は保持)">🕔 未定に</button>
       </div>
       <input type="text" id="evDtNote" value="${escapeHtml(__evNote0)}" placeholder="例: 早め・夕方(「変更」で確定・全員共有)" style="display:${__evNote0?'block':'none'};width:100%;box-sizing:border-box;margin-top:6px;padding:5px 6px;font-size:12px;border:1px solid var(--border-strong);border-radius:6px;color:#dc2626;font-weight:700">
+      <button type="button" id="evDtDotakyan" style="margin-top:6px;padding:5px 10px;border:1px solid #cbd5e1;background:#f1f5f9;color:#475569;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer" title="いま入っている日時をグレーの跡として残してから、上の日付を新しい日に変えて「変更」を押してください">🔄 日時変更(この日に変更跡を残す)</button>
     </div>
     <div class="qp-sec">
       <div class="qp-label">⏰ リマインド <span style="font-weight:400;color:#94a3b8;font-size:10px">(この日から⏰が点滅で知らせる)</span></div>
@@ -11827,6 +11828,21 @@ function showEventStaffPicker(el, ev){
       if(typeof showAutoSyncToast==='function'){ const dd=parseDate(nd); const tLabel = nt==='__allday__' ? ' 終日' : nt==='__am__' ? ' AM中' : nt==='__pm__' ? ' PM中' : nt==='__free__' ? ` ✏️${__ntxApply||'(時間未定)'}` : nt ? ` ${nt}` : '(時間未定)'; showAutoSyncToast(`✅ 予定を ${(dd&&!isNaN(dd))?`${dd.getMonth()+1}/${dd.getDate()}`:nd}${tLabel} に変更`); }
     };
   }
+  // 🔄 日時変更の跡(v1.30.678・山田「修繕みたいに予定もグレースケールで残しながら」)。
+  //   修繕のrs-dotakyan/立会のtk-dt-dotakyanと同じ流れ: 先に「今の日時」を灰色の跡として残す
+  //   → 上の日付を新しい日に変えて「変更」を押す。跡はcreateDotakyanGhost_が作る実イベント(全端末共有)。
+  const __evDota = pop.querySelector('#evDtDotakyan');
+  if(__evDota) __evDota.onclick = ()=>{
+    const real = (state.events||[]).find(x=>x.id===ev.id) || ev;
+    const d = real.date || '';
+    const t = (real.timeMode==='timed') ? (real.start||'') : '';
+    if(!d){ alert('元の日付が取得できませんでした'); return; }
+    const label = String(real.title||'(無題)').split(/\r?\n/)[0].slice(0,40);
+    if(!confirm(`${d}${t?(" "+t):""} に「日時変更」跡(グレー)を残しますか？\n\n「${label}」\n\nこの後、上の日付を新しい日に変えて「変更」を押してください。`)) return;
+    // 担当は跡に載せない(グレー=流れた予定の意匠を修繕と揃える)
+    createDotakyanGhost_(label, d, t);
+    __evDota.textContent = '✓ 日時変更跡を残しました'; __evDota.disabled = true;
+  };
   // 🕔 v1.30.311: ワンタップで時間未定にする + 未定バッジ付与
   //   timeMode=anytime にして時刻情報を消す
   //   undecidedBadge=true を立てて、この予定だけチップに「未定」バッジ表示
@@ -25305,7 +25321,7 @@ function openActionList(){
       const wfBar = (window.wfBgMap && window.wfBgMap[r.workflowStatus||"アポ・手配 未"]) || "#ec4899";
       const desc = (r.requestDesc || r.requestDescFull || "").trim();
       const descShort = desc ? (desc.length>46 ? desc.slice(0,46)+"…" : desc) : "";
-      // 📅 依頼日(v1.30.646・山田「依頼日だしてほしい」): このリストは日程が決まっていない案件の集まり=
+      // 📅 依頼日(v1.30.678・山田「依頼日だしてほしい」): このリストは日程が決まっていない案件の集まり=
       //   「いつ来た依頼か」がそのまま優先度になる。見た目は📊全体進捗の「依頼MM/DD」(v1.30.640)と揃える。
       //   ⚠実データを数えたら requestDate は台帳全体で43/381・**要対応14件は0件**だった(v638の発注日と同じ穴)。
       //   → 📊の発注日(v1.30.642)と同じ手で、見積ID(EYYYYMMDD=案件を台帳に起こした日)を「頃」付きで代用する。
