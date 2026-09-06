@@ -2897,7 +2897,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.678</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.679</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -11785,6 +11785,7 @@ function showEventStaffPicker(el, ev){
     if(__sel && __noteEl) __sel.onchange = ()=>{ const on = __sel.value==='__free__'; __noteEl.style.display = on?'block':'none'; if(on){ try{ __noteEl.focus(); }catch(_){} } };
   }
   // 🕐 日時変更(全員共有)。時刻ありtimed/無し=時間未定。台帳ではなく予定本体を更新→cloud同期 v1.30.169
+  let __evDotaDone = false;   // 🔄 跡ボタンを既に押したか(「変更」時に二重で跡を作らない)v1.30.679
   const __evDtApply = pop.querySelector('#evDtApply');
   if(__evDtApply){
     __evDtApply.onclick = ()=>{
@@ -11793,6 +11794,23 @@ function showEventStaffPicker(el, ev){
       if(!nd){ alert('日付を選択してください'); return; }
       const real = (state.events||[]).find(x=>x.id===ev.id);
       if(!real){ return; }
+      // 🔄 v1.30.679(山田「変更後の日程と変更前の予定を同時に残したい」):
+      //   日付が実際に変わる時だけ「元の日に跡を残しますか?」と聞き、OKなら跡を作ってから移動する
+      //   =1操作で「新しい日の予定」と「元の日のグレー跡」が両方そろう。
+      //   ⚠日付が同じ(時刻だけ変更)や、先に🔄ボタンで跡を残した後は聞かない(誤爆・二重生成の防止)。
+      const __oldDate = real.date || '';
+      const __oldTime = (real.timeMode === 'timed') ? (real.start || '') : '';
+      if(nd && __oldDate && nd !== __oldDate && !__evDotaDone && typeof createDotakyanGhost_==='function'){
+        const __lbl = String(real.title||'(無題)').split(/\r?\n/)[0].slice(0,40);
+        const __dd2 = parseDate(nd);
+        const __ndLbl = (__dd2 && !isNaN(__dd2)) ? `${__dd2.getMonth()+1}/${__dd2.getDate()}` : nd;
+        const __odD = parseDate(__oldDate);
+        const __odLbl = (__odD && !isNaN(__odD)) ? `${__odD.getMonth()+1}/${__odD.getDate()}` : __oldDate;
+        if(confirm(`「${__lbl}」を ${__odLbl} → ${__ndLbl} に移します。\n\n元の ${__odLbl}${__oldTime?(" "+__oldTime):""} に変更跡(グレー)を残しますか？\n\nOK=跡を残して移動 ／ キャンセル=跡なしで移動`)){
+          createDotakyanGhost_(__lbl, __oldDate, __oldTime);
+          __evDotaDone = true;
+        }
+      }
       if(typeof pushHistory==='function') pushHistory();
       real.date = nd;
       // ✏️ 時刻の自由入力メモ(v1.30.589): 自由入力=時間未定扱い+赤字ラベル。他の選択に変えたら古いメモは消す
@@ -11841,6 +11859,7 @@ function showEventStaffPicker(el, ev){
     if(!confirm(`${d}${t?(" "+t):""} に「日時変更」跡(グレー)を残しますか？\n\n「${label}」\n\nこの後、上の日付を新しい日に変えて「変更」を押してください。`)) return;
     // 担当は跡に載せない(グレー=流れた予定の意匠を修繕と揃える)
     createDotakyanGhost_(label, d, t);
+    __evDotaDone = true;   // この後「変更」を押しても二重に跡を作らない(v1.30.679)
     __evDota.textContent = '✓ 日時変更跡を残しました'; __evDota.disabled = true;
   };
   // 🕔 v1.30.311: ワンタップで時間未定にする + 未定バッジ付与
