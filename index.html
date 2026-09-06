@@ -2897,7 +2897,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.679</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.681</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -11590,14 +11590,15 @@ function showEventStaffPicker(el, ev){
     </div>
     <div class="qp-sec">
       <div class="qp-label">🕐 日時 <span style="font-weight:400;color:#94a3b8;font-size:10px">(全員で共有)</span></div>
+      <div style="font-size:10px;color:#94a3b8;margin:-2px 0 4px">下の日付・時刻を選んでから <b style="color:#3730a3">この日時に動かす</b> を押します</div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <input type="date" id="evDtDate" value="${escapeHtml(ev.date||'')}" style="flex:1;min-width:0;padding:5px 6px;font-size:12px;border:1px solid var(--border-strong);border-radius:6px">
         <select id="evDtTime" style="width:96px;padding:5px 6px;font-size:12px;border:1px solid var(--border-strong);border-radius:6px">${__evTimeOptsHtml}</select>
-        <button id="evDtApply" class="qp-detail" style="padding:6px 10px;flex-shrink:0;background:#e0e7ff;color:#3730a3">変更</button>
+        <button id="evDtApply" class="qp-detail" style="padding:6px 10px;flex-shrink:0;background:#e0e7ff;color:#3730a3" title="左で選んだ日付・時刻へこの予定を動かします(全員のカレンダーに反映)">この日時に動かす</button>
         <button id="evDtMitei" class="qp-detail" style="padding:6px 10px;flex-shrink:0;background:#fef3c7;color:#92400e" title="ワンタップで時間未定にする(現在位置は保持)">🕔 未定に</button>
       </div>
-      <input type="text" id="evDtNote" value="${escapeHtml(__evNote0)}" placeholder="例: 早め・夕方(「変更」で確定・全員共有)" style="display:${__evNote0?'block':'none'};width:100%;box-sizing:border-box;margin-top:6px;padding:5px 6px;font-size:12px;border:1px solid var(--border-strong);border-radius:6px;color:#dc2626;font-weight:700">
-      <button type="button" id="evDtDotakyan" style="margin-top:6px;padding:5px 10px;border:1px solid #cbd5e1;background:#f1f5f9;color:#475569;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer" title="いま入っている日時をグレーの跡として残してから、上の日付を新しい日に変えて「変更」を押してください">🔄 日時変更(この日に変更跡を残す)</button>
+      <input type="text" id="evDtNote" value="${escapeHtml(__evNote0)}" placeholder="例: 早め・夕方(「この日時に動かす」で確定・全員共有)" style="display:${__evNote0?'block':'none'};width:100%;box-sizing:border-box;margin-top:6px;padding:5px 6px;font-size:12px;border:1px solid var(--border-strong);border-radius:6px;color:#dc2626;font-weight:700">
+      <button type="button" id="evDtDotakyan" style="margin-top:6px;padding:5px 10px;border:1px solid #cbd5e1;background:#f1f5f9;color:#475569;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer" title="日付を動かす前に、いまの日時の場所へグレーの『変更前』を置いておきます。ふつうは日付を変えて「この日時に動かす」を押せば同じことを聞かれます">🔄 いまの日時に「変更前」を残しておく</button>
     </div>
     <div class="qp-sec">
       <div class="qp-label">⏰ リマインド <span style="font-weight:400;color:#94a3b8;font-size:10px">(この日から⏰が点滅で知らせる)</span></div>
@@ -11806,7 +11807,9 @@ function showEventStaffPicker(el, ev){
         const __ndLbl = (__dd2 && !isNaN(__dd2)) ? `${__dd2.getMonth()+1}/${__dd2.getDate()}` : nd;
         const __odD = parseDate(__oldDate);
         const __odLbl = (__odD && !isNaN(__odD)) ? `${__odD.getMonth()+1}/${__odD.getDate()}` : __oldDate;
-        if(confirm(`「${__lbl}」を ${__odLbl} → ${__ndLbl} に移します。\n\n元の ${__odLbl}${__oldTime?(" "+__oldTime):""} に変更跡(グレー)を残しますか？\n\nOK=跡を残して移動 ／ キャンセル=跡なしで移動`)){
+        const __ntLbl = nt==='__allday__' ? '終日' : nt==='__am__' ? 'AM中' : nt==='__pm__' ? 'PM中'
+          : nt==='__free__' ? '時間未定' : (nt || '時間未定');
+        if(confirm(`「${__lbl}」\n\n${__odLbl}${__oldTime?(" "+__oldTime):""}  →  ${__ndLbl} ${__ntLbl} に動かします。\n\n元の ${__odLbl} にグレーの「変更前」も残しますか？\n(日にちが変わったことが全員に見えます)\n\n［OK］残す ／ ［キャンセル］残さない`)){
           createDotakyanGhost_(__lbl, __oldDate, __oldTime);
           __evDotaDone = true;
         }
@@ -11842,7 +11845,7 @@ function showEventStaffPicker(el, ev){
       if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(real,'upsert'); }catch(_){} }
       render();
       if(typeof flashEventChip_==='function') flashEventChip_(real.id);
-      __evDtApply.textContent = '✓ 変更'; setTimeout(()=>{ try{ __evDtApply.textContent='変更'; }catch(_){} }, 1200);
+      __evDtApply.textContent = '✓ 動かしました'; setTimeout(()=>{ try{ __evDtApply.textContent='この日時に動かす'; }catch(_){} }, 1200);
       if(typeof showAutoSyncToast==='function'){ const dd=parseDate(nd); const tLabel = nt==='__allday__' ? ' 終日' : nt==='__am__' ? ' AM中' : nt==='__pm__' ? ' PM中' : nt==='__free__' ? ` ✏️${__ntxApply||'(時間未定)'}` : nt ? ` ${nt}` : '(時間未定)'; showAutoSyncToast(`✅ 予定を ${(dd&&!isNaN(dd))?`${dd.getMonth()+1}/${dd.getDate()}`:nd}${tLabel} に変更`); }
     };
   }
@@ -11856,7 +11859,7 @@ function showEventStaffPicker(el, ev){
     const t = (real.timeMode==='timed') ? (real.start||'') : '';
     if(!d){ alert('元の日付が取得できませんでした'); return; }
     const label = String(real.title||'(無題)').split(/\r?\n/)[0].slice(0,40);
-    if(!confirm(`${d}${t?(" "+t):""} に「日時変更」跡(グレー)を残しますか？\n\n「${label}」\n\nこの後、上の日付を新しい日に変えて「変更」を押してください。`)) return;
+    if(!confirm(`「${label}」\n\n${d}${t?(" "+t):""} にグレーの「変更前」を残します。\n\nこの後、上の日付を新しい日に変えて「この日時に動かす」を押してください。`)) return;
     // 担当は跡に載せない(グレー=流れた予定の意匠を修繕と揃える)
     createDotakyanGhost_(label, d, t);
     __evDotaDone = true;   // この後「変更」を押しても二重に跡を作らない(v1.30.679)
