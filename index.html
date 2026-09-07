@@ -2897,7 +2897,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.684</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.685</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -26226,8 +26226,14 @@ function alertKeyResolve_(ownKey, name, room){
   const norm = s => String(s||"").normalize("NFKC").replace(/\s|　/g,"");
   const nm = norm(name), rm = norm(room);
   if(!nm) return ownKey;
+  //   🐞 v1.30.685(鈴木報告「スケジュールのアラートと最確のアラートをリンクさせないでほしい」):
+  //   立会予定「コンフォート上杉301 安齋さん同行」(9/3)に書いた⚠が、同じ物件の最終確認カード(9/16)にも出ていた。
+  //   物件名+号室だけで全予定を走査していたため。→ 拾う相手を**事前カード(category=事前)だけ**に絞る
+  //   (v1.30.426の元の目的=「事前チップに書いた最終確認向けのメモを最確カードで見る」はそのまま生きる)。
+  //   通常予定・立会・修繕に書いたアラートはその予定だけのもの=他カードへ波及しない。
   for(const ev of (state.events||[])){
     if(!ev) continue;
+    if(!(typeof isJizenEvent_==='function' && isJizenEvent_(ev))) continue;   // 事前カード以外は波及元にしない(v1.30.685)
     const key = ev._taikyoRawId || ev.id;
     if(!has(key)) continue;
     const evNm = norm(ev._bukken||""), evRm = norm(ev._room||"");
