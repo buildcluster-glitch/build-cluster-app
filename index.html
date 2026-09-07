@@ -2897,7 +2897,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.682</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.683</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4498,6 +4498,8 @@
           <option value="振休">🔁 振替休日(振休) (メモに振休元の日付・休日にカウント/出勤日祝は出社に)</option>
           <option value="当番">🔄 当番 (週次ローテ・休みではない)</option>
           <option value="出社">🏢 出社 (日祝などに出勤・休みにカウントしない)</option>
+          <option value="早退">🏃 早退 (出勤日に早く帰る・休みにカウントしない・時刻はメモに「15:00〜」等)</option>
+          <option value="リモート">💻 リモート (在宅勤務・出勤扱い・休みにカウントしない)</option>
         </select>
       </div>
       <div class="field">
@@ -6822,7 +6824,7 @@ function buildAttendancePayload(){
     const d = addDays(today, i);
     const dStr = fmtDate(d);
     const dayLeaves = state.leaves.filter(l => dStr>=l.start && dStr<=l.end);
-    const offEntries = dayLeaves.filter(l => l.type !== "当番" && l.type !== "出社");  // 出社=出勤なので欠勤に数えない
+    const offEntries = dayLeaves.filter(l => !["当番","出社","早退","リモート"].includes(l.type));  // 出社/早退/リモート=出勤なので欠勤に数えない(v1.30.683)
     const dutyEntries = dayLeaves.filter(l => l.type === "当番");
     const offStaffSet = new Set(offEntries.map(l => l.staff));
     const present = STAFF.filter(s => !offStaffSet.has(s));
@@ -15944,7 +15946,7 @@ function monthlyLeaveStats_(d){
   //   対象=有給/年休/半休(0.5)/休暇/別件/体調不良/会社休日(取得) 等。除外=当番/出張/研修(休みではない)
   const HALF = new Set(["半休","有給(AM)","有給(PM)"]);          // 有給の半休→半休(0.5)
   const HALF_SHOTEI = new Set(["所定(AM)","所定(PM)"]);          // 所定の半休→所定休日(base)に0.5(有給を消費しない)v1.30.356
-  const NONREST = new Set(["当番","出張","研修","出社"]);   // 「休みではない」種別(出社=日祝に出勤)
+  const NONREST = new Set(["当番","出張","研修","出社","早退","リモート"]);   // 「休みではない」種別(出社=日祝に出勤／早退・リモート=v1.30.683・山田要望「早退・リモート機能」=出勤扱い)
   const lastDay = new Date(year,month,0).getDate();
   const perStaff = (s)=>{
     if(s === "山田裕貴") return null;   // 社長(山田)は休みカウント対象外(従来仕様)
@@ -16157,7 +16159,7 @@ function renderLeaveBand(){
 
   // 今日の休み (有給/半休/年休/休暇/別件/体調不良/会社休日 など 当番・出社以外)
   const todayOff = state.leaves.filter(l =>
-    l.type !== "当番" && l.type !== "出社" && todayStr >= l.start && todayStr <= l.end
+    !["当番","出社","早退","リモート"].includes(l.type) && todayStr >= l.start && todayStr <= l.end
   );
   const offStaff = new Set(todayOff.map(l => l.staff));
   // 🚫 日祝の自動休み扱いは廃止(v1.30.471・山田「普通の休みみたいに所定休日を手動で入れたい」)。
