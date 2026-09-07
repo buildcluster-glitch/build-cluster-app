@@ -2897,7 +2897,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.683</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.684</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -13454,10 +13454,21 @@ function applyJizenRecords_(records){
   records.forEach(r=>{
     const title = `事前 ${r.bukken}${r.room?" "+r.room:""}`;
     const __titleNorm = normJizenTitle_(title);   // NFKC+建物括弧除去で表記ゆれ吸収(v1.30.217/262/264)
+    // 🔔 v1.30.684: 復活基準日より前の日付は生成しない(停止中に溜まった過去分が湧くのを防ぐ)。seenには入れて取消トーストも出さない
+    if(String(r.date||'') < JIZEN_AUTO_SINCE){ seen.add(r.id); return; }
     // 既存イベント判定: sid一致 or 同タイトル(物件+号室)の事前があれば既存扱い → 別sid・同物件の二重insertを防ぐ
+    //   + v1.30.684: 手入力「◯◯103事前」も同じ物件キーで前後45日以内なら既存扱い(手入力済みなら自動は出さない)
+    const __matchKey = (typeof jizenMatchKey_==='function') ? jizenMatchKey_(title) : '';
+    const __rDate = parseDate(r.date);
     const existing = (state.events||[]).find(e=>{
       if(e._jizenSourceId === r.id) return true;
-      if(isJizenEvent_(e) && normJizenTitle_(e.title) === __titleNorm) return true;
+      if(!isJizenEvent_(e)) return false;
+      if(normJizenTitle_(e.title) === __titleNorm) return true;
+      if(__matchKey && jizenMatchKey_(e.title) === __matchKey){
+        const ed = parseDate(e.date);
+        if(isNaN(__rDate) || isNaN(ed)) return true;
+        return Math.abs(ed - __rDate) <= 45*86400000;
+      }
       return false;
     });
     if(existing){
@@ -13511,7 +13522,7 @@ function applyJizenRecords_(records){
     // seen からは外す (再post時に再 insert させない仕様にするなら残す; ここは「2度目以降のtoast抑止」のため除外)
     seen.delete(id);
     const ev = (state.events||[]).find(e=>e._jizenSourceId === id);
-    if(ev){
+    if(ev && String(ev.date||'') >= JIZEN_AUTO_SINCE){   // v1.30.684: 旧カード(停止前)の取消は通知しない
       if(typeof showAutoSyncToast === 'function'){
         showAutoSyncToast(`⚠ 発注確定が取消されました: ${ev.title} (予定は残してます)`);
       }
@@ -14663,7 +14674,16 @@ function restoApplyProgress(prop, serverProgress){
 //   true = ①applyJizenRecords_の自動生成/同期をスキップ ②既存の自動カード(_jizenSourceId or「事前 ◯◯」命名)を非表示。
 //   データは消さない(イベントもjizen_scheduleも無傷)= false に戻せばすべて復活する。
 //   手入力の事前(事前帯・1クリック動作・ドラッグ)はこのスイッチの影響を受けない。
-const JIZEN_AUTO_OFF = true;
+//   🔔 v1.30.684(山田「じゃあ復活させて」2026-09-07): false に戻して復活。ただし停止中(8/4〜9/6)に溜まった
+//   86件をそのまま戻すと7〜8月の過去日に事前カードが一斉に湧くため、JIZEN_AUTO_SINCE 以降の日付分だけ
+//   自動生成・表示する(過去分は生成しない・旧自動カードも従来どおり非表示のまま)。
+const JIZEN_AUTO_OFF = false;
+const JIZEN_AUTO_SINCE = '2026-09-07';   // これより前の日付の自動事前カードは生成せず・表示もしない
+// 手入力の事前は「物件名+号室+事前」(例: マイハイツ富ヶ丘103事前)の命名が多く、自動カード「事前 マイハイツ富ヶ丘 103」と
+// タイトル一致で拾えないため、両方から「事前」を除いた物件キーで照合する(v1.30.684・「2個入る」再発防止)。
+function jizenMatchKey_(title){
+  return normJizenTitle_(title).replace(/事前/g,'').replace(/^[・\-–—]+|[・\-–—]+$/g,'').toLowerCase();
+}
 // 🔕 v1.30.584(山田「カレンダーの進捗、一回消していいや」): ヘッダー📊進捗 と スマホ下部ナビ📊進捗 を隠す。
 //   機能・公開ページ(https://buildcluster-glitch.github.io/gantt/)は生きているのでURLからは今までどおり見られる。
 //   **false に戻すだけで両方復活**(JIZEN_AUTO_OFFと同じ作法)。
@@ -14678,8 +14698,11 @@ const GANTT_NAV_OFF = true;
   else apply();
 })();
 function isAutoJizenEvent_(ev){
-  if(!JIZEN_AUTO_OFF || !ev || ev.category !== '事前') return false;
-  return !!(ev._jizenSourceId || /^事前[\s　]/.test(String(ev.title||"")));
+  if(!ev || ev.category !== '事前') return false;
+  const auto = !!(ev._jizenSourceId || /^事前[\s　]/.test(String(ev.title||"")));
+  if(!auto) return false;
+  if(JIZEN_AUTO_OFF) return true;                                   // 全停止中
+  return String(ev.date||'') < JIZEN_AUTO_SINCE;                    // 復活基準日より前の旧自動カードは非表示のまま
 }
 function isCompletedJizenEvent_(ev){
   if(!ev || ev.category !== '事前') return false;
