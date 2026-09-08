@@ -110,4 +110,4 @@ version 2＝改修前 / 3＝高速化 / 4＝withPull・一括ロック / 5〜6�
   fail-open の写し(wtQueue)は strict 分には積まない。timeout 例外の和文「タイムアウト」判定も同梱。
 - テスト枡(AKfycbxvTE0…)@8 で疎通: strict insert/update/delete = applied/applied/delete_applied・非strict経路も正常・残骸なし・counters strict_ok=3。
 - 手順: `clasp push --force` → `clasp version` → `clasp deploy -i <deployId> -V 8`(テスト枡→本番)。事前に `clasp pull` で本番HEAD=ローカル(差分0)を機械検算。
-- ON予定: 9/9(火) 10:00 に `wt-config set WT_STRICT=on`。戻し: `set WT_STRICT=''`。
+- **ON実施: 2026-09-08 22:45**(山田「もうスイッチ入れていいよ」・9/9 10:00予定を前倒し)。本番で通常bulkSync(テストid)→db:applied / delete_applied・strict_ok=5・fail=0・残骸なし。戻し: `wt-config set WT_STRICT=''`(再デプロイ不要)。
