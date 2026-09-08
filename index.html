@@ -2897,7 +2897,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.685</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.686</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -9251,7 +9251,10 @@ function computeDashboard_(){
     // 📅 発注日(v1.30.642・山田「発注日でてなくない」): 台帳のorderDate(工事指示日)は空が多い。
     //   フォールバック=①orderDate ②発注書の発行日(issueDate) ③見積ID(E20260624_…)に埋まっている作成日
     //   ⚠実測(2026-08-31・進行中24件): ①=0件 ②=18件 ③=6件。②が主戦力なので②を外さないこと
+    //   v1.30.686: ②に **発注確定日(hatchuConfirmedAt・ver86射影)** を追加=見積アプリで発注確定した日そのもの(確定値扱い)。
+    //   以降の発注書発行日/見積IDは、発注確定日が無い(旧案件・手動共有)時だけの推定。
     const __od = p.orderDate
+      || p.hatchuConfirmedAt
       || (function(){ try{ const h=(typeof findHatchushoForResto_==='function')?findHatchushoForResto_(p):null; return (h&&h.issueDate)||""; }catch(_){ return ""; } })()
       || (function(){ const m=String(p.extEstimateId||p.id||"").match(/E(\d{4})(\d{2})(\d{2})_/); return m?`${m[1]}-${m[2]}-${m[3]}`:""; })();
     const __win = restoInhouseWindow_(p, __od, today);            // 🔨 自社工事の枠(v1.30.648)
@@ -9259,7 +9262,8 @@ function computeDashboard_(){
     o.items.push({id:p.id, name:p.name, room:p.room, pr, st, fd,
       vol: p.workVolume || (p.workloadStatus && p.workloadStatus.level) || "",   // 🛠 工事ボリューム(激重/重/普/軽)v1.30.632
       od: __od,
-      odExact: !!p.orderDate,                                                    // true=台帳の発注日そのもの/false=推定
+      odExact: !!(p.orderDate || p.hatchuConfirmedAt),                           // true=台帳の工事指示日 or 発注確定日(確定値)/false=推定
+      odKind: p.orderDate ? 'order' : (p.hatchuConfirmedAt ? 'confirmed' : 'est'),
       win: __win,
       movein:(typeof restoMoveinRaw_==='function')?restoMoveinRaw_(p):(p.moveinRaw||p.moveinDate||"")});
   });
@@ -9462,7 +9466,7 @@ function renderDashboard_(){
       // 🏠 入居情報(v1.30.632・山田): 「9/5予定」等の予定表記も出す(parseLooseMovein_=v612と同じゆるいパース)
       const __mi=(typeof parseLooseMovein_==='function')?parseLooseMovein_(it.movein):null;
       const miHtml=__mi?`<span style="font-size:10.5px;font-weight:700;color:#dc2626;white-space:nowrap" title="${escapeHtml((typeof moveinTip_==='function')?moveinTip_(__mi):'入居日')}">${escapeHtml(__mi.text)}</span>`:'';
-      const odHtml=it.od?`<span style="font-size:10px;color:#1d4ed8;font-weight:700;white-space:nowrap;${it.odExact?'':'opacity:.75'}" title="${it.odExact?'発注日(台帳の工事指示日)':'発注日の推定(発注書の発行日または見積作成日。台帳の工事指示日が空のため)'}">発注${escapeHtml(String(it.od).slice(5).replace('-','/'))}${it.odExact?'':'頃'}</span>`:'';   // 常時表示(v639)+推定フォールバック(v642)
+      const odHtml=it.od?`<span style="font-size:10px;color:#1d4ed8;font-weight:700;white-space:nowrap;${it.odExact?'':'opacity:.75'}" title="${it.odKind==='order'?'発注日(台帳の工事指示日)':it.odKind==='confirmed'?'発注確定日(見積アプリで発注確定した日)':'発注日の推定(発注書の発行日または見積作成日。台帳の工事指示日が空のため)'}">発注${escapeHtml(String(it.od).slice(5).replace('-','/'))}${it.odExact?'':'頃'}</span>`:'';   // 常時表示(v639)+推定フォールバック(v642)
       // ⚡ 事前チャンス(v1.30.649で命名・山田「事前チャンスみたいな感じで分かりやすく」)。
       //   発注書を出してから外注の工期が始まるまで=カテゴリ「事前」(事前補修)を差し込める期間。
       //   色は予定カテゴリ「事前」と同じ紫(#7c3aed)に合わせる=カレンダーと同じ言葉・同じ色で読める。
@@ -14766,6 +14770,9 @@ function extractRestorations(properties, existing){
       _repairResto: isRepairResto,
       layout: p.floor_plan || p.layout || prev?.layout || "",
       orderDate: normalizeDate(p.orderDate || p.document_date),
+      // 📅 発注確定日(見積GAS ver86〜・v1.30.686): meta.hatchuOrder.confirmedAt のISO日付部。未確定は""。
+      //   台帳の工事指示日(orderDate)が空の案件が大半なので、📊発注日/⚡事前チャンスの「推定」を確定値に置き換える材料。
+      hatchuConfirmedAt: (function(){ const m=String(p.hatchuConfirmedAt||"").match(/^(\d{4}-\d{2}-\d{2})/); return m?m[1]:(prev?.hatchuConfirmedAt||""); })(),
       moveout: p.move_out_month || prev?.moveout || "",
       moveinDate: __miIso || prev?.moveinDate || "",
       moveinRaw: (__miRaw === null ? (prev?.moveinRaw || "") : __miRaw),
@@ -26101,6 +26108,7 @@ function renderRestoDetail(){
   if(p.client || p.contractor) kv.push(["元請",p.client || p.contractor]);  // 元請(山一地所等)を明示
   if(p.kojiName) kv.push(["工事名",p.kojiName]);
   if(p.orderDate) kv.push(["発注日",p.orderDate]);
+  else if(p.hatchuConfirmedAt) kv.push(["発注確定日",p.hatchuConfirmedAt]);   // v1.30.686(ver86射影)
   if(p.vacancyDate) kv.push(["退去予定日",p.vacancyDate]);   // v1.9.3 新規
   if(p.moveout) kv.push(["退去月",p.moveout]);
   if(p.moveinRaw || p.moveinDate) kv.push(["入居日", p.moveinRaw || p.moveinDate]);   // v1.30.612: 生表記(「9/1予定 ※8/21時点」)をそのまま出す
