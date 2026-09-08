@@ -253,20 +253,25 @@ function wtStrictOn_() {
   catch (e) { return false; }
 }
 var WT_STRICT_TIMEOUT_SEC = 20;
+// 監査列(calendar_events_history.actor)向け。予定docの createdBy(=最後に触った端末の👤自分ではない点に注意)を添える
+function wtActor_(doc) {
+  var who = ''; try { who = String((doc && (doc.updatedBy || doc.createdBy)) || '').trim(); } catch (e) {}
+  return ('calendar' + (who ? ':' + who : '')).slice(0, 60);
+}
 function wtStrictNote_(kind, msg) {
   try { wtCount_(kind); if (msg) PropertiesService.getScriptProperties().setProperty('WT_STRICT_LAST_ERR', String(msg).slice(0, 200)); } catch (e) {}
 }
 // 戻り: 'applied' | 'already_processed' (=DBに入った) / 'stale_version' | 'deleted' (=DBがより新しい・この保存は棄却)
 //       それ以外(timeout/http/例外)は Error('db_unavailable: ...') を投げる
 function wtStrictUpsert_(doc) {
-  var r = wtSend_('wt_upsert_event', { p_operation_id: Utilities.getUuid(), p_doc: doc }, WT_STRICT_TIMEOUT_SEC);
+  var r = wtSend_('wt_upsert_event', { p_operation_id: Utilities.getUuid(), p_doc: doc, p_actor: wtActor_(doc) }, WT_STRICT_TIMEOUT_SEC);   // p_actor=migration017(台帳DB 09-08回答)
   if (r === 'applied' || r === 'already_processed') { wtStrictNote_('strict_ok'); return r; }
   if (r === 'stale_version' || r === 'deleted') { wtStrictNote_('strict_stale'); Logger.log('[wt-strict] 棄却 ' + doc.id + ' v' + doc.version + ': ' + r); return r; }
   wtStrictNote_('strict_fail', 'upsert ' + doc.id + ': ' + r);
   throw new Error('db_unavailable: ' + r);
 }
 function wtStrictDelete_(id, version) {
-  var r = wtSend_('wt_delete_event', { p_operation_id: Utilities.getUuid(), p_id: String(id), p_version: Number(version) || 1 }, WT_STRICT_TIMEOUT_SEC);
+  var r = wtSend_('wt_delete_event', { p_operation_id: Utilities.getUuid(), p_id: String(id), p_version: Number(version) || 1, p_actor: wtActor_(null) }, WT_STRICT_TIMEOUT_SEC);
   if (r === 'delete_applied' || r === 'already_processed') { wtStrictNote_('strict_ok'); return r; }
   if (r === 'stale_version' || r === 'deleted') { wtStrictNote_('strict_stale'); Logger.log('[wt-strict] 削除棄却 ' + id + ' v' + version + ': ' + r); return r; }
   wtStrictNote_('strict_fail', 'delete ' + id + ': ' + r);

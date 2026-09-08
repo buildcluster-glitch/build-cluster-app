@@ -2897,7 +2897,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.686</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.687</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4598,12 +4598,77 @@
       return _gasRetryWait_(attempt).then(function(){ return _gasGetWithRetry_(input, init, attempt+1); });
     });
   }
+  // 📮 v1.30.687: save-shared-config の「DB先行」対応(見積GAS ver87・2026-09-08夜〜)。
+  //   ver87から共有設定の保存は先にDBへ書き、届かなければ ok:false(Properties無傷=未保存)を返す。
+  //   アプリ側の保存呼び出しは約50箇所が await fetch(...) の応答を見ていない(黙認)ので、関所1箇所で
+  //   ①actor(誰が)を body に付ける(無ければ savedBy) ②応答 ok:false なら **同じ本文を 5秒→30秒→2分 で再送**(最大3回)
+  //   ⚠GASのPOST再送禁止の鉄則とは別物: ここで再送するのは「HTTPは200で本文が ok:false=サーバーが未実行を保証」の時だけ。
+  //   HTTPエラー/HTML応答/通信失敗では絶対に再送しない(実行済みの可能性があるため・従来どおり)。
+  var _SC_RETRY_DELAYS = [5000, 30000, 120000];
+  var _scToastAt = 0;
+  function _scToast_(msg){
+    var now = Date.now(); if (now - _scToastAt < 60000) return; _scToastAt = now;
+    try { if (typeof showAutoSyncToast === 'function') showAutoSyncToast(msg); } catch(_) {}
+  }
+  function _scKeyOf_(bodyStr){ var m = /"key"\s*:\s*"([^"]+)"/.exec(bodyStr||''); return m ? m[1] : '?'; }
+  function _scWithActor_(bodyStr){
+    try {
+      var o = JSON.parse(bodyStr);
+      if (o && o.action === 'save-shared-config' && !o.actor) {
+        var me = ''; try { me = (typeof getMyself === 'function' && getMyself()) || ''; } catch(_) {}
+        o.actor = me || o.savedBy || 'calendar';
+        return JSON.stringify(o);
+      }
+    } catch(_) {}
+    return bodyStr;
+  }
+  function _scResend_(input, init, attempt){
+    var key = _scKeyOf_(init && init.body);
+    if (attempt >= _SC_RETRY_DELAYS.length) {
+      console.warn('[共有設定] 再送を使い切りました key=' + key);
+      _scToast_('⚠ 共有設定(' + key + ')がサーバーに保存できませんでした。しばらくして操作をやり直してください');
+      return;
+    }
+    setTimeout(function(){
+      if (_gasRetryBlocked_(init)) { _scResend_(input, init, attempt + 1); return; }
+      _origFetch(input, init).then(function(r){
+        return r.clone().json().then(function(j){
+          if (j && j.ok === false && !j.conflict) { console.warn('[共有設定] 再送 ' + (attempt+1) + ' も ok:false key=' + key + ' ' + (j.error||j.message||j.dbError||'')); _scResend_(input, init, attempt + 1); }
+          else console.log('[共有設定] 再送成功 key=' + key + ' (' + (attempt+1) + '回目)');
+        }).catch(function(){ /* 本文がJSONでない=HTTP系。再送しない(実行済みかもしれない) */ });
+      }).catch(function(){ _scResend_(input, init, attempt + 1); });   // 通信失敗=届いていないので次の遅延で再送
+    }, _SC_RETRY_DELAYS[attempt]);
+  }
+  function _scPostWatch_(input, init){
+    var p; try { p = _origFetch(input, init); } catch(e){ return Promise.reject(e); }
+    return p.then(function(r){
+      try {
+        var ct = String((r.headers && r.headers.get('content-type')) || '');
+        if (r.ok && ct.indexOf('json') >= 0) {
+          r.clone().json().then(function(j){
+            if (j && j.ok === false && !j.conflict) {
+              var key = _scKeyOf_(init && init.body);
+              console.warn('[共有設定] 保存が ok:false key=' + key + ' → 5秒後に再送: ' + (j.error||j.message||j.dbError||''));
+              _scToast_('📮 共有設定(' + key + ')の保存がDBに届きませんでした。自動で再送します');
+              _scResend_(input, init, 0);
+            }
+          }).catch(function(){});
+        }
+      } catch(_) {}
+      return r;
+    });
+  }
   window.fetch = function(input, init){
     try {
       var u = (typeof input === 'string') ? input : (input && input.url);
       if (u) {
         var bodyStr = (init && typeof init.body === 'string') ? init.body : '';
         if (/action=save-shared-config/.test(u) || /save-shared-config/.test(bodyStr)) { _cache = null; } // 書込→無効化
+        // 📮 v1.30.687: 共有設定の保存POST → actor付与 + ok:false再送の見張り(上記)
+        if (String(u).indexOf('script.google') >= 0 && /"action"\s*:\s*"save-shared-config"/.test(bodyStr)) {
+          var init2 = Object.assign({}, init, { body: _scWithActor_(bodyStr) });
+          return _scPostWatch_(input, init2);
+        }
         var m = u.match(/[?&]action=get-shared-config&key=([^&]+)/); // 単発のみ(-configs/-metaは不一致)
         if (m) {
           var key = decodeURIComponent(m[1]);
