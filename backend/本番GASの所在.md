@@ -103,3 +103,11 @@ version 2＝改修前 / 3＝高速化 / 4＝withPull・一括ロック / 5〜6�
   「版を切って**テスト用デプロイ**を作る→終わったら削除」が確実です。
 - **バージョン差し替え直後は数十秒〜1分ほど404を返すことがあります**。待てば戻るので、
   慌ててロールバックしないこと。GASの所要時間は同じ条件でも2秒〜35秒とばらつきます。
+
+## 2026-09-08 22:30 version 8 を本番デプロイ(山田GO)
+- 内容: events 書き込みの **DB先行(strict)** = `WT_STRICT=on`(Script Properties・wt-configで遠隔可) または body.wtStrict===true で有効。**既定off=挙動不変**。
+  strict時: version採番→RPC(wt_upsert_event/wt_delete_event・p_actor='calendar:'+createdBy・timeout20s)→applied でシート保存 / stale_version・deleted は棄却(action:'stale') / 届かなければ全体 `ok:false, error:'db_unavailable'`(アプリは pending に残して再送)。
+  fail-open の写し(wtQueue)は strict 分には積まない。timeout 例外の和文「タイムアウト」判定も同梱。
+- テスト枡(AKfycbxvTE0…)@8 で疎通: strict insert/update/delete = applied/applied/delete_applied・非strict経路も正常・残骸なし・counters strict_ok=3。
+- 手順: `clasp push --force` → `clasp version` → `clasp deploy -i <deployId> -V 8`(テスト枡→本番)。事前に `clasp pull` で本番HEAD=ローカル(差分0)を機械検算。
+- ON予定: 9/9(火) 10:00 に `wt-config set WT_STRICT=on`。戻し: `set WT_STRICT=''`。
