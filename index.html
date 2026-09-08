@@ -2897,7 +2897,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.689</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.690</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -16124,10 +16124,13 @@ function renderHeaderDuty_(){
   if(__t){
     const bg = STAFF_COLORS[__t] || "#fde68a";
     const roleTip = "今週の当番(週次ローテ・月曜始まり)\n\n"+TOBAN_ROLES_TEXT;
-    const byTip = __done ? `完了済${__doneE.by?'（'+__doneE.by+'）':''}（クリックで取消）` : '今週の当番を完了にする';
+    const byTip = __done ? `今週の当番は完了済${__doneE.by?'（'+__doneE.by+'が'+(function(){ try{ const d=new Date(__doneE.at); return isNaN(d)?'':` ${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}に`; }catch(_){ return ''; } })()+'付けました）':''}\nクリックで取消` : '今週の当番が終わったらクリックで完了にする(全員共有)';
+    // 🐞 v1.30.690(山田「完了しているようにみえる」): 未完了でも「✅」だけのボタンだったので完了と見分けにくかった。
+    //   未完了=「完了にする」(灰・チェック無し) / 完了=「✅完了 名前」(緑)。取消は確認ダイアログを1回はさむ(誤タップで共有状態が変わるのを防ぐ)。
+    const __doneBy = (__done && __doneE.by) ? ' '+escapeHtml(String(disp(__doneE.by)).slice(0,4)) : '';
     html += `<span class="hd-duty" title="${escapeHtml(roleTip)}"><span class="hd-lbl">🔄当番</span>`
       + `<span class="leave-badge duty-auto${__done?' duty-done':''}" style="background:${bg};color:${textColorFor(bg)}"><span class="lb-staff">${escapeHtml(disp(__t))}</span></span>`
-      + `<button class="duty-done-btn${__done?' on':''}" id="dutyDoneBtn" data-wk="${escapeHtml(__wk)}" title="${escapeHtml(byTip)}">${__done?'✅完了':'✅'}</button></span>`;
+      + `<button class="duty-done-btn${__done?' on':''}" id="dutyDoneBtn" data-wk="${escapeHtml(__wk)}" title="${escapeHtml(byTip)}">${__done?('✅完了'+__doneBy):'完了にする'}</button></span>`;
   }
   // 📞 電話番(事務まどかが今日休みの平日のみ)
   const offToday = (state.leaves||[]).filter(l=> l.type!=='当番' && l.type!=='出社' && todayStr>=l.start && todayStr<=l.end);
@@ -16164,7 +16167,9 @@ function renderHeaderDuty_(){
   }
   box.innerHTML = html;
   const ddb = box.querySelector('#dutyDoneBtn');
-  if(ddb){ ddb.onclick = ()=>{ const wk=ddb.dataset.wk; if(!wk) return; const now=(typeof getTobanDoneEntry_==='function')&&getTobanDoneEntry_(wk); if(typeof setTobanDone_==='function') setTobanDone_(wk, !now).catch(()=>{}); render(); }; }
+  if(ddb){ ddb.onclick = ()=>{ const wk=ddb.dataset.wk; if(!wk) return; const now=(typeof getTobanDoneEntry_==='function')&&getTobanDoneEntry_(wk);
+    if(now && !confirm(`今週の当番の「完了」を取り消しますか？${now.by?`\n(${now.by} が付けた完了です)`:''}`)) return;   // v1.30.690: 取消だけ確認
+    if(typeof setTobanDone_==='function') setTobanDone_(wk, !now).catch(()=>{}); render(); }; }
   const ps = box.querySelector('#phoneDutySel');
   if(ps){ ps.onchange = ()=>{ if(typeof setPhoneDuty_==='function') setPhoneDuty_(todayStr, ps.value).catch(()=>{}); render(); }; }
   const sb = box.querySelector('#sanpaiBtn');
