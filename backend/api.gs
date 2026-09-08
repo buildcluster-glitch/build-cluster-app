@@ -111,7 +111,16 @@ function doPost(e) {
     // 🚧 メンテ/門番: 書き込み系だけ止める(読み=doGetは別経路なので影響なし)。通常はnullで素通し
     var _mg = (typeof maintGuard_ === 'function') ? maintGuard_(action, body) : null;   // bodyはclient識別用(gatekeeper細分化 2026-08-21)
     if (_mg) return _mg;
-    const result = dispatch_(action, data);
+    // ver8: DB先行(strict)のリクエスト単位スイッチ(テストデプロイ疎通用)。本番は WT_STRICT=on で有効化
+    __WT_STRICT_REQ = (body.wtStrict === true);
+    let result;
+    try { result = dispatch_(action, data); } finally { __WT_STRICT_REQ = false; }
+    // ver8: strict でDBに届かなかった操作が1つでもあれば**全体を失敗**として返す。
+    //   アプリ(cloudSyncPush)は data.ok だけを見て pending を消すので、部分失敗を ok:true で返すと
+    //   その予定はこの端末にしか残らない(=次のDB読みで消えたように見える)。ok:false なら pending に残り再送される。
+    if (Array.isArray(result) && result.some(r => r && r.ok === false && /db_unavailable/.test(String(r.error || '')))) {
+      return jsonResponse_({ ok: false, error: 'db_unavailable', action, result });
+    }
     // lastSyncAt を更新
     upsertConfig_('lastSyncAt', new Date().toISOString());
     const out = { ok: true, action, result };
@@ -349,22 +358,24 @@ function upsertRow_(name, data) {
     }
     data.version = prevVer + 1;
   }
+  if (rowIdx === -1 && headers.includes('createdAt') && !data.createdAt) data.createdAt = new Date().toISOString();
+  // 📌 ver8 DB先行(strict): version採番済みの doc を**先にDBへ**。届かなければ throw(=この保存は失敗)、
+  //   DBがより新しければ(stale_version/deleted) シートにも書かず棄却で返す。成功時は fail-open キューに積まない。
+  let strictDone = false;
+  if (name === 'events' && typeof wtStrictOn_ === 'function' && wtStrictOn_()) {
+    const sr = wtStrictUpsert_(data);                          // throws Error('db_unavailable: ...')
+    if (sr === 'stale_version' || sr === 'deleted') return { id: data.id, action: 'stale', db: sr };
+    strictDone = true;
+  }
   const row = objectToRow_(data, headers);
   if (rowIdx === -1) {
-    if (headers.includes('createdAt') && !data.createdAt) {
-      data.createdAt = new Date().toISOString();
-      // createdAt セット後、行を作り直す
-      const row2 = objectToRow_(data, headers);
-      sh.appendRow(row2);
-    } else {
-      sh.appendRow(row);
-    }
-    if (name === 'events' && typeof wtQueueUpsert_ === 'function') wtQueueUpsert_(data);
-    return { id: data.id, action: 'inserted' };
+    sh.appendRow(row);
+    if (name === 'events' && !strictDone && typeof wtQueueUpsert_ === 'function') wtQueueUpsert_(data);
+    return { id: data.id, action: 'inserted', db: strictDone ? 'applied' : undefined };
   }
   sh.getRange(rowIdx, 1, 1, headers.length).setValues([row]);
-  if (name === 'events' && typeof wtQueueUpsert_ === 'function') wtQueueUpsert_(data);
-  return { id: data.id, action: 'updated' };
+  if (name === 'events' && !strictDone && typeof wtQueueUpsert_ === 'function') wtQueueUpsert_(data);
+  return { id: data.id, action: 'updated', db: strictDone ? 'applied' : undefined };
 }
 
 function deleteRowById_(name, id) {
@@ -382,9 +393,16 @@ function deleteRowById_(name, id) {
       if (vCol > 0) lastVer = Number(sh.getRange(rowIdx, vCol).getValue()) || 0;
     } catch (e) { lastVer = 0; }
   }
+  // 📌 ver8 DB先行(strict): tombstone を先にDBへ(version=現在+1)。届かなければ throw、DBがより新しければ棄却。
+  let strictDone = false;
+  if (name === 'events' && typeof wtStrictOn_ === 'function' && wtStrictOn_()) {
+    const sr = wtStrictDelete_(id, lastVer + 1);
+    if (sr === 'stale_version' || sr === 'deleted') return { id, action: 'stale', db: sr };
+    strictDone = true;
+  }
   sh.deleteRow(rowIdx);
-  if (name === 'events' && typeof wtQueueDelete_ === 'function') wtQueueDelete_(id, lastVer);
-  return { id, action: 'deleted' };
+  if (name === 'events' && !strictDone && typeof wtQueueDelete_ === 'function') wtQueueDelete_(id, lastVer);
+  return { id, action: 'deleted', db: strictDone ? 'delete_applied' : undefined };
 }
 
 function setMembers_(names) {

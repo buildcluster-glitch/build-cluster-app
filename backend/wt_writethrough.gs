@@ -49,7 +49,7 @@ function wtEnabledFor_(id) {
 
 // ---- 送信(完全fail-open・タイムアウト3秒目標) ----
 // 戻り値は記録用: 'applied'等のRPC応答 / 'wt_timeout' / 'wt_error:...'
-function wtSend_(rpcName, payloadObj) {
+function wtSend_(rpcName, payloadObj, timeoutSec) {
   var props = PropertiesService.getScriptProperties();
   var url = props.getProperty('SB_URL');
   var key = props.getProperty('SB_WRITE_KEY');
@@ -64,7 +64,7 @@ function wtSend_(rpcName, payloadObj) {
   // UrlFetchApp.timeoutSecondsは実機確認事項(改訂3・8/13時点で未検証)。
   // 効かない環境でも既定360秒→fail-open構造上、遅延はこの1保存の応答が遅れるだけで
   // スプレッドシートへの本保存は既に完了している。
-  try { options.timeoutSeconds = 3; } catch (e) {}
+  try { options.timeoutSeconds = Number(timeoutSec) > 0 ? Number(timeoutSec) : 3; } catch (e) {}
   try {
     var res = UrlFetchApp.fetch(url + '/rest/v1/rpc/' + rpcName, options);
     var code = res.getResponseCode();
@@ -206,7 +206,7 @@ function wtTimeoutProbe() {
 // ---- 🔧 遠隔スイッチ: フラグだけをtoken保護で読み書き(カナリアの上げ下げを手作業にしない) ----
 //   ホワイトリスト方式=鍵(SB_WRITE_KEY等)は対象外。読み出しも値は返さず「設定済みか」だけ。
 //   ⚠maintGuard_ はこのアクションを絶対にブロックしない(自分で解除できなくなる事故防止)
-var WT_CONFIG_ALLOW_ = ['WT_FLAG', 'WT_TEST_IDS', 'WT_CANARY_PCT', 'MAINT_FLAG'];
+var WT_CONFIG_ALLOW_ = ['WT_FLAG', 'WT_TEST_IDS', 'WT_CANARY_PCT', 'MAINT_FLAG', 'WT_STRICT'];
 function wtConfig_(body) {
   var props = PropertiesService.getScriptProperties();
   var out = {};
@@ -224,7 +224,51 @@ function wtConfig_(body) {
     ok: Number(props.getProperty('WT_CNT_ok') || 0),
     timeout: Number(props.getProperty('WT_CNT_timeout') || 0),
     error: Number(props.getProperty('WT_CNT_error') || 0),
-    lastErr: props.getProperty('WT_LAST_ERR') || ''
+    lastErr: props.getProperty('WT_LAST_ERR') || '',
+    // ver8: DB先行(strict)の集計
+    strict_ok: Number(props.getProperty('WT_CNT_strict_ok') || 0),
+    strict_stale: Number(props.getProperty('WT_CNT_strict_stale') || 0),
+    strict_fail: Number(props.getProperty('WT_CNT_strict_fail') || 0),
+    strictLastErr: props.getProperty('WT_STRICT_LAST_ERR') || ''
   };
   return out;
+}
+
+// ============================================================================
+// ver8 (2026-09-08): 📌 DB先行書き(strict) — 見積GAS ver85(台帳の書き込み切替)と同じ型
+//   これまで: シートに保存 → ロック解放後に影DBへ写す(fail-open・3秒・落ちても本保存は成功扱い)
+//   strict  : **先にDBのRPCへ書く(20秒)** → applied なら シートにも書く / DBに届かなければ
+//             保存自体を失敗(db_unavailable)として返し、アプリは pending に残して再送する。
+//   「保存できました」と言った予定は必ずDBにある、を保証するのが目的(読みは9/5から全端末DB直読み)。
+//   ⚠ロック内でRPCを呼ぶ(version採番と不可分)。禁止事項②の例外=DB障害時は最長20秒×1件ぶん
+//     他端末の保存が待つ(waitLock 10秒で失敗→アプリ側の再送に回る)。平時のRPCは0.3秒前後。
+//   有効化: Script Properties WT_STRICT=on (wt-configで遠隔可) または リクエスト body.wtStrict===true
+//           (テストデプロイからの疎通確認用。Script Propertiesはデプロイ間で共有されるため本番に影響させない)
+//   strict で書いた操作は fail-open のキュー(wtQueue)には積まない=二重送信しない。
+// ============================================================================
+var __WT_STRICT_REQ = false;   // doPost が body.wtStrict から立てる(1リクエストの間だけ)
+function wtStrictOn_() {
+  if (__WT_STRICT_REQ) return true;
+  try { return (PropertiesService.getScriptProperties().getProperty('WT_STRICT') || 'off').toLowerCase() === 'on'; }
+  catch (e) { return false; }
+}
+var WT_STRICT_TIMEOUT_SEC = 20;
+function wtStrictNote_(kind, msg) {
+  try { wtCount_(kind); if (msg) PropertiesService.getScriptProperties().setProperty('WT_STRICT_LAST_ERR', String(msg).slice(0, 200)); } catch (e) {}
+}
+// 戻り: 'applied' | 'already_processed' (=DBに入った) / 'stale_version' | 'deleted' (=DBがより新しい・この保存は棄却)
+//       それ以外(timeout/http/例外)は Error('db_unavailable: ...') を投げる
+function wtStrictUpsert_(doc) {
+  var r = wtSend_('wt_upsert_event', { p_operation_id: Utilities.getUuid(), p_doc: doc }, WT_STRICT_TIMEOUT_SEC);
+  if (r === 'applied' || r === 'already_processed') { wtStrictNote_('strict_ok'); return r; }
+  if (r === 'stale_version' || r === 'deleted') { wtStrictNote_('strict_stale'); Logger.log('[wt-strict] 棄却 ' + doc.id + ' v' + doc.version + ': ' + r); return r; }
+  wtStrictNote_('strict_fail', 'upsert ' + doc.id + ': ' + r);
+  throw new Error('db_unavailable: ' + r);
+}
+function wtStrictDelete_(id, version) {
+  var r = wtSend_('wt_delete_event', { p_operation_id: Utilities.getUuid(), p_id: String(id), p_version: Number(version) || 1 }, WT_STRICT_TIMEOUT_SEC);
+  if (r === 'delete_applied' || r === 'already_processed') { wtStrictNote_('strict_ok'); return r; }
+  if (r === 'stale_version' || r === 'deleted') { wtStrictNote_('strict_stale'); Logger.log('[wt-strict] 削除棄却 ' + id + ' v' + version + ': ' + r); return r; }
+  wtStrictNote_('strict_fail', 'delete ' + id + ': ' + r);
+  throw new Error('db_unavailable: ' + r);
 }
