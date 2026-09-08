@@ -2897,7 +2897,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.687</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.688</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -3112,7 +3112,7 @@
       </div>
       <div class="field-row">
         <div class="field"><label>営業担当</label><input id="rs-salesrep" readonly></div>
-        <div class="field"><label>連絡者(自社)</label><input id="rs-contact" readonly></div>
+        <div class="field"><label>連絡者(自社) <span style="color:var(--mute);font-weight:400;font-size:11px">(アポを取る人・全員共有)</span></label><select id="rs-contact"></select></div>
       </div>
       <!-- 👤 作業担当者ピッカーは廃止(v1.30.128): 担当はチップのダブルクリック(クイックポップ)で設定する。詳細シートからは外した。 -->
       <div class="field">
@@ -3128,7 +3128,7 @@
         <div id="rs-chat" class="rchat"></div>
       </div>
       <div class="field" style="font-size:11px;color:var(--muted)">
-        ⚠ Drive同期由来の物件は <strong>営業ステータス・進行ステータス・対応予定日時・メモ</strong> のみ書戻し可能。他項目は表示のみ。
+        ⚠ Drive同期由来の物件は <strong>営業ステータス・進行ステータス・対応予定日時・メモ</strong> のみ書戻し可能。他項目は表示のみ。<br>📞 連絡者(自社)はカレンダー内で全員共有(台帳の連絡者列は変わりません)。
       </div>
       <!-- ✅ 最終確認の✓完了ボタンと同じ: 1クリックで完了+完了日を記録して台帳へ即書戻し(南部/大村要望)v1.30.349 -->
       <div class="rd-archive-section">
@@ -7406,6 +7406,9 @@ function applyRepairOverridesToState_(){
       r.worker = e.worker||"";
       r.commute = commuteStillValid_(e, r.responseDate) ? (e.commute||"") : "";
       if(e.vendor) r.responseContractor = e.vendor;
+      // 📞 連絡者(自社)の上書き(v1.30.688・山田「要対応 連絡者(自社)プルダウンで選べるように」)。空=台帳値に戻す
+      if(e.contact) r.contactPerson = e.contact;
+      else if(r.contactPersonLedger !== undefined) r.contactPerson = r.contactPersonLedger;
     }
   });
 }
@@ -7416,7 +7419,7 @@ async function setRepairVendorOverride_(repairId, vendor){
   const __keepW = __curOv.at ? (__curOv.worker||'') : (__rec ? (__rec.worker||'') : '');
   const __keepCm = __curOv.commute || '';
   const __keepFD = __curOv.forDate;   // 🚗 v1.30.654: 直行の日付印を落とさない(落とすと旧エントリ扱いで直行が復活する)
-  const stamp = ()=>({ worker: __keepW, commute: __keepCm, vendor: (vendor||'').trim(), forDate: __keepFD, at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
+  const stamp = ()=>({ worker: __keepW, commute: __keepCm, vendor: (vendor||'').trim(), forDate: __keepFD, contact: __curOv.contact||'', at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
   let map = loadRepairOverrides_(); map[repairId] = stamp(); saveRepairOverrides_(map);
   const s = loadGasSettings();
   if(s.url && s.token){
@@ -7472,7 +7475,7 @@ async function setRepairWorkerOverride_(repairId, worker){
   const __keepCm = __ov0.commute || '';
   const __keepV = __ov0.vendor || '';
   const __keepFD2 = __ov0.forDate;   // 🚗 v1.30.654: 同上(この関数の既存エントリは __ov0)
-  const stamp = ()=>({ worker: worker||'', commute: __keepCm, vendor: __keepV, forDate: __keepFD2, at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
+  const stamp = ()=>({ worker: worker||'', commute: __keepCm, vendor: __keepV, forDate: __keepFD2, contact: __ov0.contact||'', at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
   let map = loadRepairOverrides_();
   map[repairId] = stamp();                 // 楽観的にローカル即更新
   saveRepairOverrides_(map);
@@ -7506,7 +7509,7 @@ async function setRepairCommuteOverride_(repairId, commute){
   const __keepW = __curOv.at ? (__curOv.worker||'') : (__rec ? (__rec.worker||'') : '');
   const __keepV = __curOv.vendor || '';
   const __forDate = (__rec && __rec.responseDate) || '';   // 🚗 v1.30.654: この直行は「この日」のもの
-  const stamp = ()=>({ worker: __keepW, commute: commute||'', vendor: __keepV, forDate: __forDate, at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
+  const stamp = ()=>({ worker: __keepW, commute: commute||'', vendor: __keepV, forDate: __forDate, contact: __curOv.contact||'', at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
   let map = loadRepairOverrides_();
   map[repairId] = stamp();
   saveRepairOverrides_(map);
@@ -7523,6 +7526,29 @@ async function setRepairCommuteOverride_(repairId, commute){
           saveRepairOverrides_(map);
         }
       }
+    }catch(_){}
+  }
+  await pushRepairOverridesMap_(map);
+  return map;
+}
+// 📞 連絡者(自社)の上書き(全員共有・v1.30.688)。台帳(見積アプリ)は触らず repair_overrides.contact に置く。
+//   台帳の「連絡者」列は 立会担当 or 見積作成者(salesPerson)で、修繕では「誰がアポを取るか」と一致しないことが多い。
+//   contact="" で解除(台帳値に戻る)。worker/commute/vendor/forDate は保持。
+async function setRepairContactOverride_(repairId, contact){
+  const __curOv = loadRepairOverrides_()[repairId] || {};
+  const __rec = (state.repairs||[]).find(x=>x.id===repairId);
+  const __keepW = __curOv.at ? (__curOv.worker||'') : (__rec ? (__rec.worker||'') : '');
+  const stamp = ()=>({ worker: __keepW, commute: __curOv.commute||'', vendor: __curOv.vendor||'', forDate: __curOv.forDate, contact: (contact||'').trim(), at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
+  let map = loadRepairOverrides_(); map[repairId] = stamp(); saveRepairOverrides_(map);
+  try{ if(typeof logChange_==='function'){
+    const __lbl=(__rec && (__rec.name||__rec.bukken)) ? `${__rec.name||__rec.bukken}${__rec.room?' '+__rec.room:''}` : ('修繕 '+String(repairId).slice(0,24));
+    logChange_('修繕','変更', __lbl, '連絡者='+((contact||'').trim()||'台帳値')); } }catch(_){}
+  const s = loadGasSettings();
+  if(s.url && s.token){
+    try{ const url = `${s.url}?action=get-shared-config&key=repair_overrides&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
+      const res = await fetch(url, {method:'GET', redirect:'follow'});
+      if(res.ok){ const d=await res.json(); let raw=d.value; if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(_){ raw=null; } }
+        if(raw && raw.overrides && typeof raw.overrides==='object'){ map=mergeRepairOverrideMaps_(raw.overrides, loadRepairOverrides_()); map[repairId]=stamp(); saveRepairOverrides_(map); } }
     }catch(_){}
   }
   await pushRepairOverridesMap_(map);
@@ -14580,6 +14606,7 @@ function extractRepairs(properties){
       requestDescFull: p.requestDetailFull || "",
       salesRep: p.atenaTantou || "",
       contactPerson: p.salesPerson || "",          // 連絡者(自社担当)
+      contactPersonLedger: p.salesPerson || "",    // 📞 台帳側の値(repair_overrides.contact を解除した時に戻す先・v1.30.688)
       amountExTax: (p.tmRepair && p.tmRepair.amountExTax) || p.amountExTax || 0,
       completeDate: normalizeDate(p.completeDate) || prev?.completeDate || "",   // 🏁 完了日(v1.30.348・台帳と同期)
       // ⚡ 簡易見積(v1.30.419・project_kani_mitsumori_calendar)。kaniMitsu=台帳/売上で明細合計より優先される確定金額
@@ -25309,7 +25336,22 @@ function openRepairSheet(id){
     document.getElementById("rs-fulldesc").value = r.requestDescFull;
   }else{ fullWrap.style.display = "none"; }
   document.getElementById("rs-salesrep").value = r.salesRep || "";
-  document.getElementById("rs-contact").value  = r.contactPerson || "";
+  { // 📞 連絡者(自社)プルダウン(v1.30.688): スタッフ名簿 + 台帳値(名簿外の名前でも選べる) + 空(未設定)
+    const sel = document.getElementById("rs-contact");
+    const cur = (r.contactPerson||"").trim();
+    const ledger = (r.contactPersonLedger!==undefined ? r.contactPersonLedger : cur) || "";
+    const names = [];
+    const push = n => { n=(n||"").trim(); if(n && !names.includes(n)) names.push(n); };
+    (typeof STAFF!=='undefined' ? STAFF : []).forEach(push);
+    push(ledger); push(cur);
+    sel.innerHTML = `<option value="">（未設定）</option>` + names.map(n=>{
+      const tag = (n===ledger && ledger) ? "　※台帳の値" : "";
+      return `<option value="${escapeHtml(n)}">${escapeHtml(n)}${tag}</option>`;
+    }).join("");
+    sel.value = cur;
+    if(sel.value !== cur) sel.value = "";
+    sel.dataset.orig = cur;
+  }
   // 💬 進捗チャット(全員共有・creatorMemoの置き換え v1.30.184)
   const __chatEl = document.getElementById("rs-chat");
   if(__chatEl){
@@ -25618,6 +25660,18 @@ async function saveRepairSheet(){
   r.responseTime = newRespTime;
   r.completeDate = newCompleteDate;
   // 作業担当者(r.worker)は詳細シートでは触らない(v1.30.128・ピッカー廃止)。クイックポップ/overlayが管理。
+  // 📞 連絡者(自社)(v1.30.688): 変わっていたら repair_overrides.contact へ(全員共有・台帳は触らない)。台帳値と同じなら解除。
+  try{
+    const __cSel = document.getElementById("rs-contact");
+    if(__cSel){
+      const __newC = (__cSel.value||"").trim(), __oldC = (__cSel.dataset.orig||"").trim();
+      if(__newC !== __oldC){
+        const __ledger = (r.contactPersonLedger!==undefined ? r.contactPersonLedger : "") || "";
+        r.contactPerson = __newC || __ledger;
+        setRepairContactOverride_(r.id, (__newC === __ledger) ? "" : __newC).catch(e=>console.warn('[連絡者] 共有失敗', e));
+      }
+    }
+  }catch(_){}
   saveState();
   // Drive書戻し (差分があるフィールドだけ送る)
   if(r.extDriveFileId){
