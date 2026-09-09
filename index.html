@@ -2907,7 +2907,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.703</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.704</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -7772,10 +7772,24 @@ async function pushSanpaiMap_(map){
   try{ await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'sanpai',value:JSON.stringify(payload),token:s.token,savedBy:'calendar-app'})}); }catch(e){ console.warn('[sanpai] push失敗:', e.message); }
 }
 //   entry=null で削除(トゥームストーン=他端末でも消える)
+// 「登録: 9/8 15:20 最上登生」(+編集があれば「更新: …」)。旧データ(createdAt無し)は at を登録扱い
+function sanpaiRecTip_(e){
+  if(!e) return '';
+  const nm = x => (typeof getStaffDisplayName==='function') ? getStaffDisplayName(x||'') : (x||'');
+  const cAt = e.createdAt || e.at, cBy = e.createdAt ? e.createdBy : e.setBy;
+  let t = cAt ? `\n登録: ${fmtLocalMDHM_(cAt)}${cBy?' '+nm(cBy):''}` : '';
+  if(e.createdAt && e.at && e.at !== e.createdAt) t += `\n更新: ${fmtLocalMDHM_(e.at)}${e.setBy?' '+nm(e.setBy):''}`;
+  return t;
+}
 async function setSanpai_(date, entry){
   if(!date) return;
-  const stamp=()=> entry ? Object.assign({}, entry, { at:new Date().toISOString(), setBy:(typeof getMyself==='function'?getMyself():'')||'' })
-                         : { deleted:true, at:new Date().toISOString(), setBy:(typeof getMyself==='function'?getMyself():'')||'' };
+  // 📝 v1.30.704(山田「いつ回収依頼したかの記録も出せる?」): 初回登録の日時/登録者(createdAt/createdBy)は編集しても引き継ぐ。at/setBy は最終更新
+  const __prev = loadSanpai_()[date];
+  const __me = (typeof getMyself==='function'?getMyself():'')||'';
+  const __now = new Date().toISOString();
+  const __created = (__prev && !__prev.deleted && __prev.createdAt) ? { createdAt:__prev.createdAt, createdBy:__prev.createdBy||'' } : { createdAt:__now, createdBy:__me };
+  const stamp=()=> entry ? Object.assign({}, entry, __created, { at:__now, setBy:__me })
+                         : { deleted:true, at:__now, setBy:__me };
   let map=loadSanpai_(); map[date]=stamp(); saveSanpai_(map);
   const s=loadGasSettings();
   if(s.url&&s.token){
@@ -16338,7 +16352,7 @@ function renderHeaderDuty_(){
       const ds = (d && !isNaN(d)) ? `${d.getMonth()+1}/${d.getDate()}(${DOW_JA[d.getDay()]})` : nx.date;
       const __sl = (typeof sanpaiSlotLabel_==='function') ? sanpaiSlotLabel_(nx.slot) : '';   // 🕐 v1.30.651
       label = `🗑産廃回収 ${ds}<span class="sp-slot">${__sl}</span>${nx.plan?'<span class="sp-plan">予定</span>':''}${nx.kago?`<span class="sp-kago">籠${nx.kago}台</span>`:''}${nx.denkyu?' 💡':''}`;
-      tip = `次回の産廃回収\n回収日: ${nx.date} ${__sl}${nx.plan?'(予定=まだ未確定)':'(確定)'}\n依頼者: ${nx.by||'(未設定)'}\n籠数: ${nx.kago?nx.kago+'台':'-'}${nx.denkyu?'\n💡 電球回収あり':''}\n\nクリックで編集`;
+      tip = `次回の産廃回収\n回収日: ${nx.date} ${__sl}${nx.plan?'(予定=まだ未確定)':'(確定)'}\n依頼者: ${nx.by||'(未設定)'}\n籠数: ${nx.kago?nx.kago+'台':'-'}${nx.denkyu?'\n💡 電球回収あり':''}${(typeof sanpaiRecTip_==='function')?sanpaiRecTip_(nx):''}\n\nクリックで編集`;
       cls = '';
     }else{
       label = '🗑産廃回収 次回未定';
@@ -16804,7 +16818,7 @@ function renderCalendar(){
       if(__sp){
         const __sl = sanpaiSlotLabel_(__sp.slot);
         const __by = (typeof getStaffDisplayName==='function') ? getStaffDisplayName(__sp.by||'') : (__sp.by||'');
-        const __tip = `🗑 産廃(ごみ)回収 ${__sl}${__sp.plan?'（予定=まだ未確定）':'（確定）'}\n籠${__sp.kago||'-'}台${__sp.denkyu?'\n💡 電球回収あり':''}\n依頼者: ${__by||'(未設定)'}\n\nクリックで編集`;
+        const __tip = `🗑 産廃(ごみ)回収 ${__sl}${__sp.plan?'（予定=まだ未確定）':'（確定）'}\n籠${__sp.kago||'-'}台${__sp.denkyu?'\n💡 電球回収あり':''}\n依頼者: ${__by||'(未設定)'}${(typeof sanpaiRecTip_==='function')?sanpaiRecTip_(__sp):''}\n\nクリックで編集`;
         inner += `<span class="sanpai-badge${__sp.plan?' plan':''}" data-sanpai-date="${escapeHtml(c.contextDate)}" title="${escapeHtml(__tip)}">`
           + `🗑ごみ回収<span class="spb-slot">${escapeHtml(__sl)}</span>`
           + (__sp.plan?'<span class="spb-plan">予定</span>':'')
