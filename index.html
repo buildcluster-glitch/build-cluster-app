@@ -2897,7 +2897,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.695</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.696</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -9581,6 +9581,24 @@ function renderDashboard_(){
   }
   const pct=(d,t)=>t?Math.round(d/t*100):0;
   const pctBg=v=>v===100?"#16a34a":v>=50?"#3b82f6":"#94a3b8";
+  // ⚡ 事前の状態(v1.30.693/696): 直近の事前訪問マップと共有の事前完了マップ。原状回復行と事前チャンス帯の両方で使う
+  const __jzToday = fmtDate(new Date());
+  const __jzVisits = new Map();   // 物件キー → 直近の事前訪問 {date, staff}
+  try{ (state.events||[]).forEach(e=>{
+    if(!e || !isJizenEvent_(e) || !e.date || e.date > __jzToday) return;
+    const key = jizenMatchKey_(String(e.title||'').split(/\r?\n/)[0]); if(!key) return;
+    const cur = __jzVisits.get(key);
+    if(!cur || e.date > cur.date) __jzVisits.set(key, { date:e.date, staff:(e.staff||'').split(',')[0].trim() });
+  }); }catch(_){}
+  const __jzMap = (typeof loadJizenDone_==='function') ? loadJizenDone_() : {};
+  const __jzDot_ = (it)=>{   // ⚫ 左端の状態印(山田「こっちにも左側に⚫の表示と事前完了ボタン」v1.30.696)
+    if(it.jzDone) return `<span style="font-size:12px;white-space:nowrap" title="事前完了">✅</span>`;
+    const v = __jzVisits.get(jizenMatchKey_(`${it.name||''} ${it.room||''}`));
+    const vd = v ? parseDate(v.date) : null;
+    return v ? `<span style="font-size:12px;white-space:nowrap" title="事前に行った: ${vd&&!isNaN(vd)?`${vd.getMonth()+1}/${vd.getDate()}`:v.date}${v.staff?' '+escapeHtml(v.staff):''}（残作業あり）">🟡</span>`
+             : `<span style="font-size:12px;white-space:nowrap" title="事前 未訪問">🔴</span>`;
+  };
+  const __jzDoneBtn_ = (it)=> it.jzDone ? '' : `<button data-jz-done="${escapeHtml(it.jzKey)}" style="border:1px solid #6d28d9;background:#7c3aed;color:#fff;border-radius:6px;font-size:10px;font-weight:700;padding:1px 7px;cursor:pointer;white-space:nowrap" title="事前は終わり／不要（全員共有・取消は⚡帯の✅一覧から）">事前完了</button>`;
   const md=d=>d?`${d.getMonth()+1}/${d.getDate()}`:"";
   const tile=(icon,label,big,sub,color)=>`<div style="flex:1 1 130px;min-width:0;border:1px solid var(--border);border-radius:10px;padding:8px 10px;background:#fff">
     <div style="font-size:11px;color:var(--muted);white-space:nowrap">${icon} ${label}</div>
@@ -9632,6 +9650,7 @@ function renderDashboard_(){
       const __w = it.win;
       const winHtml = __chancePill_(__w, it.pr, md);
       return `<div class="dash-row" data-dr-resto="${escapeHtml(it.id)}" style="display:flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid #bfdbfe;border-left:4px solid #3b82f6;background:#fff;border-radius:8px;margin-bottom:4px;cursor:pointer;flex-wrap:wrap">
+        ${__jzDot_(it)}
         <span style="flex:1 1 150px;min-width:120px;font-size:12px;font-weight:600;word-break:break-word">${escapeHtml(it.name)}${it.room?` <span style="font-weight:400">${escapeHtml(it.room)}</span>`:''}</span>
         ${odHtml}
         ${winHtml}
@@ -9640,6 +9659,7 @@ function renderDashboard_(){
         ${bar}
         ${fdHtml}
         ${miHtml}
+        ${__jzDoneBtn_(it)}
       </div>`;
     }).join('');
     return head+rows;
@@ -9677,15 +9697,6 @@ function renderDashboard_(){
   chanceItems.sort((a,b)=> a.it.win.remain - b.it.win.remain);   // 締切が近い順
   // ⚡ v1.30.693(山田「どの現場で事前に行けばいいか判断しづらい」): 帯を「行き先リスト」に。
   //   状態(🔴未訪問/🟡残あり・また行く)・残作業の名前・前回いつ誰が行ったか(事前カードから)・[事前完了][また行く]ボタン。
-  const __jzToday = fmtDate(new Date());
-  const __jzVisits = new Map();   // 物件キー → 直近の事前訪問 {date, staff}
-  try{ (state.events||[]).forEach(e=>{
-    if(!e || !isJizenEvent_(e) || !e.date || e.date > __jzToday) return;
-    const key = jizenMatchKey_(String(e.title||'').split(/\r?\n/)[0]); if(!key) return;
-    const cur = __jzVisits.get(key);
-    if(!cur || e.date > cur.date) __jzVisits.set(key, { date:e.date, staff:(e.staff||'').split(',')[0].trim() });
-  }); }catch(_){}
-  const __jzMap = (typeof loadJizenDone_==='function') ? loadJizenDone_() : {};
   const chanceRows = chanceItems.map(({it,k})=>{
     const w = it.win;
     const urgent = w.remain<=2;
@@ -9728,24 +9739,24 @@ function renderDashboard_(){
       const tip = manual ? `${jd.by||''} ${String(jd.at||'').slice(5,16).replace('T',' ')} が事前完了にしました（クリックで取消）` : '自社工事タスクが全部✓なので自動で完了扱い';
       return `<button ${manual?`data-jz-undo="${escapeHtml(it.jzKey)}"`:''} style="border:1px solid #ddd6fe;background:#fff;color:#6d28d9;border-radius:6px;font-size:10.5px;padding:1px 7px;cursor:${manual?'pointer':'default'};white-space:nowrap" title="${escapeHtml(tip)}">${escapeHtml(it.name)}${it.room?' '+escapeHtml(it.room):''}${manual&&jd.by?` <span style="color:#94a3b8">${escapeHtml(surnameOf_(jd.by))}</span>`:' <span style="color:#94a3b8">全✓</span>'}</button>`;
     }).join('')}</div>` : '';
-  const chanceBox = !showResto ? '' : `<div style="border:2px solid #7c3aed;border-radius:12px;background:#f5f3ff;padding:0 8px 6px;margin-bottom:14px">
-      <div style="background:#7c3aed;color:#fff;font-size:13.5px;font-weight:800;padding:6px 12px;border-radius:0 0 9px 9px;margin:0 -8px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">⚡ 事前チャンス <span style="font-size:11px;font-weight:600;opacity:.9">行き先リスト ${chanceItems.length}件 ／ 🔴未訪問 🟡残あり ／ 締切が近い順</span></div>
+  const chanceBox = !showResto ? '' : `<div style="border:2px solid #7c3aed;border-radius:12px;background:#f5f3ff;padding:0 8px 6px;margin-bottom:14px;overflow:hidden">
+      <div style="background:#7c3aed;color:#fff;font-size:13.5px;font-weight:800;padding:6px 12px;border-radius:10px 10px 9px 9px;margin:0 -8px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">⚡ 事前チャンス <span style="font-size:11px;font-weight:600;opacity:.9">行き先リスト ${chanceItems.length}件 ／ 🔴未訪問 🟡残あり ／ 締切が近い順</span></div>
       ${chanceRows || '<div style="color:#6d28d9;font-size:12px;padding:4px 4px 6px">いま行く現場はありません（業者の着工日が決まると、発注書の発行日からその前日までがここに出ます）</div>'}
       ${chanceDoneHtml}
     </div>`;
   // 🏠と🔧を「色の違う箱」で明確に分ける(v1.30.622・山田「区別がわからない」):
   //   見出しはベタ塗りバナー+件数、セクション全体を淡色パネルで包み、行にも左帯(青/桃)を付ける
   body.innerHTML = filterBar + tiles + chanceBox
-    + (showResto ? `<div style="border:2px solid #3b82f6;border-radius:12px;background:#eff6ff;padding:0 8px 6px;margin-bottom:14px">
-         <div style="background:#3b82f6;color:#fff;font-size:13.5px;font-weight:800;padding:6px 12px;border-radius:0 0 9px 9px;margin:0 -8px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">🏠 原状回復 <span style="font-size:11px;font-weight:700;background:rgba(255,255,255,.25);padding:1px 8px;border-radius:8px">${tot.restoN}件</span><span style="font-size:10px;font-weight:400;opacity:.85">退去後の空室工事</span>
+    + (showResto ? `<div style="border:2px solid #3b82f6;border-radius:12px;background:#eff6ff;padding:0 8px 6px;margin-bottom:14px;overflow:hidden">
+         <div style="background:#3b82f6;color:#fff;font-size:13.5px;font-weight:800;padding:6px 12px;border-radius:10px 10px 9px 9px;margin:0 -8px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">🏠 原状回復 <span style="font-size:11px;font-weight:700;background:rgba(255,255,255,.25);padding:1px 8px;border-radius:8px">${tot.restoN}件</span><span style="font-size:10px;font-weight:400;opacity:.85">退去後の空室工事</span>
            <span style="margin-left:auto;display:flex;gap:3px">
              <button data-drs="final" style="border:0;border-radius:9px;font-size:10px;font-weight:700;padding:2px 9px;cursor:pointer;${__dashRestoSort!=='order'?'background:#fff;color:#1d4ed8':'background:rgba(255,255,255,.25);color:#fff'}">最確順</button>
              <button data-drs="order" style="border:0;border-radius:9px;font-size:10px;font-weight:700;padding:2px 9px;cursor:pointer;${__dashRestoSort==='order'?'background:#fff;color:#1d4ed8':'background:rgba(255,255,255,.25);color:#fff'}">新規発注順</button>
            </span></div>
          ${restoHtml}
        </div>` : '')
-    + (showRep ? `<div style="border:2px solid #ec4899;border-radius:12px;background:#fdf2f8;padding:0 8px 6px">
-         <div style="background:#ec4899;color:#fff;font-size:13.5px;font-weight:800;padding:6px 12px;border-radius:0 0 9px 9px;margin:0 -8px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">🔧 修繕 <span style="font-size:11px;font-weight:700;background:rgba(255,255,255,.25);padding:1px 8px;border-radius:8px">${tot.repN}件</span><span style="font-size:10px;font-weight:400;opacity:.85">入居中の修理対応</span>
+    + (showRep ? `<div style="border:2px solid #ec4899;border-radius:12px;background:#fdf2f8;padding:0 8px 6px;overflow:hidden">
+         <div style="background:#ec4899;color:#fff;font-size:13.5px;font-weight:800;padding:6px 12px;border-radius:10px 10px 9px 9px;margin:0 -8px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">🔧 修繕 <span style="font-size:11px;font-weight:700;background:rgba(255,255,255,.25);padding:1px 8px;border-radius:8px">${tot.repN}件</span><span style="font-size:10px;font-weight:400;opacity:.85">入居中の修理対応</span>
            <span style="margin-left:auto;display:flex;gap:3px">
              <button data-dps="apo" style="border:0;border-radius:9px;font-size:10px;font-weight:700;padding:2px 9px;cursor:pointer;${__dashRepSort!=='req'?'background:#fff;color:#be185d':'background:rgba(255,255,255,.25);color:#fff'}">アポ順</button>
              <button data-dps="req" style="border:0;border-radius:9px;font-size:10px;font-weight:700;padding:2px 9px;cursor:pointer;${__dashRepSort==='req'?'background:#fff;color:#be185d':'background:rgba(255,255,255,.25);color:#fff'}">新規依頼順</button>
