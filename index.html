@@ -2907,7 +2907,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.700</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.701</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -26309,15 +26309,7 @@ function renderRestoList(){
   listEl.querySelectorAll(".resto-card").forEach(c=>{
     c.onclick = ()=>{ restoDetailId = c.dataset.id; restoTaskStatusFilter = null; renderRestoView(); };
   });
-  listEl.querySelectorAll("[data-jz-card]").forEach(b=>{   // ⚡ v1.30.700
-    b.onclick = (e)=>{ e.stopPropagation(); const id=b.dataset.jzCard;
-      const p=(state.restorations||[]).find(r=>r.id===id); if(!p) return;
-      const je=jizenDoneEntry_(p); const nowDone=!!(je && je.state==='done');
-      setJizenDone_(jizenKeyOfResto_(p), nowDone?'':'done', '').catch(()=>{});
-      if(typeof showAutoSyncToast==='function') showAutoSyncToast(nowDone ? '⚡ 事前完了を取り消しました' : '✅ 事前完了にしました（全員共有）');
-      renderRestoList();
-    };
-  });
+  // (v1.30.701: カード上の事前完了チップは撤去。押すのは詳細ダイアログ/📊全体進捗)
 }
 
 function renderRestoCard(p){
@@ -26420,16 +26412,15 @@ function renderRestoCard(p){
   // ⚡ 事前完了(v1.30.700): 全員共有 jizen_done。カード上でも押せる(木村「原状回復タブで進捗確認することが多い」)
   const __jzE = (typeof jizenDoneEntry_==='function') ? jizenDoneEntry_(p) : null;
   const __jz = !!(__jzE && __jzE.state==='done');
-  const __jzTip = __jz ? `${__jzE.by||''} ${String(__jzE.at||'').slice(5,16).replace('T',' ')} が事前完了にしました（クリックで取消）` : '事前補修は終わり／不要（全員共有・📊の行き先リストから外れる）';
-  const jzBtnHtml = __archived ? '' : `<button type="button" class="rc-jz-btn" data-jz-card="${escapeHtml(p.id)}" title="${escapeHtml(__jzTip)}">${__jz?'✅ 事前完了':'⚡ 事前完了'}</button>`;
+  // v1.30.701(山田「終わってない物件まで⚡事前完了が常に出ていると分かりづらい」): カード上のチップは撤去。押すのはダイアログ/📊だけ。完了の見た目(紫枠+印)は残す
+  const jzBtnHtml = '';
   return `
     <div class="resto-card st-${st}${__archived?' resto-done':''}${__jz?' jz-done':''}" data-id="${p.id}">
-      <div class="rc-name">${__archived?'<span class="rc-done-badge">✓完了</span>':''}${__jz?'<span class="rc-jz-badge" title="事前完了">⚡事前完了</span>':''}${escapeHtml(p.name||"(物件名なし)")} <span class="rc-room">${roomStr}</span></div>
+      <div class="rc-name">${__archived?'<span class="rc-done-badge">✓完了</span>':''}${__jz?`<span class="rc-jz-badge" title="${escapeHtml((__jzE.by||'')+' '+String(__jzE.at||'').slice(5,16).replace('T',' '))} が事前完了にしました">⚡事前完了</span>`:''}${escapeHtml(p.name||"(物件名なし)")} <span class="rc-room">${roomStr}</span></div>
       <div class="rc-row">
         ${estBadgeHtml}
         ${volBadgeHtml}
         ${extraBadgesHtml}
-        ${jzBtnHtml}
         <span class="rc-progress-label">${progressLabel}</span>
         <div class="rc-bar"><div class="rc-bar-inner" style="width:${pr.pct}%"></div></div>
         ${finalStr?`<span class="rc-final" title="最終確認日">最終確認 ${finalStr}</span>`:""}
