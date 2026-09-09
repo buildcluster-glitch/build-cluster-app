@@ -2907,7 +2907,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.701</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.702</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -26415,7 +26415,7 @@ function renderRestoCard(p){
   // v1.30.701(山田「終わってない物件まで⚡事前完了が常に出ていると分かりづらい」): カード上のチップは撤去。押すのはダイアログ/📊だけ。完了の見た目(紫枠+印)は残す
   const jzBtnHtml = '';
   return `
-    <div class="resto-card st-${st}${__archived?' resto-done':''}${__jz?' jz-done':''}" data-id="${p.id}">
+    <div class="resto-card st-${st}${__archived?' resto-done':''}${__jz?' jz-done':''}" data-id="${p.id}"${__jz?` title="⚡ ${escapeHtml((__jzE.by||'(不明)')+' が '+String(__jzE.at||'').slice(5,16).replace('T',' ')+' に事前完了にしました')}"`:''}>
       <div class="rc-name">${__archived?'<span class="rc-done-badge">✓完了</span>':''}${__jz?`<span class="rc-jz-badge" title="${escapeHtml((__jzE.by||'')+' '+String(__jzE.at||'').slice(5,16).replace('T',' '))} が事前完了にしました">⚡事前完了</span>`:''}${escapeHtml(p.name||"(物件名なし)")} <span class="rc-room">${roomStr}</span></div>
       <div class="rc-row">
         ${estBadgeHtml}
