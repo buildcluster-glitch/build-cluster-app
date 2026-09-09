@@ -2907,7 +2907,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.706</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.707</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -15738,9 +15738,22 @@ const REPAIR_RESCHEDULE_REASONS = ["ドタキャン(お客様都合)","追加対
 //   従来は「Drive書き戻しに失敗」と断定してローカルを元に戻すだけ→『失敗と言ったのに書けている』を利用者に見せていた。
 //   → 文言を事実どおり(応答が返らなかった・保存されている場合がある)にし、**3秒後と12秒後に台帳を静かに再読み**して
 //     実際の状態に画面を揃える。呼び出し側の「元に戻す/確認する」流れはそのまま(再同期が真値で上書きする)。
+// 🧾 v1.30.707(台帳DB「task-* のDB先行=金曜」の前提): 見積GASの ok:false 応答を Error にする共通口。
+//   ver85/87/90 の型: { ok:false, dbError:'timeout|http5xx…', message:'データベースへの保存に失敗しました。まだ保存されていません…' }
+//   = **サーバーは何も書いていない(未保存保証)** → 「もう一度」でよい。応答が落ちた404型(実行済みかもしれない)とは別扱い。
+function gasWriteError_(data, fallback){
+  const e = new Error((data && (data.message || data.error)) || fallback || 'GAS returned ok:false');
+  if(data && (data.dbError || data.code==='db_unavailable' || /まだ保存されていません|データベースへの保存に失敗/.test(String(data.message||'')))) e.dbUnsaved = true;
+  if(data && /maintenance|メンテナンス/i.test(String(data.error||data.message||''))) e.maintenance = true;
+  return e;
+}
 function ledgerWriteFailNotice_(what, err){
   const msg = String((err && err.message) || err || '');
-  const isMaint = /maintenance|メンテナンス/i.test(msg);
+  const isMaint = (err && err.maintenance) || /maintenance|メンテナンス/i.test(msg);
+  const isUnsaved = (err && err.dbUnsaved) || /dbError|db_unavailable|まだ保存されていません|データベースへの保存に失敗/.test(msg);
+  if(isUnsaved){   // v1.30.707: DBに書けなかった=未保存が保証されている→再同期は要らない。「もう一度」だけ
+    return `${what}: データベースに保存できませんでした。**まだ保存されていません。**\nもう一度お試しください(入力は消えていません)。`.replace(/\*\*/g,'');
+  }
   const text = isMaint
     ? `${what}: いまメンテナンス中で保存できませんでした。\n数分後にもう一度お試しください(入力は消えていません)。`
     : `${what}: サーバーからの応答が返りませんでした。\n※実際には保存されている場合があります。数秒後に自動で確認して画面を揃えます。\n(${msg.slice(0,120)})`;
@@ -15766,7 +15779,7 @@ async function pushAppointmentToGAS(driveFileId, fields){
       body: JSON.stringify(body),
     });
     const data = await res.json();
-    if(data.error || data.ok === false) throw new Error(data.error || "GAS returned ok:false");
+    if(data.error || data.ok === false) throw gasWriteError_(data, "GAS returned ok:false");   // v1.30.707
     console.log("[appointment] updated:", data.changed, data.after);
     hideSyncIndicator("success", "アポ更新完了");
     return data;
@@ -15792,7 +15805,7 @@ async function pushFinalDateToGAS(driveFileId, finalDate){
       })
     });
     const data = await res.json();
-    if(!data.ok && data.error){ throw new Error(data.error); }
+    if(data.ok === false || data.error){ throw gasWriteError_(data, "GAS returned ok:false"); }   // v1.30.707
     console.log("[task-update-final-date] result:", data);
     hideSyncIndicator("success", `書き戻し完了 ${finalDate||"(クリア)"}`);
     return data;
@@ -15825,7 +15838,7 @@ async function pushExtraWorkToGAS_(driveFileId, payload){
         e.gasNotReady = true;
         throw e;
       }
-      throw new Error(data.error || "GAS returned ok:false");
+      throw gasWriteError_(data, "GAS returned ok:false");   // v1.30.707
     }
     console.log("[task-add-extra-work] result:", data);
     hideSyncIndicator("success", data.duplicate ? "登録済みでした(重複スキップ)" : "台帳に登録完了");
@@ -27508,7 +27521,7 @@ async function submitExtraWork_(){
       if(!data) throw new Error("サーバー応答が不正です");
       if(data.ok !== true){
         if(/unknown kind/i.test(data.error||"")) throw new Error("GAS側が未対応です(master_syncの再デプロイ待ち)");
-        throw new Error(data.error || "GAS returned ok:false");
+        throw gasWriteError_(data, "GAS returned ok:false");   // v1.30.707
       }
       const p2 = (state.restorations||[]).find(x=>x.id===restoDetailId) || p;
       const t = (p2.tasks||[]).find(x=>x.extraId===__xwEditId);
@@ -27646,7 +27659,7 @@ async function postExtraWorkPhotos_(p, workName, photos, extraId){
         body: JSON.stringify({ action:"task-update-extra-work", token:s.token, driveFileId:p.extDriveFileId, extraId:__xwEditId, remove:true,
           editedBy:(typeof getMyself==='function'?getMyself():"")||"" })});   // 控えtxtの🗑削除行に操作者名を残す(GASはbody.editedBy対応済)
       const data = await res.json().catch(()=>null);
-      if(!data || data.ok !== true) throw new Error((data && data.error) || "削除に失敗しました");
+      if(!data || data.ok !== true) throw gasWriteError_(data, "削除に失敗しました");   // v1.30.707
       p.tasks = (p.tasks||[]).filter(t=>t.extraId !== __xwEditId);   // ローカル即除去(24h保護の対象からも外れる)
       saveState();
       closeExtraWorkModal_();
@@ -27875,7 +27888,7 @@ async function saveKaniModal_(){
     if(!data) throw new Error('サーバー応答が不正です');
     if(data.ok !== true){
       if(/unknown kind/i.test(data.error||'')) throw new Error('見積アプリ側(master_sync)が未対応です。GASデプロイを確認してください');
-      throw new Error(data.error || 'GAS returned ok:false');
+      throw gasWriteError_(data, 'GAS returned ok:false');   // v1.30.707
     }
     // ローカル反映(合計はサーバ再計算値=kaniMitsuが正)
     r.kaniMitsu = data.kaniMitsu;
