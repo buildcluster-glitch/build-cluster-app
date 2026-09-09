@@ -2897,7 +2897,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.693</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.694</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -7833,8 +7833,7 @@ function jizenKeyOfResto_(p){ return String((p && (p.extEstimateId || p.id)) || 
 function jizenDoneEntry_(p){ const k=jizenKeyOfResto_(p); const e=k?loadJizenDone_()[k]:null; return (e && e.state) ? e : null; }
 // 事前完了扱いか: 手動「事前完了」 or 自社工事タスクが全部✓(タスクがある時)
 function jizenIsDone_(p){
-  const e = jizenDoneEntry_(p); if(e && e.state==='done') return true;
-  if(e && e.state==='again') return false;
+  const e = jizenDoneEntry_(p); if(e && e.state==='done') return true;   // 'again' は v694 で撤去(残っていても未完了扱い=下の自社全✓判定へ)
   const pr = (typeof restoProgress==='function') ? restoProgress(p) : null;
   return !!(pr && pr.total>0 && pr.done>=pr.total);
 }
@@ -9441,7 +9440,8 @@ function computeDashboard_(){
     if(wf==="アポ・手配 未") o.apoMi++;
     let ad=null; if(r.responseDate){ const d=parseDate(r.responseDate); if(!isNaN(d)) ad=d; }
     o.items.push({id:r.id, name:r.name, room:r.room, wf, ad, time:r.responseTime||"", worker:firstWorker_(r.worker||""), desc:(r.requestDesc||"").slice(0,30),
-      rq:r.requestDate||""});   // 📅 依頼日(新規依頼順ソート用)v1.30.640
+      rq:r.requestDate||"",   // 📅 依頼日(新規依頼順ソート用)v1.30.640
+      vol: r.workVolume || (r.workloadStatus && r.workloadStatus.level) || ""});   // 🛠 軽重(v1.30.694・山田「原状回復以下のところにも」)
   });
   // 各グループ内の並び(v1.30.640): 'apo'=アポ未先頭→アポ日順(既定) / 'req'=依頼日の新しい順(無しは最後)
   const __pSort = (typeof __dashRepSort!=='undefined' && __dashRepSort==='req')
@@ -9653,10 +9653,13 @@ function renderDashboard_(){
       const wc=WF_COLORS[it.wf]||'#0891b2';
       const apo = it.ad ? `<span style="font-size:10.5px;font-weight:700;white-space:nowrap;color:${it.ad<today?'#dc2626':'var(--muted)'}">📞${md(it.ad)}${it.time?` ${escapeHtml(it.time)}`:''}</span>` : '';
       const rqHtml = it.rq ? `<span style="font-size:10px;color:#be185d;font-weight:700;white-space:nowrap" title="依頼日">依頼${escapeHtml(String(it.rq).slice(5).replace('-','/'))}</span>` : '';   // 常時表示(v1.30.640)
+      const __VC3={"激重":"#dc2626","激":"#dc2626","重":"#ea580c","普":"#eab308","普通":"#eab308","中":"#eab308","軽":"#16a34a","小":"#16a34a"};
+      const volHtml3=(it.vol && it.vol!=="無")?`<span style="background:${__VC3[it.vol]||'#6b7280'};color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:6px;white-space:nowrap" title="工事ボリューム">${escapeHtml(it.vol)}</span>`:'';
       return `<div class="dash-row" data-dr-rep="${escapeHtml(it.id)}" style="display:flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid #fbcfe8;border-left:4px solid #ec4899;background:#fff;border-radius:8px;margin-bottom:4px;cursor:pointer;flex-wrap:wrap">
         <span style="flex:1 1 150px;min-width:120px;font-size:12px;font-weight:600;word-break:break-word">${escapeHtml(it.name)}${it.room?` <span style="font-weight:400">${escapeHtml(it.room)}</span>`:''}
           ${it.desc?`<span style="font-weight:400;font-size:10px;color:var(--muted)"> ${escapeHtml(it.desc)}</span>`:''}</span>
         ${rqHtml}
+        ${volHtml3}
         <span style="background:${wc};color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:6px;white-space:nowrap">${escapeHtml(it.wf)}</span>
         ${apo}
         ${it.worker?`<span style="font-size:10.5px;color:var(--muted);white-space:nowrap">👷${escapeHtml(it.worker)}</span>`:''}
@@ -9687,39 +9690,46 @@ function renderDashboard_(){
     const w = it.win;
     const urgent = w.remain<=2;
     const visit = __jzVisits.get(jizenMatchKey_(`${it.name||''} ${it.room||''}`)) || null;
-    const jd = __jzMap[it.jzKey]; const again = jd && jd.state==='again';
-    const stIcon = again ? '🟡' : (visit ? '🟡' : '🔴');
-    const stLbl  = again ? 'また行く' : (visit ? '残あり' : '未訪問');
+    const stIcon = visit ? '🟡' : '🔴';            // v1.30.694: 「また行く」は撤去(山田「ややこしくなる」)
+    const stLbl  = visit ? '残あり' : '未訪問';
     const vd = visit ? parseDate(visit.date) : null;
     const visitHtml = visit ? `<span style="font-size:10.5px;color:#475569;white-space:nowrap" title="直近の事前カード(カレンダー)">前回 ${vd&&!isNaN(vd)?`${vd.getMonth()+1}/${vd.getDate()}`:visit.date}${visit.staff?' '+escapeHtml(surnameOf_(visit.staff)):''}</span>`
                           : `<span style="font-size:10.5px;color:#dc2626;font-weight:700;white-space:nowrap">未訪問</span>`;
     const undoneN = it.undone.length;
     const undoneHtml = undoneN ? `<span style="font-size:10.5px;color:#b45309;white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(it.undone.join(' / '))}">残作業${undoneN}: ${escapeHtml(it.undone.slice(0,3).join('・'))}${undoneN>3?` 他${undoneN-3}`:''}</span>`
                                : (it.pr.total ? '' : `<span style="font-size:10.5px;color:#94a3b8;white-space:nowrap">自社工事なし</span>`);
-    const noteHtml = (again && jd.note) ? `<span style="font-size:10.5px;color:#6d28d9;white-space:nowrap" title="${escapeHtml(jd.by||'')} ${escapeHtml(String(jd.at||'').slice(5,16).replace('T',' '))}">📝${escapeHtml(jd.note)}</span>` : '';
+    // 🛠 軽重バッジ + 自社工事の進捗バー(v1.30.694・山田「事前チャンスのところにもこのバーとか軽重ほしい」)=原状回復行と同じ見た目
+    const __VC2={"激重":"#dc2626","激":"#dc2626","重":"#ea580c","普":"#eab308","普通":"#eab308","中":"#eab308","軽":"#16a34a","小":"#16a34a"};
+    const volHtml2=(it.vol && it.vol!=="無")?`<span style="background:${__VC2[it.vol]||'#6b7280'};color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:6px;white-space:nowrap" title="工事ボリューム">${escapeHtml(it.vol)}</span>`:'';
+    const bar2 = it.pr.total
+      ? `<div style="flex:0 1 130px;min-width:76px;display:flex;align-items:center;gap:4px" title="自社工事の進み(✓済/全体)">
+           <div style="flex:1;height:7px;background:#e5e7eb;border-radius:4px;overflow:hidden"><div style="width:${it.pr.pct}%;height:100%;background:${pctBg(it.pr.pct)}"></div></div>
+           <span style="font-size:10px;color:var(--muted);white-space:nowrap">${it.pr.done}/${it.pr.total}</span>
+         </div>`
+      : '';
     const btnS = 'border:1px solid #c4b5fd;background:#fff;color:#5b21b6;border-radius:6px;font-size:10.5px;font-weight:700;padding:2px 8px;cursor:pointer;white-space:nowrap';
     return `<div class="dash-row" data-dr-resto="${escapeHtml(it.id)}" style="display:flex;align-items:center;gap:7px;padding:6px 9px;border:1px solid #ddd6fe;border-left:4px solid ${urgent?'#dc2626':'#7c3aed'};background:#fff;border-radius:8px;margin-bottom:4px;cursor:pointer;flex-wrap:wrap">
       <span style="font-size:12px;white-space:nowrap" title="${stLbl}">${stIcon}</span>
       <span style="background:${__dashClientColor_(k)};color:#fff;font-size:9px;font-weight:700;padding:1px 6px;border-radius:5px;white-space:nowrap">${escapeHtml(k)}</span>
       <span style="flex:1 1 150px;min-width:120px;font-size:12.5px;font-weight:700;word-break:break-word">${escapeHtml(it.name)}${it.room?` <span style="font-weight:400">${escapeHtml(it.room)}</span>`:''}</span>
+      ${volHtml2}
       <span style="background:${urgent?'#dc2626':'#7c3aed'};color:#fff;font-size:11px;font-weight:800;padding:2px 9px;border-radius:6px;white-space:nowrap">${w.remain<=1?'今日まで':`あと${w.remain}日`}</span>
       <span style="font-size:10.5px;color:var(--muted);white-space:nowrap" title="この日から内装(または清掃)が入るので事前補修は入れられなくなる${w.work?`／${escapeHtml(w.work)}`:''}">🚧内装${md(w.vendorStart)}${w.vendor?` ${escapeHtml(w.vendor)}`:''}</span>
+      ${bar2}
       ${undoneHtml}
       ${visitHtml}
-      ${noteHtml}
       <span style="margin-left:auto;display:flex;gap:4px">
-        <button data-jz-again="${escapeHtml(it.jzKey)}" style="${btnS}" title="一度行ったが、まだ行く必要がある(理由をメモ)">また行く</button>
         <button data-jz-done="${escapeHtml(it.jzKey)}" style="${btnS};background:#7c3aed;color:#fff;border-color:#6d28d9" title="事前は終わり／不要。リストから外す(全員共有・取消可)">事前完了</button>
       </span>
     </div>`;
   }).join('');
   const chanceDoneHtml = chanceDone.length ? `<div style="font-size:11px;color:#6d28d9;padding:4px 4px 2px;display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span style="font-weight:700">✅事前完了 ${chanceDone.length}件</span>${chanceDone.map(({it})=>{
       const jd = __jzMap[it.jzKey]; const manual = jd && jd.state==='done';
-      const tip = manual ? `${jd.by||''} ${String(jd.at||'').slice(5,16).replace('T',' ')} が事前完了にしました（クリックで取消）` : '自社工事タスクが全部✓（クリックで「また行く」に戻す）';
-      return `<button data-jz-undo="${escapeHtml(it.jzKey)}" style="border:1px solid #ddd6fe;background:#fff;color:#6d28d9;border-radius:6px;font-size:10.5px;padding:1px 7px;cursor:pointer;white-space:nowrap" title="${escapeHtml(tip)}">${escapeHtml(it.name)}${it.room?' '+escapeHtml(it.room):''}${manual&&jd.by?` <span style="color:#94a3b8">${escapeHtml(surnameOf_(jd.by))}</span>`:' <span style="color:#94a3b8">全✓</span>'}</button>`;
+      const tip = manual ? `${jd.by||''} ${String(jd.at||'').slice(5,16).replace('T',' ')} が事前完了にしました（クリックで取消）` : '自社工事タスクが全部✓なので自動で完了扱い';
+      return `<button ${manual?`data-jz-undo="${escapeHtml(it.jzKey)}"`:''} style="border:1px solid #ddd6fe;background:#fff;color:#6d28d9;border-radius:6px;font-size:10.5px;padding:1px 7px;cursor:${manual?'pointer':'default'};white-space:nowrap" title="${escapeHtml(tip)}">${escapeHtml(it.name)}${it.room?' '+escapeHtml(it.room):''}${manual&&jd.by?` <span style="color:#94a3b8">${escapeHtml(surnameOf_(jd.by))}</span>`:' <span style="color:#94a3b8">全✓</span>'}</button>`;
     }).join('')}</div>` : '';
   const chanceBox = !showResto ? '' : `<div style="border:2px solid #7c3aed;border-radius:12px;background:#f5f3ff;padding:0 8px 6px;margin-bottom:14px">
-      <div style="background:#7c3aed;color:#fff;font-size:13.5px;font-weight:800;padding:6px 12px;border-radius:0 0 9px 9px;margin:0 -8px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">⚡ 事前チャンス <span style="font-size:11px;font-weight:600;opacity:.9">行き先リスト ${chanceItems.length}件 ／ 🔴未訪問 🟡残あり・また行く ／ 締切が近い順</span></div>
+      <div style="background:#7c3aed;color:#fff;font-size:13.5px;font-weight:800;padding:6px 12px;border-radius:0 0 9px 9px;margin:0 -8px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">⚡ 事前チャンス <span style="font-size:11px;font-weight:600;opacity:.9">行き先リスト ${chanceItems.length}件 ／ 🔴未訪問 🟡残あり ／ 締切が近い順</span></div>
       ${chanceRows || '<div style="color:#6d28d9;font-size:12px;padding:4px 4px 6px">いま行く現場はありません（業者の着工日が決まると、発注書の発行日からその前日までがここに出ます）</div>'}
       ${chanceDoneHtml}
     </div>`;
@@ -9755,11 +9765,8 @@ function renderDashboard_(){
   // ⚡ v1.30.693: 事前の行き先ボタン(行タップの詳細を開かせない)
   body.querySelectorAll('[data-jz-done]').forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); const k=b.dataset.jzDone; if(!k) return;
     setJizenDone_(k,'done','').catch(()=>{}); renderDashboard_(); });
-  body.querySelectorAll('[data-jz-again]').forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); const k=b.dataset.jzAgain; if(!k) return;
-    const note = prompt('また行く理由(任意・短く)\n例: 材料待ち／業者確認後／鍵の都合', '') ; if(note===null) return;
-    setJizenDone_(k,'again',note).catch(()=>{}); renderDashboard_(); });
   body.querySelectorAll('[data-jz-undo]').forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); const k=b.dataset.jzUndo; if(!k) return;
-    const cur=(loadJizenDone_()[k]||{}); setJizenDone_(k, (cur.state==='done')?'':'again', '').catch(()=>{}); renderDashboard_(); });
+    setJizenDone_(k, '', '').catch(()=>{}); renderDashboard_(); });   // v1.30.694: 取消=状態クリア(「また行く」は撤去)
   body.querySelectorAll('[data-dr-resto]').forEach(el=>el.onclick=()=>{
     ov.classList.remove('show');
     // 🏠 v1.30.625(山田): ビュー切替でなく既存の独立ダイアログ(openRestoDialog)で開き、閉じたら全体進捗へ戻る
