@@ -1887,6 +1887,12 @@
   .resto-card.st-todo{border-left-color:#ec4899}
   .resto-card.st-wip {border-left-color:#eab308}
   .resto-card.st-done{border-left-color:#16a34a}
+  /* ⚡ 事前完了(v1.30.700・木村「事前完了を押したら原状回復タブのカードの枠の色が変わってほしい」): 枠を紫・地を薄紫に */
+  .resto-card.jz-done{border-color:#7c3aed;border-left-color:#7c3aed;background:#faf5ff}
+  .resto-card .rc-jz-badge{background:#7c3aed;color:#fff;font-size:9px;font-weight:700;padding:0 5px;border-radius:3px;display:inline-block;vertical-align:middle;margin-right:4px}
+  .resto-card .rc-jz-btn{border:1px solid #c4b5fd;background:#fff;color:#5b21b6;border-radius:6px;font-size:10px;font-weight:700;padding:1px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0}
+  .resto-card .rc-jz-btn:hover{background:#ede9fe}
+  .resto-card.jz-done .rc-jz-btn{background:#ede9fe}
   /* ✅ 完了済(✓完了でアーカイブ): その場でグレー+取り消し線で残す(同期を待たず即表示)v1.30.232 */
   .resto-card.resto-done{background:#f1f5f9;border-left-color:#16a34a;opacity:.62}
   .resto-card.resto-done .rc-name{color:#94a3b8;text-decoration:line-through}
@@ -2901,7 +2907,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.699</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.700</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -26303,6 +26309,15 @@ function renderRestoList(){
   listEl.querySelectorAll(".resto-card").forEach(c=>{
     c.onclick = ()=>{ restoDetailId = c.dataset.id; restoTaskStatusFilter = null; renderRestoView(); };
   });
+  listEl.querySelectorAll("[data-jz-card]").forEach(b=>{   // ⚡ v1.30.700
+    b.onclick = (e)=>{ e.stopPropagation(); const id=b.dataset.jzCard;
+      const p=(state.restorations||[]).find(r=>r.id===id); if(!p) return;
+      const je=jizenDoneEntry_(p); const nowDone=!!(je && je.state==='done');
+      setJizenDone_(jizenKeyOfResto_(p), nowDone?'':'done', '').catch(()=>{});
+      if(typeof showAutoSyncToast==='function') showAutoSyncToast(nowDone ? '⚡ 事前完了を取り消しました' : '✅ 事前完了にしました（全員共有）');
+      renderRestoList();
+    };
+  });
 }
 
 function renderRestoCard(p){
@@ -26402,13 +26417,19 @@ function renderRestoCard(p){
     const estFg = textColorFor(estBg);
     estBadgeHtml = `<span class="rc-est" title="見積担当: ${escapeHtml(p.staff)}" style="background:${estBg};color:${estFg};font-size:10px;font-weight:700;padding:1px 7px;border-radius:6px;flex-shrink:0">見積:${escapeHtml(estNm)}</span>`;
   }
+  // ⚡ 事前完了(v1.30.700): 全員共有 jizen_done。カード上でも押せる(木村「原状回復タブで進捗確認することが多い」)
+  const __jzE = (typeof jizenDoneEntry_==='function') ? jizenDoneEntry_(p) : null;
+  const __jz = !!(__jzE && __jzE.state==='done');
+  const __jzTip = __jz ? `${__jzE.by||''} ${String(__jzE.at||'').slice(5,16).replace('T',' ')} が事前完了にしました（クリックで取消）` : '事前補修は終わり／不要（全員共有・📊の行き先リストから外れる）';
+  const jzBtnHtml = __archived ? '' : `<button type="button" class="rc-jz-btn" data-jz-card="${escapeHtml(p.id)}" title="${escapeHtml(__jzTip)}">${__jz?'✅ 事前完了':'⚡ 事前完了'}</button>`;
   return `
-    <div class="resto-card st-${st}${__archived?' resto-done':''}" data-id="${p.id}">
-      <div class="rc-name">${__archived?'<span class="rc-done-badge">✓完了</span>':''}${escapeHtml(p.name||"(物件名なし)")} <span class="rc-room">${roomStr}</span></div>
+    <div class="resto-card st-${st}${__archived?' resto-done':''}${__jz?' jz-done':''}" data-id="${p.id}">
+      <div class="rc-name">${__archived?'<span class="rc-done-badge">✓完了</span>':''}${__jz?'<span class="rc-jz-badge" title="事前完了">⚡事前完了</span>':''}${escapeHtml(p.name||"(物件名なし)")} <span class="rc-room">${roomStr}</span></div>
       <div class="rc-row">
         ${estBadgeHtml}
         ${volBadgeHtml}
         ${extraBadgesHtml}
+        ${jzBtnHtml}
         <span class="rc-progress-label">${progressLabel}</span>
         <div class="rc-bar"><div class="rc-bar-inner" style="width:${pr.pct}%"></div></div>
         ${finalStr?`<span class="rc-final" title="最終確認日">最終確認 ${finalStr}</span>`:""}
