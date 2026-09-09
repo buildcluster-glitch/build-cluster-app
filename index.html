@@ -2907,7 +2907,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.704</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.705</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4633,11 +4633,41 @@
     } catch(_) {}
     return bodyStr;
   }
+  // 📦 v1.30.705(山田④「書けなかった分を捨てない」): 3回の再送で駄目なら localStorage の箱(bc_sc_retry_q)に残し、
+  //   2分ごと+起動時に復旧まで再送する(同じキーは新しい方だけ・最大50件・24時間で諦めて通知)。
+  var _SC_Q_KEY = 'bc_sc_retry_q';
+  function _scQLoad_(){ try{ var a = JSON.parse(localStorage.getItem(_SC_Q_KEY)||'[]'); return Array.isArray(a)?a:[]; }catch(_){ return []; } }
+  function _scQSave_(a){ try{ localStorage.setItem(_SC_Q_KEY, JSON.stringify(a.slice(-50))); }catch(_){} }
+  function _scQPush_(url, init){
+    var key = _scKeyOf_(init && init.body);
+    var q = _scQLoad_().filter(function(x){ return x.key !== key; });   // 同じキーは新しい方だけ
+    q.push({ key: key, url: String(url), body: String(init && init.body || ''), at: Date.now() });
+    _scQSave_(q);
+    try{ if(typeof updateSyncFreshness_==='function') updateSyncFreshness_(); }catch(_){}
+  }
+  var _scQBusy = false;
+  function _scQFlush_(){
+    if (_scQBusy) return; var q = _scQLoad_(); if (!q.length) return;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    _scQBusy = true;
+    var item = q[0];
+    if (Date.now() - item.at > 24*3600*1000) { _scQSave_(q.slice(1)); _scQBusy = false; _scToast_('⚠ 共有設定(' + item.key + ')は24時間再送しても保存できず、諦めました。操作をやり直してください'); return; }
+    _origFetch(item.url, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: item.body }).then(function(r){
+      return r.clone().json().then(function(j){
+        if (j && j.ok === false && !j.conflict) { console.warn('[共有設定] 箱からの再送も ok:false key=' + item.key); }
+        else { console.log('[共有設定] 箱からの再送成功 key=' + item.key); _scQSave_(_scQLoad_().filter(function(x){ return !(x.key===item.key && x.at===item.at); })); _scToast_('📮 保存できていなかった共有設定(' + item.key + ')をDBに届けました'); }
+      }).catch(function(){ /* JSONでない=HTTP系。実行済みかもしれないので箱からは外す */ _scQSave_(_scQLoad_().filter(function(x){ return !(x.key===item.key && x.at===item.at); })); });
+    }).catch(function(){}).then(function(){ _scQBusy = false; });
+  }
+  setInterval(_scQFlush_, 2*60*1000);
+  setTimeout(_scQFlush_, 15000);
+  window.__scRetryQueueSize = function(){ return _scQLoad_().length; };
   function _scResend_(input, init, attempt){
     var key = _scKeyOf_(init && init.body);
     if (attempt >= _SC_RETRY_DELAYS.length) {
-      console.warn('[共有設定] 再送を使い切りました key=' + key);
-      _scToast_('⚠ 共有設定(' + key + ')がサーバーに保存できませんでした。しばらくして操作をやり直してください');
+      console.warn('[共有設定] 再送を使い切りました key=' + key + ' → 箱に残して復旧まで2分ごとに再送');
+      _scQPush_(input, init);
+      _scToast_('📦 共有設定(' + key + ')がまだDBに届いていません。復旧まで自動で再送し続けます(入力は消えていません)');
       return;
     }
     setTimeout(function(){
@@ -23370,7 +23400,22 @@ function sbLogout_(){
 //   黙って空振りしない: 毎回 __eventsReadStat に読み元/件数/所要/フォールバック理由を残し、🔍色の診断に出す。
 // ============================================================================
 let __calFlags = null;
+// 🚦 v1.30.705(山田「直結にしてからDBが落ちた時の対応」②): DBの外にあるスイッチ = 公開先の flags.json(GitHub Pages)。
+//   共有設定(calendar_flags)は来週DBに移るので、DBが落ちると読めない。flags.json は index.html と同じ場所に置き、
+//   SWはキャッシュしない。優先順位: 端末localStorage > flags.json(true/false) > 共有設定。null=上書きなし。
+let __staticFlags = null, __staticFlagsAt = 0;
+async function fetchStaticFlags_(){
+  try{
+    const res = await fetch(`./flags.json?t=${Date.now()}`, { cache:'no-store' });
+    if(!res.ok) return __staticFlags;
+    const v = await res.json();
+    __staticFlags = (v && typeof v==='object') ? v : null; __staticFlagsAt = Date.now();
+    try{ if(__staticFlags && __staticFlags.banner){ if(typeof showAutoSyncToast==='function' && !window.__staticBannerShown){ window.__staticBannerShown = true; showAutoSyncToast('🚦 '+__staticFlags.banner); } } }catch(_){}
+  }catch(_){}
+  return __staticFlags;
+}
 async function fetchCalendarFlags_(){
+  try{ await fetchStaticFlags_(); }catch(_){}
   try{
     const g = loadGasSettings(); if(!g.url || !g.token) return __calFlags;
     const url = `${g.url}?action=get-shared-config&key=calendar_flags&token=${encodeURIComponent(g.token)}&t=${Date.now()}`;
@@ -23384,7 +23429,13 @@ async function fetchCalendarFlags_(){
 }
 function eventsDbReadOn_(){
   try{ const o = localStorage.getItem('bc_flag_eventsDbRead'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
+  if(__staticFlags && typeof __staticFlags.eventsDbRead === 'boolean') return __staticFlags.eventsDbRead;   // 🚦 flags.json が最優先(DBの外)
   return !!(__calFlags && __calFlags.eventsDbRead === true);
+}
+function eventsDbReadSource_(){   // 診断用: どのスイッチが効いているか
+  try{ const o = localStorage.getItem('bc_flag_eventsDbRead'); if(o==='1'||o==='0') return '端末'; }catch(_){}
+  if(__staticFlags && typeof __staticFlags.eventsDbRead === 'boolean') return 'flags.json';
+  return '共有設定';
 }
 // 管理者用(コンソール): 端末だけ切替 / 全端末を切替
 window.setEventsDbReadLocal_ = function(on){ try{ if(on==null) localStorage.removeItem('bc_flag_eventsDbRead'); else localStorage.setItem('bc_flag_eventsDbRead', on?'1':'0'); }catch(_){} console.log('[events-read] 端末上書き =', on); };
@@ -24731,7 +24782,7 @@ async function runTaikyoColorDiag_(){
     const st = __eventsReadStat;
     const on = (typeof eventsDbReadOn_==='function') ? eventsDbReadOn_() : false;
     const sess = (typeof sbSession_==='function') ? sbSession_() : null;
-    sections.push(`【📡予定の読み元】スイッチ=${on?'DB直読み':'GAS(従来)'} / ログイン=${sess?(sess.email||'済')+(sess.role?`(${sess.role})`:''):'未'}`
+    sections.push(`【📡予定の読み元】 スイッチ=${(typeof eventsDbReadSource_==='function')?eventsDbReadSource_():'?'}${(__staticFlags&&__staticFlags.updatedAt)?`(flags.json ${__staticFlags.updatedAt})`:''}スイッチ=${on?'DB直読み':'GAS(従来)'} / ログイン=${sess?(sess.email||'済')+(sess.role?`(${sess.role})`:''):'未'}`
       + (st ? `\n直近: ${st.src.toUpperCase()} ${st.n}件${st.total!=null&&st.total!==st.n?`(総${st.total})`:''} ${st.ms}ms ${String(st.at).slice(11,19)}${st.fallback?`\n⚠フォールバック: ${st.fallback}`:''}${st.note?`\n${st.note}`:''}` : '\n直近: (まだ読んでいません)'));
   }catch(e){ sections.push('【📡予定の読み元】検査失敗: '+e.message); }
   const head = `🔍色の診断 (${(typeof appVersion_==='function')?appVersion_():''} / ${(typeof deviceInfo_==='function')?deviceInfo_():''})`;

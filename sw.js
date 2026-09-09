@@ -32,6 +32,8 @@ self.addEventListener('fetch', e=>{
   }
   // 同一オリジンのみキャッシュ戦略
   if(url.origin !== location.origin) return;
+  // 🚦 flags.json(非常用スイッチ・v1.30.705)は常にネットワーク。キャッシュに残すと切替が効かない
+  if(url.pathname.endsWith('/flags.json')) return;
   // network-first for HTML (常に最新を試す)
   // cache:'no-cache' = HTTPキャッシュ(GitHub Pagesのmax-age=600)を経由せず毎回サーバーに確認
   // (変更なければ304で軽い。これが無いと配信後最大10分間 古いHTMLが返り続ける)
