@@ -2897,7 +2897,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.691</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.692</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -11705,6 +11705,8 @@ function showEventStaffPicker(el, ev){
       </div>
       <input type="text" id="evDtNote" value="${escapeHtml(__evNote0)}" placeholder="例: 早め・夕方(「この日時に動かす」で確定・全員共有)" style="display:${__evNote0?'block':'none'};width:100%;box-sizing:border-box;margin-top:6px;padding:5px 6px;font-size:12px;border:1px solid var(--border-strong);border-radius:6px;color:#dc2626;font-weight:700">
       <button type="button" id="evDtDotakyan" style="margin-top:6px;padding:5px 10px;border:1px solid #cbd5e1;background:#f1f5f9;color:#475569;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer" title="日付を動かす前に、いまの日時の場所へグレーの『変更前』を置いておきます。ふつうは日付を変えて「この日時に動かす」を押せば同じことを聞かれます">🔄 いまの日時に「変更前」を残しておく</button>
+      <button type="button" id="evHistBtn" style="margin-top:6px;margin-left:6px;padding:5px 10px;border:1px solid #cbd5e1;background:#f1f5f9;color:#475569;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer" title="この予定の変更履歴(データベースに90日ぶん・誰がいつ何を変えたか)。事務・管理者でログインしている端末で見られます">📜 変更履歴</button>
+      <div id="evHistBox" style="display:none;margin-top:6px;max-height:170px;overflow:auto;font-size:11px;line-height:1.45;background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px"></div>
     </div>
     <div class="qp-sec">
       <div class="qp-label">⏰ リマインド <span style="font-weight:400;color:#94a3b8;font-size:10px">(この日から⏰が点滅で知らせる)</span></div>
@@ -11970,6 +11972,21 @@ function showEventStaffPicker(el, ev){
     createDotakyanGhost_(label, d, t);
     __evDotaDone = true;   // この後「変更」を押しても二重に跡を作らない(v1.30.679)
     __evDota.textContent = '✓ 日時変更跡を残しました'; __evDota.disabled = true;
+  };
+  // 📜 v1.30.692(山田②): DBの履歴テーブル calendar_events_history(90日・RLS=admin/jimu)を直接読んで前後の差分を並べる
+  const __evHist = pop.querySelector('#evHistBtn'), __evHistBox = pop.querySelector('#evHistBox');
+  if(__evHist && __evHistBox) __evHist.onclick = async ()=>{
+    __evHistBox.style.display='block'; __evHistBox.innerHTML='<span style="color:#64748b">読み込み中…</span>';
+    try{
+      const rows = await fetchEventHistoryFromDb_(ev.id);
+      const cur  = (state.events||[]).find(x=>x.id===ev.id) || ev;
+      __evHistBox.innerHTML = renderEventHistoryHtml_(rows, cur);
+    }catch(e){
+      const m = String(e && e.message || e);
+      __evHistBox.innerHTML = /no-session|401|403/.test(m)
+        ? '<span style="color:#b45309">履歴は事務・管理者でログインした端末で見られます(👤マイ→ログイン)。</span>'
+        : `<span style="color:#b91c1c">読み込めませんでした: ${escapeHtml(m).slice(0,120)}</span>`;
+    }
   };
   // 🕔 v1.30.311: ワンタップで時間未定にする + 未定バッジ付与
   //   timeMode=anytime にして時刻情報を消す
@@ -22409,6 +22426,7 @@ async function cloudSyncPull({ replace=false, signal=null, prefetched=null }={})
 
   if(replace){
     state.events = (data.events || []).map(normalizeCloudEvent_);
+    if(typeof __evSnapRefresh_==='function') __evSnapRefresh_();   // 📜 v1.30.692
     state.cloudProperties = (data.properties || []).map(normalizeCloudProperty_);
     state.cloudLogs = (data.logs || []).map(normalizeCloudLog_);
   } else {
@@ -22431,6 +22449,7 @@ async function cloudSyncPull({ replace=false, signal=null, prefetched=null }={})
     const __remoteEvents = (data.events||[]).map(normalizeCloudEvent_)
       .filter(e=> typeof isEventTombstoned_!=='function' || !isEventTombstoned_(e));
     cloudMergeById_(state.events, __remoteEvents, pendingEventIds);
+    if(typeof __evSnapRefresh_==='function') __evSnapRefresh_();   // 📜 他端末の変更を控えに取り込む(v1.30.692)
     if(typeof applyEventDeletionsToState_==='function') applyEventDeletionsToState_();  // ローカルの削除済も除去
     // 🪦 v1.30.460: 統合/pruneの前に墓標を最新化(未取得のまま統合→古タスク復活の穴を塞ぐ)
     if(typeof fetchJimuTombstones_==='function'){ try{ await fetchJimuTombstones_({silent:true}); }catch(_){} }
@@ -22680,6 +22699,7 @@ function denormalizeEventForCloud_(ev){
     createdBy: ev.createdBy || getMyself() || '',
     createdAt: ev.createdAt || new Date().toISOString(),
     updatedAt: ev.updatedAt || new Date().toISOString(),
+    updatedBy: getMyself() || '',   // 📜 v1.30.692: 最後にこの予定を保存した人(DB履歴の「誰が」。シートには列が無いので落ちる=無害)
   };
 }
 
@@ -23201,6 +23221,57 @@ const EVENTS_GAS_REFRESH_MS = 10*60*1000;   // ①の保険: 10分に1回はGAS�
 let __eventsReadStat = null;                 // 直近の読み取り診断 {src, n, total, ms, fallback, at, note}
 let __lastGasEventsPullAt = 0;
 function __parseJsonSafe_(x){ if(x && typeof x==='object') return x; if(typeof x==='string'){ try{ return JSON.parse(x); }catch(_){ return null; } } return null; }
+// 📜 v1.30.692: 予定1件の変更履歴を Supabase の calendar_events_history から読む(RLS=admin/jimu・90日ローテ)。
+//   行=「置き換えられた旧版」(source_version, doc, was_deleted→now_deleted, replaced_at, actor)。
+async function fetchEventHistoryFromDb_(id){
+  let s = sbSession_();
+  if(!s || !s.access_token) throw new Error('no-session');
+  if(s.expires_at && (s.expires_at*1000 - Date.now()) < 60000){ try{ await sbRefresh_(); }catch(_){} s = sbSession_(); }
+  if(!s || !s.access_token) throw new Error('no-session');
+  const url = `${SB_AUTH.url}/rest/v1/calendar_events_history?select=source_version,doc,was_deleted,now_deleted,replaced_at,replaced_by_version,actor&id=eq.${encodeURIComponent(id)}&order=source_version.asc&limit=60`;
+  const hdr = tok => ({ 'apikey': SB_AUTH.key, 'Authorization': 'Bearer '+tok, 'Accept': 'application/json' });
+  let res = await fetch(url, { headers: hdr(s.access_token), cache:'no-store' });
+  if(res.status===401){ try{ await sbRefresh_(); }catch(_){} s = sbSession_(); if(!s||!s.access_token) throw new Error('401'); res = await fetch(url, { headers: hdr(s.access_token), cache:'no-store' }); }
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  const rows = await res.json();
+  return Array.isArray(rows) ? rows : [];
+}
+function __histTime_(v){ const m=String(v||'').match(/(\d{1,2}:\d{2})$/); return m?m[1].padStart(5,'0'):''; }
+function __histWhen_(doc){
+  if(!doc) return '';
+  const d=parseDate(doc.date||''); const ds=(d&&!isNaN(d))?`${d.getMonth()+1}/${d.getDate()}`:(doc.date||'(日付なし)');
+  if(doc.allday || doc.timeMode==='allday') return ds+' 終日';
+  const st=__histTime_(doc.startTime||doc.start), en=__histTime_(doc.endTime||doc.end);
+  if(doc.timeMode==='anytime' || !st) return ds+' 時間未定';
+  return ds+' '+st+(en?('-'+en):'');
+}
+function __histDiff_(a, b){   // a=旧 b=新 → 変わった項目の短い説明(配列)
+  const out=[];
+  const wa=__histWhen_(a), wb=__histWhen_(b); if(wa!==wb) out.push(`日時 ${wa} → ${wb}`);
+  const f=(k,lbl)=>{ const x=String((a&&a[k])||'').trim(), y=String((b&&b[k])||'').trim(); if(x!==y) out.push(`${lbl} ${x||'(空)'} → ${y||'(空)'}`); };
+  f('title','タイトル'); f('staff','担当'); f('category','種別'); f('contractor','元請'); f('commute','直行');
+  const pa=JSON.stringify((a&&a.participants)||[]), pb=JSON.stringify((b&&b.participants)||[]); if(pa!==pb) out.push('参加者を変更');
+  if(String((a&&a.memo)||'')!==String((b&&b.memo)||'')) out.push('メモを変更');
+  const ca=((a&&a.comments)||[]).length, cb=((b&&b.comments)||[]).length; if(ca!==cb) out.push(`コメント ${ca}→${cb}件`);
+  return out;
+}
+function renderEventHistoryHtml_(rows, cur){
+  if(!rows.length) return '<span style="color:#64748b">履歴はありません(9/5のDB化以降に変更された予定だけ残ります・保持90日)</span>';
+  // 現在の姿を doc 形式に(履歴の最後の行と比べる相手)
+  const curDoc = (typeof denormalizeEventForCloud_==='function') ? denormalizeEventForCloud_(cur) : cur;
+  const items=[];
+  for(let i=0;i<rows.length;i++){
+    const r=rows[i], next = (i+1<rows.length) ? rows[i+1].doc : curDoc;
+    const when = r.replaced_at ? new Date(r.replaced_at) : null;
+    const ws = (when && !isNaN(when)) ? `${when.getMonth()+1}/${when.getDate()} ${String(when.getHours()).padStart(2,'0')}:${String(when.getMinutes()).padStart(2,'0')}` : '';
+    const who = String(r.actor||'').replace(/^calendar:?/,'') || String((next&&next.updatedBy)||'') || '(不明)';
+    let diffs = r.now_deleted && !r.was_deleted ? ['🗑 削除'] : __histDiff_(r.doc, next);
+    if(!diffs.length) diffs=['(内容の変更なし・保存のみ)'];
+    items.push(`<div style="padding:3px 0;border-bottom:1px dashed #e2e8f0"><span style="color:#64748b">${escapeHtml(ws)}</span> <b>${escapeHtml(who)}</b><br>${diffs.map(escapeHtml).join('<br>')}</div>`);
+  }
+  items.reverse();   // 新しい順
+  return `<div style="color:#64748b;margin-bottom:3px">全${rows.length}回の変更(新しい順・DBに90日保持)</div>` + items.join('');
+}
 async function fetchEventsFromDb_({signal}={}){
   const t0 = Date.now();
   let s = sbSession_();
@@ -23582,7 +23653,31 @@ document.addEventListener('visibilitychange', ()=>{
 // 個別のミューテーション関数で明示的に queue する方針
 // (既存 saveEventFromModal / deleteEvent 等の呼び出し直後に
 //  cloudQueueEventChange(ev, 'upsert'|'delete') を入れる)
+// 📜 v1.30.692(山田「予定の日付・時間の変更履歴は残る?」→①): 直近に同期した姿を控え、保存時に日時が変わっていたら📜に1行。
+//   控え=id→{date,start,end,allday,timeMode}。他端末の変更は pull 時に控えへ入るので、ここで拾うのは「この端末で動かした」分だけ。
+const __evSnap = {};
+function __evSnapOf_(e){ return { date:e.date||'', start:e.start||'', end:e.end||'', allday:!!e.allday, timeMode:e.timeMode||'' }; }
+function __evSnapRefresh_(){ try{ (state.events||[]).forEach(e=>{ if(e&&e.id) __evSnap[e.id]=__evSnapOf_(e); }); }catch(_){} }
+try{ __evSnapRefresh_(); }catch(_){}   // 起動時点(ローカル保存分)を控えに=最初のpull前に動かしても記録できる
+function __evWhenLabel_(sn){
+  if(!sn.date) return '(日付なし)';
+  const d=parseDate(sn.date); const ds=(d&&!isNaN(d))?`${d.getMonth()+1}/${d.getDate()}`:sn.date;
+  if(sn.allday || sn.timeMode==='allday') return ds+' 終日';
+  if(sn.timeMode==='anytime' || !sn.start) return ds+' 時間未定';
+  return ds+' '+sn.start+(sn.end?('-'+sn.end):'');
+}
+function __evLogDateTimeChange_(ev){
+  try{
+    if(!ev||!ev.id) return;
+    const prev=__evSnap[ev.id], cur=__evSnapOf_(ev);
+    if(prev && (prev.date!==cur.date || prev.start!==cur.start || prev.end!==cur.end || prev.allday!==cur.allday || prev.timeMode!==cur.timeMode)){
+      if(typeof logChange_==='function') logChange_('予定','日時変更', String(ev.title||'(無題)').split(/\r?\n/)[0], `${__evWhenLabel_(prev)} → ${__evWhenLabel_(cur)}`);
+    }
+    __evSnap[ev.id]=cur;
+  }catch(_){}
+}
 function cloudQueueEventChange(ev, mode){
+  if(mode !== 'delete') __evLogDateTimeChange_(ev);   // 📜 日時変更なら記録(v1.30.692)
   // 🗑 削除は全端末伝播のため tombstone を立てる(cloudSync未設定でもDrive GAS側に記録) v1.30.66
   if(mode === 'delete' && ev && ev.id && typeof addEventDeletion_==='function'){ try{ addEventDeletion_(ev.id); }catch(_){} }
   // ⚠ 同期OFF/未設定のまま予定を作ると、その端末にしか残らない=他の端末には一生出ない。
