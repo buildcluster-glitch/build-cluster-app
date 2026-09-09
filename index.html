@@ -2907,7 +2907,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.707</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.708</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -15259,22 +15259,34 @@ async function syncChecksFromGAS(opts){
   const __syncTOms = __since ? 75000 : 180000;
   const __syncTO = __syncCtrl ? setTimeout(()=>{ __syncTimedOut = true; try{ __syncCtrl.abort(); }catch(_){} }, __syncTOms) : null;
   try{
-    const res = await fetch(s.url, {
-      method:"POST",
-      headers:{"Content-Type":"text/plain;charset=utf-8"}, // GASでCORSプリフライト回避
-      signal: __syncCtrl ? __syncCtrl.signal : undefined,
-      body: JSON.stringify({
-        action:"task-sync",
-        token:s.token,
-        kojiFilter:"all",
-        maxMonths: s.maxMonths || 3,
-        since: __since,   // 空=フル / ISO時刻=その時刻以降の更新分だけ(GAS差分)
-        light: 1,         // 🪶 v1.30.535: 完了/キャンセル案件は重い欄(明細/進捗)を省いて受け取る(GAS ver74)。
-                          //   行は全件来る=消えない。詳細は開いた時にtask-detailでオンデマンド取得。
-      })
-    });
-    if(__syncTO) clearTimeout(__syncTO);   // 応答が来た→タイマー解除
-    const data = await res.json();
+    // 📡 v1.30.708: 台帳のDB直読み(スイッチON時)。取れたら GAS task-sync を呼ばない。失敗はそのまま GAS へ(従来どおり)
+    let data = null;
+    if(typeof ledgerDbReadOn_==='function' && ledgerDbReadOn_() && typeof fetchLedgerFromDb_==='function'){
+      const __lr = await fetchLedgerFromDb_({ since: __since, maxMonths: s.maxMonths || 3, signal: __syncCtrl ? __syncCtrl.signal : undefined });
+      if(__lr && __lr.ok){ data = __lr.data; __setLedgerReadStat_({ src:'db', n:data.properties.length, total:data.totalCount, ms:__lr.ms, partial:data.partial }); }
+      else { __setLedgerReadStat_({ src:'gas', n:0, ms:(__lr&&__lr.ms)||0, fallback:(__lr&&__lr.reason)||'?' }); }
+    }
+    if(!data){
+      const __gt0 = Date.now();
+      const res = await fetch(s.url, {
+        method:"POST",
+        headers:{"Content-Type":"text/plain;charset=utf-8"}, // GASでCORSプリフライト回避
+        signal: __syncCtrl ? __syncCtrl.signal : undefined,
+        body: JSON.stringify({
+          action:"task-sync",
+          token:s.token,
+          kojiFilter:"all",
+          maxMonths: s.maxMonths || 3,
+          since: __since,   // 空=フル / ISO時刻=その時刻以降の更新分だけ(GAS差分)
+          light: 1,         // 🪶 v1.30.535: 完了/キャンセル案件は重い欄(明細/進捗)を省いて受け取る(GAS ver74)。
+                            //   行は全件来る=消えない。詳細は開いた時にtask-detailでオンデマンド取得。
+        })
+      });
+      if(__syncTO) clearTimeout(__syncTO);   // 応答が来た→タイマー解除
+      data = await res.json();
+      if(!(typeof ledgerDbReadOn_==='function' && ledgerDbReadOn_())) __setLedgerReadStat_({ src:'gas', n:(data.properties||[]).length, ms:Date.now()-__gt0, partial:data.partial===true });
+      else if(__ledgerReadStat) __ledgerReadStat.n = (data.properties||[]).length;
+    } else { if(__syncTO) clearTimeout(__syncTO); }
     if(data.error){ throw new Error(data.error); }
     const properties = data.properties || [];
     // 🏢 立会の契約区分ヒント(v1.30.652・見積GAS ver85から届く別枠)。
@@ -23445,6 +23457,18 @@ function eventsDbReadOn_(){
   if(__staticFlags && typeof __staticFlags.eventsDbRead === 'boolean') return __staticFlags.eventsDbRead;   // 🚦 flags.json が最優先(DBの外)
   return !!(__calFlags && __calFlags.eventsDbRead === true);
 }
+// 📡 台帳(task-sync)のDB直読みスイッチ(v1.30.708・台帳DB「②射影のDB直読み=9/10-11」)。既定off。優先=端末>flags.json>共有設定
+function ledgerDbReadOn_(){
+  try{ const o = localStorage.getItem('bc_flag_ledgerDbRead'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
+  if(__staticFlags && typeof __staticFlags.ledgerDbRead === 'boolean') return __staticFlags.ledgerDbRead;
+  return !!(__calFlags && __calFlags.ledgerDbRead === true);
+}
+function ledgerDbReadSource_(){
+  try{ const o = localStorage.getItem('bc_flag_ledgerDbRead'); if(o==='1'||o==='0') return '端末'; }catch(_){}
+  if(__staticFlags && typeof __staticFlags.ledgerDbRead === 'boolean') return 'flags.json';
+  return '共有設定';
+}
+window.setLedgerDbReadLocal_ = function(on){ try{ if(on==null) localStorage.removeItem('bc_flag_ledgerDbRead'); else localStorage.setItem('bc_flag_ledgerDbRead', on?'1':'0'); }catch(_){} console.log('[ledger-read] 端末スイッチ =', on); };
 function eventsDbReadSource_(){   // 診断用: どのスイッチが効いているか
   try{ const o = localStorage.getItem('bc_flag_eventsDbRead'); if(o==='1'||o==='0') return '端末'; }catch(_){}
   if(__staticFlags && typeof __staticFlags.eventsDbRead === 'boolean') return 'flags.json';
@@ -23462,6 +23486,8 @@ window.setEventsDbReadRemote_ = async function(on){
 const EVENTS_DB_PAGE = 1000;
 const EVENTS_GAS_REFRESH_MS = 10*60*1000;   // ①の保険: 10分に1回はGAS経由フルも混ぜる(GAS側DB先行書きが入ったら伸ばせる)
 let __eventsReadStat = null;                 // 直近の読み取り診断 {src, n, total, ms, fallback, at, note}
+let __ledgerReadStat = null;                 // 📡 台帳(task-sync)の読み取り診断(v1.30.708)
+function __setLedgerReadStat_(o){ __ledgerReadStat = Object.assign({ at:new Date().toISOString() }, o); try{ console.log(`[ledger-read] ${o.src} ${o.n}件 ${o.ms}ms${o.partial?' 差分':' フル'}${o.fallback?' ⚠fallback:'+o.fallback:''}`); }catch(_){} }
 let __lastGasEventsPullAt = 0;
 function __parseJsonSafe_(x){ if(x && typeof x==='object') return x; if(typeof x==='string'){ try{ return JSON.parse(x); }catch(_){ return null; } } return null; }
 // 📜 v1.30.692: 予定1件の変更履歴を Supabase の calendar_events_history から読む(RLS=admin/jimu・90日ローテ)。
@@ -23514,6 +23540,67 @@ function renderEventHistoryHtml_(rows, cur){
   }
   items.reverse();   // 新しい順
   return `<div style="color:#64748b;margin-bottom:3px">全${rows.length}回の変更(新しい順・DBに90日保持)</div>` + items.join('');
+}
+// 📡 v1.30.708: 台帳の射影を Supabase のビュー anken_projection_v から直接読む(台帳DB 9/9 19:45 設計)。
+//   列: id / drive_file_id / month / updated_at / projection(jsonb = GAS _projectContent_ と同値)。RLS bc_role 3役。
+//   戻り: { ok, data(=task-sync応答と同じ形: properties/allIds/allFileIds/partial/newestModifiedAt/syncedAt/_dbRead), ms, reason }
+//   失敗(未ログイン/401/無応答/形が違う)は ok:false → 呼び出し側が GAS task-sync へフォールバック。
+const LEDGER_DB_VIEW = 'anken_projection_v';
+function ledgerDbMonths_(maxMonths){
+  const n = Math.max(1, Number(maxMonths)||3), out=[]; const d=new Date(); d.setDate(1);
+  for(let i=0;i<n;i++){ out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); d.setMonth(d.getMonth()-1); }
+  return out;
+}
+async function fetchLedgerFromDb_({since='', maxMonths=3, signal}={}){
+  const t0 = Date.now();
+  let s = sbSession_();
+  if(!s || !s.access_token) return { ok:false, reason:'no-session', ms:Date.now()-t0 };
+  if(s.expires_at && (s.expires_at*1000 - Date.now()) < 60000){ try{ await sbRefresh_(); }catch(_){} s = sbSession_(); }
+  if(!s || !s.access_token) return { ok:false, reason:'no-session', ms:Date.now()-t0 };
+  const months = ledgerDbMonths_(maxMonths);
+  const monthQ = `month=in.(${months.map(m=>'"'+m+'"').join(',')})`;
+  const hdr = tok => ({ 'apikey': SB_AUTH.key, 'Authorization': 'Bearer '+tok, 'Prefer': 'count=exact', 'Accept': 'application/json' });
+  async function getAll(select, extra){
+    const base = `${SB_AUTH.url}/rest/v1/${LEDGER_DB_VIEW}?select=${select}&${monthQ}${extra||''}&order=id.asc`;
+    const all=[]; let from=0, retried=false;
+    while(true){
+      let res = await fetch(base, { headers: Object.assign({ 'Range': `${from}-${from+EVENTS_DB_PAGE-1}`, 'Range-Unit':'items' }, hdr(s.access_token)), cache:'no-store', signal });
+      if(res.status===401 && !retried){ retried=true; try{ await sbRefresh_(); }catch(_){} s = sbSession_(); if(!s||!s.access_token) throw new Error('auth'); continue; }
+      if(!(res.status===200 || res.status===206)) throw new Error('HTTP '+res.status);
+      const rows = await res.json(); if(!Array.isArray(rows)) throw new Error('bad-shape');
+      all.push(...rows);
+      const cr = res.headers.get('Content-Range')||''; const total = Number((cr.split('/')[1]||'').trim());
+      if(rows.length < EVENTS_DB_PAGE || (total && all.length >= total)) break;
+      from += EVENTS_DB_PAGE;
+    }
+    return all;
+  }
+  try{
+    const partial = !!since;
+    const rows = await getAll('id,drive_file_id,month,updated_at,projection', partial ? `&updated_at=gt.${encodeURIComponent(since)}` : '');
+    const light = partial ? await getAll('id,drive_file_id', '') : rows;   // 差分の時は窓内の全idだけ軽く取る(消えた案件の検出用)
+    const properties = [];
+    let newest = since || '';
+    rows.forEach(r=>{
+      const pj = r && r.projection; if(!pj || typeof pj!=='object') return;
+      if(!pj.driveFileId && r.drive_file_id) pj.driveFileId = r.drive_file_id;
+      if(!pj.estimateId && r.id) pj.estimateId = r.id;
+      if(!pj.month && r.month) pj.month = r.month;
+      properties.push(pj);
+      if(r.updated_at && String(r.updated_at) > String(newest)) newest = String(r.updated_at);
+    });
+    const data = {
+      ok:true, properties,
+      allIds: light.map(r=>r.id).filter(Boolean),
+      allFileIds: light.map(r=>r.drive_file_id).filter(Boolean),
+      partial, newestModifiedAt: newest || new Date().toISOString(), syncedAt: new Date().toISOString(),
+      totalCount: light.length, _dbRead:true, _src:'db'
+    };
+    return { ok:true, data, ms:Date.now()-t0 };
+  }catch(e){
+    const m = String(e && e.message || e);
+    return { ok:false, reason: (e && e.name==='AbortError') ? 'timeout' : m.slice(0,60), ms:Date.now()-t0 };
+  }
 }
 async function fetchEventsFromDb_({signal}={}){
   const t0 = Date.now();
@@ -24798,6 +24885,12 @@ async function runTaikyoColorDiag_(){
     sections.push(`【📡予定の読み元】 スイッチ=${(typeof eventsDbReadSource_==='function')?eventsDbReadSource_():'?'}${(__staticFlags&&__staticFlags.updatedAt)?`(flags.json ${__staticFlags.updatedAt})`:''}スイッチ=${on?'DB直読み':'GAS(従来)'} / ログイン=${sess?(sess.email||'済')+(sess.role?`(${sess.role})`:''):'未'}`
       + (st ? `\n直近: ${st.src.toUpperCase()} ${st.n}件${st.total!=null&&st.total!==st.n?`(総${st.total})`:''} ${st.ms}ms ${String(st.at).slice(11,19)}${st.fallback?`\n⚠フォールバック: ${st.fallback}`:''}${st.note?`\n${st.note}`:''}` : '\n直近: (まだ読んでいません)'));
   }catch(e){ sections.push('【📡予定の読み元】検査失敗: '+e.message); }
+  try{   // 📡 台帳(task-sync)の読み元(v1.30.708)
+    const st = __ledgerReadStat;
+    const on = (typeof ledgerDbReadOn_==='function') ? ledgerDbReadOn_() : false;
+    sections.push(`【📡台帳の読み元】 スイッチ=${(typeof ledgerDbReadSource_==='function')?ledgerDbReadSource_():'?'}: ${on?'DB直読み(anken_projection_v)':'GAS task-sync(従来)'}`
+      + (st ? `\n直近: ${String(st.src).toUpperCase()} ${st.n}件${st.total!=null&&st.total!==st.n?`(総${st.total})`:''} ${st.ms}ms ${st.partial?'差分':'フル'} ${String(st.at).slice(11,19)}${st.fallback?`\n⚠フォールバック: ${st.fallback}`:''}` : '\n直近: (まだ読んでいない)'));
+  }catch(e){ sections.push('【📡台帳の読み元】検査失敗: '+e.message); }
   const head = `🔍色の診断 (${(typeof appVersion_==='function')?appVersion_():''} / ${(typeof deviceInfo_==='function')?deviceInfo_():''})`;
   try{
     await mutateCalReport_(uid(), { type:'normal', text:`${head}\n${sections.join('\n\n')}`, status:'open',

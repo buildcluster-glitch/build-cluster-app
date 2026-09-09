@@ -1,8 +1,9 @@
 {
-  "_readme": "非常用スイッチ(DBの外・GitHub Pages)。null=上書きなし(共有設定 calendar_flags に従う)。true/false=全端末に強制。編集→publish.sh で1〜2分で全端末に届く",
+  "_readme": "非常用スイッチ(DBの外・GitHub Pages)。null=上書きなし(共有設定 calendar_flags に従う)。true/false=全端末に強制。編集→publish.sh で1〜2分で全端末に届く。ledgerDbRead=台帳(task-sync)のDB直読み(v1.30.708〜)",
   "eventsDbRead": null,
   "sharedDbRead": null,
   "banner": "",
   "updatedAt": "2026-09-09 18:06",
-  "by": "calendar-session"
+  "by": "calendar-session",
+  "ledgerDbRead": null
 }
