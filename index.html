@@ -1948,6 +1948,10 @@
     padding:12px 32px;font-size:15px;font-weight:700;cursor:pointer;
     box-shadow:0 2px 6px rgba(22,163,74,.3);transition:all .15s}
   .rd-archive-btn:hover{background:#15803d;box-shadow:0 4px 10px rgba(22,163,74,.4);transform:translateY(-1px)}
+  /* ⚡ 事前完了(v1.30.699・山田「ここにも事前完了」)。紫=予定カテゴリ「事前」と同じ */
+  .rd-jizen-btn{background:#7c3aed;color:#fff;border:1.5px solid #6d28d9;border-radius:8px;padding:10px 18px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap}
+  .rd-jizen-btn:hover{background:#6d28d9}
+  .rd-jizen-btn.on{background:#ede9fe;color:#5b21b6;border-color:#c4b5fd}
   .rd-archive-btn:active{transform:translateY(0);box-shadow:0 1px 3px rgba(22,163,74,.3)}
   /* アーカイブ済(完了取消し)時はグレー */
   .rd-archive-btn.archived{background:#94a3b8;box-shadow:0 2px 6px rgba(0,0,0,.15)}
@@ -2897,7 +2901,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.698</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.699</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -3220,6 +3224,7 @@
       <!-- 🟢 完了ボタン (一番下・緑)。誤タップ防止で「閉じる」を隣に置き、ラベルも用途が分かる文言に(v1.30.476・山田) -->
       <div class="rd-archive-section">
         <button id="rdCloseBtn" class="rd-close-btn" type="button" title="閉じる(何も変更しません)">✕ 閉じる</button>
+        <button id="rdJizenDoneBtn" class="rd-jizen-btn" type="button" title="事前補修は終わり／不要（全員共有・📊全体進捗の行き先リストから外れる・もう一度押すと取消）">⚡ 事前完了</button>
         <button id="rdArchiveBtn" class="rd-archive-btn" title="工事が全部終わった時だけ押す(完了→アーカイブ・台帳にも完了日を記録)">✓ 工事完了</button>
       </div>
     </div>
@@ -26542,6 +26547,12 @@ function renderRestoDetail(){
   const archived = restoIsArchived(p);
   archBtn.textContent = archived ? "↩ 工事完了を取消" : "✓ 工事完了";
   archBtn.classList.toggle("archived", archived);
+  // ⚡ 事前完了(v1.30.699): 全員共有の jizen_done。押した人/日時はツールチップに
+  try{ const jb = document.getElementById("rdJizenDoneBtn");
+    if(jb){ const je = (typeof jizenDoneEntry_==='function') ? jizenDoneEntry_(p) : null; const jd = !!(je && je.state==='done');
+      jb.textContent = jd ? "✅ 事前完了（取消）" : "⚡ 事前完了";
+      jb.classList.toggle("on", jd);
+      jb.title = jd ? `${je.by||''} ${String(je.at||'').slice(5,16).replace('T',' ')} が事前完了にしました（クリックで取消）` : "事前補修は終わり／不要（全員共有・📊の行き先リストから外れる）"; } }catch(_){}
   // サマリ
   const c = {todo:0,wip:0,done:0};
   restoActiveTasks(p).forEach(t=>{ if(c[t.status]!==undefined) c[t.status]++; });
@@ -27216,6 +27227,14 @@ document.getElementById("restoBack").onclick = ()=>{
 document.getElementById("restoDialog").onclick = (e)=>{ if(e.target.id==="restoDialog") closeRestoDialog(); };
 document.addEventListener("keydown",(e)=>{ if(e.key==="Escape" && restoDetailAsModal) closeRestoDialog(); });
 document.getElementById("rdArchiveBtn").onclick = restoToggleArchive;
+document.getElementById("rdJizenDoneBtn").onclick = ()=>{   // ⚡ v1.30.699
+  const p = (state.restorations||[]).find(r=>r.id===restoDetailId); if(!p) return;
+  const key = jizenKeyOfResto_(p); const je = jizenDoneEntry_(p); const nowDone = !!(je && je.state==='done');
+  setJizenDone_(key, nowDone ? '' : 'done', '').catch(()=>{});
+  renderRestoDetail();
+  try{ const dm=document.getElementById('dashboardModal'); if(dm && dm.classList.contains('show') && typeof renderDashboard_==='function') renderDashboard_(); }catch(_){}
+  if(typeof showAutoSyncToast==='function') showAutoSyncToast(nowDone ? '⚡ 事前完了を取り消しました' : '✅ 事前完了にしました（全員共有）');
+};
 // ✕ 閉じる(完了の隣・誤タップ対策 v1.30.476): ダイアログなら閉じる/ビュー表示なら一覧へ戻る
 { const __rdc = document.getElementById("rdCloseBtn");
   if(__rdc) __rdc.onclick = ()=>{
