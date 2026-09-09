@@ -2897,7 +2897,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.694</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.695</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -14406,6 +14406,27 @@ function getStaffDisplayName(name){
   return name; // fallback: そのまま (STAFF配列の詰め表記)
 }
 
+// 📍 v1.30.695(最上報告「レピュートCの住所が反映されてない」): 台帳の所在地が空の修繕は 物件マスタ(state.bukken) の住所で補う。
+//   実測09-09: 修繕145件中 住所空8件(うち3件=リエス榴ヶ岡はマスタに住所あり／レピュートC等5件はマスタ未登録=台帳かマスタへの入力が要る)
+function bukkenAddrByName_(name){
+  try{
+    const key = String(name||'').normalize('NFKC').replace(/[\s　]/g,'').toLowerCase();
+    if(!key || !Array.isArray(state.bukken)) return '';
+    const hit = state.bukken.find(b=> b && String(b.name||'').normalize('NFKC').replace(/[\s　]/g,'').toLowerCase()===key && String(b.address||'').trim());
+    return hit ? String(hit.address).trim() : '';
+  }catch(_){ return ''; }
+}
+// マスタが台帳より後に届いた時に、住所空のレコードへ後から補う(補った件数を返す)
+function fillAddrFromMaster_(){
+  let n=0;
+  try{
+    [...(state.repairs||[]), ...(state.restorations||[])].forEach(r=>{
+      if(!r || String(r.address||'').trim()) return;
+      const a = bukkenAddrByName_(r.name); if(a){ r.address = a; r._addrFromMaster = true; n++; }
+    });
+  }catch(_){}
+  return n;
+}
 async function fetchBukkenMaster(opts={}){
   // 既に進行中の fetch があれば共有
   if(__bukkenInFlight) return __bukkenInFlight;
@@ -14434,6 +14455,7 @@ async function fetchBukkenMaster(opts={}){
       const bukken = Array.isArray(data.bukken) ? data.bukken : [];
       state.bukken = bukken;
       state.bukkenFetchedAt = data.fetchedAt || new Date().toISOString();
+      try{ const __n = fillAddrFromMaster_(); if(__n) console.log(`[bukken] 住所空のレコード ${__n}件をマスタで補完`); }catch(_){}   // 📍 v1.30.695
       saveState();
       if(!opts.silent) alert(`物件マスタ ${bukken.length}件 を読込しました`);
       console.log(`[bukken] loaded ${bukken.length} items at ${state.bukkenFetchedAt}`);
@@ -14723,7 +14745,7 @@ function extractRepairs(properties){
       comments: Array.isArray(prev?.comments) ? prev.comments : [],  // CLローカル: コメント (同上)
       name: p.name || "(物件名なし)",
       room: p.room || "",
-      address: p.address || "",
+      address: p.address || bukkenAddrByName_(p.name) || "",   // 📍 v1.30.695: 台帳の所在地が空なら物件マスタ
       contractor: p.contractor || p.contractorName || p.clientRaw || p.clientCat || "",
       status: p.status || "見積作成中",
       workflowStatus: migrateWorkflow(p.workflowStatus),
@@ -14988,7 +15010,7 @@ function extractRestorations(properties, existing){
       id,
       name: p.name || "(物件名なし)",
       room: p.room || "",
-      address: p.address || prev?.address || "",
+      address: p.address || prev?.address || bukkenAddrByName_(p.name) || "",   // 📍 v1.30.695: 台帳の所在地が空なら物件マスタ
       client: p.clientRaw || prev?.client || "",
       clientCat: p.clientCat || prev?.clientCat || autoDetectClientCat(p.clientRaw||p.client||p.clientCat||""),
       kojiName: koji || "原状回復工事",
