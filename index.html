@@ -2897,7 +2897,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.697</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.698</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -7831,11 +7831,10 @@ function saveJizenDone_(map){ try{ localStorage.setItem(JIZEN_DONE_KEY, JSON.str
 function mergeJizenDoneMaps_(a,b){ return lwwMergeZombieSafe_(a,b); }
 function jizenKeyOfResto_(p){ return String((p && (p.extEstimateId || p.id)) || ''); }
 function jizenDoneEntry_(p){ const k=jizenKeyOfResto_(p); const e=k?loadJizenDone_()[k]:null; return (e && e.state) ? e : null; }
-// 事前完了扱いか: 手動「事前完了」 or 自社工事タスクが全部✓(タスクがある時)
+// 事前完了扱いか: **手動の「事前完了」だけ**(v1.30.698・山田「勝手に付与しないで手動で。必ず全現場チェックする」)。
+//   v693〜697は自社工事タスク全✓でも自動で完了扱いにしていたが、現場を見ずに消えるのは困る、で廃止。
 function jizenIsDone_(p){
-  const e = jizenDoneEntry_(p); if(e && e.state==='done') return true;   // 'again' は v694 で撤去(残っていても未完了扱い=下の自社全✓判定へ)
-  const pr = (typeof restoProgress==='function') ? restoProgress(p) : null;
-  return !!(pr && pr.total>0 && pr.done>=pr.total);
+  const e = jizenDoneEntry_(p); return !!(e && e.state==='done');
 }
 async function fetchJizenDone_(opts={}){
   const s=loadGasSettings(); const local=loadJizenDone_();
@@ -9691,15 +9690,23 @@ function renderDashboard_(){
   //   物件行のバッジだけだと長いリストに埋もれる。**いま入れられる案件だけ**を一番上に抜き出して並べる。
   //   色/言葉は予定カテゴリ「事前」(=事前補修・紫#7c3aed)と揃える。行タップは通常行と同じ詳細ダイアログ。
   const chanceItems = [], chanceDone = [];
+  // v1.30.698(山田「事前チャンスが終わっても勝手に完了にしない・必ず全現場チェック」): 枠が終わった現場も
+  //   手動で[事前完了]を押すまで帯に残す(灰色「チャンス終了」)。消えるのは押した時だけ。
   restoOrder.forEach(k=>{ (restoGroups.get(k)||{items:[]}).items.forEach(it=>{
-    if(it.win && it.win.state==='now') (it.jzDone ? chanceDone : chanceItems).push({it, k});
+    if(!it.win || (it.win.state!=='now' && it.win.state!=='past')) return;
+    (it.jzDone ? chanceDone : chanceItems).push({it, k});
   }); });
-  chanceItems.sort((a,b)=> a.it.win.remain - b.it.win.remain);   // 締切が近い順
+  chanceItems.sort((a,b)=>{   // 今(締切が近い順) → 終了(終わったのが新しい順)
+    const an=a.it.win.state==='now'?0:1, bn=b.it.win.state==='now'?0:1;
+    if(an!==bn) return an-bn;
+    return an===0 ? (a.it.win.remain - b.it.win.remain) : (b.it.win.end - a.it.win.end);
+  });
   // ⚡ v1.30.693(山田「どの現場で事前に行けばいいか判断しづらい」): 帯を「行き先リスト」に。
   //   状態(🔴未訪問/🟡残あり・また行く)・残作業の名前・前回いつ誰が行ったか(事前カードから)・[事前完了][また行く]ボタン。
   const chanceRows = chanceItems.map(({it,k})=>{
     const w = it.win;
-    const urgent = w.remain<=2;
+    const over = w.state==='past';
+    const urgent = !over && w.remain<=2;
     const visit = __jzVisits.get(jizenMatchKey_(`${it.name||''} ${it.room||''}`)) || null;
     const stIcon = visit ? '🟡' : '🔴';            // v1.30.694: 「また行く」は撤去(山田「ややこしくなる」)
     const stLbl  = visit ? '残あり' : '未訪問';
@@ -9719,12 +9726,12 @@ function renderDashboard_(){
          </div>`
       : '';
     const btnS = 'border:1px solid #c4b5fd;background:#fff;color:#5b21b6;border-radius:6px;font-size:10.5px;font-weight:700;padding:2px 8px;cursor:pointer;white-space:nowrap';
-    return `<div class="dash-row" data-dr-resto="${escapeHtml(it.id)}" style="display:flex;align-items:center;gap:7px;padding:6px 9px;border:1px solid #ddd6fe;border-left:4px solid ${urgent?'#dc2626':'#7c3aed'};background:#fff;border-radius:8px;margin-bottom:4px;cursor:pointer;flex-wrap:wrap">
+    return `<div class="dash-row" data-dr-resto="${escapeHtml(it.id)}" style="display:flex;align-items:center;gap:7px;padding:6px 9px;border:1px solid ${over?'#e5e7eb':'#ddd6fe'};border-left:4px solid ${over?'#9ca3af':urgent?'#dc2626':'#7c3aed'};background:${over?'#fafafa':'#fff'};border-radius:8px;margin-bottom:4px;cursor:pointer;flex-wrap:wrap">
       <span style="font-size:12px;white-space:nowrap" title="${stLbl}">${stIcon}</span>
       <span style="background:${__dashClientColor_(k)};color:#fff;font-size:9px;font-weight:700;padding:1px 6px;border-radius:5px;white-space:nowrap">${escapeHtml(k)}</span>
       <span style="flex:1 1 150px;min-width:120px;font-size:12.5px;font-weight:700;word-break:break-word">${escapeHtml(it.name)}${it.room?` <span style="font-weight:400">${escapeHtml(it.room)}</span>`:''}</span>
       ${volHtml2}
-      <span style="background:${urgent?'#dc2626':'#7c3aed'};color:#fff;font-size:11px;font-weight:800;padding:2px 9px;border-radius:6px;white-space:nowrap">${w.remain<=1?'今日まで':`あと${w.remain}日`}</span>
+      <span style="background:${over?'#9ca3af':urgent?'#dc2626':'#7c3aed'};color:#fff;font-size:11px;font-weight:800;padding:2px 9px;border-radius:6px;white-space:nowrap" title="${over?'事前チャンスの枠は終了。行ったなら[事前完了]を押す':''}">${over?`終了(${md(w.end)}まで)`:w.remain<=1?'今日まで':`あと${w.remain}日`}</span>
       <span style="font-size:10.5px;color:var(--muted);white-space:nowrap" title="この日から内装(または清掃)が入るので事前補修は入れられなくなる${w.work?`／${escapeHtml(w.work)}`:''}">🚧内装${md(w.vendorStart)}${w.vendor?` ${escapeHtml(w.vendor)}`:''}</span>
       ${bar2}
       ${undoneHtml}
@@ -9735,12 +9742,12 @@ function renderDashboard_(){
     </div>`;
   }).join('');
   const chanceDoneHtml = chanceDone.length ? `<div style="font-size:11px;color:#6d28d9;padding:4px 4px 2px;display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span style="font-weight:700">✅事前完了 ${chanceDone.length}件</span>${chanceDone.map(({it})=>{
-      const jd = __jzMap[it.jzKey]; const manual = jd && jd.state==='done';
-      const tip = manual ? `${jd.by||''} ${String(jd.at||'').slice(5,16).replace('T',' ')} が事前完了にしました（クリックで取消）` : '自社工事タスクが全部✓なので自動で完了扱い';
+      const jd = __jzMap[it.jzKey]; const manual = !!(jd && jd.state==='done');
+      const tip = manual ? `${jd.by||''} ${String(jd.at||'').slice(5,16).replace('T',' ')} が事前完了にしました（クリックで取消）` : '事前完了（クリックで取消）';
       return `<button ${manual?`data-jz-undo="${escapeHtml(it.jzKey)}"`:''} style="border:1px solid #ddd6fe;background:#fff;color:#6d28d9;border-radius:6px;font-size:10.5px;padding:1px 7px;cursor:${manual?'pointer':'default'};white-space:nowrap" title="${escapeHtml(tip)}">${escapeHtml(it.name)}${it.room?' '+escapeHtml(it.room):''}${manual&&jd.by?` <span style="color:#94a3b8">${escapeHtml(surnameOf_(jd.by))}</span>`:' <span style="color:#94a3b8">全✓</span>'}</button>`;
     }).join('')}</div>` : '';
   const chanceBox = !showResto ? '' : `<div style="border:2px solid #7c3aed;border-radius:12px;background:#f5f3ff;padding:0 8px 6px;margin-bottom:14px;overflow:hidden;flex-shrink:0">
-      <div style="background:#7c3aed;color:#fff;font-size:13.5px;font-weight:800;padding:6px 12px;border-radius:10px 10px 9px 9px;margin:0 -8px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">⚡ 事前チャンス <span style="font-size:11px;font-weight:600;opacity:.9">行き先リスト ${chanceItems.length}件 ／ 🔴未訪問 🟡残あり ／ 締切が近い順</span></div>
+      <div style="background:#7c3aed;color:#fff;font-size:13.5px;font-weight:800;padding:6px 12px;border-radius:10px 10px 9px 9px;margin:0 -8px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">⚡ 事前チャンス <span style="font-size:11px;font-weight:600;opacity:.9">行き先リスト ${chanceItems.length}件 ／ 🔴未訪問 🟡残あり ／ 締切が近い順・枠が終わった現場も[事前完了]を押すまで残ります</span></div>
       ${chanceRows || '<div style="color:#6d28d9;font-size:12px;padding:4px 4px 6px">いま行く現場はありません（業者の着工日が決まると、発注書の発行日からその前日までがここに出ます）</div>'}
       ${chanceDoneHtml}
     </div>`;
