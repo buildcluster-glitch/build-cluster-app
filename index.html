@@ -2907,7 +2907,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.702</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.703</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -7841,6 +7841,8 @@ function loadJizenDone_(){ try{ const o=JSON.parse(localStorage.getItem(JIZEN_DO
 function saveJizenDone_(map){ try{ localStorage.setItem(JIZEN_DONE_KEY, JSON.stringify(map||{})); }catch(e){} }
 function mergeJizenDoneMaps_(a,b){ return lwwMergeZombieSafe_(a,b); }
 function jizenKeyOfResto_(p){ return String((p && (p.extEstimateId || p.id)) || ''); }
+// 🕐 v1.30.703(山田「時間おかしいかも」): ISOをそのまま切ると UTC(09:03=日本12:03)。端末のローカル時刻で「9/9 12:03」に
+function fmtLocalMDHM_(iso){ const d=new Date(iso||''); if(isNaN(d)) return ''; return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
 function jizenDoneEntry_(p){ const k=jizenKeyOfResto_(p); const e=k?loadJizenDone_()[k]:null; return (e && e.state) ? e : null; }
 // 事前完了扱いか: **手動の「事前完了」だけ**(v1.30.698・山田「勝手に付与しないで手動で。必ず全現場チェックする」)。
 //   v693〜697は自社工事タスク全✓でも自動で完了扱いにしていたが、現場を見ずに消えるのは困る、で廃止。
@@ -9754,7 +9756,7 @@ function renderDashboard_(){
   }).join('');
   const chanceDoneHtml = chanceDone.length ? `<div style="font-size:11px;color:#6d28d9;padding:4px 4px 2px;display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span style="font-weight:700">✅事前完了 ${chanceDone.length}件</span>${chanceDone.map(({it})=>{
       const jd = __jzMap[it.jzKey]; const manual = !!(jd && jd.state==='done');
-      const tip = manual ? `${jd.by||''} ${String(jd.at||'').slice(5,16).replace('T',' ')} が事前完了にしました（クリックで取消）` : '事前完了（クリックで取消）';
+      const tip = manual ? `${jd.by||''} ${fmtLocalMDHM_(jd.at)} が事前完了にしました（クリックで取消）` : '事前完了（クリックで取消）';
       return `<button ${manual?`data-jz-undo="${escapeHtml(it.jzKey)}"`:''} style="border:1px solid #ddd6fe;background:#fff;color:#6d28d9;border-radius:6px;font-size:10.5px;padding:1px 7px;cursor:${manual?'pointer':'default'};white-space:nowrap" title="${escapeHtml(tip)}">${escapeHtml(it.name)}${it.room?' '+escapeHtml(it.room):''}${manual&&jd.by?` <span style="color:#94a3b8">${escapeHtml(surnameOf_(jd.by))}</span>`:' <span style="color:#94a3b8">全✓</span>'}</button>`;
     }).join('')}</div>` : '';
   const chanceBox = !showResto ? '' : `<div style="border:2px solid #7c3aed;border-radius:12px;background:#f5f3ff;padding:0 8px 6px;margin-bottom:14px;overflow:hidden;flex-shrink:0">
@@ -26415,8 +26417,8 @@ function renderRestoCard(p){
   // v1.30.701(山田「終わってない物件まで⚡事前完了が常に出ていると分かりづらい」): カード上のチップは撤去。押すのはダイアログ/📊だけ。完了の見た目(紫枠+印)は残す
   const jzBtnHtml = '';
   return `
-    <div class="resto-card st-${st}${__archived?' resto-done':''}${__jz?' jz-done':''}" data-id="${p.id}"${__jz?` title="⚡ ${escapeHtml((__jzE.by||'(不明)')+' が '+String(__jzE.at||'').slice(5,16).replace('T',' ')+' に事前完了にしました')}"`:''}>
-      <div class="rc-name">${__archived?'<span class="rc-done-badge">✓完了</span>':''}${__jz?`<span class="rc-jz-badge" title="${escapeHtml((__jzE.by||'')+' '+String(__jzE.at||'').slice(5,16).replace('T',' '))} が事前完了にしました">⚡事前完了</span>`:''}${escapeHtml(p.name||"(物件名なし)")} <span class="rc-room">${roomStr}</span></div>
+    <div class="resto-card st-${st}${__archived?' resto-done':''}${__jz?' jz-done':''}" data-id="${p.id}"${__jz?` title="⚡ ${escapeHtml((__jzE.by||'(不明)')+' が '+fmtLocalMDHM_(__jzE.at)+' に事前完了にしました')}"`:''}>
+      <div class="rc-name">${__archived?'<span class="rc-done-badge">✓完了</span>':''}${__jz?`<span class="rc-jz-badge" title="${escapeHtml((__jzE.by||'')+' '+fmtLocalMDHM_(__jzE.at))} が事前完了にしました">⚡事前完了</span>`:''}${escapeHtml(p.name||"(物件名なし)")} <span class="rc-room">${roomStr}</span></div>
       <div class="rc-row">
         ${estBadgeHtml}
         ${volBadgeHtml}
@@ -26564,7 +26566,7 @@ function renderRestoDetail(){
     if(jb){ const je = (typeof jizenDoneEntry_==='function') ? jizenDoneEntry_(p) : null; const jd = !!(je && je.state==='done');
       jb.textContent = jd ? "✅ 事前完了（取消）" : "⚡ 事前完了";
       jb.classList.toggle("on", jd);
-      jb.title = jd ? `${je.by||''} ${String(je.at||'').slice(5,16).replace('T',' ')} が事前完了にしました（クリックで取消）` : "事前補修は終わり／不要（全員共有・📊の行き先リストから外れる）"; } }catch(_){}
+      jb.title = jd ? `${je.by||''} ${fmtLocalMDHM_(je.at)} が事前完了にしました（クリックで取消）` : "事前補修は終わり／不要（全員共有・📊の行き先リストから外れる）"; } }catch(_){}
   // サマリ
   const c = {todo:0,wip:0,done:0};
   restoActiveTasks(p).forEach(t=>{ if(c[t.status]!==undefined) c[t.status]++; });
