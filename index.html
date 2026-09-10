@@ -2907,7 +2907,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.714</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.715</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -23532,7 +23532,9 @@ function sbLogout_(){
 //   'bc_flag_eventsDbRead'='1'|'0'(検証用) ＞ 既定OFF。公開日(9/9予定)まで誰の挙動も変わらない。
 //   黙って空振りしない: 毎回 __eventsReadStat に読み元/件数/所要/フォールバック理由を残し、🔍色の診断に出す。
 // ============================================================================
-let __calFlags = null;
+// v1.30.715: 前回取得した遠隔スイッチを端末に控え、リロード直後の最初の同期から効かせる(9/10 鈴木端末: 起動直後の1回目がフラグ未取得でGAS台帳読み29秒→次からDB)。
+//   控えが古くても次の取得(起動直後・10分ごと・フォーカス)で上書きされる。DB停止中に古いONで読んでも失敗→自動でGASなので害なし。
+let __calFlags = (function(){ try{ const o = JSON.parse(localStorage.getItem('bc_calFlags_cache')||'null'); return (o && typeof o==='object') ? o : null; }catch(_){ return null; } })();
 // 🚦 v1.30.705(山田「直結にしてからDBが落ちた時の対応」②): DBの外にあるスイッチ = 公開先の flags.json(GitHub Pages)。
 //   共有設定(calendar_flags)は来週DBに移るので、DBが落ちると読めない。flags.json は index.html と同じ場所に置き、
 //   SWはキャッシュしない。優先順位: 端末localStorage > flags.json(true/false) > 共有設定。null=上書きなし。
@@ -23557,6 +23559,7 @@ async function fetchCalendarFlags_(){
     const d = await res.json(); let v = d && d.value;
     if(typeof v === 'string'){ try{ v = v ? JSON.parse(v) : {}; }catch(_){ v = {}; } }
     __calFlags = (v && typeof v === 'object') ? v : {};
+    try{ localStorage.setItem('bc_calFlags_cache', JSON.stringify(__calFlags)); }catch(_){}   // v1.30.715: 次回起動の初回同期用に控える
   }catch(_){}
   return __calFlags;
 }
