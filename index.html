@@ -2907,7 +2907,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.712</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.713</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -9955,7 +9955,11 @@ async function heartbeatPresence_(opts={}){
     meta[me] = { ver:(typeof appVersion_==='function'?appVersion_():''), dev:(typeof deviceInfo_==='function'?deviceInfo_():''), at:new Date().toISOString(),
       rs: __rs ? __rs.src : ((typeof eventsDbReadOn_==='function' && eventsDbReadOn_()) ? 'db?' : 'gas'),   // db / gas / db?(ON直後で未読)
       rsN: __rs ? __rs.n : null, rsMs: __rs ? __rs.ms : null, rsFb: __rs ? (__rs.fallback||'') : '',
-      rsOn: (typeof eventsDbReadOn_==='function') ? eventsDbReadOn_() : false };
+      rsOn: (typeof eventsDbReadOn_==='function') ? eventsDbReadOn_() : false,
+      // 📡 v1.30.713: 台帳(task-sync)の読み元も共有(9/10 全端末切替の見張り用)
+      lr: (typeof __ledgerReadStat!=='undefined' && __ledgerReadStat) ? __ledgerReadStat.src : ((typeof ledgerDbReadOn_==='function' && ledgerDbReadOn_()) ? 'db?' : 'gas'),
+      lrN: (typeof __ledgerReadStat!=='undefined' && __ledgerReadStat) ? __ledgerReadStat.n : null, lrMs: (typeof __ledgerReadStat!=='undefined' && __ledgerReadStat) ? __ledgerReadStat.ms : null,
+      lrFb: (typeof __ledgerReadStat!=='undefined' && __ledgerReadStat) ? (__ledgerReadStat.fallback||'') : '', lrOn: (typeof ledgerDbReadOn_==='function') ? ledgerDbReadOn_() : false };
   }
   try{ localStorage.setItem('buildcluster_presence_meta', JSON.stringify(meta)); }catch(_){}
   try{
@@ -24828,6 +24832,14 @@ function renderDeviceVersions_(){
       const lbl = m.rs==='db' ? '📡DB' : (m.rs==='db?' ? '📡…' : 'GAS');
       const tip = `予定の読み元: ${m.rs==='db'?'DB直読み':(m.rs==='db?'?'DBスイッチON(まだ読んでいない)':'GAS(従来)')}${m.rsN!=null?` ${m.rsN}件`:''}${m.rsMs!=null?` ${m.rsMs}ms`:''}${m.rsFb?`\n⚠フォールバック: ${m.rsFb}`:''}${m.rsOn&&m.rs==='gas'?'\n(スイッチはONなのにGAS=要確認)':''}`;
       rsHtml = `<span title="${escapeHtml(tip)}" style="font-size:9.5px;font-weight:700;padding:0 5px;border-radius:7px;background:${bg};color:${fg}">${lbl}</span>`;
+    }
+    if(m.lr){   // 📚 台帳の読み元バッジ(v1.30.713)
+      const fb2 = !!(m.lrOn && m.lr!=='db');
+      const bg2 = m.lr==='db' ? '#dcfce7' : (fb2 ? '#ffedd5' : '#f1f5f9');
+      const fg2 = m.lr==='db' ? '#166534' : (fb2 ? '#9a3412' : '#64748b');
+      const lbl2 = m.lr==='db' ? '📚DB' : (m.lr==='db?' ? '📚…' : '📚GAS');
+      const tip2 = `台帳の読み元: ${m.lr==='db'?'DB直読み':(m.lr==='db?'?'DBスイッチON(まだ読んでいない)':'GAS task-sync(従来)')}${m.lrN!=null?` ${m.lrN}件`:''}${m.lrMs!=null?` ${m.lrMs}ms`:''}${m.lrFb?`\n⚠フォールバック: ${m.lrFb}`:''}`;
+      rsHtml += `<span title="${escapeHtml(tip2)}" style="font-size:9.5px;font-weight:700;padding:0 5px;border-radius:7px;background:${bg2};color:${fg2}">${lbl2}</span>`;
     }
     return `<span title="${escapeHtml((m.dev||'') + (ds?(' / 最終 '+ds):''))}" style="display:inline-flex;align-items:center;gap:4px;border:1px solid ${old?'#fca5a5':'var(--border)'};background:${old?'#fee2e2':'#fff'};color:${old?'#b91c1c':'#334155'};border-radius:12px;padding:2px 9px;font-size:11px;font-weight:${old?'700':'500'}">${escapeHtml(n)} <b style="font-weight:700">${escapeHtml(m.ver||'?')}</b>${old?' ⚠旧版':''}${rsHtml}</span>`;
   }).join('');
