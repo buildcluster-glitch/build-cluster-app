@@ -2907,7 +2907,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.708</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.709</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4137,6 +4137,7 @@
       <div class="field">
         <label>取得期間 (maxMonths・短いほど同期が速い)</label>
         <input id="gas-months" type="number" value="3" min="1" max="24">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:6px"><input type="checkbox" id="gas-ledger-db" style="width:auto"> 📡 台帳をDBから直接読む(この端末だけ・試験中・失敗時は自動でGAS)</label>
       </div>
       <div class="field">
         <label>
@@ -14583,6 +14584,7 @@ function openGasSettings(){
   document.getElementById("gas-url").value   = s.url   || "";
   document.getElementById("gas-token").value = s.token || "";
   document.getElementById("gas-months").value= s.maxMonths || 3;
+  try{ const cb=document.getElementById("gas-ledger-db"); if(cb){ cb.checked = (localStorage.getItem('bc_flag_ledgerDbRead')==='1'); cb.onchange = ()=>{ setLedgerDbReadLocal_(cb.checked ? true : null); if(typeof showAutoSyncToast==='function') showAutoSyncToast(cb.checked ? '📡 次の同期から台帳をDBから読みます(🔍診断【📡台帳の読み元】で確認)' : '📡 台帳の読みをGASに戻しました'); }; } }catch(_){}   // v1.30.709
   document.getElementById("gas-auto-sync").checked = s.autoRefreshEnabled !== false;
   document.getElementById("gas-task-url").value = s.taskManagerUrl || "";
   // 🚗 直行マーカー表示トグル(この端末のみ・即時反映・保存ボタン不要)v1.30.240
@@ -23551,6 +23553,20 @@ function ledgerDbMonths_(maxMonths){
   for(let i=0;i<n;i++){ out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); d.setMonth(d.getMonth()-1); }
   return out;
 }
+let __taskProgressCache = { at:'', map:null };
+async function fetchTaskProgressMapFromDb_(sess){
+  const hdr = { 'apikey': SB_AUTH.key, 'Authorization': 'Bearer '+sess.access_token, 'Accept': 'application/json' };
+  const meta = await fetch(`${SB_AUTH.url}/rest/v1/shared_config?select=updated_at&key=eq.task_progress`, { headers: hdr, cache:'no-store' });
+  if(!meta.ok) throw new Error('HTTP '+meta.status);
+  const mrows = await meta.json(); const at = (mrows && mrows[0] && mrows[0].updated_at) || '';
+  if(at && __taskProgressCache.at === at && __taskProgressCache.map) return __taskProgressCache.map;
+  const res = await fetch(`${SB_AUTH.url}/rest/v1/shared_config?select=value_json,value&key=eq.task_progress`, { headers: hdr, cache:'no-store' });
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  const rows = await res.json(); const r0 = rows && rows[0];
+  let map = r0 && r0.value_json; if(!map && r0 && typeof r0.value==='string'){ try{ map = JSON.parse(r0.value); }catch(_){ map=null; } }
+  if(!map || typeof map!=='object') return null;
+  __taskProgressCache = { at, map }; return map;
+}
 async function fetchLedgerFromDb_({since='', maxMonths=3, signal}={}){
   const t0 = Date.now();
   let s = sbSession_();
@@ -23589,8 +23605,30 @@ async function fetchLedgerFromDb_({since='', maxMonths=3, signal}={}){
       properties.push(pj);
       if(r.updated_at && String(r.updated_at) > String(newest)) newest = String(r.updated_at);
     });
+    // ── GAS task-sync がやっていた後処理の再現(台帳DB 2026-09-10 09:40 契約) ──
+    // ① パターン集約(フル同期時・_aggregatePatterns_ と同じ規則): 確定1件→それだけ / 確定2件以上→確定全部+未確定の代表 / 確定なし→代表(オリジナル→estimateId昇順)
+    let propsOut = properties;
+    if(!partial){
+      const groups = {}, out = [];
+      properties.forEach(q=>{ const gid = q && q.patternGroupId; if(!gid){ out.push(q); return; } (groups[gid] = groups[gid] || []).push(q); });
+      const rep = arr => arr.slice().sort((a,b)=>{ const ao=(a.patternLabel==='オリジナル')?0:1, bo=(b.patternLabel==='オリジナル')?0:1; if(ao!==bo) return ao-bo; return String(a.estimateId||'').localeCompare(String(b.estimateId||'')); })[0];
+      Object.keys(groups).forEach(gid=>{ const g=groups[gid]; const c=g.filter(q=>q.isConfirmed), n=g.filter(q=>!q.isConfirmed);
+        if(c.length===1) out.push(c[0]); else if(c.length>=2){ c.forEach(q=>out.push(q)); if(n.length) out.push(rep(n)); } else out.push(rep(g)); });
+      propsOut = out;
+    }
+    // ② progress の添付(_attachProgress_): shared_config 'task_progress'(value_json・key='物件名|号室')をDBから読む(updated_at が同じなら前回の値を使う)
+    try{
+      const pm = await fetchTaskProgressMapFromDb_(s);
+      if(pm){ propsOut.forEach(q=>{ if(!q||!q.name) return; const pr = pm[String(q.name||'').trim()+'|'+String(q.room||'').trim()]; if(pr) q.progress = pr; }); }
+    }catch(e){ console.warn('[ledger-read] task_progress 取得失敗(進捗なしで続行):', e && e.message); }
+    // ③ light(_stripDoneHeavy_): 完了/キャンセルで現場が動いていない案件は重い欄を省く(行は残す・tasksCount を残す)
+    { const today = fmtDate(new Date()); const HEAVY=['tasks','progress','workloadStatus','requestDetailFull'];
+      propsOut.forEach(q=>{ if(!q) return; const done=(q.status==='完了'||q.status==='キャンセル'); if(!done) return;
+        if(q.workflowStatus==='着工'||q.workflowStatus==='対応中') return;
+        const fc=String(q.finalCheckDateIso||'').slice(0,10); if(fc && fc>=today) return;
+        q._light=true; q.tasksCount=Array.isArray(q.tasks)?q.tasks.length:0; HEAVY.forEach(k=>{ if(k in q) delete q[k]; }); }); }
     const data = {
-      ok:true, properties,
+      ok:true, properties: propsOut, patternAggregated: !partial,
       allIds: light.map(r=>r.id).filter(Boolean),
       allFileIds: light.map(r=>r.drive_file_id).filter(Boolean),
       partial, newestModifiedAt: newest || new Date().toISOString(), syncedAt: new Date().toISOString(),
