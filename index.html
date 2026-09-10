@@ -2907,7 +2907,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.715</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.716</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4769,6 +4769,16 @@
       }).catch(function(){ _scResend_(input, init, attempt + 1); });   // 通信失敗=届いていないので次の遅延で再送
     }, _SC_RETRY_DELAYS[attempt]);
   }
+  // 📝 v1.30.716(山田「また共有設定がDBに届きませんでしたって出る」09-10): ok:false の中身を端末に残し(直近20件・🔍診断に出す)、文言を応答で分ける。
+  //   dbError あり=見積GASがDBに書けなかった(未保存保証) / code 401=GASの散発401(実行済みで応答だけ401の型あり) / それ以外=GAS内の例外(DBには書けた後の Properties/Drive 失敗など)
+  var _SC_FAIL_KEY = 'bc_sc_fail_log';
+  function _scFailLog_(o){ try{ var a = JSON.parse(localStorage.getItem(_SC_FAIL_KEY)||'[]'); if(!Array.isArray(a)) a=[]; a.push(o); localStorage.setItem(_SC_FAIL_KEY, JSON.stringify(a.slice(-20))); }catch(_){} }
+  window.__scFailLog = function(){ try{ return JSON.parse(localStorage.getItem(_SC_FAIL_KEY)||'[]'); }catch(_){ return []; } };
+  function _scFailKind_(j){
+    if (j && j.dbError) return 'db';
+    if (j && (j.code === 401 || j.error === 'unauthorized')) return '401';
+    return 'gas';
+  }
   function _scPostWatch_(input, init){
     var p; try { p = _origFetch(input, init); } catch(e){ return Promise.reject(e); }
     return p.then(function(r){
@@ -4778,8 +4788,13 @@
           r.clone().json().then(function(j){
             if (j && j.ok === false && !j.conflict) {
               var key = _scKeyOf_(init && init.body);
-              console.warn('[共有設定] 保存が ok:false key=' + key + ' → 5秒後に再送: ' + (j.error||j.message||j.dbError||''));
-              _scToast_('📮 共有設定(' + key + ')の保存がDBに届きませんでした。自動で再送します');
+              var kind = _scFailKind_(j), why = String(j.dbError || j.error || j.message || '').slice(0, 160);
+              var bytes = (init && init.body) ? String(init.body).length : 0;
+              _scFailLog_({ at: new Date().toISOString(), key: key, kind: kind, why: why, bytes: bytes });
+              console.warn('[共有設定] 保存が ok:false key=' + key + ' kind=' + kind + ' → 5秒後に再送: ' + why);
+              if (kind === 'db') _scToast_('📮 共有設定(' + key + ')の保存がDBに届きませんでした。自動で再送します');
+              else if (kind === '401') _scToast_('📮 共有設定(' + key + ')の保存にサーバーが一時的に「認証エラー」を返しました(散発)。自動で再送します');
+              else _scToast_('📮 共有設定(' + key + ')の保存でサーバー側エラー(' + (why || '不明') + ')。自動で再送します');
               _scResend_(input, init, 0);
             }
           }).catch(function(){});
@@ -25080,6 +25095,12 @@ async function runTaikyoColorDiag_(){
     sections.push(`【📡共有設定の読み元】 スイッチ=${(typeof sharedDbReadSource_==='function')?sharedDbReadSource_():'?'}: ${on?'DB直読み(shared_config)':'GAS get-shared-configs(従来)'}`
       + (st ? `\n直近: ${String(st.src).toUpperCase()} ${st.n!=null?st.n+'件':''}${st.total!=null?`(手元${st.total}キー)`:''} ${st.ms}ms ${st.partial?'差分':'フル'} ${(function(){ const d=new Date(st.at); return isNaN(d)?String(st.at).slice(11,19):d.toTimeString().slice(0,8); })()}${st.fallback?`\n⚠フォールバック: ${st.fallback}`:''}` : '\n直近: (まだ読んでいない)'));
   }catch(e){ sections.push('【📡共有設定の読み元】検査失敗: '+e.message); }
+  try{   // 📮 共有設定の保存失敗ログ(v1.30.716・この端末の直近20件・ok:false の中身)
+    const fl = (typeof window.__scFailLog==='function') ? window.__scFailLog() : [];
+    const q = (typeof window.__scRetryQueueSize==='function') ? window.__scRetryQueueSize() : 0;
+    sections.push(`【📮共有設定の保存失敗(この端末)】 ${fl.length?fl.length+'件':'なし'}${q?` / 未送信の箱 ${q}件`:''}`
+      + fl.slice(-10).map(x=>{ const d=new Date(x.at); return `\n${isNaN(d)?x.at:`${d.getMonth()+1}/${d.getDate()} ${d.toTimeString().slice(0,8)}`} ${x.key} [${x.kind}] ${Math.round((x.bytes||0)/1024)}KB ${x.why||''}`; }).join(''));
+  }catch(e){ sections.push('【📮共有設定の保存失敗】検査失敗: '+e.message); }
   const head = `🔍色の診断 (${(typeof appVersion_==='function')?appVersion_():''} / ${(typeof deviceInfo_==='function')?deviceInfo_():''})`;
   try{
     await mutateCalReport_(uid(), { type:'normal', text:`${head}\n${sections.join('\n\n')}`, status:'open',
