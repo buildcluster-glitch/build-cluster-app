@@ -2907,7 +2907,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.709</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.710</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4273,6 +4273,7 @@
           <input id="all-gas-months" type="number" value="6" min="1" max="24" style="width:60px;padding:2px 6px">
           <span style="font-size:11px;color:var(--muted)">ヶ月</span>
         </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:6px"><input type="checkbox" id="all-ledger-db" style="width:auto"> 📡 台帳をDBから直接読む(この端末だけ・試験中・失敗時は自動でGAS読みに戻る)</label>
       </fieldset>
 
       <!-- セクション2: クラウド同期 (予定/休暇) -->
@@ -23248,6 +23249,7 @@ function openAllSettings(focus){
   document.getElementById('all-gas-url').value = gs.url || '';
   document.getElementById('all-gas-token').value = gs.token || '';
   document.getElementById('all-gas-months').value = gs.months || 6;
+  try{ const cb=document.getElementById('all-ledger-db'); if(cb){ cb.checked = (localStorage.getItem('bc_flag_ledgerDbRead')==='1'); cb.onchange = ()=>{ setLedgerDbReadLocal_(cb.checked ? true : null); if(typeof showAutoSyncToast==='function') showAutoSyncToast(cb.checked ? '📡 次の同期から台帳をDBから読みます(🔍診断【📡台帳の読み元】で確認)' : '📡 台帳の読みをGASに戻しました'); }; } }catch(_){}   // v1.30.710
   document.getElementById('all-gas-auto').checked = gs.autoSync !== false;
 
   // Cloud Sync (cs)
