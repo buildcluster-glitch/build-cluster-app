@@ -2907,7 +2907,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.711</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.712</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -23493,7 +23493,8 @@ const EVENTS_DB_PAGE = 1000;
 const EVENTS_GAS_REFRESH_MS = 10*60*1000;   // ①の保険: 10分に1回はGAS経由フルも混ぜる(GAS側DB先行書きが入ったら伸ばせる)
 let __eventsReadStat = null;                 // 直近の読み取り診断 {src, n, total, ms, fallback, at, note}
 let __ledgerReadStat = null;                 // 📡 台帳(task-sync)の読み取り診断(v1.30.708)
-function __setLedgerReadStat_(o){ __ledgerReadStat = Object.assign({ at:new Date().toISOString() }, o); try{ console.log(`[ledger-read] ${o.src} ${o.n}件 ${o.ms}ms${o.partial?' 差分':' フル'}${o.fallback?' ⚠fallback:'+o.fallback:''}`); }catch(_){} }
+let __ledgerReadStatFull = null;             // 直近の「フル」読み(件数比較用・v1.30.712)
+function __setLedgerReadStat_(o){ __ledgerReadStat = Object.assign({ at:new Date().toISOString() }, o); if(o && !o.partial && o.n>0) __ledgerReadStatFull = __ledgerReadStat; try{ console.log(`[ledger-read] ${o.src} ${o.n}件 ${o.ms}ms${o.partial?' 差分':' フル'}${o.fallback?' ⚠fallback:'+o.fallback:''}`); }catch(_){} }
 let __lastGasEventsPullAt = 0;
 function __parseJsonSafe_(x){ if(x && typeof x==='object') return x; if(typeof x==='string'){ try{ return JSON.parse(x); }catch(_){ return null; } } return null; }
 // 📜 v1.30.692: 予定1件の変更履歴を Supabase の calendar_events_history から読む(RLS=admin/jimu・90日ローテ)。
@@ -24931,7 +24932,9 @@ async function runTaikyoColorDiag_(){
     const st = __ledgerReadStat;
     const on = (typeof ledgerDbReadOn_==='function') ? ledgerDbReadOn_() : false;
     sections.push(`【📡台帳の読み元】 スイッチ=${(typeof ledgerDbReadSource_==='function')?ledgerDbReadSource_():'?'}: ${on?'DB直読み(anken_projection_v)':'GAS task-sync(従来)'}`
-      + (st ? `\n直近: ${String(st.src).toUpperCase()} ${st.n}件${st.total!=null&&st.total!==st.n?`(総${st.total})`:''} ${st.ms}ms ${st.partial?'差分':'フル'} ${(function(){ const d=new Date(st.at); return isNaN(d)?String(st.at).slice(11,19):d.toTimeString().slice(0,8); })()}${st.fallback?`\n⚠フォールバック: ${st.fallback}`:''}` : '\n直近: (まだ読んでいない)'));
+      + (st ? `\n直近: ${String(st.src).toUpperCase()} ${st.n}件${st.total!=null&&st.total!==st.n?`(総${st.total})`:''} ${st.ms}ms ${st.partial?'差分':'フル'} ${(function(){ const d=new Date(st.at); return isNaN(d)?String(st.at).slice(11,19):d.toTimeString().slice(0,8); })()}${st.fallback?`\n⚠フォールバック: ${st.fallback}`:''}` : '\n直近: (まだ読んでいない)')
+      + (__ledgerReadStatFull ? `\n直近フル: ${String(__ledgerReadStatFull.src).toUpperCase()} ${__ledgerReadStatFull.n}件 ${__ledgerReadStatFull.ms}ms ${(function(){ const d=new Date(__ledgerReadStatFull.at); return isNaN(d)?'':d.toTimeString().slice(0,8); })()}` : '\n直近フル: (この起動ではまだ)')
+      + `\n手元の台帳: 原状回復${(state.restorations||[]).length}件 / 修繕${(state.repairs||[]).length}件 / 最終確認${(state.checks||[]).filter(c=>c&&c.source==='gas-sync').length}件`);
   }catch(e){ sections.push('【📡台帳の読み元】検査失敗: '+e.message); }
   const head = `🔍色の診断 (${(typeof appVersion_==='function')?appVersion_():''} / ${(typeof deviceInfo_==='function')?deviceInfo_():''})`;
   try{
