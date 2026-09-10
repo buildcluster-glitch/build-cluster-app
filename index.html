@@ -2907,7 +2907,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.713</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.714</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4138,6 +4138,7 @@
         <label>取得期間 (maxMonths・短いほど同期が速い)</label>
         <input id="gas-months" type="number" value="3" min="1" max="24">
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:6px"><input type="checkbox" id="gas-ledger-db" style="width:auto"> 📡 台帳をDBから直接読む(この端末だけ・試験中・失敗時は自動でGAS)</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:6px"><input type="checkbox" id="gas-shared-db" style="width:auto"> 📡 共有設定(色・コメント等)をDBから直接読む(この端末だけ・試験中・失敗時は自動でGAS)</label>
       </div>
       <div class="field">
         <label>
@@ -4274,6 +4275,7 @@
           <span style="font-size:11px;color:var(--muted)">ヶ月</span>
         </div>
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:6px"><input type="checkbox" id="all-ledger-db" style="width:auto"> 📡 台帳をDBから直接読む(この端末だけ・試験中・失敗時は自動でGAS読みに戻る)</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:6px"><input type="checkbox" id="all-shared-db" style="width:auto"> 📡 共有設定(色・コメント等)をDBから直接読む(この端末だけ・試験中・失敗時は自動でGAS読みに戻る)</label>
       </fieldset>
 
       <!-- セクション2: クラウド同期 (予定/休暇) -->
@@ -4558,17 +4560,102 @@
   var _cache = null, _cacheAt = 0, _inflight = null, _unsupported = false;
   // 🔄 手動全同期で「今すぐ最新」を取るため、45秒キャッシュを外から無効化できるようにする(v1.30.224)
   window.__gcBatchInvalidate = function(){ _cache = null; _cacheAt = 0; };
-  function _ensureBatch(base, token){
+  // ============================================================================
+  // 📡 v1.30.714(山田「今日の夜やろう」09-10): 共有設定の読みを Supabase shared_config から直接(GASを通さない)。
+  //   対象= GC_KEYSバッチ(起動時/10分ごと/保存直後)と、バッチ外の単発 get-shared-config(発注書・バグ報告・バックアップ索引・在席…)。
+  //   書きは従来どおり GAS save-shared-config(ver87でDB先行)なので、DBは常に「書いた直後の値」を持つ=読み先を変えても辻褄が合う。
+  //   スイッチ= sharedDbReadOn_()(端末 localStorage bc_flag_sharedDbRead > flags.json sharedDbRead > 共有設定 calendar_flags.sharedDbRead)。
+  //   読み方= 初回: key=in.(GC_KEYS) 全件 / 2回目以降: updated_at=gt.(前回最大−5秒) の差分だけ(値は端末に保持)。
+  //   ⚠鉄則(予定/台帳の直読みと同じ): 失敗・未ログイン・0件は必ず GAS バッチへフォールバックし、__scReadStat に理由を残す(黙って空振りしない)。
+  //   ⚠ 保存直後: window.fetch が save-shared-config を見たら _cache=null にする(従来)→次の読みは差分クエリ=自分の保存分が updated_at で拾える。
+  // ============================================================================
+  var _dbCache = null, _dbNewest = '', _dbInflight = null;
+  window.__scReadStat = null;                     // 直近の読み {src:'db'|'gas', n, total, ms, partial, fallback, at}
+  function _scOn_(){ try{ return (typeof sharedDbReadOn_==='function') && sharedDbReadOn_()===true; }catch(_){ return false; } }
+  function _scStat_(o){
+    window.__scReadStat = Object.assign({ at:new Date().toISOString() }, o);
+    try{ console.log('[shared-read] ' + o.src + (o.n!=null ? ' ' + o.n + '件' : '') + (o.total!=null ? '(手元' + o.total + 'キー)' : '') + ' ' + o.ms + 'ms' + (o.partial ? ' 差分' : ' フル') + (o.fallback ? ' ⚠fallback:' + o.fallback : '')); }catch(_){}
+  }
+  function _sbSess_(){ try{ return (typeof sbSession_==='function') ? sbSession_() : null; }catch(_){ return null; } }
+  // Supabase REST を1回(8秒打ち切り・401/403は1回だけ更新して再試行)。戻り {ok, rows} / {ok:false, reason}
+  async function _sbGetSc_(query){
+    var s = _sbSess_(); if(!s || !s.access_token) return { ok:false, reason:'no-session' };
+    if(s.expires_at && (s.expires_at*1000 - Date.now()) < 60000){ try{ await sbRefresh_(); }catch(_){} s = _sbSess_(); if(!s || !s.access_token) return { ok:false, reason:'no-session' }; }
+    var hdr = function(tok){ return { 'apikey': SB_AUTH.key, 'Authorization': 'Bearer ' + tok, 'Accept': 'application/json' }; };
+    var url = SB_AUTH.url + '/rest/v1/shared_config?' + query;
+    var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var tm = ctrl ? setTimeout(function(){ try{ ctrl.abort(); }catch(_){} }, 8000) : null;
+    try{
+      var res = await _origFetch(url, { headers: hdr(s.access_token), cache:'no-store', signal: ctrl ? ctrl.signal : undefined });
+      if(res.status===401 || res.status===403){
+        try{ await sbRefresh_(); }catch(_){} s = _sbSess_(); if(!s || !s.access_token) return { ok:false, reason:'auth' };
+        res = await _origFetch(url, { headers: hdr(s.access_token), cache:'no-store', signal: ctrl ? ctrl.signal : undefined });
+      }
+      if(!res.ok) return { ok:false, reason:'http' + res.status };
+      var rows = await res.json(); if(!Array.isArray(rows)) return { ok:false, reason:'shape' };
+      return { ok:true, rows: rows };
+    }catch(e){ return { ok:false, reason: (e && e.name==='AbortError') ? 'timeout' : 'network' }; }
+    finally{ if(tm) clearTimeout(tm); }
+  }
+  function _scSinceIso_(newest){   // 差分の基準= 前回最大 updated_at − 5秒(同時刻のトランザクション取りこぼし防止・重複は無害)
+    var t = Date.parse(String(newest||'').replace(/(\.\d{3})\d+/, '$1')); if(isNaN(t)) return '';
+    return new Date(t - 5000).toISOString();
+  }
+  function _dbBatch_(){
+    if (_dbInflight) return _dbInflight;
+    var t0 = Date.now(); var partial = !!(_dbCache && _dbNewest);
+    var q = 'select=key,value,updated_at&key=in.(' + GC_KEYS.map(function(k){ return '"' + k + '"'; }).join(',') + ')';
+    if (partial) { var since = _scSinceIso_(_dbNewest); if (since) q += '&updated_at=gt.' + encodeURIComponent(since); else partial = false; }
+    _dbInflight = _sbGetSc_(q).then(function(r){
+      if (!r.ok) { _scStat_({ src:'gas', ms:Date.now()-t0, partial:partial, fallback:r.reason }); return null; }
+      if (!partial && r.rows.length === 0) { _scStat_({ src:'gas', n:0, ms:Date.now()-t0, partial:false, fallback:'0件(bc_role未付与の疑い)' }); return null; }
+      var cache = partial ? _dbCache : {};
+      r.rows.forEach(function(row){
+        if (!row || !row.key) return;
+        cache[row.key] = { value: (row.value == null ? '' : String(row.value)), updated_at: row.updated_at || '' };
+        if (row.updated_at && String(row.updated_at) > String(_dbNewest)) _dbNewest = String(row.updated_at);
+      });
+      _dbCache = cache;
+      var vals = {}; GC_KEYS.forEach(function(k){ vals[k] = _dbCache[k] ? _dbCache[k].value : ''; });
+      _scStat_({ src:'db', n:r.rows.length, total:Object.keys(_dbCache).length, ms:Date.now()-t0, partial:partial });
+      return vals;
+    }).catch(function(e){ _scStat_({ src:'gas', ms:Date.now()-t0, partial:partial, fallback:String(e && e.message || e).slice(0,40) }); return null; })
+      .then(function(v){ _dbInflight = null; return v; });
+    return _dbInflight;
+  }
+  window.__scDbCacheReset = function(){ _dbCache = null; _dbNewest = ''; };   // 端末スイッチ切替時=次は必ずフル
+  function _gasBatch_(base, token, afterDbFail){
     if (_unsupported) return Promise.resolve(null);
+    var t0 = Date.now();
+    var url = base + '?action=get-shared-configs&keys=' + encodeURIComponent(GC_KEYS.join(',')) + '&token=' + encodeURIComponent(token) + '&t=' + Date.now();
+    return _gasGetWithRetry_(url, { method:'GET', redirect:'follow' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d && d.ok && d.values) { _cache = d.values; _cacheAt = Date.now(); if (!afterDbFail) _scStat_({ src:'gas', n:Object.keys(d.values).length, ms:Date.now()-t0, partial:false }); }
+        else { _unsupported = true; }
+        return _cache;
+      })
+      .catch(function(){ return _cache; });
+  }
+  function _ensureBatch(base, token){
     if (_cache && (Date.now() - _cacheAt) < TTL) return Promise.resolve(_cache);
     if (_inflight) return _inflight;
-    var url = base + '?action=get-shared-configs&keys=' + encodeURIComponent(GC_KEYS.join(',')) + '&token=' + encodeURIComponent(token) + '&t=' + Date.now();
-    _inflight = _gasGetWithRetry_(url, { method:'GET', redirect:'follow' })
-      .then(function(r){ return r.json(); })
-      .then(function(d){ if (d && d.ok && d.values) { _cache = d.values; _cacheAt = Date.now(); } else { _unsupported = true; } return _cache; })
-      .catch(function(){ return _cache; })
+    _inflight = (_scOn_() ? _dbBatch_() : Promise.resolve(null))
+      .then(function(vals){
+        if (vals) { _cache = vals; _cacheAt = Date.now(); return _cache; }
+        return _gasBatch_(base, token, _scOn_());   // OFF or DB失敗 → GASバッチ(従来)
+      })
       .then(function(v){ _inflight = null; return v; });
     return _inflight;
+  }
+  // 単発(バッチ外のキー)を1行だけDBから読む。行が無い/失敗 → null(呼び元がGASへ)
+  function _dbSingle_(key){
+    var t0 = Date.now();
+    return _sbGetSc_('select=key,value&key=eq.' + encodeURIComponent(key)).then(function(r){
+      if (!r.ok) { _scStat_({ src:'gas', ms:Date.now()-t0, partial:true, fallback:r.reason + '(' + key + ')' }); return null; }
+      if (!r.rows.length) return null;   // 一度も保存されていないキー=GASも空を返す。念のためGASへ
+      var v = r.rows[0].value; return (v == null) ? '' : String(v);
+    }).catch(function(){ return null; });
   }
   // 🛡 v1.30.555: GAS向けGETの自動リトライ+HTML応答ガード(関所=ここ1箇所で読み取り全経路に効く)
   //   経緯: GASは混雑時に404/500やHTMLエラーページを散発的に返す(2026-08-03実測多数)。個別機能に
@@ -4724,6 +4811,13 @@
                 return new Response(JSON.stringify({ ok:true, value: vals[key], _fromBatch:true }), { status:200, headers:{ 'Content-Type':'application/json' } });
               }
               return _gasGetWithRetry_(input, init); // バッチ未対応/キー無し→従来取得(リトライ関所経由・v1.30.555)
+            });
+          }
+          // 📡 v1.30.714: バッチ外の単発キー(hatchusho_data/calendar_reports/calendar_backup_index/calendar_presence 等)もDBから1行読み
+          if (_scOn_() && key && key.indexOf('__') !== 0) {
+            return _dbSingle_(key).then(function(v){
+              if (v != null) return new Response(JSON.stringify({ ok:true, value: v, _fromDb:true }), { status:200, headers:{ 'Content-Type':'application/json' } });
+              return _gasGetWithRetry_(input, init);   // 行なし/失敗 → 従来のGAS単発
             });
           }
         }
@@ -9928,6 +10022,7 @@ async function heartbeatPresence_(opts={}){
   if(!opts.leave){
     if(!presenceEnabled_()) return;
     if(typeof document!=='undefined' && document.visibilityState && document.visibilityState!=='visible') return;   // 表示中の端末のみ
+    window.__lastBeatAt = Date.now();   // v1.30.714: タブ復帰心拍の間引き用
   }
   const me=(typeof getMyself==='function')?getMyself():""; if(!me) return;
   const s=loadGasSettings(); if(!s.url||!s.token) return;
@@ -9959,7 +10054,10 @@ async function heartbeatPresence_(opts={}){
       // 📡 v1.30.713: 台帳(task-sync)の読み元も共有(9/10 全端末切替の見張り用)
       lr: (typeof __ledgerReadStat!=='undefined' && __ledgerReadStat) ? __ledgerReadStat.src : ((typeof ledgerDbReadOn_==='function' && ledgerDbReadOn_()) ? 'db?' : 'gas'),
       lrN: (typeof __ledgerReadStat!=='undefined' && __ledgerReadStat) ? __ledgerReadStat.n : null, lrMs: (typeof __ledgerReadStat!=='undefined' && __ledgerReadStat) ? __ledgerReadStat.ms : null,
-      lrFb: (typeof __ledgerReadStat!=='undefined' && __ledgerReadStat) ? (__ledgerReadStat.fallback||'') : '', lrOn: (typeof ledgerDbReadOn_==='function') ? ledgerDbReadOn_() : false };
+      lrFb: (typeof __ledgerReadStat!=='undefined' && __ledgerReadStat) ? (__ledgerReadStat.fallback||'') : '', lrOn: (typeof ledgerDbReadOn_==='function') ? ledgerDbReadOn_() : false,
+      // 📡 v1.30.714: 共有設定の読み元も共有(今夜の全端末切替の見張り用)
+      sr: (window.__scReadStat) ? window.__scReadStat.src : ((typeof sharedDbReadOn_==='function' && sharedDbReadOn_()) ? 'db?' : 'gas'),
+      srMs: (window.__scReadStat) ? window.__scReadStat.ms : null, srFb: (window.__scReadStat) ? (window.__scReadStat.fallback||'') : '', srOn: (typeof sharedDbReadOn_==='function') ? sharedDbReadOn_() : false };
   }
   try{ localStorage.setItem('buildcluster_presence_meta', JSON.stringify(meta)); }catch(_){}
   try{
@@ -14590,6 +14688,7 @@ function openGasSettings(){
   document.getElementById("gas-token").value = s.token || "";
   document.getElementById("gas-months").value= s.maxMonths || 3;
   try{ const cb=document.getElementById("gas-ledger-db"); if(cb){ cb.checked = (localStorage.getItem('bc_flag_ledgerDbRead')==='1'); cb.onchange = ()=>{ setLedgerDbReadLocal_(cb.checked ? true : null); if(typeof showAutoSyncToast==='function') showAutoSyncToast(cb.checked ? '📡 次の同期から台帳をDBから読みます(🔍診断【📡台帳の読み元】で確認)' : '📡 台帳の読みをGASに戻しました'); }; } }catch(_){}   // v1.30.709
+  try{ const cb=document.getElementById("gas-shared-db"); if(cb){ cb.checked = (localStorage.getItem('bc_flag_sharedDbRead')==='1'); cb.onchange = ()=>{ setSharedDbReadLocal_(cb.checked ? true : null); if(typeof showAutoSyncToast==='function') showAutoSyncToast(cb.checked ? '📡 次の読みから共有設定をDBから読みます(🔍診断【📡共有設定の読み元】で確認)' : '📡 共有設定の読みをGASに戻しました'); }; } }catch(_){}   // v1.30.714
   document.getElementById("gas-auto-sync").checked = s.autoRefreshEnabled !== false;
   document.getElementById("gas-task-url").value = s.taskManagerUrl || "";
   // 🚗 直行マーカー表示トグル(この端末のみ・即時反映・保存ボタン不要)v1.30.240
@@ -23254,6 +23353,7 @@ function openAllSettings(focus){
   document.getElementById('all-gas-token').value = gs.token || '';
   document.getElementById('all-gas-months').value = gs.months || 6;
   try{ const cb=document.getElementById('all-ledger-db'); if(cb){ cb.checked = (localStorage.getItem('bc_flag_ledgerDbRead')==='1'); cb.onchange = ()=>{ setLedgerDbReadLocal_(cb.checked ? true : null); if(typeof showAutoSyncToast==='function') showAutoSyncToast(cb.checked ? '📡 次の同期から台帳をDBから読みます(🔍診断【📡台帳の読み元】で確認)' : '📡 台帳の読みをGASに戻しました'); }; } }catch(_){}   // v1.30.710
+  try{ const cb=document.getElementById('all-shared-db'); if(cb){ cb.checked = (localStorage.getItem('bc_flag_sharedDbRead')==='1'); cb.onchange = ()=>{ setSharedDbReadLocal_(cb.checked ? true : null); if(typeof showAutoSyncToast==='function') showAutoSyncToast(cb.checked ? '📡 次の読みから共有設定をDBから読みます(🔍診断【📡共有設定の読み元】で確認)' : '📡 共有設定の読みをGASに戻しました'); }; } }catch(_){}   // v1.30.714
   document.getElementById('all-gas-auto').checked = gs.autoSync !== false;
 
   // Cloud Sync (cs)
@@ -23479,6 +23579,21 @@ function ledgerDbReadSource_(){
 window.setLedgerDbReadLocal_ = function(on){ try{ if(on==null) localStorage.removeItem('bc_flag_ledgerDbRead'); else localStorage.setItem('bc_flag_ledgerDbRead', on?'1':'0');
   localStorage.removeItem('buildcluster_drive_synced_at');   // v1.30.711: 切り替えた直後の同期は必ずフル(件数比較ができるように)
   }catch(_){} console.log('[ledger-read] 端末スイッチ =', on); };
+// 📡 共有設定(shared_config)のDB直読みスイッチ(v1.30.714・山田「今日の夜やろう」09-10)。既定off。優先=端末>flags.json>共有設定
+//   ⚠ calendar_flags 自体も共有設定なので、DBが落ちると「スイッチが読めない」→ 読み失敗は自動でGASバッチへ(fetch関所)+ flags.json(DBの外)で強制OFFできる
+function sharedDbReadOn_(){
+  try{ const o = localStorage.getItem('bc_flag_sharedDbRead'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
+  if(__staticFlags && typeof __staticFlags.sharedDbRead === 'boolean') return __staticFlags.sharedDbRead;
+  return !!(__calFlags && __calFlags.sharedDbRead === true);
+}
+function sharedDbReadSource_(){
+  try{ const o = localStorage.getItem('bc_flag_sharedDbRead'); if(o==='1'||o==='0') return '端末'; }catch(_){}
+  if(__staticFlags && typeof __staticFlags.sharedDbRead === 'boolean') return 'flags.json';
+  return '共有設定';
+}
+window.setSharedDbReadLocal_ = function(on){ try{ if(on==null) localStorage.removeItem('bc_flag_sharedDbRead'); else localStorage.setItem('bc_flag_sharedDbRead', on?'1':'0'); }catch(_){}
+  try{ if(typeof window.__scDbCacheReset==='function') window.__scDbCacheReset(); if(typeof window.__gcBatchInvalidate==='function') window.__gcBatchInvalidate(); }catch(_){}
+  console.log('[shared-read] 端末スイッチ =', on); };
 function eventsDbReadSource_(){   // 診断用: どのスイッチが効いているか
   try{ const o = localStorage.getItem('bc_flag_eventsDbRead'); if(o==='1'||o==='0') return '端末'; }catch(_){}
   if(__staticFlags && typeof __staticFlags.eventsDbRead === 'boolean') return 'flags.json';
@@ -24841,10 +24956,18 @@ function renderDeviceVersions_(){
       const tip2 = `台帳の読み元: ${m.lr==='db'?'DB直読み':(m.lr==='db?'?'DBスイッチON(まだ読んでいない)':'GAS task-sync(従来)')}${m.lrN!=null?` ${m.lrN}件`:''}${m.lrMs!=null?` ${m.lrMs}ms`:''}${m.lrFb?`\n⚠フォールバック: ${m.lrFb}`:''}`;
       rsHtml += `<span title="${escapeHtml(tip2)}" style="font-size:9.5px;font-weight:700;padding:0 5px;border-radius:7px;background:${bg2};color:${fg2}">${lbl2}</span>`;
     }
+    if(m.sr){   // ⚙ 共有設定の読み元バッジ(v1.30.714)
+      const fb3 = !!(m.srOn && m.sr!=='db');
+      const bg3 = m.sr==='db' ? '#dcfce7' : (fb3 ? '#ffedd5' : '#f1f5f9');
+      const fg3 = m.sr==='db' ? '#166534' : (fb3 ? '#9a3412' : '#64748b');
+      const lbl3 = m.sr==='db' ? '⚙DB' : (m.sr==='db?' ? '⚙…' : '⚙GAS');
+      const tip3 = `共有設定(色・コメント・アラート等)の読み元: ${m.sr==='db'?'DB直読み':(m.sr==='db?'?'DBスイッチON(まだ読んでいない)':'GAS(従来)')}${m.srMs!=null?` ${m.srMs}ms`:''}${m.srFb?`\n⚠フォールバック: ${m.srFb}`:''}`;
+      rsHtml += `<span title="${escapeHtml(tip3)}" style="font-size:9.5px;font-weight:700;padding:0 5px;border-radius:7px;background:${bg3};color:${fg3}">${lbl3}</span>`;
+    }
     return `<span title="${escapeHtml((m.dev||'') + (ds?(' / 最終 '+ds):''))}" style="display:inline-flex;align-items:center;gap:4px;border:1px solid ${old?'#fca5a5':'var(--border)'};background:${old?'#fee2e2':'#fff'};color:${old?'#b91c1c':'#334155'};border-radius:12px;padding:2px 9px;font-size:11px;font-weight:${old?'700':'500'}">${escapeHtml(n)} <b style="font-weight:700">${escapeHtml(m.ver||'?')}</b>${old?' ⚠旧版':''}${rsHtml}</span>`;
   }).join('');
   const oldN = names.filter(n=>{ const m=meta[n]||{}; return mine && m.ver && typeof __verLt_==='function' && __verLt_(m.ver, mine); }).length;
-  const fbN = names.filter(n=>{ const m=meta[n]||{}; return m.rsOn && m.rs && m.rs!=='db'; }).length;   // 📡 スイッチONなのにDBで読めていない端末
+  const fbN = names.filter(n=>{ const m=meta[n]||{}; return (m.rsOn && m.rs && m.rs!=='db') || (m.lrOn && m.lr && m.lr!=='db') || (m.srOn && m.sr && m.sr!=='db'); }).length;   // 📡 スイッチONなのにDBで読めていない端末(予定/台帳/共有設定のどれか)
   const dbN = names.filter(n=>{ const m=meta[n]||{}; return m.rs==='db'; }).length;
   host.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:4px">📱 各端末の版 <span style="font-weight:400">(最近ひらいた人・カーソルで端末情報)</span>${oldN?` — <b style="color:#b91c1c">${oldN}人が旧版のまま（リロードを案内してください）</b>`:''}${dbN?` — 📡DB読み ${dbN}人`:''}${fbN?` — <b style="color:#9a3412">⚠${fbN}人がGASにフォールバック中</b>`:''}</div><div style="display:flex;flex-wrap:wrap;gap:5px">${rows}</div>`;
 }
@@ -24948,6 +25071,12 @@ async function runTaikyoColorDiag_(){
       + (__ledgerReadStatFull ? `\n直近フル: ${String(__ledgerReadStatFull.src).toUpperCase()} ${__ledgerReadStatFull.n}件 ${__ledgerReadStatFull.ms}ms ${(function(){ const d=new Date(__ledgerReadStatFull.at); return isNaN(d)?'':d.toTimeString().slice(0,8); })()}` : '\n直近フル: (この起動ではまだ)')
       + `\n手元の台帳: 原状回復${(state.restorations||[]).length}件 / 修繕${(state.repairs||[]).length}件 / 最終確認${(state.checks||[]).filter(c=>c&&c.source==='gas-sync').length}件`);
   }catch(e){ sections.push('【📡台帳の読み元】検査失敗: '+e.message); }
+  try{   // 📡 共有設定の読み元(v1.30.714)
+    const st = window.__scReadStat;
+    const on = (typeof sharedDbReadOn_==='function') ? sharedDbReadOn_() : false;
+    sections.push(`【📡共有設定の読み元】 スイッチ=${(typeof sharedDbReadSource_==='function')?sharedDbReadSource_():'?'}: ${on?'DB直読み(shared_config)':'GAS get-shared-configs(従来)'}`
+      + (st ? `\n直近: ${String(st.src).toUpperCase()} ${st.n!=null?st.n+'件':''}${st.total!=null?`(手元${st.total}キー)`:''} ${st.ms}ms ${st.partial?'差分':'フル'} ${(function(){ const d=new Date(st.at); return isNaN(d)?String(st.at).slice(11,19):d.toTimeString().slice(0,8); })()}${st.fallback?`\n⚠フォールバック: ${st.fallback}`:''}` : '\n直近: (まだ読んでいない)'));
+  }catch(e){ sections.push('【📡共有設定の読み元】検査失敗: '+e.message); }
   const head = `🔍色の診断 (${(typeof appVersion_==='function')?appVersion_():''} / ${(typeof deviceInfo_==='function')?deviceInfo_():''})`;
   try{
     await mutateCalReport_(uid(), { type:'normal', text:`${head}\n${sections.join('\n\n')}`, status:'open',
@@ -29312,7 +29441,8 @@ setTimeout(()=>afterOpenSync_(()=>{
       heartbeatPresence_().catch(()=>{});
       setInterval(()=>heartbeatPresence_().catch(()=>{}), PRESENCE_BEAT_MS);
       setInterval(()=>{ if(typeof applyPresenceDots_==='function') applyPresenceDots_(); }, 30*1000);   // 表示のage-out(オフラインになった人のドットを消す)
-      document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && typeof heartbeatPresence_==='function') heartbeatPresence_().catch(()=>{}); });
+      // v1.30.714: タブ復帰のたびに打つと1分に6回になる端末があった(9/10 wt_ops実測・GAS往復+DB書き)→前回の心拍から20秒以内は打たない
+      document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && typeof heartbeatPresence_==='function' && (Date.now()-(window.__lastBeatAt||0))>20000) heartbeatPresence_().catch(()=>{}); });
       window.addEventListener('pagehide', ()=>{ try{ heartbeatPresence_({leave:true}); }catch(_){} });   // 離脱時は自分を消す(ベストエフォート)
     }
     // 📢 全員への連絡事項(全員共有) 起動時+2分ごとに取得→ヘッダー帯に反映(v1.30.302)
