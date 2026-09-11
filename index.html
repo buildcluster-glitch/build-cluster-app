@@ -2907,7 +2907,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.716</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.717</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -2956,6 +2956,7 @@
   <button class="nav-btn primary" id="addBtn">＋予定</button>
 </header>
 
+<div id="dbHealthBar" style="display:none"></div>
 <div class="announce-bar" id="announceBar" style="display:none"></div>
 <!-- 📋 山一 請求締めアラート(毎月19日〜提出期限。20日締め/21日提出・日祝は翌営業日)v1.30.448 -->
 <div class="yamaichi-alert" id="yamaichiCloseAlert" style="display:none"></div>
@@ -4555,7 +4556,7 @@
   //   v1.30.526: 小さいのに単発で往復していた5キーをバッチへ追加(山田「読み込みが重い」の実測対応)。
   //   起動時に同じGASへ10本近い並列リクエストが集中し、一部が404/60秒タイムアウトしていた。
   //   ⚠ calendar_reports(画像込み1.1MB)と hatchusho_data(149KB)は重いので今後もバッチに入れない。
-  var GC_KEYS = ['staffMaster','staffAvailability','taikyo_tachiai_schedule','taikyo_overrides','taikyo_comments','taikyo_shiryo_ready','repair_overrides','repair_comments','repair_pos','check_workers','phone_duty','toban_done','alerts','skip_visit','staff_leaves','event_deletions','jimu_messages','jizen_schedule','calendar_reminders','reschedule_traces','jimu_task_comments','jimu_task_tombstones','calendar_changelog','event_done','sanpai','check_seisou','calendar_required_version','leave_comments','time_notes','calendar_flags','jizen_done'];
+  var GC_KEYS = ['staffMaster','staffAvailability','taikyo_tachiai_schedule','taikyo_overrides','taikyo_comments','taikyo_shiryo_ready','repair_overrides','repair_comments','repair_pos','check_workers','phone_duty','toban_done','alerts','skip_visit','staff_leaves','event_deletions','jimu_messages','jizen_schedule','calendar_reminders','reschedule_traces','jimu_task_comments','jimu_task_tombstones','calendar_changelog','event_done','sanpai','check_seisou','calendar_required_version','leave_comments','time_notes','calendar_flags','jizen_done','db_health'];   // db_health=監視が書くDBの生死(v1.30.717・バッチ同乗で追加往復なし)
   var TTL = 45000; // 起動バーストを束ねる窓(45秒)
   var _cache = null, _cacheAt = 0, _inflight = null, _unsupported = false;
   // 🔄 手動全同期で「今すぐ最新」を取るため、45秒キャッシュを外から無効化できるようにする(v1.30.224)
@@ -4574,6 +4575,7 @@
   function _scOn_(){ try{ return (typeof sharedDbReadOn_==='function') && sharedDbReadOn_()===true; }catch(_){ return false; } }
   function _scStat_(o){
     window.__scReadStat = Object.assign({ at:new Date().toISOString() }, o);
+    try{ if(typeof noteDbRead_==='function') noteDbRead_('共有設定', o); }catch(_){}
     try{ console.log('[shared-read] ' + o.src + (o.n!=null ? ' ' + o.n + '件' : '') + (o.total!=null ? '(手元' + o.total + 'キー)' : '') + ' ' + o.ms + 'ms' + (o.partial ? ' 差分' : ' フル') + (o.fallback ? ' ⚠fallback:' + o.fallback : '')); }catch(_){}
   }
   function _sbSess_(){ try{ return (typeof sbSession_==='function') ? sbSession_() : null; }catch(_){ return null; } }
@@ -23576,15 +23578,90 @@ async function fetchCalendarFlags_(){
     __calFlags = (v && typeof v === 'object') ? v : {};
     try{ localStorage.setItem('bc_calFlags_cache', JSON.stringify(__calFlags)); }catch(_){}   // v1.30.715: 次回起動の初回同期用に控える
   }catch(_){}
+  // 🩺 v1.30.717: 監視(supabase-probe)が書く db_health も同じタイミングで読む。
+  //   GC_KEYSバッチに同乗しているので、この fetch は横取りされてキャッシュから返る=追加往復なし。
+  try{
+    const g2 = loadGasSettings();
+    if(g2.url && g2.token){
+      const r2 = await fetch(`${g2.url}?action=get-shared-config&key=db_health&token=${encodeURIComponent(g2.token)}&t=${Date.now()}`, {method:'GET', redirect:'follow'});
+      if(r2.ok){
+        const d2 = await r2.json(); let h = d2 && d2.value;
+        if(typeof h === 'string'){ try{ h = h ? JSON.parse(h) : null; }catch(_){ h = null; } }
+        window.__dbHealth = (h && typeof h === 'object') ? h : null;
+      }
+    }
+  }catch(_){}
+  try{ if(typeof renderDbHealthBar_==='function') renderDbHealthBar_(); }catch(_){}
   return __calFlags;
 }
+// ============================================================================
+// 🩺 v1.30.717(2026-09-11): DB不調時の「アプリ自前の退避」+ 画面バナー(予定表③の最後の1つ)
+//   きっかけ= 9/11 00:54〜19:59 の19時間、Mac の監視(supabase-probe)が launchd に発火されず死んでいた。
+//   今月2回の障害でスイッチを下ろしたのはこの監視なので、**Macに依存しない足**をアプリ側にも持たせる。
+//   仕組み: 読みがDB→GASへ落ちた回数を数え、連続 DB_TRIP_FAILS 回で「この端末だけ DB_TRIP_MIN 分 DB読みを見送る」。
+//   ⚠ 退避するのは"読み"だけ。書き込み(WT_STRICT)には触らない=サーバー側(probe/台帳DB)の判断に任せる。
+//   ⚠ 見送り中も保存・閲覧はふだんどおりできる(GAS経由)。バナーで「なぜ遅いか/いつ戻るか」を出す=黙って重くならない。
+//   期限が来たら次の読みで自動的にDBを試す(half-open)。成功したら即解除+トースト。
+const DB_TRIP_FAILS = 3;   // 連続何回GASへ落ちたら見送るか
+const DB_TRIP_MIN   = 5;   // 何分見送るか
+let __dbTrip = (function(){ try{ const o=JSON.parse(localStorage.getItem('bc_db_trip')||'null'); return (o&&typeof o==='object')?o:{fails:0,until:0,why:''}; }catch(_){ return {fails:0,until:0,why:''}; } })();
+function __dbTripSave_(){ try{ localStorage.setItem('bc_db_trip', JSON.stringify(__dbTrip)); }catch(_){} }
+function dbTripped_(){ return !!(__dbTrip && __dbTrip.until && Date.now() < __dbTrip.until); }
+// 3経路(予定/台帳/共有設定)の読み記録が必ず通る1か所。src='db'成功=回復 / src='gas'+fallback=DBに振られた
+function noteDbRead_(where, o){
+  try{
+    if(!o) return;
+    const wasTripped = dbTripped_();
+    if(o.src === 'db'){
+      if(__dbTrip.fails || __dbTrip.until){ __dbTrip = {fails:0, until:0, why:''}; __dbTripSave_(); }
+      if(wasTripped && typeof showAutoSyncToast==='function') showAutoSyncToast('✅ データベースに戻りました');
+    }else if(o.src === 'gas' && o.fallback){
+      /* 未ログイン・スイッチOFFは「DBの不調」ではない=数えると平常時に誤退避する */
+      if(/未ログイン|ログイン|no-?session|off$|switch/i.test(String(o.fallback))) return;
+      __dbTrip.fails = (__dbTrip.fails||0) + 1;
+      __dbTrip.why = where + ': ' + o.fallback;
+      if(__dbTrip.fails >= DB_TRIP_FAILS && !dbTripped_()){
+        __dbTrip.until = Date.now() + DB_TRIP_MIN*60000;
+        try{ console.warn('[db-trip] 連続'+__dbTrip.fails+'回DBに振られた → '+DB_TRIP_MIN+'分 読みを見送る:', __dbTrip.why); }catch(_){}
+        if(typeof showAutoSyncToast==='function') showAutoSyncToast('🩺 データベースが不調です。'+DB_TRIP_MIN+'分ほど従来経路で動きます(保存はできます)');
+      }
+      __dbTripSave_();
+    }
+    if(typeof renderDbHealthBar_==='function') renderDbHealthBar_();
+  }catch(_){}
+}
+window.clearDbTrip_ = function(){ __dbTrip = {fails:0, until:0, why:''}; __dbTripSave_(); if(typeof renderDbHealthBar_==='function') renderDbHealthBar_(); };
+// 🩺 画面バナー: 自前退避中 or 監視(db_health)がdown の時だけ出す。30秒ごとに描き直して残り時間を更新
+function renderDbHealthBar_(){
+  const el = document.getElementById('dbHealthBar'); if(!el) return;
+  const tripped = dbTripped_();
+  const sh = window.__dbHealth;
+  const sharedDown = !!(sh && sh.status === 'down');
+  if(!tripped && !sharedDown){ if(el.style.display!=='none'){ el.style.display='none'; el.innerHTML=''; } return; }
+  const mins = tripped ? Math.max(1, Math.ceil((__dbTrip.until - Date.now())/60000)) : 0;
+  const msg = tripped
+    ? '🩺 データベースが不調のため、この端末は従来の経路で動いています（あと約'+mins+'分で自動的に戻します）'
+    : '🩺 データベースの不調が報告されています'+((sh&&sh.since)?'（'+escapeHtml(String(sh.since))+'〜）':'')+'。様子を見ています';   /* 自分の読みは成功している場合もあるので経路は断定しない */
+  el.style.display='';
+  el.innerHTML = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#fef3c7;border-bottom:1px solid #f59e0b;color:#78350f;font-size:12px;font-weight:700;padding:5px 10px">'
+    + '<span style="flex:1 1 220px;min-width:0">'+msg+'</span>'
+    + '<span style="font-weight:400;font-size:11px;opacity:.9">予定の保存・閲覧はふだんどおりできます</span>'
+    + (tripped ? '<button id="dbTripRetry" style="flex-shrink:0;border:1px solid #b45309;background:#fff;color:#92400e;border-radius:6px;font-size:11px;font-weight:700;padding:3px 10px;cursor:pointer">今すぐ試す</button>' : '')
+    + '</div>';
+  const b = el.querySelector('#dbTripRetry');
+  if(b) b.onclick = ()=>{ window.clearDbTrip_(); if(typeof showAutoSyncToast==='function') showAutoSyncToast('🔄 データベースをもう一度試します'); };
+}
+try{ renderDbHealthBar_(); }catch(_){}   /* 起動直後に1回: 退避がlocalStorageに残っていれば即バナー(30秒待たせない) */
+setInterval(()=>{ try{ renderDbHealthBar_(); }catch(_){} }, 30000);
 function eventsDbReadOn_(){
+  if(dbTripped_()) return false;   /* 🩺 v1.30.717: 自前退避中は予定もGASで読む */
   try{ const o = localStorage.getItem('bc_flag_eventsDbRead'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
   if(__staticFlags && typeof __staticFlags.eventsDbRead === 'boolean') return __staticFlags.eventsDbRead;   // 🚦 flags.json が最優先(DBの外)
   return !!(__calFlags && __calFlags.eventsDbRead === true);
 }
 // 📡 台帳(task-sync)のDB直読みスイッチ(v1.30.708・台帳DB「②射影のDB直読み=9/10-11」)。既定off。優先=端末>flags.json>共有設定
 function ledgerDbReadOn_(){
+  if(dbTripped_()) return false;   /* 🩺 v1.30.717: 自前退避中は台帳もGASで読む */
   try{ const o = localStorage.getItem('bc_flag_ledgerDbRead'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
   if(__staticFlags && typeof __staticFlags.ledgerDbRead === 'boolean') return __staticFlags.ledgerDbRead;
   return !!(__calFlags && __calFlags.ledgerDbRead === true);
@@ -23600,6 +23677,7 @@ window.setLedgerDbReadLocal_ = function(on){ try{ if(on==null) localStorage.remo
 // 📡 共有設定(shared_config)のDB直読みスイッチ(v1.30.714・山田「今日の夜やろう」09-10)。既定off。優先=端末>flags.json>共有設定
 //   ⚠ calendar_flags 自体も共有設定なので、DBが落ちると「スイッチが読めない」→ 読み失敗は自動でGASバッチへ(fetch関所)+ flags.json(DBの外)で強制OFFできる
 function sharedDbReadOn_(){
+  if(dbTripped_()) return false;   /* 🩺 v1.30.717: 自前退避中は共有設定もGASで読む */
   try{ const o = localStorage.getItem('bc_flag_sharedDbRead'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
   if(__staticFlags && typeof __staticFlags.sharedDbRead === 'boolean') return __staticFlags.sharedDbRead;
   return !!(__calFlags && __calFlags.sharedDbRead === true);
@@ -23631,7 +23709,7 @@ const EVENTS_GAS_REFRESH_MS = 10*60*1000;   // ①の保険: 10分に1回はGAS�
 let __eventsReadStat = null;                 // 直近の読み取り診断 {src, n, total, ms, fallback, at, note}
 let __ledgerReadStat = null;                 // 📡 台帳(task-sync)の読み取り診断(v1.30.708)
 let __ledgerReadStatFull = null;             // 直近の「フル」読み(件数比較用・v1.30.712)
-function __setLedgerReadStat_(o){ __ledgerReadStat = Object.assign({ at:new Date().toISOString() }, o); if(o && !o.partial && o.n>0) __ledgerReadStatFull = __ledgerReadStat; try{ console.log(`[ledger-read] ${o.src} ${o.n}件 ${o.ms}ms${o.partial?' 差分':' フル'}${o.fallback?' ⚠fallback:'+o.fallback:''}`); }catch(_){} }
+function __setLedgerReadStat_(o){ __ledgerReadStat = Object.assign({ at:new Date().toISOString() }, o); try{ noteDbRead_('台帳', o); }catch(_){} if(o && !o.partial && o.n>0) __ledgerReadStatFull = __ledgerReadStat; try{ console.log(`[ledger-read] ${o.src} ${o.n}件 ${o.ms}ms${o.partial?' 差分':' フル'}${o.fallback?' ⚠fallback:'+o.fallback:''}`); }catch(_){} }
 let __lastGasEventsPullAt = 0;
 function __parseJsonSafe_(x){ if(x && typeof x==='object') return x; if(typeof x==='string'){ try{ return JSON.parse(x); }catch(_){ return null; } } return null; }
 // 📜 v1.30.692: 予定1件の変更履歴を Supabase の calendar_events_history から読む(RLS=admin/jimu・90日ローテ)。
@@ -23817,7 +23895,7 @@ async function fetchEventsFromDb_({signal}={}){
   if(total != null && all.length !== total) return { ok:false, reason:'count-mismatch', got:all.length, total, ms:Date.now()-t0 };
   return { ok:true, events: all, total: (total!=null?total:all.length), ms:Date.now()-t0 };
 }
-function __setEventsReadStat_(o){ __eventsReadStat = Object.assign({ at:new Date().toISOString() }, o); try{ console.log(`[events-read] ${o.src} ${o.n}件${o.total!=null&&o.total!==o.n?`(総${o.total})`:''} ${o.ms}ms${o.fallback?` ⚠${o.fallback}`:''}${o.note?` ${o.note}`:''}`); }catch(_){} }
+function __setEventsReadStat_(o){ __eventsReadStat = Object.assign({ at:new Date().toISOString() }, o); try{ noteDbRead_('予定', o); }catch(_){} try{ console.log(`[events-read] ${o.src} ${o.n}件${o.total!=null&&o.total!==o.n?`(総${o.total})`:''} ${o.ms}ms${o.fallback?` ⚠${o.fallback}`:''}${o.note?` ${o.note}`:''}`); }catch(_){} }
 // 🔐 ヘッダーの入口(v1.30.575): 未ログインの時だけ出す。ログイン画面が消えても迷子にならないように
 function updateAuthHeaderBtn_(){
   const b = document.getElementById('authLoginBtn');
@@ -25092,6 +25170,12 @@ async function runTaikyoColorDiag_(){
   try{   // 📡 共有設定の読み元(v1.30.714)
     const st = window.__scReadStat;
     const on = (typeof sharedDbReadOn_==='function') ? sharedDbReadOn_() : false;
+    {
+      const __tr = (typeof dbTripped_==='function') && dbTripped_();
+      const __sh = window.__dbHealth;
+      sections.push(`【🩺DBの調子】 自前退避=${__tr ? `退避中(あと約${Math.max(1,Math.ceil((__dbTrip.until-Date.now())/60000))}分・理由 ${__dbTrip.why||'?'})` : `なし(連続失敗 ${(__dbTrip&&__dbTrip.fails)||0}/${DB_TRIP_FAILS})`}`
+        + ` / 監視の報告=${__sh ? (__sh.status||'?') + (__sh.since?`(${__sh.since}〜)`:'') : '(未取得)'}`);
+    }
     sections.push(`【📡共有設定の読み元】 スイッチ=${(typeof sharedDbReadSource_==='function')?sharedDbReadSource_():'?'}: ${on?'DB直読み(shared_config)':'GAS get-shared-configs(従来)'}`
       + (st ? `\n直近: ${String(st.src).toUpperCase()} ${st.n!=null?st.n+'件':''}${st.total!=null?`(手元${st.total}キー)`:''} ${st.ms}ms ${st.partial?'差分':'フル'} ${(function(){ const d=new Date(st.at); return isNaN(d)?String(st.at).slice(11,19):d.toTimeString().slice(0,8); })()}${st.fallback?`\n⚠フォールバック: ${st.fallback}`:''}` : '\n直近: (まだ読んでいない)'));
   }catch(e){ sections.push('【📡共有設定の読み元】検査失敗: '+e.message); }
