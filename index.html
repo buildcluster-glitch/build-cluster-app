@@ -675,6 +675,9 @@
     box-shadow:0 0 0 1.5px rgba(255,255,255,.7);
   }
   .chip-prog:hover{background:#bfdbfe;transform:scale(1.12)}
+  /* 📋 v1.30.718: 工程を持つ修繕は「自社N/M(％)」付きの横長バッジ(色は進捗率・inline) */
+  .chip-prog.chip-prog-wide{width:auto;height:16px;border-radius:8px;padding:0 5px;gap:2px;font-size:10px;font-weight:700;white-space:nowrap;line-height:1}
+  .chip-prog.chip-prog-wide:hover{filter:brightness(1.08);transform:none}
   .event-chip .chip-commute{
     display:inline-flex;align-items:center;font-size:10px;flex-shrink:0;
     background:#cffafe;color:#0e7490;border-radius:6px;
@@ -2907,7 +2910,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.717</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.718</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -6728,6 +6731,21 @@ function restoForRepair_(r){
 function repairHasResto_(r){
   const p = restoForRepair_(r);
   return !!(p && (p.tasks||[]).length);
+}
+// 📋 v1.30.718(鈴木🐞09-11「修繕で来た原状回復工事、修繕タブ/原状回復タブで残工事確認できるように(今は最確の欄からしか見えない)」):
+//   修繕タブのカードとグリッドの修繕チップに、最終確認カード(v1.30.387)と同じ「自社N/M(％)」バッジを出す(title=残工事の名前)。
+//   従来は📋アイコンだけで、残工事の量が最終確認帯からしか見えなかった。タップ先は従来どおり進捗ダイアログ(data-rep-prog)。
+//   🏠原状回復タブに出すかは v1.30.439 の山田指定(裏レコードは一覧に出さない)があるので、ここでは変えない。
+function repairProgBadge_(r){
+  const p = restoForRepair_(r);
+  if(!p || !(p.tasks||[]).length) return "";
+  const pr = restoProgress(p);
+  const remain = (p.tasks||[]).filter(t=>restoEffCategory(t)==="inhouse" && !isExcludedRestoTask(t) && t.status!=="done")
+    .map(t=>String(t.name||t.title||t.label||"").trim()).filter(Boolean);
+  const bg = pr.pct===100 ? "#16a34a" : pr.pct>=50 ? "#3b82f6" : "#94a3b8";
+  const tip = "📋 工事進捗・発注書を開く（工程を持つ修繕）" + (remain.length ? "\n残工事: " + remain.slice(0,8).join("・") + (remain.length>8 ? " 他"+(remain.length-8)+"件" : "") : "\n自社工事は全て完了");
+  const label = pr.total ? `自社${pr.done}/${pr.total}(${pr.pct}%)` : "";
+  return `<span class="chip-prog${label?' chip-prog-wide':''}" data-rep-prog="${escapeHtml(String(r.id))}" role="button" title="${escapeHtml(tip)}"${label?` style="background:${bg};color:#fff"`:""}>📋${label?' '+escapeHtml(label):''}</span>`;
 }
 // 修繕が完了済か(最終確認カードの __isDoneCk と同条件)。完了チップはグレー+取消線で表示。
 function isRepairDone_(r){
@@ -17935,7 +17953,7 @@ function renderCalendar(){
           : "";
         // 仮置き(時刻未記録)は時刻ピル自体を出さない(破線ボーダーで仮置きは明示済)。「仮」ラベルは不要(v1.30.171)
         const __timeBox = tentative ? '' : `<span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>`;
-        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden">${tagHtml}<span class="rg-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto">${escapeHtml(label)}</span>${__doneBadge}${__vendorBadge}${(typeof repairHasResto_==='function'&&repairHasResto_(r))?`<span class="chip-prog" data-rep-prog="${escapeHtml(String(r.id))}" role="button" title="📋 工事進捗・発注書を開く（工程を持つ修繕）">📋</span>`:''}${__repCmt}${__repRem}${__repCommute}</span>${__descLine}</span>${__timeBox}${__repBottom}${__repAlert}`;
+        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden">${tagHtml}<span class="rg-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto">${escapeHtml(label)}</span>${__doneBadge}${__vendorBadge}${(typeof repairProgBadge_==='function')?repairProgBadge_(r):''}${__repCmt}${__repRem}${__repCommute}</span>${__descLine}</span>${__timeBox}${__repBottom}${__repAlert}`;
         if(__repBottom || __repAlert){ el.classList.add('chip-has-staffs'); el.style.setProperty('--card-bg', wColor); } // 担当色で全面着色(v1.30.51)
         attachRepairChipHover(el, r); // リッチtooltip
         // 1クリック=詳細シート / ダブルクリック=作業担当ピッカー(v1.30.181)
@@ -25833,8 +25851,7 @@ function renderRepairCard(r, i){
         ${tagShort?`<span class="rep-tag" style="background:${tagBg}">${escapeHtml(tagShort)}</span>`:""}
         <span class="rep-name">${escapeHtml(r.name||"(無題)")}${r.room?` <span class="rep-room">${escapeHtml(r.room)}</span>`:""}</span>
         ${r.creatorMemo?`<span class="rep-memo-icon" title="📝 ${escapeHtml(r.creatorMemo)}">📝</span>`:""}
-        ${(typeof repairHasResto_==='function' && repairHasResto_(r))
-          ? `<span class="chip-prog" data-rep-prog="${escapeHtml(String(r.id))}" role="button" title="📋 工事進捗・発注書を開く（工程を持つ修繕）">📋</span>` : ""}
+        ${(typeof repairProgBadge_==='function') ? repairProgBadge_(r) : ""}
         <span class="rep-st rep-st-wf ${WF_PILL[wf]||"s-st-draft"}" data-wf="1">${escapeHtml(wf)}</span>
       </div>
       <div class="rep-badges">
