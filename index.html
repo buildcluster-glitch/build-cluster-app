@@ -2911,7 +2911,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.719</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.720</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -6713,6 +6713,13 @@ function isRepairCheck_(ck){
 }
 // 🔧 最終確認帯に出す修繕は「受注系(発注済の実工事)」だけ。提出済/見積中の提案(追加提案工事 等)は最終確認日があっても出さない(山田 v1.30.225)
 function repairCheckShows_(c){ return !!(c && c.hasFinalCheck && /受注|工事指示|着工|施工|完工|完了/.test(String(c.status||""))); }
+// 🏠 v1.30.720(山田「ですぎ」12:10): 原状回復タブに出す修繕由来(_repairResto)は「最終確認帯に出る修繕」と同じ範囲に絞る
+//   = 受注系ステータス & 最終確認日あり(repairCheckShows_)。工程3件以上というだけの見積中/提案の修繕(v719で65件に膨れた)は出さない。
+//   突合は最終確認カード(v1.30.437)と同じ driveFileId → estimateId。
+function repairRestoShows_(p){
+  if(!p || !p._repairResto) return true;
+  return (state.checks||[]).some(c=> c && ((p.extDriveFileId && c.extDriveFileId===p.extDriveFileId) || (p.extEstimateId && c.extEstimateId===p.extEstimateId)) && repairCheckShows_(c));
+}
 // 🏠 v1.30.583(山田「原状回復の性質を持つ修繕だから発注書や工事進捗を表示してほしい」):
 //   修繕レコード → 対応する原状回復レコード(工程3件以上の修繕に付く _repairResto の裏レコード・v1.30.439)を引く。
 //   これが引ければ 📋進捗ダイアログ が開ける=その中の「📄発注書」もそのまま使える。
@@ -16407,7 +16414,7 @@ function renderHeader(){
     const apoMi = (state.repairs||[]).filter(r=>(r.workflowStatus||"アポ・手配 未")==="アポ・手配 未").length;
     navDate.textContent = `🔧 修繕・アフター  (${total}件${apoMi?" / アポ未 "+apoMi+"件":""})`;
   }else if(currentView==="resto"){
-    const act = (state.restorations||[]).filter(p=>!(p.completeDate && String(p.completeDate).trim())).length;   // v1.30.719: 工程持ち修繕(_repairResto)も数える(山田「だしておk」)
+    const act = (state.restorations||[]).filter(p=>repairRestoShows_(p) && !(p.completeDate && String(p.completeDate).trim())).length;   // v1.30.720: 修繕由来は最終確認帯に出る範囲だけ数える
     navDate.textContent = `🏠 原状回復  (進行中 ${act}件)`;
   }else if(currentView==="inventory"){
     // 在庫データは在庫モジュール(IIFE)内にあるため window 経由で件数を取得(state.inv は存在しない)v1.30.147
@@ -26664,7 +26671,7 @@ function renderRestoView(){
 function renderRestoList(){
   // 🔧 工程を持つ修繕(_repairResto)= v1.30.439 では一覧から除外していたが、v1.30.719(鈴木🐞09-11・山田「だしておk」09-12)で
   //   「🔧修繕由来」バッジ付きで一覧・件数にも出す(残工事を原状回復タブからも確認できるように)。
-  const all = (state.restorations || []);
+  const all = (state.restorations || []).filter(p=>repairRestoShows_(p));   // v1.30.720: 修繕由来は最終確認帯と同じ範囲だけ
   // フィルタチップ: ステータス
   const statusChips = [
     {key:"active", label:"進行中"},
