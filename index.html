@@ -1903,6 +1903,7 @@
   .resto-card.resto-done .rc-sub{color:#cbd5e1}
   .resto-card.resto-done:hover{opacity:.92}
   .resto-card .rc-done-badge{background:#16a34a;color:#fff;font-size:9px;font-weight:700;padding:0 5px;border-radius:3px;text-decoration:none;display:inline-block;vertical-align:middle;margin-right:4px;flex-shrink:0}
+  .resto-card .rc-rep-badge{display:inline-block;font-size:10px;font-weight:700;color:#9d174d;background:#fce7f3;border:1px solid #f9a8d4;border-radius:6px;padding:0 5px;margin-right:4px;vertical-align:middle;flex-shrink:0}  /* 🔧 v1.30.719 修繕由来 */
   .resto-card:hover{box-shadow:0 2px 6px rgba(0,0,0,.08)}
   /* 1行レイアウト: 物件名 | 進捗テキスト | 進捗バー | 確認日 | 退去 | ステータスピル */
   .resto-card .rc-row{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
@@ -2910,7 +2911,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.718</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.719</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -16406,7 +16407,7 @@ function renderHeader(){
     const apoMi = (state.repairs||[]).filter(r=>(r.workflowStatus||"アポ・手配 未")==="アポ・手配 未").length;
     navDate.textContent = `🔧 修繕・アフター  (${total}件${apoMi?" / アポ未 "+apoMi+"件":""})`;
   }else if(currentView==="resto"){
-    const act = (state.restorations||[]).filter(p=>!p._repairResto && !(p.completeDate && String(p.completeDate).trim())).length;   // 工程持ち修繕の裏レコードは数えない(v1.30.439)
+    const act = (state.restorations||[]).filter(p=>!(p.completeDate && String(p.completeDate).trim())).length;   // v1.30.719: 工程持ち修繕(_repairResto)も数える(山田「だしておk」)
     navDate.textContent = `🏠 原状回復  (進行中 ${act}件)`;
   }else if(currentView==="inventory"){
     // 在庫データは在庫モジュール(IIFE)内にあるため window 経由で件数を取得(state.inv は存在しない)v1.30.147
@@ -26661,8 +26662,9 @@ function renderRestoView(){
 }
 
 function renderRestoList(){
-  // 🔧 工程を持つ修繕(_repairResto)は進捗ダイアログ用の裏レコード=一覧・件数には出さない(山田 v1.30.439)
-  const all = (state.restorations || []).filter(p=>!p._repairResto);
+  // 🔧 工程を持つ修繕(_repairResto)= v1.30.439 では一覧から除外していたが、v1.30.719(鈴木🐞09-11・山田「だしておk」09-12)で
+  //   「🔧修繕由来」バッジ付きで一覧・件数にも出す(残工事を原状回復タブからも確認できるように)。
+  const all = (state.restorations || []);
   // フィルタチップ: ステータス
   const statusChips = [
     {key:"active", label:"進行中"},
@@ -26903,7 +26905,7 @@ function renderRestoCard(p){
   const jzBtnHtml = '';
   return `
     <div class="resto-card st-${st}${__archived?' resto-done':''}${__jz?' jz-done':''}" data-id="${p.id}"${__jz?` title="⚡ ${escapeHtml((__jzE.by||'(不明)')+' が '+fmtLocalMDHM_(__jzE.at)+' に事前完了にしました')}"`:''}>
-      <div class="rc-name">${__archived?'<span class="rc-done-badge">✓完了</span>':''}${__jz?`<span class="rc-jz-badge" title="${escapeHtml((__jzE.by||'')+' '+fmtLocalMDHM_(__jzE.at))} が事前完了にしました">⚡事前完了</span>`:''}${escapeHtml(p.name||"(物件名なし)")} <span class="rc-room">${roomStr}</span></div>
+      <div class="rc-name">${__archived?'<span class="rc-done-badge">✓完了</span>':''}${__jz?`<span class="rc-jz-badge" title="${escapeHtml((__jzE.by||'')+' '+fmtLocalMDHM_(__jzE.at))} が事前完了にしました">⚡事前完了</span>`:''}${p._repairResto?`<span class="rc-rep-badge" title="修繕台帳から来た工程持ちの工事(原状回復性質)。修繕タブにも同じ物件があります">🔧修繕由来</span>`:''}${escapeHtml(p.name||"(物件名なし)")} <span class="rc-room">${roomStr}</span></div>
       <div class="rc-row">
         ${estBadgeHtml}
         ${volBadgeHtml}
