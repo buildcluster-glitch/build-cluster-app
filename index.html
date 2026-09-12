@@ -2911,7 +2911,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.721</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.722</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -14239,33 +14239,41 @@ function restoInhouseRows_(p){
   const tasks = (p.tasks||[]).filter(t=> (typeof restoEffCategory==='function'?restoEffCategory(t):t.category)==="inhouse" && (typeof isExcludedRestoTask!=='function' || !isExcludedRestoTask(t)));
   return tasks.map(t=>restoTaskToHatchuRow_(t, "自社工事(ビルドクラスタ)"));
 }
-// 🔢 掲示板(進捗ダイアログ)の自社工事の並びを「印刷する発注書」に揃えるための順位表(v1.30.721・鈴木🐞09-12
-//   「印刷する発注書と掲示板の自社工事項目、並び揃えてほしい(できれば発注書側に合わせてほしい)」)。
+// 🔢 掲示板(進捗ダイアログ)の並びを「印刷する発注書」に揃えるための順位表(v1.30.721 自社・v1.30.722 外注も・鈴木🐞09-12
+//   「印刷する発注書と掲示板の自社工事項目、並び揃えてほしい(できれば発注書側に合わせてほしい)」→「そろえて」で外注も)。
 //   真因= **発注書は見積アプリの発注確定スナップショット(hatchusho_data)の行順／掲示板は台帳射影 p.tasks の順**で、
-//         別々の並びのまま突き合わせていた。実測(ディークレスト太子堂駅前 East 1207)=**同じ25項目が全く別の並び**。
+//         別々の並びのまま紙と画面を突き合わせていた。実測(ディークレスト太子堂駅前 East 1207)=
+//         自社は**同じ25項目が全く別の並び**・外注は**業者の順が 発注書 はやでん→ムラカベ→OMsONE / 掲示板 ムラカベ→はやでん→OMsONE**。
 //         スナップショットに自社行が入っている案件が83件中80件あるため、ほぼ全案件で食い違っていた。
-//   紙を見ながら画面でチェックする運用なので**画面側を紙に合わせる**(鈴木さんの希望どおり)。
+//   紙を見ながら画面でチェックする運用なので**画面側を紙に合わせる**。
 //   ⚠スナップショットが無い案件は発注書も p.tasks から生成される=元から一致 → null を返して何もしない。
 //   ⚠発注確定後に足された工事は発注書でも一番下の独立セクション(addedAfter)なので、ここでも末尾に置く。
-//   突合は openHatchushoPrint_ の進捗突合と同じ「室名+工事名 → 工事名だけ」の2段(NFKC+空白除去)。
-function hatchuInhouseRank_(p){
+//   ⚠外注は openHatchushoPrint_ と同じく **sortHatchuRows_(業者ごと初出順→工期順)を通した後**の並びを正とする
+//     (発注書側がそのソートを掛けているため。生の行順ではない)。通した結果は業者ごとに連続するので、
+//     掲示板の「業者ごとグループ表示」もそのままの順で出る。
+//   突合は openHatchushoPrint_ の進捗突合と同じ要領で「(外注のみ)業者+室名+工事名 → 室名+工事名 → 工事名だけ」の段階照合(NFKC+空白除去)。
+function hatchuRowRank_(p, kind){
   let rec = null;
   try{ rec = (typeof findHatchushoForResto_==='function') ? findHatchushoForResto_(p) : null; }catch(_){ rec = null; }
   if(!rec || !Array.isArray(rec.rows)) return null;
   const nz = x => String(x==null?"":x).normalize('NFKC').replace(/[\s　]/g,'').trim();
   const isJisha = r => /自社工事|ビルドクラスタ/.test((r&&r.contractor)||"");
-  const byKey = new Map(), byName = new Map();
-  let n = 0;
-  rec.rows.forEach(r=>{
-    if(!r || r.addedAfter || r.reduced || !isJisha(r)) return;   // = 発注書の「確定分・自社工事」セクションと同じ集合
+  const want = (kind==='outsource') ? (r=>!isJisha(r)) : (r=>isJisha(r));
+  let rows = rec.rows.filter(r=> r && !r.addedAfter && !r.reduced && want(r));   // = 発注書の「確定分」セクションと同じ集合
+  if(kind==='outsource' && typeof sortHatchuRows_==='function') rows = sortHatchuRows_(rows);   // 発注書と同じ並べ替えを通す
+  const byFull = new Map(), byKey = new Map(), byName = new Map();
+  rows.forEach((r,n)=>{
+    const full = nz(r.contractor)+"|"+nz(r.room)+"|"+nz(r.workName);
     const k = nz(r.room)+"|"+nz(r.workName), nm = nz(r.workName);
-    if(!byKey.has(k))   byKey.set(k, n);
-    if(!byName.has(nm)) byName.set(nm, n);
-    n++;
+    if(!byFull.has(full)) byFull.set(full, n);
+    if(!byKey.has(k))     byKey.set(k, n);
+    if(!byName.has(nm))   byName.set(nm, n);
   });
-  if(!n) return null;                                            // スナップショットに自社行が無い=発注書はカレンダー生成=元から一致
+  if(!rows.length) return null;                                  // その区分の行がスナップショットに無い=発注書はカレンダー生成=元から一致
   return t=>{
+    const full = nz(t&&t.contractor)+"|"+nz(t&&t.room)+"|"+nz(t&&t.name);
     const k = nz(t&&t.room)+"|"+nz(t&&t.name), nm = nz(t&&t.name);
+    if(kind==='outsource' && byFull.has(full)) return byFull.get(full);
     if(byKey.has(k))   return byKey.get(k);
     if(byName.has(nm)) return byName.get(nm);
     return Infinity;                                             // 発注書に無い(発注確定後に足された)=末尾へ
@@ -27211,10 +27219,11 @@ function renderRestoTaskGroup(p, cat, listId, sumId){
   // v1.7: 完了タスクも一覧に残す(取消線+✅で識別)。完了タブを開いた時のみ done絞込
   let tasks = all;
   if(restoTaskStatusFilter && !noStatusFilter) tasks = tasks.filter(t=>t.status===restoTaskStatusFilter);
-  // 🔢 v1.30.721(鈴木🐞): 自社工事だけ「印刷する発注書」と同じ並びに揃える。
+  // 🔢 v1.30.721/722(鈴木🐞): 自社工事・外注工事とも「印刷する発注書」と同じ並びに揃える。
   //   発注書に無い工事(発注確定後に足された分)は末尾・同着は元の順を保つ=安定ソート。all(件数用)は触らない。
-  if(cat==="inhouse"){
-    const __rank = (typeof hatchuInhouseRank_==='function') ? hatchuInhouseRank_(p) : null;
+  //   外注は発注書側が業者ごとに連続する並びなので、下のグループ化もそのままの業者順で出る。
+  if(cat==="inhouse" || cat==="outsource"){
+    const __rank = (typeof hatchuRowRank_==='function') ? hatchuRowRank_(p, cat) : null;
     if(__rank) tasks = tasks.map((t,i)=>({t,i})).sort((a,b)=>{
       const ra=__rank(a.t), rb=__rank(b.t);
       if(ra!==rb) return ra-rb;
@@ -27238,9 +27247,11 @@ function renderRestoTaskGroup(p, cat, listId, sumId){
   }
   if(cat==="outsource"){
     // 業者ごとグループ化 + 一括チェック
-    const groups = {};
-    tasks.forEach(t=>{ const k=t.contractor||"（業者未設定）"; (groups[k]=groups[k]||[]).push(t); });
-    el.innerHTML = Object.entries(groups).map(([name,ts])=>{
+    //   v1.30.722: オブジェクトだと「数字だけの業者名」が先頭に繰り上がってしまう(JSのキー順の仕様)ので Map にする。
+    //   tasks は上で発注書順に並べ替え済み=挿入順がそのまま業者の並び順になる。
+    const groups = new Map();
+    tasks.forEach(t=>{ const k=t.contractor||"（業者未設定）"; if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(t); });
+    el.innerHTML = [...groups.entries()].map(([name,ts])=>{
       const subtotal = ts.reduce((s,t)=>s+(+t.amount||0),0);
       const workOn = ts.filter(t=>t.checkWork).length;
       const amtOn = ts.filter(t=>t.checkAmount).length;
