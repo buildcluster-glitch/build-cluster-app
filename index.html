@@ -2911,7 +2911,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.720</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.721</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -14238,6 +14238,38 @@ function restoInhouseRows_(p){
   // v1.30.91: 実効カテゴリ(提案/未割当の外注定番工種は自社発注書から除外)
   const tasks = (p.tasks||[]).filter(t=> (typeof restoEffCategory==='function'?restoEffCategory(t):t.category)==="inhouse" && (typeof isExcludedRestoTask!=='function' || !isExcludedRestoTask(t)));
   return tasks.map(t=>restoTaskToHatchuRow_(t, "自社工事(ビルドクラスタ)"));
+}
+// 🔢 掲示板(進捗ダイアログ)の自社工事の並びを「印刷する発注書」に揃えるための順位表(v1.30.721・鈴木🐞09-12
+//   「印刷する発注書と掲示板の自社工事項目、並び揃えてほしい(できれば発注書側に合わせてほしい)」)。
+//   真因= **発注書は見積アプリの発注確定スナップショット(hatchusho_data)の行順／掲示板は台帳射影 p.tasks の順**で、
+//         別々の並びのまま突き合わせていた。実測(ディークレスト太子堂駅前 East 1207)=**同じ25項目が全く別の並び**。
+//         スナップショットに自社行が入っている案件が83件中80件あるため、ほぼ全案件で食い違っていた。
+//   紙を見ながら画面でチェックする運用なので**画面側を紙に合わせる**(鈴木さんの希望どおり)。
+//   ⚠スナップショットが無い案件は発注書も p.tasks から生成される=元から一致 → null を返して何もしない。
+//   ⚠発注確定後に足された工事は発注書でも一番下の独立セクション(addedAfter)なので、ここでも末尾に置く。
+//   突合は openHatchushoPrint_ の進捗突合と同じ「室名+工事名 → 工事名だけ」の2段(NFKC+空白除去)。
+function hatchuInhouseRank_(p){
+  let rec = null;
+  try{ rec = (typeof findHatchushoForResto_==='function') ? findHatchushoForResto_(p) : null; }catch(_){ rec = null; }
+  if(!rec || !Array.isArray(rec.rows)) return null;
+  const nz = x => String(x==null?"":x).normalize('NFKC').replace(/[\s　]/g,'').trim();
+  const isJisha = r => /自社工事|ビルドクラスタ/.test((r&&r.contractor)||"");
+  const byKey = new Map(), byName = new Map();
+  let n = 0;
+  rec.rows.forEach(r=>{
+    if(!r || r.addedAfter || r.reduced || !isJisha(r)) return;   // = 発注書の「確定分・自社工事」セクションと同じ集合
+    const k = nz(r.room)+"|"+nz(r.workName), nm = nz(r.workName);
+    if(!byKey.has(k))   byKey.set(k, n);
+    if(!byName.has(nm)) byName.set(nm, n);
+    n++;
+  });
+  if(!n) return null;                                            // スナップショットに自社行が無い=発注書はカレンダー生成=元から一致
+  return t=>{
+    const k = nz(t&&t.room)+"|"+nz(t&&t.name), nm = nz(t&&t.name);
+    if(byKey.has(k))   return byKey.get(k);
+    if(byName.has(nm)) return byName.get(nm);
+    return Infinity;                                             // 発注書に無い(発注確定後に足された)=末尾へ
+  };
 }
 // ✂️減工事(やらない工事)行 — reduced:true 付き・金額は載せない。発注書に「減工事」として明示(v1.30.333・山田)
 function restoReducedRows_(p){
@@ -27179,6 +27211,16 @@ function renderRestoTaskGroup(p, cat, listId, sumId){
   // v1.7: 完了タスクも一覧に残す(取消線+✅で識別)。完了タブを開いた時のみ done絞込
   let tasks = all;
   if(restoTaskStatusFilter && !noStatusFilter) tasks = tasks.filter(t=>t.status===restoTaskStatusFilter);
+  // 🔢 v1.30.721(鈴木🐞): 自社工事だけ「印刷する発注書」と同じ並びに揃える。
+  //   発注書に無い工事(発注確定後に足された分)は末尾・同着は元の順を保つ=安定ソート。all(件数用)は触らない。
+  if(cat==="inhouse"){
+    const __rank = (typeof hatchuInhouseRank_==='function') ? hatchuInhouseRank_(p) : null;
+    if(__rank) tasks = tasks.map((t,i)=>({t,i})).sort((a,b)=>{
+      const ra=__rank(a.t), rb=__rank(b.t);
+      if(ra!==rb) return ra-rb;
+      return a.i-b.i;
+    }).map(x=>x.t);
+  }
   const el = document.getElementById(listId);
   const sum = document.getElementById(sumId);
   // 提案グループは項目がある時だけ表示(ステータス絞込中は対象外なので隠す)
