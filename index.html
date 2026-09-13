@@ -2911,7 +2911,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.722</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.723</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -26573,9 +26573,28 @@ function restoIsArchived(p){ return !!(p.completeDate && String(p.completeDate).
 
 // progress を Drive に書き戻し (TM saveProgress 相当・専用エンドポイント)
 const _restoPushTimers = {};
+// ⏱ v1.30.723(09-13・山田GO/台帳DB賛成): 待ち合わせ 2秒 → 10秒。
+//   実測(09-12)= このpushを受けた見積GASが **857KBの進捗表まるごと**をDBへ書いており、1日48回=約40MB。
+//   17:12〜17:15 はチェックを1つずつ付けるたびに 3〜20秒間隔で走っていた(2秒では人の手の速さを吸収できていない)。
+//   同じ見積GASを最上さんが使っていた時間帯と重なっていたため、共有GASの順番待ちを太らせていた。
+//   10秒にすると、チェックを連打しても送信が1回にまとまる(1日48回→10回前後の見込み)。
+//   ⚠延ばすと「送る前に閉じた/離れた」窓が広がるので、対で2つ手当てする:
+//     ①**積んだ時点で未送信として記録**(従来は失敗時だけ)→ 既存の自動再送(起動15秒後/5分ごと/フォーカス時)が拾う
+//     ②ダイアログを閉じる・タブを離れる時に**即送信**(下の restoFlushProgressPushes_)
+const RESTO_PUSH_DEBOUNCE_MS = 10000;
 function restoPushProgressDebounced(propId){
   if(_restoPushTimers[propId]) clearTimeout(_restoPushTimers[propId]);
-  _restoPushTimers[propId] = setTimeout(()=>restoPushProgressNow(propId), 2000);
+  _progPendingSet_(propId, true);   // ①積んだ時点で未送信=途中で閉じても自動再送が拾う
+  _restoPushTimers[propId] = setTimeout(()=>restoPushProgressNow(propId), RESTO_PUSH_DEBOUNCE_MS);
+}
+// ②待ち合わせ中のものを今すぐ送る(ダイアログを閉じた・タブを離れた時)。二重送信しないようタイマーは必ず消す。
+function restoFlushProgressPushes_(propId){
+  const ids = propId ? [propId] : Object.keys(_restoPushTimers);
+  ids.forEach(id=>{
+    if(!_restoPushTimers[id]) return;
+    clearTimeout(_restoPushTimers[id]); delete _restoPushTimers[id];
+    try{ restoPushProgressNow(id); }catch(_){}
+  });
 }
 // 📮 v1.30.563(山田報告「工事進捗入れると同期失敗」): 進捗pushは1発勝負でリトライ無しだった。
 //   GASの混雑発作(72秒404が実測されている)を踏むと、入力は端末に残るのに共有されず、
@@ -26600,6 +26619,7 @@ function retryPendingProgress_(){
   ids.forEach((id,i)=> setTimeout(()=>restoPushProgressNow(id), i*1500));   // 直列気味に(同時多発でGASを叩かない)
 }
 async function restoPushProgressNow(propId){
+  if(_restoPushTimers[propId]){ clearTimeout(_restoPushTimers[propId]); delete _restoPushTimers[propId]; }   // v1.30.723: 待ち合わせ中に別経路(再送/フラッシュ)で送ったら二重に撃たない
   const s = loadGasSettings();
   if(!s.url) return;
   const prop = (state.restorations||[]).find(x=>x.id===propId);
@@ -26691,6 +26711,7 @@ function closeRestoDialog(){
   if(back && back.dataset.modalLabel){ back.textContent = "‹ 一覧"; delete back.dataset.modalLabel; }
   document.getElementById("restoDialog").classList.remove("show");
   restoDetailAsModal = false;
+  if(typeof restoFlushProgressPushes_==='function') restoFlushProgressPushes_(restoDetailId);   // v1.30.723: 待ち合わせ中の進捗を閉じる前に送る
   restoDetailId = null;
   // 📊 全体進捗から開いた時は戻る(最新stateで描き直すので進捗変更も即反映)v1.30.625
   if(typeof __dashReturn!=='undefined' && __dashReturn){ __dashReturn=false; try{ openDashboard_(); }catch(_){} }
@@ -29631,6 +29652,9 @@ setTimeout(()=>afterOpenSync_(()=>{
       // v1.30.714: タブ復帰のたびに打つと1分に6回になる端末があった(9/10 wt_ops実測・GAS往復+DB書き)→前回の心拍から20秒以内は打たない
       document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && typeof heartbeatPresence_==='function' && (Date.now()-(window.__lastBeatAt||0))>20000) heartbeatPresence_().catch(()=>{}); });
       window.addEventListener('pagehide', ()=>{ try{ heartbeatPresence_({leave:true}); }catch(_){} });   // 離脱時は自分を消す(ベストエフォート)
+      // ⏱ v1.30.723: 待ち合わせ中(最大10秒)の工事進捗を、タブを離れる時に送り切る。取りこぼしても未送信記録+自動再送が拾う
+      window.addEventListener('pagehide', ()=>{ try{ if(typeof restoFlushProgressPushes_==='function') restoFlushProgressPushes_(); }catch(_){} });
+      document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden'){ try{ if(typeof restoFlushProgressPushes_==='function') restoFlushProgressPushes_(); }catch(_){} } });
     }
     // 📢 全員への連絡事項(全員共有) 起動時+2分ごとに取得→ヘッダー帯に反映(v1.30.302)
     if(typeof fetchAnnounce_==='function'){
