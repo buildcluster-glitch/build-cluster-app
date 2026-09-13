@@ -2911,7 +2911,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.724</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.725</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -15234,13 +15234,27 @@ function isCompletedJizenEvent_(ev){
   if(!(ev._jizenSourceId || /^事前[\s　]/.test(String(ev.title||"")))) return false;
   const t = String(ev.title||"").replace(/\s+|　/g,"");
   if(!t) return false;
+  // 🐞 v1.30.725(最上・山田報告 09-14「事前が消える」/ 09-11には6人が同じ物件の事前を14件作り直していた):
+  //   真因= 台帳に号室がある行でも **建物名だけのキー(n)でも一致**させていたため、
+  //   **同じ建物の“別の部屋”が完了しているだけで、その建物の事前が全部消えていた**。
+  //   実例: パルティーレEXE片平タワーは 305/1203/0103/1201 が完了 → **404の事前が全部非表示**。
+  //   (404は台帳に存在すらしない。最上さんが「パルティーレ片平404」と別表記で作り直すと見えた=建物名に当たらないため)
+  //   → 号室付きの行は **号室まで一致した時だけ**採用する。建物名だけの照合は「台帳に号室が無い行」かつ
+  //     「事前タイトル側にも号室らしい数字が無い」時だけに限定。
+  //   ⚠この関数は「隠す」判定なので、当たらない=表示されたまま=安全側。迷ったら隠さない。
   let best=null, bestLen=0;
   (state.restorations||[]).forEach(x=>{
     if(!x || !x.name) return;
     const n  = String(x.name).replace(/\s+|　/g,"");
     const rm = String(x.room||"").replace(/\s+|　/g,"");
-    const keys = rm ? [n+rm, n] : [n];   // 号室付きの長いキーを優先
-    keys.forEach(k=>{ if(k && t.includes(k) && k.length>bestLen){ best=x; bestLen=k.length; } });
+    if(!n || !t.includes(n)) return;
+    if(rm){
+      const k = n + rm;                                   // 号室まで一致した時だけ
+      if(t.includes(k) && k.length > bestLen){ best=x; bestLen=k.length; }
+      return;
+    }
+    const rest = t.split(n).join("");                     // 建物名を除いた残り
+    if(!/\d/.test(rest) && n.length > bestLen){ best=x; bestLen=n.length; }   // 残りに数字が無い=号室指定なしの事前
   });
   if(!best) return false;
   return /完了|完工|完成/.test(String(best.status||"")) || !!(best.completeDate);
