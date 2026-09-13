@@ -2911,7 +2911,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.723</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.724</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8585,9 +8585,13 @@ function mergeEventDeletions_(a,b){
   keys.forEach(k=>{ const ta=a&&a[k], tb=b&&b[k]; out[k] = (String(tb||'')>=String(ta||'')) ? (tb||ta) : (ta||tb); }); // 新しい削除時刻を採用
   return out;
 }
-// 90日より古い tombstone を間引く
+// 60日より古い tombstone を間引く
+//   ⏱ v1.30.724(09-14): 90日→60日。実測で **191KB・4,540件** あり、起動時に読む共有設定31キー合計499KBの**4割**を占めていた。
+//   中身は全部6/16〜8/7のもので、8/7以降は増えていない(予定の削除はDBの is_deleted が持つようになったため)。
+//   予定は全端末DB直読み=消えた予定はそもそも降ってこないので、この表は旧経路のための保険。60日で十分。
+//   60日で 191KB → 約17KB(=起動時の通信が約4割軽くなる)。剪定した表は次のpushで全端末に行き渡る。
 function pruneEventDeletions_(map){
-  const cut = new Date(Date.now() - 90*86400000).toISOString();
+  const cut = new Date(Date.now() - 60*86400000).toISOString();
   Object.keys(map).forEach(id=>{ if(String(map[id]||'') < cut) delete map[id]; });
   return map;
 }
@@ -22811,7 +22815,18 @@ async function cloudSyncTest(){
   return data;
 }
 
-async function cloudSyncPull({ replace=false, signal=null, prefetched=null }={}){
+// ⏱ v1.30.724: 初回のGASフルを裏へ回すための予約(下の分岐から呼ぶ)。1セッション1回だけ。
+let __firstGasFillTimer = null;
+function __scheduleFirstGasFill_(){
+  if(__firstGasFillTimer) return;
+  __firstGasFillTimer = setTimeout(()=>{
+    cloudSyncPull({ forceGas:true })
+      .then(()=>{ try{ if(typeof render==='function') render(); }catch(_){} })
+      .catch(e=>{ console.warn('[sync] 初回の裏GAS取得に失敗(表示はDBぶんで足りている):', (e&&e.message)||e); })
+      .then(()=>{ __firstGasFillTimer = null; });
+  }, 3000);
+}
+async function cloudSyncPull({ replace=false, signal=null, prefetched=null, forceGas=false }={}){
   if(!cloudSync.url) throw new Error('URL未設定');
   // prefetched = 直前の push の応答に同梱されてきた取得結果(v1.30.529)。
   // 有るときは取りに行かない＝GAS呼び出しが1回ぶん減る。中身の扱いは以降まったく同じ。
@@ -22826,10 +22841,22 @@ async function cloudSyncPull({ replace=false, signal=null, prefetched=null }={})
   };
   if(prefetched){
     data = prefetched;   // pushの応答同梱(GAS由来)はそのまま使う=取得元の混在はここだけ・問題なし(GASは正のDrive/シート)
-  } else if(!replace && eventsDbReadOn_() && __lastGasEventsPullAt===0){
-    // 初回だけはGASフル(properties/members/logs も揃えるため)。以降は下のDB経路+10分ごとGAS
-    const g = await __gasPull(); data = g.d; __setEventsReadStat_({ src:'gas', n:(data.events||[]).length, ms:g.ms, note:'初回はGAS(物件/メンバーも取得)' });
-  } else if(!replace && eventsDbReadOn_() && (Date.now()-__lastGasEventsPullAt) <= EVENTS_GAS_REFRESH_MS){
+  } else if(!replace && !forceGas && eventsDbReadOn_() && __lastGasEventsPullAt===0){
+    // ⏱ v1.30.724(山田「ずいぶん重い」09-14): **初回もまずDBで描く**。
+    //   従来は初回だけGASフル固定だったが、**全員がDB直読みになってGASがほとんど呼ばれない=常に冷えている**ため、
+    //   朝イチや久しぶりの起動で `?action=list` が **21〜28秒**(実測 09-14: 21.4s → 温まると2.5s)かかり、その間ずっと待たされていた。
+    //   物件/メンバー/ログはGASフルにしか無いので **3秒後に裏で取りに行って合流**する。
+    //   マージは追加/更新のみ(cloudMergeById_)・membersは配列が来た時だけ上書き=**裏取得が遅れても何も消えない**。
+    const r = await fetchEventsFromDb_({ signal });
+    if(r.ok && r.events.length > 0){
+      data = { events: r.events };
+      __setEventsReadStat_({ src:'db', n:r.events.length, total:r.total, ms:r.ms, note:'初回もDBで先に表示(物件/メンバーは3秒後に裏でGASから)' });
+      __scheduleFirstGasFill_();
+    } else {
+      const g = await __gasPull(); data = g.d;
+      __setEventsReadStat_({ src:'gas', n:(data.events||[]).length, ms:g.ms, fallback:(r.ok?'DB0件':r.reason), note:'初回=DBが読めずGAS' });
+    }
+  } else if(!replace && !forceGas && eventsDbReadOn_() && (Date.now()-__lastGasEventsPullAt) <= EVENTS_GAS_REFRESH_MS){
     // 📡 DB直読み。失敗/0件はGASへ(条件②③)。properties/members はGASの前回値のまま=マージは追加/更新のみなので欠けても消えない
     const r = await fetchEventsFromDb_({ signal });
     if(r.ok && r.events.length > 0){
