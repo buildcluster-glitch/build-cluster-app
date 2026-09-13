@@ -913,6 +913,11 @@
   /* 事前帯の中のチップは絶対配置をやめ、縦に積む(流し込み)。flex-shrink:0=max-height制限時に潰さずスクロールさせる(v1.30.135) */
   .jizen-cell .event{position:static !important;width:auto !important;left:auto !important;right:auto !important;top:auto !important;height:auto !important;margin:0 !important;flex:0 0 auto !important}
   .jizen-cell .event.event-jizen-band{min-height:0}
+  /* ⚡ 事前完了(jizen_done='done')の事前チップ=青枠(v1.30.726・山田「事前完了している事前は青枠で囲うとかできる?」)。
+     事前の地色は担当色(紫系が多い)なので、枠は青にして地色とぶつからないようにする。
+     枠は inset box-shadow=チップの大きさも位置も変えない(border だと1〜2pxずれて重なり計算が狂う)。 */
+  .event.jizen-done-chip{ box-shadow: inset 0 0 0 2px #2563eb, 0 1px 3px rgba(0,0,0,.12) !important; }
+  .event.jizen-done-chip .title::before{ content:"⚡"; margin-right:2px; color:#2563eb; font-weight:700 }
   /* 🔧 修繕アポ クイック編集ポップオーバー (担当者変更+コメント) */
   .quick-pop{
     position:fixed;z-index:9999;background:#fff;border:1px solid var(--border-strong);
@@ -2911,7 +2916,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.725</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.726</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -17895,6 +17900,23 @@ function renderCalendar(){
         });
         const __timeEl = el.querySelector('.chip-time');
         if(__timeEl) el.insertBefore(__dbtn, __timeEl); else el.appendChild(__dbtn);
+      }
+      // ⚡ v1.30.726(山田): 事前完了の印が付いている事前予定は青枠で囲う。
+      //   判定は 原状回復案件ごとの手動トグル jizen_done(='done')。台帳の完了とは別物なので注意
+      //   (台帳の完了で隠す判定は isCompletedJizenEvent_ = v1.30.725 で号室一致を必須にした別の話)。
+      //   ⚠「隠す」ではなく「印を付ける」だけ=見えなくなる方向には絶対に倒さない。
+      if(typeof isJizenEvent_==='function' && isJizenEvent_(ev)){
+        try{
+          const __jrp = findEventResto_(ev);
+          const __je = (__jrp && typeof jizenDoneEntry_==='function') ? jizenDoneEntry_(__jrp) : null;
+          if(__je && __je.state === 'done'){
+            el.classList.add('jizen-done-chip');
+            const __who = __je.by || '';
+            const __when = (typeof fmtLocalMDHM_==='function') ? fmtLocalMDHM_(__je.at) : '';
+            el.title = (el.title ? el.title + "\n" : "") + `⚡ 事前完了${__when?` (${__when}`:''}${__who?` ${__who}`:''}${__when?')':''}`
+              + (__je.note ? `\n${__je.note}` : '');
+          }
+        }catch(_){}
       }
       attachDragOrClick(el, ev);
       attachChipHover(el, ev);
