@@ -2523,6 +2523,18 @@
   #inventoryView .inv-bar #inv-sync-icon.err{color:#f87171}
   #inventoryView .inv-bar #inv-sync-badge{position:absolute;top:-3px;right:-3px;background:var(--inv-warn);color:#fff;
     font-size:10px;font-weight:800;border-radius:10px;padding:1px 5px;min-width:16px;text-align:center;line-height:1.2}
+  /* 🚧 v1.30.727: 送れずに詰まっているopがある時は赤バッジ(ただの未送信=オレンジと区別する) */
+  #inventoryView .inv-bar #inv-sync-badge.stuck{background:#ef4444;box-shadow:0 0 0 2px rgba(239,68,68,.4)}
+  /* 🚧 v1.30.727: 保留中の変更の中身を出す(設定シート内) */
+  .inv-sheet .inv-pending-list{padding:0 14px 12px}
+  .inv-sheet .inv-pending-list .pnd{border:1px solid var(--inv-line);border-radius:8px;padding:8px 10px;margin-top:6px;font-size:12px;background:#fff}
+  .inv-sheet .inv-pending-list .pnd.bad{border-color:#fca5a5;background:#fef2f2}
+  .inv-sheet .inv-pending-list .pnd .t{font-weight:700;word-break:break-all}
+  .inv-sheet .inv-pending-list .pnd .m{color:var(--inv-mute);font-size:11px;margin-top:2px}
+  .inv-sheet .inv-pending-list .pnd .e{color:#b91c1c;font-size:11px;margin-top:4px;word-break:break-all}
+  .inv-sheet .inv-pending-list .pnd .b{margin-top:6px;display:flex;gap:6px}
+  .inv-sheet .inv-pending-list .pnd .b button{padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;border:0;cursor:pointer;background:#f1f5f9}
+  .inv-sheet .inv-pending-list .pnd .b button.drop{background:#fee2e2;color:#b91c1c}
   @keyframes invSpin{to{transform:rotate(360deg)}}
   #inventoryView .inv-bar .back{color:#fff;padding:4px 4px 4px 0;font-size:22px;background:none;border:0;cursor:pointer}
 
@@ -2916,7 +2928,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.726</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.727</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -3810,7 +3822,9 @@
           <div class="lbl">保留中の変更</div>
           <div class="val" id="inv-info-pending">0件</div>
         </div>
+        <button id="inv-pending-push1" style="background:#dbeafe;color:var(--inv-accent)">1件ずつ送る</button>
       </div>
+      <div class="inv-pending-list" id="inv-pending-list"></div>
       <div class="inv-set-item">
         <div class="lbl">初回セットアップ（サーバーから取込）</div>
         <button id="inv-sync-pull-first">実行</button>
@@ -30016,11 +30030,19 @@ async function runAutoSync(){
   }
 }
 async function syncFullSilent(){
-  const push = await syncPush();
-  const pull = await syncPull({ replace:false });
-  renderAll();
-  if(state.ui.view==='detail') renderDetail();
-  return { push, pull };
+  try{
+    const { push, pull } = await invPushThenPull_();
+    renderAll();
+    if(state.ui.view==='detail') renderDetail();
+    return { push, pull };
+  }catch(err){
+    // 送信は失敗したが取得は通っている場合があるので、画面は描き直してから投げ直す
+    if(err && err.invPulled){
+      renderAll();
+      if(state.ui.view==='detail') renderDetail();
+    }
+    throw err;
+  }
 }
 
 // 起動時 / フォーカス復帰時の同期: pending送信 → サーバーの最新取得
@@ -30031,8 +30053,7 @@ async function runOpenSync(){
   syncInFlight = true;
   setSyncIcon('syncing');
   try{
-    if(state.pending.length) await syncPush();
-    await syncPull({ replace:false });
+    await invPushThenPull_();      // 送信が詰まっていても取得は止めない(v1.30.727)
     renderAll();
     if(state.ui.view==='detail') renderDetail();
     setSyncIcon('ok');
@@ -30042,7 +30063,9 @@ async function runOpenSync(){
     console.warn('[在庫] open-sync failed:', err.message);   // 🏷 どの同期の失敗か名乗る(v1.30.537・予定側と混同したため)
     setSyncIcon('err');
     // 🔁 v1.30.537: echo404/一時ハングは数秒後に通る。予定側(v536)と同じ3秒→10秒の2回だけ再試行
-    if(__invRetryN < 2 && sync.url && sync.autoSync && document.visibilityState==='visible'){
+    // 🚧 v1.30.727: サーバーに拒否された(app)なら何度撃っても同じなので再試行しない。取得も既に通っている
+    const __retryable = !(invErrKind_(err) === 'app' || err.invPulled);
+    if(__retryable && __invRetryN < 2 && sync.url && sync.autoSync && document.visibilityState==='visible'){
       const wait = (__invRetryN === 0) ? 3000 : 10000;
       __invRetryN++;
       setTimeout(()=>{ if(!syncInFlight) runOpenSync(); }, wait);
@@ -30069,6 +30092,7 @@ function load(){
     state.logs = d.logs || [];
     state.orders = d.orders || [];
     state.pending = d.pending || [];
+    state.pending.forEach(p=>{ if(p && !p.k) p.k = invNewOpKey_(); });   // 🚧 v1.30.727: 旧データにもキーを振る
     state.members = d.members && d.members.length ? d.members : SEED_MEMBERS.slice();
     state.currentUser = d.currentUser || '';
     return true;
@@ -30076,9 +30100,13 @@ function load(){
 }
 
 // ---------- pending operations queue ----------
+// 🚧 v1.30.727: opに一意キーを振る(画面から1件を名指しして破棄できるようにするため)
+let __invOpSeq = 0;
+function invNewOpKey_(){ return 'op_' + Date.now().toString(36) + '_' + (++__invOpSeq).toString(36); }
 function queueOp(action, data){
-  state.pending.push({ action, data: JSON.parse(JSON.stringify(data)), ts: new Date().toISOString() });
+  state.pending.push({ k: invNewOpKey_(), action, data: JSON.parse(JSON.stringify(data)), ts: new Date().toISOString() });
   updateSyncBadge();
+  renderPendingList_();
   scheduleAutoSync();
 }
 const OUTDOOR_SKUS = new Set(['OX9743LDR','PL8D-YA2','CH941SPF','FY-25PM5','FY-20PM5','VD-10ZC','VD-10ZFC','FY-24CPS7','VD-13ZC','FY-08PD9','FY-08PD9D','VD-15ZY14']);
@@ -31349,30 +31377,156 @@ function normalizeOrder_(x){
     receivedDate:(x.receivedDate||'').slice(0,10) };
 }
 
-async function syncPush(){
+// 🚧 v1.30.727: 在庫の送信は「全部か全部なし」だった=1件でも弾かれると永久に残り、
+//    しかも成功応答の中の per-op 失敗は握りつぶしていた(=静かなデータ欠け)。
+//    ①per-opの結果を見て通った分だけ消す ②まとめ送信が続けてコケたら1件ずつ送って悪い1件を切り離す
+//    ③詰まっている中身と理由を画面(設定シート)に出す、の3点に作り替えた。
+const INV_STUCK_TRIES = 3;        // これ以上失敗したら「詰まっている」扱い=赤バッジ
+let invPushFailStreak = 0;        // 連続で送信に失敗した回数(1以上なら次は1件ずつ)
+
+function invErrKind_(err){ return (err && err.invKind) || 'transport'; }
+
+// 同じモノに触るopを見分ける(1件ずつ送る時、前のopが通っていない相手の後続を送らないため)。
+// 消費1回= adjustStock(opId=ログid) + appendLog(id=ログid) の対なので、
+// 記録id・品目id・opId のどれかが引っかかったら後続は送らない=片方だけ通って辻褄が合わなくなるのを防ぐ。
+function invOpKeys_(p){
+  const d = (p && p.data) || {};
+  if(p && p.action === 'setMembers') return ['__members__'];
+  return [d.id, d.itemId, d.opId].filter(v=>v!=null && v!=='').map(String);
+}
+
+function invOpFailed_(p, msg){
+  p.tries = (p.tries||0) + 1;
+  p.err = String(msg==null?'':msg).slice(0, 300);
+  p.errAt = new Date().toISOString();
+}
+
+// keepSet に入っていないopだけを pending から取り除く(送信中に積まれた分は参照が違うので巻き込まない)
+function invDropOps_(snapshot, keepSet){
+  const drop = new Set(snapshot.filter(p=>!keepSet.has(p)));
+  if(!drop.size) return 0;
+  state.pending = state.pending.filter(p=>!drop.has(p));
+  return drop.size;
+}
+
+// 送信の素。戻り= per-op結果の配列(取れなければ null)。例外に invKind: transport(通信/器) or app(サーバーが拒否)
+async function invPostOps_(ops){
+  let res;
+  try{
+    res = await fetch(sync.url, { method:'POST', body: JSON.stringify({ action:'bulkSync', data: ops }) });
+  }catch(e){
+    throw Object.assign(new Error(e && e.message ? e.message : '通信できません'), { invKind:'transport' });
+  }
+  if(!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { invKind:'transport' });
+  let data;
+  try{ data = await res.json(); }
+  catch(_){ throw Object.assign(new Error('応答が読めません(JSONではありません)'), { invKind:'transport' }); }
+  if(!data.ok) throw Object.assign(new Error(data.error || 'push failed'), { invKind:'app' });
+  return Array.isArray(data.result) ? data.result : null;
+}
+
+function invAfterPush_(){ save(); updateSyncBadge(); renderPendingList_(); }
+
+async function syncPush({ isolate=false }={}){
   if(!sync.url) throw new Error('URL未設定');
   if(!state.pending.length) return { pushed: 0 };
-  // スナップショット（送信中に追加されるopは次回に送る）
-  const opCount = state.pending.length;
-  const ops = state.pending.slice(0, opCount).map(p=>({ action:p.action, data:p.data }));
-  const res = await fetch(sync.url, {
-    method:'POST',
-    body: JSON.stringify({ action:'bulkSync', data: ops }),
-  });
-  if(!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  if(!data.ok) throw new Error(data.error || 'push failed');
-  // スナップショットした分だけ消す（送信中に追加された分は残す）
-  state.pending.splice(0, opCount);
-  save();
-  return { pushed: opCount, result: data.result };
+  const snapshot = state.pending.slice();   // 送信中に追加されるopは次回に送る
+  // 前回コケていて複数たまっている時は、悪い1件を切り離すために1件ずつ送る
+  const one = isolate || (invPushFailStreak > 0 && snapshot.length > 1);
+  return one ? await invPushOneByOne_(snapshot) : await invPushBulk_(snapshot);
+}
+
+async function invPushBulk_(snapshot){
+  let results;
+  try{
+    results = await invPostOps_(snapshot.map(p=>({ action:p.action, data:p.data })));
+  }catch(err){
+    invPushFailStreak++;
+    snapshot.forEach(p=>invOpFailed_(p, err.message));
+    invAfterPush_();
+    throw err;
+  }
+  invPushFailStreak = 0;
+  // ⚠ ここが以前の握りつぶし。ok:false の分は消さずに残して理由を持たせる
+  const failed = new Set();
+  if(results && results.length === snapshot.length){
+    results.forEach((r,i)=>{
+      if(r && r.ok === false){
+        failed.add(snapshot[i]);
+        invOpFailed_(snapshot[i], r.error || 'サーバーが受け付けませんでした');
+      }
+    });
+  }
+  invDropOps_(snapshot, failed);
+  invAfterPush_();
+  if(failed.size) invPushFailStreak = 1;   // 次回は1件ずつ=巻き添えを出さない
+  return { pushed: snapshot.length - failed.size, stuck: failed.size, result: results };
+}
+
+async function invPushOneByOne_(snapshot){
+  const done = new Set();
+  const badIds = new Set();
+  let stopped = null;
+  for(const p of snapshot){
+    const keys = invOpKeys_(p);
+    if(keys.some(k=>badIds.has(k))){      // 同じモノの前の変更が通っていない=順番が狂うので後続は送らない
+      invOpFailed_(p, '同じ品目の前の変更が通っていないため保留');
+      continue;
+    }
+    let results;
+    try{
+      results = await invPostOps_([{ action:p.action, data:p.data }]);
+    }catch(err){
+      invOpFailed_(p, err.message);
+      if(invErrKind_(err) === 'transport'){ stopped = err; break; }   // 通信断ならこれ以上撃たない
+      keys.forEach(k=>badIds.add(k));
+      continue;
+    }
+    const r = (results && results.length === 1) ? results[0] : null;
+    if(r && r.ok === false){
+      invOpFailed_(p, r.error || 'サーバーが受け付けませんでした');
+      keys.forEach(k=>badIds.add(k));
+      continue;
+    }
+    done.add(p);
+  }
+  const keep = new Set(snapshot.filter(p=>!done.has(p)));
+  invDropOps_(snapshot, keep);
+  invAfterPush_();
+  if(stopped){ invPushFailStreak++; throw stopped; }
+  invPushFailStreak = keep.size ? 1 : 0;
+  return { pushed: done.size, stuck: keep.size };
+}
+
+// 送信が失敗しても取得は止めない(v1.30.727)。
+// 以前は詰まったop 1件で syncPull まで巻き添えで止まり、他の人の入出庫が一切入ってこなかった。
+async function invPushThenPull_(){
+  let pushErr = null;
+  let push = { pushed: 0 };
+  try{ push = await syncPush(); }catch(e){ pushErr = e; }
+  const pull = await syncPull({ replace:false });
+  if(pushErr) throw Object.assign(pushErr, { invPulled:true });
+  return { push, pull };
+}
+
+function invStuckOps_(){ return state.pending.filter(p=>(p.tries||0) >= INV_STUCK_TRIES); }
+
+// 詰まっているopがあるなら、中身と理由が見える場所(設定シート)まで連れていく
+function invAlertStuck_(){
+  const stuck = invStuckOps_();
+  if(!stuck.length) return;
+  const head = stuck.slice(0,3).map(p=>`・${invOpSummary_(p)}\n　→ ${p.err||'理由不明'}`).join('\n');
+  alert(`🚧 サーバーに送れずに残っている変更が ${stuck.length}件 あります。\n\n${head}`
+      + (stuck.length>3?`\n…ほか ${stuck.length-3}件`:'')
+      + `\n\n設定を開きます。「1件ずつ送る」で通るか試せます。どうしても通らない1件は「破棄」できます。`);
+  renderSettingsInfo();
+  openSheet('sheet-settings');
 }
 
 async function syncFull(){
   setSyncIcon('syncing');
   try{
-    const push = await syncPush();
-    const pull = await syncPull({ replace:false });
+    const { push, pull } = await invPushThenPull_();
     setSyncIcon('ok');
     setTimeout(()=>setSyncIcon(''), 2000);
     renderAll();
@@ -31395,8 +31549,76 @@ function updateSyncBadge(){
   if(!badge) return;
   if(n>0){ badge.textContent = n; badge.classList.remove('inv-hidden'); }
   else { badge.classList.add('inv-hidden'); }
+  // 🚧 v1.30.727: 何回送っても通らないopがあるなら赤にして、中身の見方を title に出す
+  const stuck = invStuckOps_().length;
+  badge.classList.toggle('stuck', stuck>0);
+  badge.title = stuck>0
+    ? `${stuck}件がサーバーに送れずに詰まっています（⚙設定→クラウド同期→保留中の変更 で中身が見られます）`
+    : (n>0 ? `未送信 ${n}件` : '');
   // also update settings if open
-  const info = $('#inv-info-pending'); if(info) info.textContent = `${n}件`;
+  const info = $('#inv-info-pending');
+  if(info) info.textContent = stuck>0 ? `${n}件（うち詰まり ${stuck}件）` : `${n}件`;
+}
+
+// 🚧 v1.30.727: 保留中のopの中身と、通らなかった理由を画面に出す
+const INV_OP_KIND_LABEL = { out:'消費', in:'補充', chk:'棚卸', ord:'発注', audit:'品目変更' };
+function invItemName_(id){
+  const it = state.items.find(x=>x.id===id);
+  if(it) return (it.name || it.sku || id);
+  return '(品目不明 ' + String(id==null?'':id).slice(-6) + ')';
+}
+function invOpSummary_(p){
+  const d = (p && p.data) || {};
+  switch(p && p.action){
+    case 'appendLog': {
+      const kind = INV_OP_KIND_LABEL[d.type] || d.type || 'ログ';
+      const qty  = (d.type==='chk') ? (d.diff==null?'':`差分 ${d.diff>0?'+':''}${d.diff}`) : (d.qty!=null?`×${d.qty}`:'');
+      const site = d.site ? ` / ${d.site}${d.room?' '+d.room:''}` : '';
+      return `${kind} ${invItemName_(d.itemId)} ${qty}${d.member?` (${d.member})`:''}${site}`;
+    }
+    case 'deleteLog':    return 'ログの削除';
+    case 'adjustStock':  return `在庫を ${d.delta>0?'+':''}${d.delta} ${invItemName_(d.itemId)}`;
+    case 'setStock':     return `在庫を ${d.stock} に ${invItemName_(d.itemId)}`;
+    case 'upsertItem':   return `品目の登録・変更 ${d.name || d.sku || invItemName_(d.id)}`;
+    case 'deleteItem':   return `品目の削除 ${invItemName_(d.id)}`;
+    case 'upsertOrder':  return `発注の登録・変更 ${invItemName_(d.itemId)}${d.qty!=null?` ×${d.qty}`:''}`;
+    case 'deleteOrder':  return '発注の削除';
+    case 'setMembers':   return 'メンバー一覧の更新';
+    default:             return String((p && p.action) || '不明な操作');
+  }
+}
+function renderPendingList_(){
+  const box = $('#inv-pending-list');
+  if(!box) return;
+  const list = state.pending;
+  if(!list.length){ box.innerHTML = ''; return; }
+  const rows = list.slice(0, 30).map(p=>{
+    const bad = (p.tries||0) > 0;
+    const stuck = (p.tries||0) >= INV_STUCK_TRIES;
+    const when = p.ts ? fmtDT(p.ts) : '';
+    const err = bad
+      ? `<div class="e">${stuck?'🚧 ':'⚠ '}${p.tries}回失敗: ${esc(p.err||'理由不明')}${p.errAt?`（${esc(fmtDT(p.errAt))}）`:''}</div>`
+      : '';
+    return `<div class="pnd${bad?' bad':''}">
+      <div class="t">${esc(invOpSummary_(p))}</div>
+      <div class="m">${esc(p.action)} / ${esc(when)}</div>
+      ${err}
+      ${stuck?`<div class="b"><button class="drop" data-opdrop="${esc(p.k||'')}">この1件を破棄</button></div>`:''}
+    </div>`;
+  }).join('');
+  const more = list.length>30 ? `<div class="pnd"><div class="m">ほか ${list.length-30}件</div></div>` : '';
+  box.innerHTML = rows + more;
+}
+function invDropOp_(k){
+  const i = state.pending.findIndex(p=>p.k===k);
+  if(i<0) return;
+  const p = state.pending[i];
+  const msg = `この変更をサーバーへ送るのをやめます。\n\n${invOpSummary_(p)}\n理由: ${p.err||'不明'}\n\n`
+            + `※サーバーには反映されません。次の取得でこの品目はサーバー側の値に戻ります。`;
+  if(!confirm(msg)) return;
+  console.warn('[在庫] 破棄したop:', JSON.stringify(p));   // 万一のため中身を残す
+  state.pending.splice(i,1);
+  save(); updateSyncBadge(); renderPendingList_(); renderAll();
 }
 
 // ---------- order sheet ----------
@@ -31752,7 +31974,8 @@ function renderSettingsInfo(){
   if($('#inv-sync-url')) $('#inv-sync-url').value = sync.url||'';
   if($('#inv-sync-auto')) $('#inv-sync-auto').checked = sync.autoSync;
   $('#inv-info-last-sync').textContent = sync.lastSyncAt ? fmtDT(sync.lastSyncAt) : '未同期';
-  $('#inv-info-pending').textContent = `${state.pending.length}件`;
+  updateSyncBadge();          // 🚧 v1.30.727: 件数表示は updateSyncBadge に一本化(詰まり件数つき)
+  renderPendingList_();
 }
 
 function addMember(){
@@ -31876,7 +32099,11 @@ function bindEvents(){
       const msg = `同期完了: 送信 ${r.push.pushed}件`;
       if(r.push.pushed===0) console.log('no pending');
       // soft toast via badge colors
-    }catch(err){ alert('同期失敗: '+err.message); }
+      invAlertStuck_();      // 🚧 v1.30.727: 送れずに残った分があれば、その場で中身を見せに行く
+    }catch(err){
+      alert('同期失敗: '+err.message);
+      invAlertStuck_();
+    }
   };
   $$('#inventoryView .inv-tabs button').forEach(b=>b.onclick = ()=>{ state.ui.tab = b.dataset.tab; renderHomeTabs(); });
   $('#inv-btn-back').onclick = showHome;
@@ -32192,9 +32419,28 @@ function bindEvents(){
     if(!sync.url){ alert('URLを先に保存してください'); return; }
     try{
       const r = await syncFull();
-      alert(`同期完了: 送信 ${r.push.pushed}件`);
+      const stuck = invStuckOps_().length;
+      alert(`同期完了: 送信 ${r.push.pushed}件` + (stuck?`\n🚧 ${stuck}件がサーバーに送れず残っています。下の一覧で中身と理由が見られます。`:''));
       renderSettingsInfo();
+    }catch(err){ renderSettingsInfo(); alert('失敗: '+err.message); }
+  };
+  // 🚧 v1.30.727: まとめ送信で全部が止まっている時に、1件ずつ送って悪い1件だけを残す
+  $('#inv-pending-push1').onclick = async ()=>{
+    if(!sync.url){ alert('URLを先に保存してください'); return; }
+    if(!state.pending.length){ alert('保留中の変更はありません'); return; }
+    const btn = $('#inv-pending-push1');
+    btn.disabled = true; btn.textContent = '送信中…';
+    try{
+      const r = await syncPush({ isolate:true });
+      await syncPull({ replace:false }).catch(()=>{});
+      renderAll();
+      alert(`送信 ${r.pushed}件` + (r.stuck?`\n🚧 ${r.stuck}件は通りませんでした。理由を下の一覧に出しています。`:'\nすべて通りました。'));
     }catch(err){ alert('失敗: '+err.message); }
+    finally{ btn.disabled = false; btn.textContent = '1件ずつ送る'; renderSettingsInfo(); }
+  };
+  $('#inv-pending-list').onclick = e=>{
+    const b = e.target.closest('[data-opdrop]');
+    if(b) invDropOp_(b.dataset.opdrop);
   };
 }
 
