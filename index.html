@@ -2928,7 +2928,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.728</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.729</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -26617,7 +26617,17 @@ const RESTO_STATUS_LABEL = {todo:"未対応", wip:"進行中", done:"完了"};
 // 🚫 表示・進捗カウントから除外する諸経費系タスク名 (運搬費/廃棄物/現場管理諸経費 等)
 const RESTO_EXCLUDED_TASK_NAMES = /資材機材運搬費|産業廃棄物運搬処分|現場管理諸経費|諸経費|運搬処分|運搬費/;
 function isExcludedRestoTask(t){
-  return RESTO_EXCLUDED_TASK_NAMES.test(String(t?.name||""));
+  if(!RESTO_EXCLUDED_TASK_NAMES.test(String(t?.name||""))) return false;
+  // 🧾 v1.30.729(山田 09-14「発注書印刷ようだと初期のままになってるかも」の調査で判明):
+  //   この除外は「社内の諸経費(現場管理諸経費/諸経費 等)は施工チェックする物が無いから隠す」ためのもの。
+  //   ところが名前に『運搬費』を含むだけで、**業者に実際に発注している行**まで巻き添えで消えていた。
+  //   例= アスコット苦竹駅前407「エアコン交換 収集運搬費」(はやでん・発注¥4,000)が掲示板に出ず、
+  //       はやでんが 4件¥121,250 → 3件¥116,850 に見えていた(発注書には載っている)。
+  //   実データ実測(09-14・429案件6,772行)= 隠れていた149行のうち**32行が業者つき**(発注額の合計¥306,100)。
+  //   ⚠紙の発注書を見ながら画面で金額チェックする運用があるので、**発注書に載る行を画面から消してはいけない**。
+  //   → 業者が入っている諸経費は隠さない(社内用=業者未設定のものだけ隠す)。
+  if(String(t?.contractor||"").trim()) return false;
+  return true;
 }
 
 // v1.30.91: 発注先(業者)未割当の見積は上流GASが自動で category="inhouse"(自社)に振るため、
