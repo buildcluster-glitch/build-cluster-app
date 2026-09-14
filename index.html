@@ -2928,7 +2928,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.730</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.731</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -14414,47 +14414,13 @@ function openHatchushoPrint_(rec){
       __progByName[__nz(t.name)] = { by };
     });
   }
-  // 🗓 v1.30.730(山田 09-14「ムラカベが9/7〜9/16の工期が正しいって言ってたけどな」):
-  //   発注書は発注確定時のスナップショット(hatchusho_data)なので、**あとから工期だけ変えても紙が古いまま**だった。
-  //   実例= アスコット苦竹駅前407。発注確定=8/21、9/8に見積で工期を変更 → ムラカベ 発注書9/7〜9/18 / 正は9/7〜9/16。
-  //         FKKMOTORSも 9/7〜9/18 のまま(正は9/17〜9/18)。実測=スナップ80件中ズレていたのはこの1案件27行だけ。
-  //   ★山田裁定(09-14)= **工期は「今の見積」を正として刷る。金額は発注確定時のまま(真値)**。違う行には「変更」の印。
-  //   突合は上の進捗上書きと同じ作法(室名+工事名 → 工事名だけ・NFKC+空白除去)。
-  const __curProp = (function(){
-    const L = (typeof state!=='undefined' && state.restorations) ? state.restorations : [];
-    if(rec && rec.id){ const byEst = L.find(x=>x && x.extEstimateId && x.extEstimateId===rec.id); if(byEst) return byEst; }
-    if(typeof restoDetailId!=='undefined' && restoDetailId){ const d = L.find(x=>x && x.id===restoDetailId); if(d) return d; }
-    const bn = __nz(h.bukken); if(!bn) return null;
-    return L.find(x=>x && __nz(x.name)===bn && __nz(x.room)===__nz(h.room)) || null;
-  })();
-  // 今の工期は "9/16" 形式(年なし)。発注書側の日付から年を借りてISOに直す(年またぎは±1年)。
-  const __mdToIso_ = (md, baseIso)=>{
-    const m = /^(\d{1,2})\/(\d{1,2})$/.exec(String(md==null?"":md).trim());
-    if(!m) return String(md==null?"":md);                 // 既にISO/空/その他はそのまま
-    const bm = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(String(baseIso||""));
-    if(!bm) return String(md);                            // 年が分からない=元のまま(曜日は付かないが嘘は書かない)
-    let y = +bm[1]; const mm = +m[1], bmm = +bm[2];
-    if(bmm>=11 && mm<=2) y += 1;                          // 12月発注→1月着工
-    if(bmm<=2  && mm>=11) y -= 1;
-    return `${y}-${String(mm).padStart(2,"0")}-${String(+m[2]).padStart(2,"0")}`;
-  };
-  const __periodByKey = {}, __periodByName = {};
-  if(__curProp) (__curProp.tasks||[]).forEach(t=>{
-    if(!t || (!t.periodStart && !t.periodEnd)) return;
-    const v = { s: t.periodStart||"", e: t.periodEnd||"" };
-    __periodByKey[`${__nz(t.room)}|${__nz(t.name)}`] = v;
-    const nk = __nz(t.name); if(!(nk in __periodByName)) __periodByName[nk] = v;
-  });
-  // 行の工期: 今の見積に同じ工事があればそちらを採用。差があった時だけ changed=true
-  const periodOf = r=>{
-    const base = period(r);
-    const v = __periodByKey[`${__nz(r.room)}|${__nz(r.workName)}`] || __periodByName[__nz(r.workName)];
-    if(!v) return { text: base, changed: false };
-    const cur = period({ periodStart: __mdToIso_(v.s, r.periodStart||r.periodEnd),
-                         periodEnd:   __mdToIso_(v.e, r.periodEnd||r.periodStart) });
-    if(!cur || cur===base) return { text: base, changed: false };
-    return { text: cur, changed: !!base };                // 元が空欄なら「変更」ではなく単なる補完
-  };
+  // 🗓 v1.30.731(山田裁定 09-14): **発注書が正**。「台帳で発注書をつくるのだから、発注書が正」。
+  //   → v1.30.730 で入れた「今の見積の工期で上書きして刷る」は撤去した。発注書は発注確定時のまま刷る。
+  //   ⚠ここを"親切に"今の見積へ寄せ直さないこと。工期が変わったら **見積アプリ側で発注確定をやり直して
+  //     発注書を出し直す** のが正しい直し方で、カレンダーが紙の中身を書き換えるのは筋が違う(同じ理由で
+  //     カレンダー→台帳の機械的な書き戻しも止める方向=[[project_db_migration_calendar_handoff]])。
+  //   経緯: 苦竹407で 発注書9/7〜9/18 / 今の見積9/7〜9/16 のズレを山田が発見(ムラカベ本人は9/16と申告)。
+  //         金額は全50行が現在の発注額と一致=ズレていたのは工期だけだった。
   // 行HTML (見積アプリ rowHtml と同一: 自社行は工事店名/施工面を空欄・備考列=金額)
   const rowHtml = r=>{
     const ji = isJisha(r);
@@ -14470,7 +14436,7 @@ function openHatchushoPrint_(rec){
     const __byTag = __done ? ` <span style="text-decoration:none;color:#15803d;font-weight:700;white-space:nowrap">✔${__by?escapeHtml(__by):"施工済"}</span>` : "";
     return `<tr${red?' class="h-reduced"':(__done?' class="hp-done"':'')}>
       <td${__doneStyle}>${red?'減工事':(ji?"":escapeHtml(r.contractor||""))}</td>
-      <td class="c"${__doneStyle}>${(()=>{ const __pd = periodOf(r); return escapeHtml(__pd.text) + (__pd.changed ? ' <span style="color:#b45309;font-weight:700;font-size:9px;white-space:nowrap">変更</span>' : ''); })()}</td>
+      <td class="c"${__doneStyle}>${escapeHtml(period(r))}</td>
       <td${__doneStyle}>${escapeHtml(r.room||"")}</td>
       <td>${__done?`<span style="text-decoration:line-through;color:#64748b">${escapeHtml(r.workName||"")}</span>`:escapeHtml(r.workName||"")}${__byTag}</td>
       <td${__doneStyle}>${(ji||red)?"":escapeHtml(r.surface||"")}</td>
