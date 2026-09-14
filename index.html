@@ -2928,7 +2928,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.727</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.728</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4731,8 +4731,9 @@
   //   HTTPエラー/HTML応答/通信失敗では絶対に再送しない(実行済みの可能性があるため・従来どおり)。
   var _SC_RETRY_DELAYS = [5000, 30000, 120000];
   var _scToastAt = 0;
-  function _scToast_(msg){
-    var now = Date.now(); if (now - _scToastAt < 60000) return; _scToastAt = now;
+  // force=true は60秒の間引きを飛ばす(⚠を出した後の「届きました」を必ず見せるため・v1.30.728)
+  function _scToast_(msg, force){
+    var now = Date.now(); if (!force && now - _scToastAt < 60000) return; _scToastAt = now;
     try { if (typeof showAutoSyncToast === 'function') showAutoSyncToast(msg); } catch(_) {}
   }
   function _scKeyOf_(bodyStr){ var m = /"key"\s*:\s*"([^"]+)"/.exec(bodyStr||''); return m ? m[1] : '?'; }
@@ -4776,22 +4777,41 @@
   setInterval(_scQFlush_, 2*60*1000);
   setTimeout(_scQFlush_, 15000);
   window.__scRetryQueueSize = function(){ return _scQLoad_().length; };
-  function _scResend_(input, init, attempt){
+  // 🔇 v1.30.728(山田「共有設定がエラーみたいなのまだでる」09-14): 1回目の失敗では黙る。
+  //   実測= 見積GASの書き込み 約24,000回に対し error 303/timeout 81(=約1.6%)で、その大半は5秒後の再送で通る。
+  //   一過性の1回で毎回トーストを出していたのが「まだ出る」の正体。⇒ **5秒後の再送も駄目だった時に初めて出す**。
+  //   記録(bc_sc_fail_log)と console は1回目から残すので、🔍診断での原因追跡は落ちない。
+  //   st = { key, toasted } を再送の連鎖で持ち回る。⚠を出した後に通ったら「届きました」を必ず見せる。
+  function _scResend_(input, init, attempt, st){
     var key = _scKeyOf_(init && init.body);
+    st = st || { key: key, toasted: false };
     if (attempt >= _SC_RETRY_DELAYS.length) {
       console.warn('[共有設定] 再送を使い切りました key=' + key + ' → 箱に残して復旧まで2分ごとに再送');
       _scQPush_(input, init);
-      _scToast_('📦 共有設定(' + key + ')がまだDBに届いていません。復旧まで自動で再送し続けます(入力は消えていません)');
+      _scToast_('📦 共有設定(' + key + ')がまだDBに届いていません。復旧まで自動で再送し続けます(入力は消えていません)', true);
+      st.toasted = true;
       return;
     }
     setTimeout(function(){
-      if (_gasRetryBlocked_(init)) { _scResend_(input, init, attempt + 1); return; }
+      if (_gasRetryBlocked_(init)) { _scResend_(input, init, attempt + 1, st); return; }
       _origFetch(input, init).then(function(r){
         return r.clone().json().then(function(j){
-          if (j && j.ok === false && !j.conflict) { console.warn('[共有設定] 再送 ' + (attempt+1) + ' も ok:false key=' + key + ' ' + (j.error||j.message||j.dbError||'')); _scResend_(input, init, attempt + 1); }
-          else console.log('[共有設定] 再送成功 key=' + key + ' (' + (attempt+1) + '回目)');
+          if (j && j.ok === false && !j.conflict) {
+            console.warn('[共有設定] 再送 ' + (attempt+1) + ' も ok:false key=' + key + ' ' + (j.error||j.message||j.dbError||''));
+            if (!st.toasted) {   // 一過性ではない=ここで初めて人に伝える
+              st.toasted = true;
+              _scToast_('📮 共有設定(' + key + ')がまだDBに届いていません。自動で再送しています(入力は消えていません)');
+            }
+            _scResend_(input, init, attempt + 1, st);
+          } else {
+            console.log('[共有設定] 再送成功 key=' + key + ' (' + (attempt+1) + '回目)');
+            if (st.toasted) _scToast_('✅ 共有設定(' + key + ')はDBに届きました', true);
+          }
         }).catch(function(){ /* 本文がJSONでない=HTTP系。再送しない(実行済みかもしれない) */ });
-      }).catch(function(){ _scResend_(input, init, attempt + 1); });   // 通信失敗=届いていないので次の遅延で再送
+      }).catch(function(){
+        if (!st.toasted) { st.toasted = true; _scToast_('📮 共有設定(' + key + ')がまだDBに届いていません。自動で再送しています(入力は消えていません)'); }
+        _scResend_(input, init, attempt + 1, st);   // 通信失敗=届いていないので次の遅延で再送
+      });
     }, _SC_RETRY_DELAYS[attempt]);
   }
   // 📝 v1.30.716(山田「また共有設定がDBに届きませんでしたって出る」09-10): ok:false の中身を端末に残し(直近20件・🔍診断に出す)、文言を応答で分ける。
@@ -4816,11 +4836,9 @@
               var kind = _scFailKind_(j), why = String(j.dbError || j.error || j.message || '').slice(0, 160);
               var bytes = (init && init.body) ? String(init.body).length : 0;
               _scFailLog_({ at: new Date().toISOString(), key: key, kind: kind, why: why, bytes: bytes });
-              console.warn('[共有設定] 保存が ok:false key=' + key + ' kind=' + kind + ' → 5秒後に再送: ' + why);
-              if (kind === 'db') _scToast_('📮 共有設定(' + key + ')の保存がDBに届きませんでした。自動で再送します');
-              else if (kind === '401') _scToast_('📮 共有設定(' + key + ')の保存にサーバーが一時的に「認証エラー」を返しました(散発)。自動で再送します');
-              else _scToast_('📮 共有設定(' + key + ')の保存でサーバー側エラー(' + (why || '不明') + ')。自動で再送します');
-              _scResend_(input, init, 0);
+              // 🔇 v1.30.728: 1回目はトーストを出さない(5秒後の再送でほぼ通るため)。記録と console は残す
+              console.warn('[共有設定] 保存が ok:false key=' + key + ' kind=' + kind + ' → 5秒後に再送(黙って): ' + why);
+              _scResend_(input, init, 0, { key: key, kind: kind, toasted: false });
             }
           }).catch(function(){});
         }
