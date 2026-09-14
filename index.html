@@ -2928,7 +2928,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.732</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.733</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -5350,12 +5350,43 @@ let eventClipboard = [];           // Ctrl+Cでコピーした予定スナップ
 let pasteAnchor = null;            // {date,startMin,staff} クリックした空きスロット=貼付先
 let activeSlot = null;             // 📍Excel風アクティブセル {kind:'subcol'|'cell', colKey, startMin?, hour?}
 
+// 📮 v1.30.733: **未送信の予定(cloudPending)がリロードで消えていた**。
+//   saveState は state を丸ごと保存しているのに、loadState が拾うキーの一覧に cloudPending が無く、
+//   復元されないまま `if(!state.cloudPending) state.cloudPending = []` で空に作り直されていた。
+//   = 送信が終わる前にリロード/タブを閉じると、その予定は**二度と他の端末に届かない**
+//     (手元の state.events には残るので、本人には「入っている」ように見える)。
+//   GASが重い日(9/14は2〜60秒)や404の日は、この窓がそのまま開く。
+//   ⚠24時間より古いopは捨てる(共有設定の再送キュー _scQFlush_ と同じ作法)。
+//     古い編集を今ごろ送ると、他の人の新しい編集を押し戻すため。捨てた分はconsoleに中身を残す。
+//   ⚠opId(操作の札)が無い旧データにはここで振る。直結(cal_upsert_event)は op_id で冪等を取るので、
+//     再送で同じ札を使い回せるよう、**積んだ時点の札を保存・復元する**必要がある。
+const CLOUD_PENDING_MAX_AGE_MS = 24*3600*1000;
+let __cloudOpSeq = 0;
+function newCloudOpId_(){
+  try{ if(typeof crypto!=='undefined' && crypto.randomUUID) return 'op_'+crypto.randomUUID(); }catch(_){}
+  return 'op_' + Date.now().toString(36) + '_' + (++__cloudOpSeq).toString(36) + Math.random().toString(36).slice(2,8);
+}
+function restoreCloudPending_(arr){
+  if(!Array.isArray(arr) || !arr.length) return [];
+  const now = Date.now(), keep = [], dropped = [];
+  arr.forEach(p=>{
+    if(!p || !p.action) return;
+    const t = Date.parse(p.ts||'') || 0;
+    if(t && (now - t) > CLOUD_PENDING_MAX_AGE_MS){ dropped.push(p); return; }
+    if(!p.opId) p.opId = newCloudOpId_();
+    keep.push(p);
+  });
+  if(dropped.length) console.warn('[cloud] 24時間より古い未送信opを捨てました:', JSON.stringify(dropped).slice(0,2000));
+  if(keep.length) console.log('[cloud] 未送信op', keep.length, '件を復元しました');
+  return keep;
+}
 function loadState(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
     if(raw){
       const s = JSON.parse(raw);
       return {
+        cloudPending: restoreCloudPending_(s.cloudPending),   // 📮 v1.30.733: 未送信の予定を失わない
         events: s.events||[],
         leaves: s.leaves||[],
         checks: s.checks||[],
@@ -5370,7 +5401,7 @@ function loadState(){
       };
     }
   }catch(e){ console.warn("loadState failed",e); }
-  return { events: [], leaves: [], checks: [], companyPeriods: [], tasks: [], taskTrash: [], bukken: [], bukkenFetchedAt: null, repairs: [], restorations: [], taikyoEvents: [] };
+  return { cloudPending: [], events: [], leaves: [], checks: [], companyPeriods: [], tasks: [], taskTrash: [], bukken: [], bukkenFetchedAt: null, repairs: [], restorations: [], taikyoEvents: [] };
 }
 function saveState(){
   if(typeof bumpTaikyoEpoch_==='function') bumpTaikyoEpoch_();  // 状態変更=立会キャッシュ無効化(v1.30.46)
@@ -22872,6 +22903,7 @@ async function runCloudOpenSync(opts={}){
 function queueCloudOp(action, data){
   if(!state.cloudPending) state.cloudPending = [];
   state.cloudPending.push({
+    opId: newCloudOpId_(),           // 📮 v1.30.733: 積んだ時点で操作の札を決める(再送では使い回す)
     action,
     data: JSON.parse(JSON.stringify(data)),
     ts: new Date().toISOString(),
