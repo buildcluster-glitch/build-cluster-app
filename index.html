@@ -2928,7 +2928,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.731</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.732</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -23246,11 +23246,30 @@ async function cloudSyncPush(){
   if(!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   if(!data.ok) throw new Error(data.error || 'push failed');
-  // スナップショットした分だけ消す
+  // 🛡 v1.30.732: 応答が ok:true でも **中の1件ごとの失敗(bulkSyncの result[])を握りつぶさない**。
+  //   events不変条件⭐3(「ok:true の時だけ消す」)。従来は全部まとめて消していたので、
+  //   サーバーに弾かれた予定が**そのまま消えて二度と送られず、本人は保存できたと思う**状態になっていた。
+  //   (同じ型を今日2つ潰している: 在庫v1.30.727 / 見積アプリの発注確定が届かない事故)
+  //   ⚠result の形が想定と違う時は従来どおり全部消す=勝手に詰まらせない。
+  const results = Array.isArray(data.result) ? data.result : null;
+  const snap = state.cloudPending.slice(0, opCount);
+  const failed = [];
+  if(results && results.length === opCount){
+    results.forEach((r, i)=>{ if(r && r.ok === false) failed.push({ op: snap[i], why: String(r.error || '') }); });
+  }
   state.cloudPending.splice(0, opCount);
+  if(failed.length){
+    // 失敗した分だけ戻す(送信中に積まれた新しいopの前に置く=順番を保つ)
+    state.cloudPending.unshift(...failed.map(f=>f.op));
+    console.warn('[cloud] サーバーに弾かれた予定を未送信のまま残しました:',
+      failed.map(f=>`${f.op && f.op.action} ${f.op && f.op.data && f.op.data.id}: ${f.why}`));
+    try{ if(typeof showAutoSyncToast==='function'){
+      showAutoSyncToast(`⚠ 予定${failed.length}件がサーバーに受け付けられませんでした（消していません・自動で再送します）`);
+    } }catch(_){}
+  }
   updateCloudSyncBadge();
   saveState();
-  return { pushed: opCount, result: data.result, snapshot: data.snapshot || null };
+  return { pushed: opCount - failed.length, stuck: failed.length, result: data.result, snapshot: data.snapshot || null };
 }
 
 function setCloudSyncIcon(mode){
@@ -24432,7 +24451,25 @@ function __evLogDateTimeChange_(ev){
     __evSnap[ev.id]=cur;
   }catch(_){}
 }
+// 🛡 v1.30.732: 仮想予定(描画時に作るだけの見せかけ)をクラウドへ送らない=**関所は1箇所**。
+//   events不変条件⭐6。従来は53箇所の呼び出し側まかせで、実際に過去バージョンが立会ゴーストを
+//   クラウドへ送り込んだ前科がある(だから `purgeTaikyoGhosts_` が存在する)。
+//   ⚠**delete は通す**: 過去に漏れたゴーストを全端末から消すのは正しい操作なので塞いではいけない。
+//   ⚠事前の自動カード(`_jizen_`)は state.events の実体なので**対象外**(拒否すると本物が消える)。
+//   実データ確認(09-14・本番849件)= source付き0件 / _readOnly 0件 / 仮想idで始まる行0件 =**巻き添えゼロ**。
+const CLOUD_VIRTUAL_SOURCES = ['taikyo-shared','reschedule-trace','direct-morning'];
+function isVirtualEvent_(ev){
+  if(!ev) return false;
+  if(ev._readOnly) return true;
+  if(ev.source && CLOUD_VIRTUAL_SOURCES.indexOf(ev.source) >= 0) return true;
+  const id = String(ev.id || '');
+  return id.startsWith('_taikyo_') || id.startsWith('_reappt_') || id.startsWith('_direct_');
+}
 function cloudQueueEventChange(ev, mode){
+  if(mode !== 'delete' && isVirtualEvent_(ev)){
+    console.warn('[cloud] 仮想予定なので送信しません(不変条件⭐6):', ev && ev.id, ev && ev.source);
+    return;
+  }
   if(mode !== 'delete') __evLogDateTimeChange_(ev);   // 📜 日時変更なら記録(v1.30.692)
   // 🗑 削除は全端末伝播のため tombstone を立てる(cloudSync未設定でもDrive GAS側に記録) v1.30.66
   if(mode === 'delete' && ev && ev.id && typeof addEventDeletion_==='function'){ try{ addEventDeletion_(ev.id); }catch(_){} }
