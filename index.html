@@ -251,7 +251,13 @@
   .staff-chip .sc-frac,.leave-badge .lb-frac{font-size:9.5px;font-weight:800;background:rgba(255,255,255,.78);color:#94a3b8;border-radius:7px;padding:0 4px;line-height:1.5;white-space:nowrap}
   .staff-chip .sc-frac.taken,.leave-badge .lb-frac.taken{color:#15803d}
   .band-hol-pill{display:inline-flex;align-items:center;font-size:11px;font-weight:700;background:#e0f2fe;color:#075985;border-radius:9px;padding:2px 8px;white-space:nowrap;cursor:help}
-  @media (max-width:700px){ .sc-frac,.lb-frac,.sec-monthly{display:none !important} }  /* スマホは旧サマリ行も非表示だった=従来どおり出さない */
+  @media (max-width:700px){
+    .sc-frac,.lb-frac,.sec-monthly{display:none !important}  /* スマホは旧サマリ行も非表示だった=従来どおり出さない */
+    /* 🏖 v1.30.735(鈴木「常時表示じゃなくていいからPCみたいな休日数を見たい」):
+       🏢出社ラベルのタップで body.show-frac-sp をトグル→PCと同じX/14バッジと🏖月間ピルが出る */
+    body.show-frac-sp .sc-frac, body.show-frac-sp .lb-frac{display:inline-block !important}
+    body.show-frac-sp .sec-monthly{display:inline-flex !important}
+  }
   /* フィルタ解除ボタン (出社セクション右端) */
   .clear-staff-filter{
     flex-shrink:0;background:#0f172a;color:#fff;border:0;
@@ -2928,7 +2934,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.734</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.735</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -16994,6 +17000,21 @@ function renderLeaveBand(){
     </div>
   `;
   document.getElementById("addLeaveInline").onclick = ()=>openLeaveModal(null, {type:"会社休日"});
+  // 🏖 v1.30.735(鈴木のバグ板要望): スマホでもPC同様の休日数(X/14)を見たい(常時でなくてOK)
+  //   → 🏢出社ラベルをタップで表示ON/OFF(端末ごとに記憶)。PCは元から常時表示なので影響なし。
+  {
+    const t = band.querySelector('.sec-attend .sec-title');
+    if(t){
+      t.style.cursor='pointer';
+      t.onclick = ()=>{
+        const on = document.body.classList.toggle('show-frac-sp');
+        try{ localStorage.setItem('bc_show_frac_sp', on?'1':''); }catch(_){}
+        if(typeof showAutoSyncToast==='function' && window.matchMedia('(max-width:700px)').matches){
+          showAutoSyncToast(on ? '🏖 休日数を表示中(🏢出社をもう一度タップで隠れます)' : '🏖 休日数を隠しました');
+        }
+      };
+    }
+  }
   // 当番・電話番はヘッダー(要対応の隣)へ移動した(renderHeaderDuty_)v1.30.199
   // 🏢 出社スタッフチップ クリック → フィルタトグル
   band.querySelectorAll("[data-staff-filter]").forEach(chip=>{
@@ -24740,6 +24761,8 @@ purgeTaikyoGhosts_();  // 起動時に1回
 
 // ===== 初期化 =====
 loadCloudSyncConfig();
+// 🏖 スマホの休日数表示の前回選択を復元(v1.30.735)
+try{ if(localStorage.getItem('bc_show_frac_sp')==='1') document.body.classList.add('show-frac-sp'); }catch(_){}
 updateCloudSyncBadge();
 if(cloudSync.url && cloudSync.autoSync){
   setTimeout(runCloudOpenSync, 300);
