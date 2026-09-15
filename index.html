@@ -2928,7 +2928,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.733</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.734</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -23260,10 +23260,176 @@ function denormalizeEventForCloud_(ev){
   };
 }
 
+// ============================================================================
+// ✍️ 予定の直結(書き込み) — migration025の7番 / v1.30.734
+//   契約(台帳DBと合意・2026-09-14):
+//     cal_upsert_event(p_op_id, p_doc, p_base_version) / cal_delete_event(p_op_id, p_id, p_base_version)
+//     cal_load_version(p_id) … 保存前のbase_version取得・衝突後の読み直し用
+//     版はサーバ採番(doc.versionは信用しない) / actorはJWTから / 仮想id(_taikyo_/_reappt_/_direct_)は拒否
+//   戻り値: applied / delete_applied / already_processed / stale_version / deleted / forbidden /
+//           not_found / rejected_virtual
+//   ⚠★op_idは「送信の試行」ではなく「操作」に紐づける(台帳DBが踏んだ穴):
+//     ・応答が返らない系(タイムアウト/回線断/HTTPエラー) → **同じop_idで再送**(=冪等の本番)
+//     ・確定した答えが返った → その操作は**終わり**。やり直しは**新しいop_id**。
+//       (処理済みop_idには"その時の結果"が返るので、使い回すと永久に stale_version が返り続ける)
+//   ⚠★例外(HTTPが成功しなかった)は**キューから消さない**。権限の例外は特に消さない
+//     (ログインし直せば同じ操作がそのまま通る。消したら作業が消える)。
+// ============================================================================
+const EVENTS_DB_STALE_RETRY = 2;         // stale_version から読み直してやり直す回数の上限
+let __evDbFallbackAt = 0;                // 「黙って落ちない」用の間引き
+
+// 本来ONの端末が旧経路(GAS)に落ちた時は知らせる。10分に1回まで。
+function noteEventsDbWriteFallback_(reason){
+  console.warn('[events-write] 直結できず従来のGAS経路へ:', reason);
+  const now = Date.now();
+  if(now - __evDbFallbackAt < 10*60*1000) return;
+  __evDbFallbackAt = now;
+  try{ if(typeof showAutoSyncToast==='function'){
+    showAutoSyncToast('⚠ 予定の保存が新しい経路を使えず、従来の経路に切り替えました（保存はできています）');
+  } }catch(_){}
+}
+
+// RPCを1回叩く。戻り=文字列。失敗は {__err:{kind,status,message}} を throw ではなく返す形にはせず throw する。
+async function calRpc_(fn, body){
+  let s = sbSession_();
+  if(!s || !s.access_token) throw Object.assign(new Error('未ログイン'), { evKind:'no-session' });
+  if(s.expires_at && (s.expires_at*1000 - Date.now()) < 60000){ try{ await sbRefresh_(); }catch(_){} s = sbSession_(); }
+  if(!s || !s.access_token) throw Object.assign(new Error('未ログイン'), { evKind:'no-session' });
+  let retriedAuth = false;
+  for(;;){
+    let res;
+    try{
+      res = await fetch(`${SB_AUTH.url}/rest/v1/rpc/${fn}`, {
+        method:'POST',
+        headers:{ 'apikey':SB_AUTH.key, 'Authorization':'Bearer '+s.access_token,
+                  'Content-Type':'application/json', 'Accept':'application/json' },
+        body: JSON.stringify(body),
+      });
+    }catch(e){ throw Object.assign(new Error((e&&e.message)||'通信できません'), { evKind:'network' }); }
+    if((res.status===401 || res.status===403) && !retriedAuth){
+      retriedAuth = true; try{ await sbRefresh_(); }catch(_){} s = sbSession_();
+      if(!s || !s.access_token) throw Object.assign(new Error('ログインが切れています'), { evKind:'auth' });
+      continue;
+    }
+    if(res.status===401 || res.status===403) throw Object.assign(new Error('権限がありません(ログインし直してください)'), { evKind:'auth', status:res.status });
+    if(!res.ok){
+      let detail = ''; try{ detail = (await res.text()||'').slice(0,200); }catch(_){}
+      throw Object.assign(new Error(`HTTP ${res.status} ${detail}`), { evKind:'http', status:res.status, detail });
+    }
+    let v; try{ v = await res.json(); }catch(_){ throw Object.assign(new Error('応答が読めません'), { evKind:'shape' }); }
+    return (v==null) ? '' : String(v);
+  }
+}
+
+async function calLoadVersion_(id){
+  const v = await calRpc_('cal_load_version', { p_id: String(id) });
+  // ⚠ 空/数値でない = 「版が分からない」。**0 に丸めない**(0は「新規」の意味になってしまい、
+  //   既存行の版が読めなかっただけの時に新規のふりをして上書きしに行く)。分からない時は null のまま送る。
+  if(v === '' || v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+// 1件送る。戻り= 契約の文字列
+async function calSendOne_(op, baseVersion){
+  if(op.action === 'deleteEvent'){
+    return await calRpc_('cal_delete_event', {
+      p_op_id: op.opId, p_id: String(op.data && op.data.id || ''), p_base_version: baseVersion,
+    });
+  }
+  return await calRpc_('cal_upsert_event', {
+    p_op_id: op.opId, p_doc: op.data, p_base_version: baseVersion,
+  });
+}
+
+const CAL_RESULT_OK   = ['applied','delete_applied','already_processed'];
+const CAL_RESULT_DONE = ['deleted','forbidden','not_found','rejected_virtual'];   // 確定的に終わり(やり直さない)
+
+// 未送信キューをDBへ直接送る。戻り: { ok:true, pushed } か { ok:false, reason }(=GAS経路へ落とす)
+async function pushEventsToDb_(){
+  const snapshot = (state.cloudPending||[]).slice();
+  if(!snapshot.length) return { ok:true, pushed:0 };
+  const done = new Set(), notes = [];
+  let pulled = false;
+  // 通った分だけキューから外す。**途中で落ちた時も必ず通す**
+  //   (ここを忘れると、通ったopがキューに残ってGAS経路でもう一度送られる=二重送信)
+  const flush_ = ()=>{
+    const drop = new Set(snapshot.filter(p=>done.has(p)));
+    if(drop.size){
+      state.cloudPending = (state.cloudPending||[]).filter(p=>!drop.has(p));
+      updateCloudSyncBadge(); saveState();
+    }
+    return drop.size;
+  };
+  for(const op of snapshot){
+    if(!op || !op.action) { done.add(op); continue; }
+    if(!op.opId) op.opId = newCloudOpId_();               // 念のため(復元漏れ対策)
+    const id = String((op.data && op.data.id) || '');
+    if(!id){ done.add(op); console.warn('[events-write] idが無いopを捨てました:', JSON.stringify(op).slice(0,300)); continue; }
+    let tries = 0, result = '';
+    for(;;){
+      let base = null;
+      try{ base = await calLoadVersion_(id); }
+      catch(e){
+        if(e && (e.evKind==='network' || e.evKind==='http' || e.evKind==='auth' || e.evKind==='no-session')){
+          // 応答が返らない/権限系 → **消さない**。ここで打ち切ってGAS経路へ
+          return { ok:false, reason:(e.evKind||'error'), message:e.message, pushed:flush_() };
+        }
+        base = null;
+      }
+      try{
+        result = await calSendOne_(op, base);
+      }catch(e){
+        return { ok:false, reason:(e && e.evKind)||'error', message:(e&&e.message)||'', pushed:flush_() };
+      }
+      if(CAL_RESULT_OK.indexOf(result) >= 0){ done.add(op); break; }
+      if(result === 'stale_version' && tries < EVENTS_DB_STALE_RETRY){
+        // その操作は終わり → **新しい札**で、読み直してからやり直す
+        tries++; op.opId = newCloudOpId_(); pulled = true;
+        continue;
+      }
+      // 確定的に終わり(やり直さない)
+      done.add(op);
+      notes.push({ id, action:op.action, result });
+      break;
+    }
+  }
+  const n = flush_();   // 送信中に積まれた分は参照が違うので巻き込まない
+  if(notes.length) __calNoteResults_(notes);
+  if(pulled || notes.length) { try{ await cloudSyncPull({ replace:false }); }catch(_){} }   // サーバーの姿に揃える
+  return { ok:true, pushed: n, notes };
+}
+
+// 「やり直さない答え」を人に伝える(黙って捨てない)
+function __calNoteResults_(notes){
+  const msg = notes.map(n=>{
+    if(n.result === 'forbidden')        return '自分が作った予定しか削除できません';
+    if(n.result === 'deleted')          return 'この予定は他の人が削除済みです';
+    if(n.result === 'not_found')        return 'この予定はサーバーにありません(削除済み)';
+    if(n.result === 'rejected_virtual') return '自動表示の予定は保存されません';
+    if(n.result === 'stale_version')    return '他の人が先に保存したため、こちらの変更は反映していません';
+    return n.result;
+  });
+  console.warn('[events-write] やり直さない答え:', JSON.stringify(notes));
+  try{ if(typeof showAutoSyncToast==='function'){
+    showAutoSyncToast('⚠ ' + msg[0] + (msg.length>1 ? `（ほか${msg.length-1}件）` : '') + '　画面を最新にしました');
+  } }catch(_){}
+}
+
 async function cloudSyncPush(){
   if(!cloudSync.url) throw new Error('URL未設定');
   const pending = state.cloudPending || [];
   if(!pending.length) return { pushed: 0 };
+  // ✍️ v1.30.734: スイッチONなら先にDBへ直接。未ログイン/失敗/OFFは**必ず**従来のGAS経路へ落ちる。
+  if(eventsDbWriteOn_()){
+    let r = null;
+    try{ r = await pushEventsToDb_(); }
+    catch(e){ r = { ok:false, reason:'exception', message:(e&&e.message)||'' }; }
+    if(r && r.ok) return { pushed: r.pushed, viaDb: true, notes: r.notes || [] };
+    noteEventsDbWriteFallback_((r && (r.reason+':'+(r.message||''))) || 'unknown');
+    if(!(state.cloudPending||[]).length) return { pushed: (r && r.pushed) || 0, viaDb: true, partial: true };
+    // 残りは従来経路へ(pendingはそのまま=消していない)
+  }
   // スナップショット (送信中に追加されるopは次回に送る)
   const opCount = pending.length;
   const ops = pending.slice(0, opCount).map(p=>({ action: p.action, data: p.data }));
@@ -23792,10 +23958,24 @@ async function fetchCalendarFlags_(){
     const url = `${g.url}?action=get-shared-config&key=calendar_flags&token=${encodeURIComponent(g.token)}&t=${Date.now()}`;
     const res = await fetch(url, {method:'GET', redirect:'follow'});
     if(!res.ok) return __calFlags;
-    const d = await res.json(); let v = d && d.value;
-    if(typeof v === 'string'){ try{ v = v ? JSON.parse(v) : {}; }catch(_){ v = {}; } }
-    __calFlags = (v && typeof v === 'object') ? v : {};
-    try{ localStorage.setItem('bc_calFlags_cache', JSON.stringify(__calFlags)); }catch(_){}   // v1.30.715: 次回起動の初回同期用に控える
+    const d = await res.json();
+    // 🚦 v1.30.734: **「答えが無い」と「空という答え」を区別する**(台帳DBの指摘・非常停止スイッチを殺さないため)。
+    //   緊急OFFは実際に `{}` を書く実装なので、**正しく読めた `{}` は「全員OFFにしろ」という明確な答え**。
+    //   これを「読めなかった」と同じ扱いにして前の名簿に戻すと、**異常時にスイッチを切っても誰も止まらない**。
+    //   逆に、通信/パースが失敗した時に `{}` に倒すと、一瞬の不調で黙って旧経路へ落ちる(台帳DBが09-14に踏んだ事故)。
+    //   → 読めた時だけ従う / 読めなければ前の名簿を保つ。
+    const raw = d && d.value;
+    let parsed = null;                                   // null = 答えが無い
+    if(raw && typeof raw === 'object') parsed = raw;
+    else if(typeof raw === 'string' && raw.trim()){
+      try{ const o = JSON.parse(raw); if(o && typeof o === 'object') parsed = o; }catch(_){ parsed = null; }
+    }
+    if(parsed){                                          // ← `{}` もここに来る=そのとおりOFFにする
+      __calFlags = parsed;
+      try{ localStorage.setItem('bc_calFlags_cache', JSON.stringify(__calFlags)); }catch(_){}   // v1.30.715: 次回起動の初回同期用に控える
+    }else{
+      console.warn('[flags] スイッチの答えが読めませんでした(空/壊れ) → 前の名簿を保ちます');
+    }
   }catch(_){}
   // 🩺 v1.30.717: 監視(supabase-probe)が書く db_health も同じタイミングで読む。
   //   GC_KEYSバッチに同乗しているので、この fetch は横取りされてキャッシュから返る=追加往復なし。
@@ -23872,6 +24052,15 @@ function renderDbHealthBar_(){
 }
 try{ renderDbHealthBar_(); }catch(_){}   /* 起動直後に1回: 退避がlocalStorageに残っていれば即バナー(30秒待たせない) */
 setInterval(()=>{ try{ renderDbHealthBar_(); }catch(_){} }, 30000);
+// ✍️ 予定の書き込み直結スイッチ(v1.30.734・migration025の7番)。**既定off**。優先=端末>flags.json>共有設定。
+//   ⚠読み(eventsDbRead)とは独立。書きだけONにしても、読みが全端末DB直読みなら他の人にもすぐ見える。
+//   ⚠`dbTripped_()`(この端末の自前退避)中は書きも直結しない=読みと同じ判断に揃える。
+function eventsDbWriteOn_(){
+  if(dbTripped_()) return false;
+  try{ const o = localStorage.getItem('bc_flag_eventsDbWrite'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
+  if(__staticFlags && typeof __staticFlags.eventsDbWrite === 'boolean') return __staticFlags.eventsDbWrite;
+  return !!(__calFlags && __calFlags.eventsDbWrite === true);
+}
 function eventsDbReadOn_(){
   if(dbTripped_()) return false;   /* 🩺 v1.30.717: 自前退避中は予定もGASで読む */
   try{ const o = localStorage.getItem('bc_flag_eventsDbRead'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
