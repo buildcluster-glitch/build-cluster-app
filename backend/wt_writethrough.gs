@@ -81,6 +81,38 @@ function wtSend_(rpcName, payloadObj, timeoutSec) {
   }
 }
 
+// 🔢 2026-09-16: DB側の版を読む。**採番を max(シートの版, DBの版)+1 にするため**。
+//   背景= 予定の直結(アプリがDBへ直接書く)を始めると、直結の人が保存してもシートは更新されない。
+//   すると次にGAS経路で保存する人が「シートの版+1」を送り、DBには既にもっと大きい版があるので
+//   `stale_version` で弾かれる。**しかも呼び出し側には成功が返り、シートにも書かれない**=静かに消える。
+//   (台帳側が ver96 でまったく同じ手当てをしている。「版の採番元は1つにするか、両方見て新しいほうから採るか」)
+//   ⚠戻りは **max に食わせるだけ**なので、読めなければ 0 でよい(=シートの版が勝つ=従来どおりの安全側)。
+//     CASのbaseに入れる値ではないので、ここで 0 に丸めても「新規」の意味にはならない。
+//   ⚠`cal_load_version` は削除済みの予定でも版を返す(2026-09-16 migration036)。
+//     削除済みidを↩で復活させる経路があるので、ここが NULL だと復活が弾かれる。
+function wtDbEventVersion_(id) {
+  if (!id) return 0;
+  var props = PropertiesService.getScriptProperties();
+  var url = props.getProperty('SB_URL');
+  var key = props.getProperty('SB_WRITE_KEY');
+  if (!url || !key) return 0;
+  try {
+    var res = UrlFetchApp.fetch(url + '/rest/v1/rpc/cal_load_version', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'apikey': key, 'Authorization': 'Bearer ' + key },
+      payload: JSON.stringify({ p_id: String(id) }),
+      muteHttpExceptions: true,
+      timeoutSeconds: 3,
+    });
+    if (res.getResponseCode() < 200 || res.getResponseCode() >= 300) return 0;
+    var body = String(res.getContentText() || '').replace(/^"|"$/g, '').trim();
+    if (!body || body === 'null') return 0;         // 存在しない=新規 / 読めない → 0
+    var n = Number(body);
+    return isNaN(n) ? 0 : n;
+  } catch (e) { return 0; }                          // 落ちても保存は止めない
+}
+
 // ---- カウンタ(近似値・報告用。正確な突合はDB側と朝の修復件数で行う) ----
 function wtCount_(kind) {
   try {

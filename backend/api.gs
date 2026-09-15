@@ -356,7 +356,13 @@ function upsertRow_(name, data) {
         prevVer = Number(sh.getRange(rowIdx, vCol).getValue()) || 0;
       } catch (e) { prevVer = 0; }
     }
-    data.version = prevVer + 1;
+    // 🔢 2026-09-16: **max(シートの版, DBの版)+1**。直結の人が書くとシートは更新されないので、
+    //   シートだけ見て +1 すると DBに既にある版以下になり `stale_version` で弾かれる
+    //   (=呼び出し側には成功が返るのにシートにもDBにも入らない、という一番たちの悪い形)。
+    //   ⚠読めなければ 0 → 従来どおりシートの版が勝つ=挙動不変。保存は絶対に止めない。
+    var dbVer = 0;
+    try { if (typeof wtDbEventVersion_ === 'function') dbVer = Number(wtDbEventVersion_(data.id)) || 0; } catch (e) { dbVer = 0; }
+    data.version = Math.max(prevVer, dbVer) + 1;
   }
   if (rowIdx === -1 && headers.includes('createdAt') && !data.createdAt) data.createdAt = new Date().toISOString();
   // 📌 ver8 DB先行(strict): version採番済みの doc を**先にDBへ**。届かなければ throw(=この保存は失敗)、

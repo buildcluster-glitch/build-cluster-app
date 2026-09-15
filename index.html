@@ -2934,7 +2934,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.736</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.737</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -5725,7 +5725,11 @@ function __applyEventRestoreSideEffects_(curIds){
     if(e && e.id && !curIds.has(e.id)){
       if(typeof removeEventDeletion_==='function') removeEventDeletion_(e.id);
       e.updatedAt = new Date().toISOString();
-      if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(e,'upsert'); }catch(_){} }
+      // 🔁 v1.30.737: **人が押した↩による復活**だと分かるよう印を付ける。
+      //   DBは「削除は墓石=古い更新で復活しない」(不変条件⭐1)なので、通常のupsertは 'deleted' で拒否される。
+      //   この印がある時だけ、明示の復活RPC(cal_restore_event)を呼ぶ。印が無い 'deleted' は
+      //   「本当に他の人が消した」なので、今までどおり画面を揃えるだけにする。
+      if(typeof cloudQueueEventChange==='function'){ try{ cloudQueueEventChange(e,'upsert',{ restore:true }); }catch(_){} }
     }
   });
 }
@@ -22921,14 +22925,14 @@ async function runCloudOpenSync(opts={}){
 }
 
 // pending キューに mutation を追加
-function queueCloudOp(action, data){
+function queueCloudOp(action, data, meta){
   if(!state.cloudPending) state.cloudPending = [];
-  state.cloudPending.push({
+  state.cloudPending.push(Object.assign({
     opId: newCloudOpId_(),           // 📮 v1.30.733: 積んだ時点で操作の札を決める(再送では使い回す)
     action,
     data: JSON.parse(JSON.stringify(data)),
     ts: new Date().toISOString(),
-  });
+  }, meta || {}));
   updateCloudSyncBadge();
   saveState();
   scheduleCloudSync();
@@ -23409,6 +23413,21 @@ async function pushEventsToDb_(){
         tries++; op.opId = newCloudOpId_(); pulled = true;
         continue;
       }
+      // 🔁 v1.30.737: **人が押した↩による復活**だけ、明示の復活RPCへ回す。
+      //   ⚠op_idは新しく採番する(upsertで使った札は 'deleted' で確定済み=使い回すと永久に 'deleted')。
+      //   ⚠印が無い 'deleted' は「本当に他の人が消した」なので回さない(今までどおり画面を揃える)。
+      if(result === 'deleted' && op.restore && tries < EVENTS_DB_STALE_RETRY){
+        tries++;
+        let rr = '';
+        try{
+          rr = await calRpc_('cal_restore_event', { p_op_id: newCloudOpId_(), p_id: id, p_doc: op.data });
+        }catch(e){
+          return { ok:false, reason:(e && e.evKind)||'error', message:(e&&e.message)||'', pushed:flush_() };
+        }
+        if(rr === 'restored' || rr === 'already_processed'){ done.add(op); break; }
+        if(rr === 'not_deleted'){ op.opId = newCloudOpId_(); continue; }   // 生きている=通常のupsertへ
+        result = rr;                                                      // forbidden 等はそのまま人に伝える
+      }
       // 確定的に終わり(やり直さない)
       done.add(op);
       notes.push({ id, action:op.action, result });
@@ -23428,6 +23447,7 @@ function __calNoteResults_(notes){
     if(n.result === 'deleted')          return 'この予定は他の人が削除済みです';
     if(n.result === 'not_found')        return 'この予定はサーバーにありません(削除済み)';
     if(n.result === 'rejected_virtual') return '自動表示の予定は保存されません';
+    if(n.result === 'restore_forbidden')return '自分が作った予定しか元に戻せません';
     if(n.result === 'stale_version')    return '他の人が先に保存したため、こちらの変更は反映していません';
     return n.result;
   });
@@ -24724,7 +24744,7 @@ function isVirtualEvent_(ev){
   const id = String(ev.id || '');
   return id.startsWith('_taikyo_') || id.startsWith('_reappt_') || id.startsWith('_direct_');
 }
-function cloudQueueEventChange(ev, mode){
+function cloudQueueEventChange(ev, mode, opts){
   if(mode !== 'delete' && isVirtualEvent_(ev)){
     console.warn('[cloud] 仮想予定なので送信しません(不変条件⭐6):', ev && ev.id, ev && ev.source);
     return;
@@ -24748,7 +24768,7 @@ function cloudQueueEventChange(ev, mode){
   if(mode === 'delete'){
     queueCloudOp('deleteEvent', { id: ev.id });
   } else {
-    queueCloudOp('upsertEvent', denormalizeEventForCloud_(ev));
+    queueCloudOp('upsertEvent', denormalizeEventForCloud_(ev), opts);
   }
   // 🚫 監査ログのクラウド送信は廃止(v1.30.485・山田報告の同期タイムアウト対策)。
   //   logsシートが18,000行まで肥大し、doGetの応答が3MB/16秒に。PC/スマホが25秒で打ち切られて
