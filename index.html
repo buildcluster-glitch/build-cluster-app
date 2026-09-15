@@ -2934,7 +2934,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.735</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.736</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24076,11 +24076,28 @@ setInterval(()=>{ try{ renderDbHealthBar_(); }catch(_){} }, 30000);
 // ✍️ 予定の書き込み直結スイッチ(v1.30.734・migration025の7番)。**既定off**。優先=端末>flags.json>共有設定。
 //   ⚠読み(eventsDbRead)とは独立。書きだけONにしても、読みが全端末DB直読みなら他の人にもすぐ見える。
 //   ⚠`dbTripped_()`(この端末の自前退避)中は書きも直結しない=読みと同じ判断に揃える。
+// 🎯 v1.30.736: `eventsDbWrite` は **true / false / 名前の配列** を受ける。
+//   配列なら「その名前の人の端末だけON」= カナリアを**遠隔で1人ずつ**増やせる(台帳側の set_db_direct と同じ考え方)。
+//   ⚠端末フラグ(`bc_flag_eventsDbWrite`)を使うと**遠隔OFFが効かない端末**になる(台帳で実際に踏んだ)。
+//     カナリアでは使わないこと。使うのは手元で試す時だけ。
+//   ⚠名前は見積="山田 裕貴"/カレンダー="山田裕貴" と空白が揺れるので、比較前に空白を落とす。
+function __nzName_(s){ return String(s||'').normalize('NFKC').replace(/[\s　]/g,''); }
+function __pickWriteFlag_(v){
+  if(v === true) return true;
+  if(v === false) return false;
+  if(Array.isArray(v)){
+    const me = __nzName_(typeof getMyself==='function' ? getMyself() : '');
+    if(!me) return false;
+    return v.some(n=>__nzName_(n) === me);
+  }
+  return null;   // 未設定 = 答えなし(次の段へ)
+}
 function eventsDbWriteOn_(){
   if(dbTripped_()) return false;
   try{ const o = localStorage.getItem('bc_flag_eventsDbWrite'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
-  if(__staticFlags && typeof __staticFlags.eventsDbWrite === 'boolean') return __staticFlags.eventsDbWrite;
-  return !!(__calFlags && __calFlags.eventsDbWrite === true);
+  if(__staticFlags){ const r = __pickWriteFlag_(__staticFlags.eventsDbWrite); if(r !== null) return r; }
+  const r2 = __calFlags ? __pickWriteFlag_(__calFlags.eventsDbWrite) : null;
+  return r2 === true;
 }
 function eventsDbReadOn_(){
   if(dbTripped_()) return false;   /* 🩺 v1.30.717: 自前退避中は予定もGASで読む */
