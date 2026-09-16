@@ -238,7 +238,7 @@ function wtTimeoutProbe() {
 // ---- 🔧 遠隔スイッチ: フラグだけをtoken保護で読み書き(カナリアの上げ下げを手作業にしない) ----
 //   ホワイトリスト方式=鍵(SB_WRITE_KEY等)は対象外。読み出しも値は返さず「設定済みか」だけ。
 //   ⚠maintGuard_ はこのアクションを絶対にブロックしない(自分で解除できなくなる事故防止)
-var WT_CONFIG_ALLOW_ = ['WT_FLAG', 'WT_TEST_IDS', 'WT_CANARY_PCT', 'MAINT_FLAG', 'WT_STRICT'];
+var WT_CONFIG_ALLOW_ = ['WT_FLAG', 'WT_TEST_IDS', 'WT_CANARY_PCT', 'MAINT_FLAG', 'WT_STRICT', 'MIRROR_FLAG'];
 function wtConfig_(body) {
   var props = PropertiesService.getScriptProperties();
   var out = {};
@@ -250,6 +250,12 @@ function wtConfig_(body) {
     });
   }
   WT_CONFIG_ALLOW_.forEach(function (k) { out[k] = props.getProperty(k) || ''; });
+  // 🪞 丸ごと写し(予備線)の様子: 直近1回が何をしたか/なぜ書かなかったか(mirror_db_to_sheet.gs)
+  out.mirror = {
+    at: props.getProperty('MIRROR_LAST_AT') || '',
+    okAt: props.getProperty('MIRROR_LAST_OK_AT') || '',
+    last: props.getProperty('MIRROR_LAST') || ''
+  };
   out.hasKey = !!props.getProperty('SB_WRITE_KEY');         // 値は返さない(設定済みかだけ)
   out.hasUrl = !!props.getProperty('SB_URL');
   out.counters = {
