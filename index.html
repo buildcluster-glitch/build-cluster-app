@@ -2039,14 +2039,13 @@
   .rtask{background:#fff;border:1px solid var(--border);border-radius:7px;padding:4px 8px;margin-bottom:3px}
   /* 完了タスク: 透過 + タスク名と詳細に取消線 (一覧に残す方針 v1.7) */
   .rtask.done{opacity:.6;background:#f0fdf4}
-  .rtask.done .rt-name,
-  .rtask.done .rt-qty,
-  .rtask.done .rt-sub{text-decoration:line-through;text-decoration-color:#16a34a;text-decoration-thickness:1.5px}
-  /* ✅v1.30.738(山田 09-16「完了者まで線引かれちゃうとみえづらい」):
-     線を引くのは**工事そのもの**(名前/数量/内訳)だけ。**「誰がいつ完了にしたか」と📝メモは完了後こそ読む情報**なので引かない。
-     掲示板の施工済み行は前からこの作法(✔完了者に text-decoration:none)=そちらに揃えた。
-     ⚠.rtask.done の opacity:.6 は行全体にかかる(子でopacityは戻せない)ので、色を濃くして薄まっても読めるようにする。 */
-  .rtask.done .rt-sub.rt-keep{text-decoration:none;color:#334155;font-weight:600}
+  /* ✅v1.30.739(山田 09-16「経年剥がれとか金額も線ひかなくていいよ」→ v738の「完了者まで線引かれちゃうとみえづらい」の続き):
+     **線を引くのは工事名だけ**。数量・金額・内訳(経年剥がれ 等)・誰がいつ完了にしたか・📝メモ には引かない。
+     = 線は「この工事は済んだ」という印であって、**中身は完了後も読む情報**だから。
+     掲示板の施工済み行も✔完了者には引かない作法(前から)。 */
+  .rtask.done .rt-name{text-decoration:line-through;text-decoration-color:#16a34a;text-decoration-thickness:1.5px}
+  /* ⚠.rtask.done の opacity:.6 は行全体にかかる(子でopacityは戻せない)ので、色を濃くして薄まっても読めるようにする */
+  .rtask.done .rt-sub.rt-keep{color:#334155;font-weight:600}
   .rtask.reduced{background:#faf5ff;border-color:#e9d5ff}
   .rtask .rt-top{display:flex;align-items:center;gap:7px}
   .rtask .rt-check{flex-shrink:0;width:22px;height:22px;border-radius:50%;border:2px solid #d1d5db;background:#fff;
@@ -2939,7 +2938,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.738</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.739</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
