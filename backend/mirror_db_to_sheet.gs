@@ -11,8 +11,15 @@
 //   丸ごとなら取りこぼしが構造的に起きず、**過去のズレも毎時間ひとりでに直る**。
 //
 // 【絶対に守ること】
-//   ① version列には **DBの版をそのまま** 入れる(シート側で振り直さない)。
+//   ① version列には **`source_version` をそのまま** 入れる(シート側で振り直さない)。
 //      振り直すとGAS経路の保存が max(シートの版,DBの版)+1 を狂わせ stale_version を撒く。
+//      ⚠**`doc.version` を使ってはいけない**(2026-09-16 台帳DB回答)。docは「書き手が送ってきた中身」で
+//        更新前の版が1つ古いまま残ることがある(実データで source_version > doc.version が82件・逆は0件)。
+//        **`cal_load_version` が返しているのも `source_version`** = システムが版として使っているのはこちら。
+//      ⚠**null は空のまま**(0に丸めない=0は「新規」という別の意味)。切替前の初期投入503件は版なしが正しい。
+//        doc.versionだけ有る過渡期の28件も、cal_load_versionがnullを返す以上「版なし」に揃える。
+//      なお採番側(upsertRow_)は cal_load_version でDBの版を直接見るので、
+//      ここが空(旧い予定)でも max(シートの版, DBの版)+1 で必ず前へ進む=安全側。
 //   ② **0件・極端に少ない応答では書かない**(全消し防止・v1.30.492の教訓)。
 //      HTTPエラー/件数不一致/ロックが取れない、も同じく「書かない」。
 //   ③ 遠隔スイッチ MIRROR_FLAG で止められる(既定=off=1バイトも動かない)。
@@ -66,9 +73,10 @@ function calMirrorRun_(dryRun) {
     var d = r && r.doc;
     if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = null; } }
     if (!d || !d.id) { bad++; continue; }
-    // ①version列はDBの版をそのまま。docの版とDBの列が食い違ったらDBの列が正。
-    var v = Number(r.version);
-    d.version = (isFinite(v) && v > 0) ? v : (Number(d.version) || '');
+    // ①版は source_version をそのまま(シート側で振り直さない・docの版は使わない)。
+    //   入っていない予定(切替前の初期投入など)は**空のまま**。0に丸めない。
+    var v = Number(r.source_version);
+    d.version = (r.source_version != null && isFinite(v) && v > 0) ? v : '';
     docs.push(d);
   }
 
@@ -116,7 +124,7 @@ function mirrorFetchAllFromDb_() {
   var props = PropertiesService.getScriptProperties();
   var url = props.getProperty('SB_URL'), key = props.getProperty('SB_WRITE_KEY');
   if (!url || !key) return { ok: false, reason: 'no-config' };
-  var base = url + '/rest/v1/calendar_events?select=id,version,doc&is_deleted=eq.false&order=id.asc';
+  var base = url + '/rest/v1/calendar_events?select=id,source_version,doc&is_deleted=eq.false&order=id.asc';
   var all = [], total = null, from = 0;
   while (true) {
     var res;
@@ -132,7 +140,7 @@ function mirrorFetchAllFromDb_() {
       });
     } catch (e) { return { ok: false, reason: 'exception:' + String(e && e.message || e).slice(0, 80) }; }
     var code = res.getResponseCode();
-    if (code !== 200 && code !== 206) return { ok: false, reason: 'http' + code + ':' + String(res.getContentText() || '').slice(0, 80) };
+    if (code !== 200 && code !== 206) return { ok: false, reason: 'http' + code + ':' + String(res.getContentText() || '').slice(0, 300) };
     var cr = mirrorHeader_(res, 'content-range');
     var mm = String(cr || '').match(/\/(\d+|\*)\s*$/);
     if (mm && mm[1] !== '*') total = parseInt(mm[1], 10);
