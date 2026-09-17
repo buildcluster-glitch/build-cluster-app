@@ -2938,7 +2938,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.743</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.744</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -19619,6 +19619,7 @@ function attachRepairDateDrag_(el, r){
       else if(alldayDrop){ setRepairPosMin_(r.id, null).catch(()=>{}); posChanged=true; }   // 終日帯に戻す
       // 📅 日付変更(台帳に書き戻し)
       const dateChanged = dateStr && dateStr !== r.responseDate;
+      if(dateChanged && repairNeedsLedgerLink_(r)) return;   // v1.30.744
       if(dateChanged){
         const prev = { responseDate: r.responseDate };
         r.responseDate = dateStr;   // ISO。時刻(responseTime)は触らない=未設定のまま
@@ -19831,6 +19832,7 @@ function showRepairQuickPop(r, anchorEl){
     if(!nd){ alert('日付を選択してください'); return; }
     const prev = { responseDate: r.responseDate, responseTime: r.responseTime };
     if(nd === __rdIso && nt === (prev.responseTime||'')){ btn.textContent = '変更なし'; setTimeout(()=>{ btn.textContent='変更'; }, 1200); return; }
+    if(repairNeedsLedgerLink_(r)) return;   // v1.30.744
     // 🔄 変更履歴を💬コメントへ自動記録(理由は任意・空でも「いつ誰が変えたか」は残る)v1.30.350
     if(typeof addRepairComment_==='function'){
       const oldLabel = `${__md_(prev.responseDate)}${prev.responseTime?(" "+prev.responseTime):""}`;
@@ -26523,6 +26525,7 @@ function openRepairStatusPop(id, anchor){
       const newSt = b.dataset.s;
       pop.remove();
       if(newSt === r.status) return;
+      if(repairNeedsLedgerLink_(r)) return;   // v1.30.744
       const prevSt = r.status;
       const prevWf = r.workflowStatus;
       r.status = newSt;
@@ -26551,6 +26554,20 @@ function openRepairStatusPop(id, anchor){
   }, 0);
 }
 
+// 🔴 v1.30.744(山田 09-17「進行ステータスを待機にしたはずなのに戻っている」):
+//   **台帳リンク(driveFileId)が無い案件で、書き戻しを黙って飛ばしていた**。
+//   `if(r.extDriveFileId){ …台帳へ書く… }` と囲ってあり、**鍵が無いと何もせず、エラーも出さない**。
+//   画面(楽観的更新)だけ変わって台帳には届かないので、**次の同期で元に戻る**
+//   =本人には「保存したのに消えた」に見える。09-17に実際に踏んだ(ディーシャルマン荒井203)。
+//   実例の正体= **クラ助が修繕依頼から起票した案件はDBにだけ作られ、Driveのファイルが無い**(その日2件)。
+//   ⚠直し方= **画面も変えない**(楽観的更新の前で止める)+**理由を本人に出す**。中途半端に見せない。
+//   📌台帳側は ver101 で `estimateId` でも受けられるようにする予定。入ったらこの関所は外してよい。
+function repairNeedsLedgerLink_(r){
+  if(r && r.extDriveFileId) return false;
+  const nm = ((r&&r.name)||"この案件") + ((r&&r.room)?(" "+r.room):"");
+  alert(`「${nm}」は、まだ台帳のファイルが作られていないため、カレンダーからは変更できません。\n\n見積アプリでこの案件を一度開いて保存すると、変更できるようになります。`);
+  return true;
+}
 // 進行ステータス即変更ポップオーバー → task-update-appointment で書き戻し
 function openRepairWorkflowPop(id, anchor){
   document.querySelectorAll(".wf-pop").forEach(p=>p.remove());
@@ -26572,6 +26589,7 @@ function openRepairWorkflowPop(id, anchor){
       const newWf = b.dataset.w;
       pop.remove();
       if(newWf === r.workflowStatus) return;
+      if(repairNeedsLedgerLink_(r)) return;   // v1.30.744(今回の実害はここ)
       const prev = r.workflowStatus;
       r.workflowStatus = newWf;  // 楽観的更新
       saveState();
@@ -26933,6 +26951,7 @@ function repairDetailDotakyan_(){
 async function repairToggleComplete_(id){
   const r = state.repairs.find(x=>x.id===id);
   if(!r) return;
+  if(repairNeedsLedgerLink_(r)) return;   // v1.30.744(確認ダイアログを出す前に止める)
   const isDone = r.status === "完了";
   const prev = { status:r.status, completeDate:r.completeDate, _statusBeforeComplete:r._statusBeforeComplete };
   let fields;
@@ -26969,6 +26988,7 @@ async function repairToggleComplete_(id){
 async function saveRepairSheet(){
   const r = state.repairs.find(x=>x.id===editingRepairId);
   if(!r) return;
+  if(repairNeedsLedgerLink_(r)) return;   // v1.30.744
   const newSt = document.querySelector("#rs-status-pick .rs-pick-btn.on")?.dataset.s || r.status;
   const newWf = document.querySelector("#rs-wf-pick .rs-pick-btn.on")?.dataset.w || r.workflowStatus;
   const newRespDate = document.getElementById("rs-respdate").value;
