@@ -2938,7 +2938,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.741</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.742</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4834,7 +4834,58 @@
     if (j && (j.code === 401 || j.error === 'unauthorized')) return '401';
     return 'gas';
   }
+  // 📡 v1.30.742: 共有設定の「書き」もDB直結(★山田「周辺の移行も早めに進めたい」09-17)
+  //   読みは9/12からDB直通、書きだけGAS経由という片肺だったのを揃える。
+  //   ⚠**呼び出し40箇所は無改修**= ここ(_scPostWatch_)が唯一の関門なので、中身だけ差し替える。
+  //   作法は予定の直結(v1.30.734)と同じ5点:
+  //     ①遠隔スイッチ ②失敗したらGAS経路へフォールバック ③⚠ただし黙って落ちない(10分に1回警告)
+  //     ④op_idは操作に紐づける ⑤例外で保存を落とさない(既存の再送機構にそのまま乗せる)
+  //   ⚠**前提**: 見積GAS ver99(get-shared-config のDB直読み)が入っていること。
+  //     入る前にONにすると、GAS経由で読む人(見積アプリ/クラ助/夜間巡回)が古い値を見る。
+  var __scDbFallbackAt = 0;
+  function _scDbWriteOn_(){
+    try{ return (typeof sharedDbWriteOn_==='function') && sharedDbWriteOn_()===true; }catch(_){ return false; }
+  }
+  // ⚠calendar_flags だけはDB直書きにしない: 非常停止スイッチなので、
+  //   **DBとProperties の両方に書くGAS経路のまま**にして、どちらから読んでも同じ値が見える状態を保つ。
+  //   (書く頻度が極めて低いので失うものが無い。親切で揃えないこと)
+  var SC_DB_WRITE_SKIP = ['calendar_flags'];
+  function _scNoteFallback_(why){
+    try{
+      console.warn('[共有設定] DB直書きに失敗 → GAS経路へ: ' + why);
+      if(Date.now() - __scDbFallbackAt > 600000){        // 10分に1回だけ(黙って落ちない・うるさくしない)
+        __scDbFallbackAt = Date.now();
+        if(typeof showAutoSyncToast==='function') showAutoSyncToast('⚠ 共有設定の保存が旧経路に落ちています（保存はできています）');
+      }
+    }catch(_){}
+  }
+  function _scPostDbFirst_(input, init){
+    var body = null;
+    try{ body = JSON.parse(String((init && init.body) || '')); }catch(_){}
+    if(!body || body.action !== 'save-shared-config' || !body.key) return _scPostGas_(input, init);
+    if(SC_DB_WRITE_SKIP.indexOf(String(body.key)) >= 0) return _scPostGas_(input, init);
+    // ④op_id= この保存という「操作」に1つ。失敗してGASへ落ちる時は別経路なので使い回さない
+    var opId = 'sc_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+    var val = (typeof body.value === 'string') ? body.value : JSON.stringify(body.value == null ? '' : body.value);
+    return calRpc_('cal_save_shared_config', {
+      p_op_id: opId,
+      p_key: String(body.key),
+      p_value: val,
+      p_actor: String(body.actor || body.savedBy || 'calendar').slice(0, 60),
+    }).then(function(r){
+      return new Response(JSON.stringify({ ok:true, key:body.key, db:(r||'applied'), _dbWrite:true }),
+        { status:200, headers:{ 'Content-Type':'application/json' } });
+    }).catch(function(e){
+      // ②⑤失敗しても保存を落とさない= 今までの経路へ。再送・記録の仕組みはそのまま効く
+      _scNoteFallback_((e && e.evKind ? e.evKind + ': ' : '') + ((e && e.message) || e));
+      return _scPostGas_(input, init);
+    });
+  }
   function _scPostWatch_(input, init){
+    if(_scDbWriteOn_()) return _scPostDbFirst_(input, init);
+    return _scPostGas_(input, init);
+  }
+  function _scPostGas_(input, init){
     var p; try { p = _origFetch(input, init); } catch(e){ return Promise.reject(e); }
     return p.then(function(r){
       try {
@@ -24147,6 +24198,17 @@ function __pickWriteFlag_(v){
   }
   return null;   // 未設定 = 答えなし(次の段へ)
 }
+// 📡 v1.30.742: 共有設定の「書き」をDB直結にするスイッチ。
+//   端末 localStorage 'bc_flag_sharedDbWrite' > flags.json > calendar_flags.sharedDbWrite(true/false/名前の配列)
+//   ⚠見積GAS ver99(読みのDB直読み)が入るまでONにしない。
+function sharedDbWriteOn_(){
+  if(dbTripped_()) return false;
+  try{ const o = localStorage.getItem('bc_flag_sharedDbWrite'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
+  if(__staticFlags){ const r = __pickWriteFlag_(__staticFlags.sharedDbWrite); if(r !== null) return r; }
+  const r2 = __calFlags ? __pickWriteFlag_(__calFlags.sharedDbWrite) : null;
+  return r2 === true;
+}
+window.setSharedDbWriteLocal_ = function(on){ try{ if(on==null) localStorage.removeItem('bc_flag_sharedDbWrite'); else localStorage.setItem('bc_flag_sharedDbWrite', on?'1':'0'); }catch(_){} console.log('[shared-write] 端末上書き =', on); };
 function eventsDbWriteOn_(){
   if(dbTripped_()) return false;
   try{ const o = localStorage.getItem('bc_flag_eventsDbWrite'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
