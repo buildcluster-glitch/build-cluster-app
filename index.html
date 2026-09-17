@@ -2938,7 +2938,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.742</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.743</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -7389,6 +7389,26 @@ async function fetchTaikyoSchedule(opts={}){
           provisional: !!r.provisional || /担当未定/.test(r.koji||"") || String(r.id||"").startsWith("tachiai_tentative_"), // クラ助の仮置き立会
           updatedAt: r.updatedAt || "",
         }));
+      // 🚨 v1.30.743: **立会がごっそり減ったら知らせる**(クラ助セッションの報告 09-17)
+      //   実際に起きうる形= クラ助の朝の同期で `taikyo_tachiai_schedule` の読みが1回コケると、
+      //   全配列を書き戻す処理が**見積由来(JSB/みどり等)の立会を巻き添えで消す**。
+      //   ⚠根治はクラ助側のガードだが、**他の経路で減った時は件数でしか見えない**ので二重に持つ。
+      //   ⚠既存の見張り番(v1.30.492)は最終確認/修繕/原状回復しか数えておらず、**立会は数えていなかった**
+      //     =「朝いちで立会が画面から消えても誰も気づかない」状態だった。
+      //   ⚠止めはしない(正しく減る場合がある=クラ助が3ヶ月より前を掃除する)。**知らせるだけ**。
+      try{
+        const __prevT = (Array.isArray(state.taikyoEvents) && state.taikyoEvents.length)
+          ? state.taikyoEvents.length : ((loadCachedTaikyo_()||{}).records||[]).length;
+        if(__prevT >= 10 && records.length < __prevT * 0.7){
+          const __msg = `⚠ 立会が ${__prevT}件 → ${records.length}件 に減りました（台帳で消したのでなければ🔄で再同期してください）`;
+          console.warn('[taikyo_schedule]', __msg);
+          if(typeof showAutoSyncToast==='function') showAutoSyncToast(__msg);
+          if(typeof logChange_==='function'){
+            const __st = new Date().toISOString().slice(0,10);
+            logChange_("同期", "立会の件数が減少", `${__prevT}→${records.length}件`, "taikyo_tachiai_schedule", "taikyo_vanish_"+__st);
+          }
+        }
+      }catch(_){}
       saveCachedTaikyo_(records);
       state.taikyoEvents = records;
       if(!opts.silent) console.log(`[taikyo_schedule] loaded ${records.length}件`);
