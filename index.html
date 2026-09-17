@@ -2938,7 +2938,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.740</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.741</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -16036,6 +16036,33 @@ document.getElementById("ck-save").onclick = async ()=>{
   }
 };
 
+// 🔎 v1.30.741(★山田GO 09-17): 台帳へ書く5経路の応答に付く「入り具合」を、**押した本人にだけ**知らせる。
+//   台帳側が task-* をDB先行に変えるのに合わせた受け口(見積GASが projection / driveMirror / path を返してくる)。
+//   ⚠**やり直しは促さない**= 再送すると追加工事が二重に足される型を招くため(保存自体は成功している)。
+//   ⚠**背景で見張るのではなく、いま押した人にだけ見せる**(09-14 山田裁定「二重に見張らない」と両立する形)。
+//   ⚠フィールドが無い応答(=旧版GAS)では**何もしない**=挙動不変。
+//   📌なぜ要るか: カレンダーが見ているのは台帳の中身ではなく**射影**なので、
+//      射影だけ古いまま残ると「エラーも件数減も出ないのに、ただ古い内容が出る」=こちらに検知手段が無かった。
+function noteLedgerWriteResult_(label, data){
+  try{
+    if(!data || typeof data !== "object") return;
+    const msgs = [];
+    if(data.projection === "skip" || data.projection === "null"){
+      msgs.push("⚠ 台帳には入りましたが、カレンダーへの反映が遅れているかもしれません");
+    }
+    if(data.driveMirror === "failed"){
+      msgs.push("⚠ 台帳には入りましたが、Driveの控えに写せていません");
+    }
+    if(data.path === "drive-fallback"){
+      console.warn(`[${label}] DB先行ではなく従来のDrive経路で書きました`, data);   // 本人に出すほどではない=記録だけ
+    }
+    if(!msgs.length) return;
+    console.warn(`[${label}] ${msgs.join(" / ")}`, data);
+    if(typeof showAutoSyncToast === "function"){
+      showAutoSyncToast(msgs.join("\n") + "\n保存はできています。やり直さないでください");
+    }
+  }catch(_){}
+}
 // 修繕アポ情報を GAS に書き戻し (v1.4.251 task-update-appointment)
 // fields: {responseDate?, responseTime?, workflowStatus?} — 渡したキーのみ更新
 const WORKFLOW_STATUSES = ["アポ・手配 未","待機","アポ・手配 済","長期連絡なし","-"];
@@ -16089,6 +16116,7 @@ async function pushAppointmentToGAS(driveFileId, fields){
     const data = await res.json();
     if(data.error || data.ok === false) throw gasWriteError_(data, "GAS returned ok:false");   // v1.30.707
     console.log("[appointment] updated:", data.changed, data.after);
+    noteLedgerWriteResult_("アポ更新", data);   // v1.30.741
     hideSyncIndicator("success", "アポ更新完了");
     return data;
   }catch(e){
@@ -16115,6 +16143,7 @@ async function pushFinalDateToGAS(driveFileId, finalDate){
     const data = await res.json();
     if(data.ok === false || data.error){ throw gasWriteError_(data, "GAS returned ok:false"); }   // v1.30.707
     console.log("[task-update-final-date] result:", data);
+    noteLedgerWriteResult_("最終確認日", data);   // v1.30.741
     hideSyncIndicator("success", `書き戻し完了 ${finalDate||"(クリア)"}`);
     return data;
   }catch(e){
@@ -16149,6 +16178,7 @@ async function pushExtraWorkToGAS_(driveFileId, payload){
       throw gasWriteError_(data, "GAS returned ok:false");   // v1.30.707
     }
     console.log("[task-add-extra-work] result:", data);
+    noteLedgerWriteResult_("追加工事の登録", data);   // v1.30.741
     hideSyncIndicator("success", data.duplicate ? "登録済みでした(重複スキップ)" : "台帳に登録完了");
     return data;
   }catch(e){
@@ -28446,6 +28476,7 @@ async function submitExtraWork_(){
         if(/unknown kind/i.test(data.error||"")) throw new Error("GAS側が未対応です(master_syncの再デプロイ待ち)");
         throw gasWriteError_(data, "GAS returned ok:false");   // v1.30.707
       }
+      noteLedgerWriteResult_("追加工事の編集", data);   // v1.30.741
       const p2 = (state.restorations||[]).find(x=>x.id===restoDetailId) || p;
       const t = (p2.tasks||[]).find(x=>x.extraId===__xwEditId);
       if(t){
@@ -28583,6 +28614,7 @@ async function postExtraWorkPhotos_(p, workName, photos, extraId){
           editedBy:(typeof getMyself==='function'?getMyself():"")||"" })});   // 控えtxtの🗑削除行に操作者名を残す(GASはbody.editedBy対応済)
       const data = await res.json().catch(()=>null);
       if(!data || data.ok !== true) throw gasWriteError_(data, "削除に失敗しました");   // v1.30.707
+      noteLedgerWriteResult_("追加工事の削除", data);   // v1.30.741
       p.tasks = (p.tasks||[]).filter(t=>t.extraId !== __xwEditId);   // ローカル即除去(24h保護の対象からも外れる)
       saveState();
       closeExtraWorkModal_();
@@ -28813,6 +28845,7 @@ async function saveKaniModal_(){
       if(/unknown kind/i.test(data.error||'')) throw new Error('見積アプリ側(master_sync)が未対応です。GASデプロイを確認してください');
       throw gasWriteError_(data, 'GAS returned ok:false');   // v1.30.707
     }
+    noteLedgerWriteResult_("簡易見積", data);   // v1.30.741
     // ローカル反映(合計はサーバ再計算値=kaniMitsuが正)
     r.kaniMitsu = data.kaniMitsu;
     r.kaniLines = rows.length ? rows : null;
