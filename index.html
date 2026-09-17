@@ -2938,7 +2938,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.744</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.745</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -16173,7 +16173,9 @@ async function pushAppointmentToGAS(driveFileId, fields){
   showSyncIndicator("アポ情報を書き戻し中...");
   try{
     // master_sync の dispatch は kind で判定 (2026-05-31〜): "appointment"=日時/WF/status等
-    const body = { action:"task-update-appointment", kind:"appointment", token:s.token, driveFileId };
+    // 🖊 v1.30.745: **誰が触ったかを台帳の履歴に残す**(見積GAS ver95の wtActorOf_ は actor|client|savedBy|addedBy を読む)。
+    //   09-16 23:51の書き込みが「actor空」で追跡できなかった(ハイツPofF201の日付変更)。**本文に1語入れるだけで残る**。
+    const body = { action:"task-update-appointment", kind:"appointment", token:s.token, driveFileId, actor: (typeof getMyself==='function'?getMyself():'')||'' };
     if(fields.responseDate   !== undefined) body.responseDate   = fields.responseDate;
     if(fields.responseTime   !== undefined) body.responseTime   = fields.responseTime;
     if(fields.workflowStatus !== undefined) body.workflowStatus = fields.workflowStatus;
@@ -16209,6 +16211,7 @@ async function pushFinalDateToGAS(driveFileId, finalDate){
         token: s.token,
         driveFileId,
         finalDate,
+        actor: (typeof getMyself==='function'?getMyself():'')||'',   // v1.30.745
       })
     });
     const data = await res.json();
@@ -16236,7 +16239,7 @@ async function pushExtraWorkToGAS_(driveFileId, payload){
     const res = await fetch(s.url, {
       method:"POST",
       headers:{"Content-Type":"text/plain;charset=utf-8"},
-      body: JSON.stringify({ action:"task-add-extra-work", token:s.token, driveFileId, ...payload }),
+      body: JSON.stringify({ action:"task-add-extra-work", token:s.token, driveFileId, actor: (typeof getMyself==='function'?getMyself():'')||'', ...payload }),   // v1.30.745
     });
     const data = await res.json().catch(()=>null);
     if(!data) throw new Error("サーバー応答が不正です");
@@ -28570,7 +28573,7 @@ async function submitExtraWork_(){
       const s2 = loadGasSettings();
       const res = await fetch(s2.url, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
         body: JSON.stringify({ action:"task-update-extra-work", token:s2.token, driveFileId:p.extDriveFileId,
-          extraId:__xwEditId, editedBy:(typeof getMyself==='function'?getMyself():"")||"",
+          extraId:__xwEditId, editedBy:(typeof getMyself==='function'?getMyself():"")||"", actor: (typeof getMyself==='function'?getMyself():'')||'',   // v1.30.745(editedByは読まれないのでactorも入れる)
           work:{ name, room, qty, unit, unitPrice, supplier, orderPrice, billable, note } })});
       const data = await res.json().catch(()=>null);
       if(!data) throw new Error("サーバー応答が不正です");
@@ -28713,7 +28716,7 @@ async function postExtraWorkPhotos_(p, workName, photos, extraId){
       const s = loadGasSettings();
       const res = await fetch(s.url, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
         body: JSON.stringify({ action:"task-update-extra-work", token:s.token, driveFileId:p.extDriveFileId, extraId:__xwEditId, remove:true,
-          editedBy:(typeof getMyself==='function'?getMyself():"")||"" })});   // 控えtxtの🗑削除行に操作者名を残す(GASはbody.editedBy対応済)
+          editedBy:(typeof getMyself==='function'?getMyself():"")||"", actor: (typeof getMyself==='function'?getMyself():'')||'' })});   // v1.30.745   // 控えtxtの🗑削除行に操作者名を残す(GASはbody.editedBy対応済)
       const data = await res.json().catch(()=>null);
       if(!data || data.ok !== true) throw gasWriteError_(data, "削除に失敗しました");   // v1.30.707
       noteLedgerWriteResult_("追加工事の削除", data);   // v1.30.741
@@ -28939,7 +28942,7 @@ async function saveKaniModal_(){
     const res = await fetch(s.url, {
       method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
       body: JSON.stringify({ action:'task-set-kani-mitsu', token:s.token, driveFileId:r.extDriveFileId,
-        setBy: (typeof getMyself==='function' ? getMyself() : '') || '', kaniLines: rows }),
+        setBy: (typeof getMyself==='function' ? getMyself() : '') || '', actor: (typeof getMyself==='function'?getMyself():'')||'', kaniLines: rows }),   // v1.30.745
     });
     const data = await res.json().catch(()=>null);
     if(!data) throw new Error('サーバー応答が不正です');
