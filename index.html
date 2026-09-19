@@ -2946,7 +2946,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.747</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.748</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -31813,12 +31813,78 @@ async function syncTest(){
   if(data.error) throw new Error(data.error);
   return data;
 }
+// ============================================================================
+// 📦 v1.30.748: 在庫の読みをDB直読みにする土台(段2) ★山田「段2の実装を書いておいて」(09-19)
+//   設計の正本= ~/claude/カレンダー_DB切替/在庫DB化_設計案_2026-09-10.md
+//   段0(影同期)=09-12から稼働中 → 段1(突合)判定中 → **段2=ここ(読みだけDB)** → 段3(書きDB先行)
+//
+//   ⚠**まだ有効にできません**= 影同期が何を写しているか(orders/members を含むか)と列名が未確定。
+//     `invFetchFromDb_` の select を埋めれば動きます。スイッチは既定OFFなので入れても挙動は変わりません。
+//   ⚠鉄則(予定/台帳/共有設定と同じ): 失敗・未ログイン・0件は**必ず従来のGASへ落とす**。
+//     ただし**黙って落ちない**(10分に1回だけ警告)。読み元は `__invReadStat` に残す。
+//   ⚠在庫の応答は {items, logs, orders, members} の4つ。**4つ揃わないならDBを使わない**
+//     (半分だけDBにすると、結局GASも呼ぶことになり速くならないうえ、片方だけ新しい状態を作る)。
+// ============================================================================
+let __invReadStat = null;          // 直近の読み {src:'db'|'gas', n, ms, fallback, at}
+let __invDbFallbackAt = 0;
+function invDbReadOn_(){
+  if(typeof dbTripped_==='function' && dbTripped_()) return false;
+  try{ const o = localStorage.getItem('bc_flag_invDbRead'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
+  if(typeof __staticFlags!=='undefined' && __staticFlags && typeof __staticFlags.invDbRead === 'boolean') return __staticFlags.invDbRead;
+  return !!(typeof __calFlags!=='undefined' && __calFlags && __calFlags.invDbRead === true);
+}
+window.setInvDbReadLocal_ = function(on){ try{ if(on==null) localStorage.removeItem('bc_flag_invDbRead'); else localStorage.setItem('bc_flag_invDbRead', on?'1':'0'); }catch(_){} console.log('[inv-read] 端末上書き =', on); };
+function __setInvReadStat_(o){
+  __invReadStat = Object.assign({ at:new Date().toISOString() }, o);
+  try{ if(typeof noteDbRead_==='function') noteDbRead_('在庫', o); }catch(_){}
+  try{ console.log(`[inv-read] ${o.src} ${o.n!=null?o.n+'件 ':''}${o.ms}ms${o.fallback?` ⚠fallback:${o.fallback}`:''}`); }catch(_){}
+}
+function noteInvDbFallback_(why){
+  try{
+    console.warn('[inv-read] DB直読みに失敗 → GAS経路へ: ' + why);
+    if(Date.now() - __invDbFallbackAt > 600000){      // 10分に1回だけ(黙って落ちない・うるさくしない)
+      __invDbFallbackAt = Date.now();
+      if(typeof showAutoSyncToast==='function') showAutoSyncToast('⚠ 在庫の読み込みが旧経路(GAS)に落ちています');
+    }
+  }catch(_){}
+}
+// DBから在庫一式を読む。戻り {ok:true, data:{items,logs,orders,members}} / {ok:false, reason}
+//   ⚠**select の中身は台帳DBからスキーマをもらってから埋める**(いまは必ず not-ready を返す=従来どおりGAS)。
+async function invFetchFromDb_(){
+  const t0 = Date.now();
+  try{
+    if(typeof SB_AUTH==='undefined') return { ok:false, reason:'no-auth', ms:Date.now()-t0 };
+    let s = (typeof sbSession_==='function') ? sbSession_() : null;
+    if(!s || !s.access_token) return { ok:false, reason:'no-session', ms:Date.now()-t0 };
+    if(s.expires_at && (s.expires_at*1000 - Date.now()) < 60000){ try{ await sbRefresh_(); }catch(_){} s = sbSession_(); }
+    if(!s || !s.access_token) return { ok:false, reason:'no-session', ms:Date.now()-t0 };
+    // 🚧 ここから: スキーマ確定後に埋める
+    //   const hdr = { apikey:SB_AUTH.key, Authorization:'Bearer '+s.access_token, Accept:'application/json' };
+    //   const items = await (await fetch(`${SB_AUTH.url}/rest/v1/inventory_items?select=*&order=id.asc`, {headers:hdr, cache:'no-store'})).json();
+    //   const logs  = await (await fetch(`${SB_AUTH.url}/rest/v1/inventory_movements?select=*&order=datetime.asc`, {headers:hdr, cache:'no-store'})).json();
+    //   ⚠orders/members がDBに無いなら **DBは使わない**(not-ready を返す)。半分だけ新しい状態を作らない。
+    return { ok:false, reason:'not-ready(スキーマ未確定)', ms:Date.now()-t0 };
+  }catch(e){
+    return { ok:false, reason:(e && e.message) || 'error', ms:Date.now()-t0 };
+  }
+}
 async function syncPull({ replace=false }={}){
-  if(!sync.url) throw new Error('URL未設定');
-  const res = await fetch(sync.url, { cache:'no-store' });
-  if(!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  if(data.error) throw new Error(data.error);
+  // 📦 v1.30.748(段2): DB直読みを先に試し、ダメなら必ず従来のGASへ。既存のマージ以下は無改修
+  let data = null;
+  if(invDbReadOn_()){
+    const __r = await invFetchFromDb_();
+    if(__r.ok && __r.data){ data = __r.data; __setInvReadStat_({ src:'db', n:(data.items||[]).length, ms:__r.ms }); }
+    else { noteInvDbFallback_(__r.reason); __setInvReadStat_({ src:'gas', ms:__r.ms, fallback:__r.reason }); }
+  }
+  if(!data){
+    if(!sync.url) throw new Error('URL未設定');
+    const __t0 = Date.now();
+    const res = await fetch(sync.url, { cache:'no-store' });
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    data = await res.json();
+    if(data.error) throw new Error(data.error);
+    if(!invDbReadOn_()) __setInvReadStat_({ src:'gas', n:(data.items||[]).length, ms:Date.now()-__t0 });
+  }
 
   if(replace){
     // full replace
