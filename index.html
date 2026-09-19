@@ -2946,7 +2946,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.746</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.747</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -3099,7 +3099,7 @@
       </select>
       <label class="repair-mine"><input type="checkbox" id="repairMineOnly"> 👤自分担当のみ</label>
       <!-- ✅ 完了済はデフォルト非表示。見たい時だけここをONに(v1.30.478・山田) -->
-      <label class="repair-mine"><input type="checkbox" id="repairShowDone"> ✅完了済も表示</label>
+      <label class="repair-mine" title="✓完了した案件と、✖失注の案件を一覧に出します(既定は隠す)"><input type="checkbox" id="repairShowDone"> ✅完了済・✖失注も表示</label>
     </div>
   </div>
   <div class="repair-list" id="repairList"></div>
@@ -25008,6 +25008,19 @@ let repairProgressFilter = "all"; // workflowStatus 絞込
 let repairClientFilter = "all";   // 元請けカテゴリ絞込: all / 山一地所 / みどり不動産 / 自社工事 / その他
 let repairMineOnly = false;
 // ✅ 完了済(完了/完工/完成)はデフォルト非表示。ONにした時だけ一覧に出す(v1.30.478・山田)。端末ごとに記憶
+// ✖ v1.30.747(山田 09-19「失注の場合は他のステータスがどうあれカードに非表示でおk」):
+//   失注= **作業担当の ✖失注(LOST_STAFF) か、営業ステータスの「失注」**。どちらでも失注扱い。
+//   ⚠**進行ステータス(アポ・手配 済 等)や営業ステータス(キャンセル 等)が何であっても、失注が優先**。
+//   ⚠**消さずに「✅完了済も表示」のトグルで一緒に出す**= 誤って失注にした時に戻せなくなるのを避ける
+//     (カレンダー上のチップは従来どおり出るので、担当ピッカーから✖失注を外せば元に戻る)。
+function isRepairLost_(r){
+  if(!r) return false;
+  if(String(r.status||"").trim() === "失注") return true;
+  try{
+    const ws = (typeof parseWorkers_==='function') ? parseWorkers_(r.worker||"") : String(r.worker||"").split(/[,、\/]/);
+    return ws.map(x=>String(x).trim()).includes(typeof LOST_STAFF!=='undefined' ? LOST_STAFF : "失注");
+  }catch(_){ return false; }
+}
 let repairShowDone = (()=>{ try{ return localStorage.getItem('bc_repair_show_done')==='1'; }catch(_){ return false; } })();
 let repairSearch = "";
 let repairSortMode = "progress";  // 並び順: progress(進行状況) / contact(📞担当者別) / worker(🔨作業担当別)
@@ -26215,7 +26228,8 @@ function renderRepairView(){
   // ✅ 完了済はデフォルトで一覧から外す(件数・フィルタ・担当バッジも未完了ベース)v1.30.478
   const __allRepairs = state.repairs || [];
   const __doneN = __allRepairs.filter(r=> typeof isRepairDone_==='function' && isRepairDone_(r)).length;
-  const list = repairShowDone ? __allRepairs : __allRepairs.filter(r=> !(typeof isRepairDone_==='function' && isRepairDone_(r)));
+  //   v1.30.747: 失注も完了と同じ扱い(既定で隠し、トグルで出す)
+  const list = repairShowDone ? __allRepairs : __allRepairs.filter(r=> !(typeof isRepairDone_==='function' && isRepairDone_(r)) && !isRepairLost_(r));
   // フィルタチップ (workflowStatus 別 + 全件)
   const counts = {all:0};
   WORKFLOW_STATUSES.forEach(w=>counts[w]=0);
