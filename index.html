@@ -2946,7 +2946,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.748</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.749</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -31849,7 +31849,13 @@ function noteInvDbFallback_(why){
   }catch(_){}
 }
 // DBから在庫一式を読む。戻り {ok:true, data:{items,logs,orders,members}} / {ok:false, reason}
-//   ⚠**select の中身は台帳DBからスキーマをもらってから埋める**(いまは必ず not-ready を返す=従来どおりGAS)。
+//   ⚠テーブルは **`inventory_shadow` 1枚**(設計案の inventory_items/movements ではない・09-19に実測で判明)。
+//     列= (dataset, id, doc jsonb, first_seen, fetched_at)。**dataset で4つを絞って取る**。
+//     `doc` の中身は **GASの syncPull が返す形と同じ**なので、そのまま渡せば mergeById_ 以下は無改修。
+//   ⚠**4つ(items/logs/orders/members)が全部そろわない時はDBを使わない**=半分だけ新しい状態を作らない。
+//   ⚠**まだ authenticated では読めない**(RLS有効・ポリシー0)。migrationが入るまで 'auth' で落ちてGASへ行く。
+const INV_DB_TABLE = 'inventory_shadow';
+const INV_DB_SETS  = ['items','logs','orders','members'];
 async function invFetchFromDb_(){
   const t0 = Date.now();
   try{
@@ -31858,12 +31864,38 @@ async function invFetchFromDb_(){
     if(!s || !s.access_token) return { ok:false, reason:'no-session', ms:Date.now()-t0 };
     if(s.expires_at && (s.expires_at*1000 - Date.now()) < 60000){ try{ await sbRefresh_(); }catch(_){} s = sbSession_(); }
     if(!s || !s.access_token) return { ok:false, reason:'no-session', ms:Date.now()-t0 };
-    // 🚧 ここから: スキーマ確定後に埋める
-    //   const hdr = { apikey:SB_AUTH.key, Authorization:'Bearer '+s.access_token, Accept:'application/json' };
-    //   const items = await (await fetch(`${SB_AUTH.url}/rest/v1/inventory_items?select=*&order=id.asc`, {headers:hdr, cache:'no-store'})).json();
-    //   const logs  = await (await fetch(`${SB_AUTH.url}/rest/v1/inventory_movements?select=*&order=datetime.asc`, {headers:hdr, cache:'no-store'})).json();
-    //   ⚠orders/members がDBに無いなら **DBは使わない**(not-ready を返す)。半分だけ新しい状態を作らない。
-    return { ok:false, reason:'not-ready(スキーマ未確定)', ms:Date.now()-t0 };
+    const hdr = tok => ({ 'apikey':SB_AUTH.key, 'Authorization':'Bearer '+tok, 'Accept':'application/json', 'Prefer':'count=exact' });
+    const q = `${SB_AUTH.url}/rest/v1/${INV_DB_TABLE}?select=dataset,doc&dataset=in.(${INV_DB_SETS.join(',')})&order=dataset.asc,id.asc`;
+    const all = []; let from = 0, total = null, retried = false;
+    while(true){
+      let res;
+      try{
+        res = await fetch(q, { headers: Object.assign({ 'Range':`${from}-${from+999}`, 'Range-Unit':'items' }, hdr(s.access_token)), cache:'no-store' });
+      }catch(e){ return { ok:false, reason:'network', ms:Date.now()-t0 }; }
+      if((res.status===401||res.status===403) && !retried){ retried=true; try{ await sbRefresh_(); }catch(_){} s=sbSession_(); if(!s||!s.access_token) return { ok:false, reason:'auth', ms:Date.now()-t0 }; continue; }
+      if(res.status===401||res.status===403) return { ok:false, reason:'auth', status:res.status, ms:Date.now()-t0 };
+      if(!(res.status===200||res.status===206)) return { ok:false, reason:'http'+res.status, ms:Date.now()-t0 };
+      const cr = res.headers.get('content-range')||''; const m = cr.match(/\/(\d+|\*)\s*$/); if(m && m[1]!=='*') total = parseInt(m[1],10);
+      let rows; try{ rows = await res.json(); }catch(_){ return { ok:false, reason:'shape', ms:Date.now()-t0 }; }
+      if(!Array.isArray(rows)) return { ok:false, reason:'shape', ms:Date.now()-t0 };
+      all.push(...rows);
+      from += 1000;
+      if(rows.length < 1000) break;
+      if(total!=null && all.length >= total) break;
+      if(from > 50000) return { ok:false, reason:'runaway', ms:Date.now()-t0 };
+    }
+    // ⚠黙って切り詰められた応答を使わない(予定・丸ごと写しと同じ教訓)
+    if(total!=null && all.length !== total) return { ok:false, reason:`count-mismatch:${all.length}/${total}`, ms:Date.now()-t0 };
+    const data = { items:[], logs:[], orders:[], members:[] };
+    for(const r of all){
+      const d = (r && typeof r.doc==='string') ? (()=>{ try{ return JSON.parse(r.doc); }catch(_){ return null; } })() : (r && r.doc);
+      if(!d || !data[r.dataset]) continue;
+      data[r.dataset].push(d);
+    }
+    // ⚠4つそろっていなければ使わない(半分だけDB=結局GASも呼ぶうえ、片方だけ新しい状態になる)
+    const miss = INV_DB_SETS.filter(k => !data[k].length);
+    if(miss.length) return { ok:false, reason:'incomplete:'+miss.join('/'), ms:Date.now()-t0 };
+    return { ok:true, data, n: data.items.length, ms:Date.now()-t0 };
   }catch(e){
     return { ok:false, reason:(e && e.message) || 'error', ms:Date.now()-t0 };
   }
