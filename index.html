@@ -2946,7 +2946,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.749</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.750</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -31856,6 +31856,12 @@ function noteInvDbFallback_(why){
 //   ⚠**まだ authenticated では読めない**(RLS有効・ポリシー0)。migrationが入るまで 'auth' で落ちてGASへ行く。
 const INV_DB_TABLE = 'inventory_shadow';
 const INV_DB_SETS  = ['items','logs','orders','members'];
+// ⏱ v1.30.750: **写しが古ければDBを使わない**(★山田GO 09-19・台帳DBの指摘)。
+//   影同期は**山田さんのMacのlaunchd**で動いている(毎時05分)。**Macが寝ていたら在庫は止まる**のに、
+//   画面は何事もなく古い数を出し続ける=今週ずっと潰してきた型そのもの。
+//   ⇒ **90分より古ければ従来のGASへ落とす**。新鮮な時だけ速い(0.1秒)、古ければ遅い(10秒)が**嘘は出さない**。
+//   📌90分= 毎時05分 + 同期14秒 + GASが不調な日の取りこぼし1回分の余裕。
+const INV_DB_MAX_AGE_MS = 90*60*1000;
 async function invFetchFromDb_(){
   const t0 = Date.now();
   try{
@@ -31865,7 +31871,7 @@ async function invFetchFromDb_(){
     if(s.expires_at && (s.expires_at*1000 - Date.now()) < 60000){ try{ await sbRefresh_(); }catch(_){} s = sbSession_(); }
     if(!s || !s.access_token) return { ok:false, reason:'no-session', ms:Date.now()-t0 };
     const hdr = tok => ({ 'apikey':SB_AUTH.key, 'Authorization':'Bearer '+tok, 'Accept':'application/json', 'Prefer':'count=exact' });
-    const q = `${SB_AUTH.url}/rest/v1/${INV_DB_TABLE}?select=dataset,doc&dataset=in.(${INV_DB_SETS.join(',')})&order=dataset.asc,id.asc`;
+    const q = `${SB_AUTH.url}/rest/v1/${INV_DB_TABLE}?select=dataset,doc,fetched_at&dataset=in.(${INV_DB_SETS.join(',')})&order=dataset.asc,id.asc`;
     const all = []; let from = 0, total = null, retried = false;
     while(true){
       let res;
@@ -31887,15 +31893,24 @@ async function invFetchFromDb_(){
     // ⚠黙って切り詰められた応答を使わない(予定・丸ごと写しと同じ教訓)
     if(total!=null && all.length !== total) return { ok:false, reason:`count-mismatch:${all.length}/${total}`, ms:Date.now()-t0 };
     const data = { items:[], logs:[], orders:[], members:[] };
+    let newest = 0;
     for(const r of all){
       const d = (r && typeof r.doc==='string') ? (()=>{ try{ return JSON.parse(r.doc); }catch(_){ return null; } })() : (r && r.doc);
       if(!d || !data[r.dataset]) continue;
       data[r.dataset].push(d);
+      const ts = r && r.fetched_at ? Date.parse(r.fetched_at) : NaN;
+      if(!isNaN(ts) && ts > newest) newest = ts;
+    }
+    // ⏱ 写しが古ければ使わない。⚠時刻が読めない時も「古い」に倒す(安全側)
+    const ageMs = newest ? (Date.now() - newest) : Infinity;
+    if(ageMs > INV_DB_MAX_AGE_MS){
+      const mm = newest ? Math.round(ageMs/60000)+'分前' : '時刻不明';
+      return { ok:false, reason:'stale:'+mm, fetchedAt:(newest?new Date(newest).toISOString():''), ms:Date.now()-t0 };
     }
     // ⚠4つそろっていなければ使わない(半分だけDB=結局GASも呼ぶうえ、片方だけ新しい状態になる)
     const miss = INV_DB_SETS.filter(k => !data[k].length);
     if(miss.length) return { ok:false, reason:'incomplete:'+miss.join('/'), ms:Date.now()-t0 };
-    return { ok:true, data, n: data.items.length, ms:Date.now()-t0 };
+    return { ok:true, data, n: data.items.length, fetchedAt:new Date(newest).toISOString(), ageMin:Math.round(ageMs/60000), ms:Date.now()-t0 };
   }catch(e){
     return { ok:false, reason:(e && e.message) || 'error', ms:Date.now()-t0 };
   }
@@ -31905,7 +31920,7 @@ async function syncPull({ replace=false }={}){
   let data = null;
   if(invDbReadOn_()){
     const __r = await invFetchFromDb_();
-    if(__r.ok && __r.data){ data = __r.data; __setInvReadStat_({ src:'db', n:(data.items||[]).length, ms:__r.ms }); }
+    if(__r.ok && __r.data){ data = __r.data; __setInvReadStat_({ src:'db', n:(data.items||[]).length, ms:__r.ms, note:`写し ${__r.ageMin}分前`, fetchedAt:__r.fetchedAt }); }
     else { noteInvDbFallback_(__r.reason); __setInvReadStat_({ src:'gas', ms:__r.ms, fallback:__r.reason }); }
   }
   if(!data){
