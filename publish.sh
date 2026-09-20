@@ -14,6 +14,19 @@ if [ ! -d .git ]; then
   git commit -m "Initial: ビルドクラスタ工事管理アプリ v46"
 fi
 
+# 1.5 sw.js のキャッシュ名を index.html の版に必ず合わせる
+#     ⚠据え置きだと古い実体が居座る(実際 v1.30.406 のまま何十版も放置されていた・2026-09-20)
+VER=$(grep -o 'appVerChip[^<]*<span[^>]*>v[0-9.]*' index.html | grep -o 'v[0-9.]*' | head -1)
+if [ -n "$VER" ]; then
+  CUR=$(grep -o "build-cluster-app-v[0-9.]*" sw.js | head -1)
+  if [ "$CUR" != "build-cluster-app-$VER" ]; then
+    echo "🧹 sw.js のキャッシュ名を更新: $CUR → build-cluster-app-$VER"
+    perl -pi -e "s/build-cluster-app-v[0-9.]+/build-cluster-app-$VER/" sw.js
+  fi
+else
+  echo "⚠ index.html から版番号が読めませんでした(sw.js はそのまま)"
+fi
+
 # 2. GitHubリポジトリ作成 + push
 if ! git remote get-url origin >/dev/null 2>&1; then
   echo "🚀 GitHubリポジトリ作成中..."

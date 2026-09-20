@@ -2946,7 +2946,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.755</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.756</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24963,8 +24963,10 @@ function rtBindVisibility_(){
   }catch(_){}
 }
 function startCloudPolling(){
-  rtBindVisibility_();
-  rtReconcile_('start');
+  // ⚠即時反映は**あくまで速くするだけの飾り**。ここで何が起きてもカレンダーは動き続けること。
+  //   (2026-09-20 スマホ真っ白の件を受けて。原因はSWのキャッシュだったが、保険は付けておく)
+  try{ rtBindVisibility_(); }catch(e){ try{ console.warn('[realtime] 初期化に失敗(無視して続行)', e && e.message); }catch(_){} }
+  try{ rtReconcile_('start'); }catch(e){ try{ console.warn('[realtime] 立ち上げに失敗(無視して続行)', e && e.message); }catch(_){} }
   if(cloudPollTimer) return;
   cloudPollTimer = setInterval(()=>{
     rtReconcile_('tick');   // ⚠毎分見に行く=遠隔スイッチが**あとから届いても効く**
