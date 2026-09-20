@@ -2946,7 +2946,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.754</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.755</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24836,7 +24836,7 @@ const RT_HEARTBEAT_MS = 25000;
 const RT_SYNC_DEBOUNCE_MS = 600;     // 連続で届いた時にまとめて1回だけ取りに行く
 const RT_WARN_SILENT_MS = 10*60*1000;  // これ以上つながらないままなら1回だけ知らせる
 let __rtSock = null, __rtRef = 0, __rtHb = null, __rtRetryN = 0, __rtRetryTimer = null, __rtSyncTimer = null;
-let __rtStat = { on:false, state:'off', openedAt:0, joinedAt:0, received:0, lastRecvAt:0, reconnects:0, lastErr:'', downSince:0, warnedAt:0 };
+let __rtStat = { on:false, state:'off', openedAt:0, joinedAt:0, received:0, lastRecvAt:0, resyncs:0, lastResyncAt:0, lastResyncWhy:'', reconnects:0, lastErr:'', downSince:0, warnedAt:0 };
 function eventsRealtimeOn_(){
   if(typeof dbTripped_==='function' && dbTripped_()) return false;
   try{ const o = localStorage.getItem('bc_flag_eventsRealtime'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
@@ -24858,8 +24858,13 @@ function rtNote_(state, err){
   }
 }
 // 変更が届いた → まとめて1回だけ取りに行く。**中身は既存の同期がやる**
+//   🔴v1.30.755: received は**本物の変更通知だけ**を数える。
+//     v751は 'joined'(つなぎ直しの取り直し)や 'visible'(画面復帰)でも増やしていたため、
+//     `received:1` が「変更が1件届いた」なのか「つないだだけ」なのか**区別できなかった**。
+//     カナリアの合否を見る数字そのものなので分ける。
 function rtScheduleSync_(why){
-  __rtStat.received++; __rtStat.lastRecvAt = Date.now();
+  if(why === 'change'){ __rtStat.received++; __rtStat.lastRecvAt = Date.now(); }
+  else { __rtStat.resyncs++; __rtStat.lastResyncAt = Date.now(); __rtStat.lastResyncWhy = String(why||''); }
   if(__rtSyncTimer) return;
   __rtSyncTimer = setTimeout(()=>{
     __rtSyncTimer = null;
