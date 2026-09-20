@@ -2946,7 +2946,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.758</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.759</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -14872,6 +14872,139 @@ function fillAddrFromMaster_(){
   }catch(_){}
   return n;
 }
+// ============================================================================
+// 🏢 v1.30.759: 物件マスタの読みをDB直読みに(山田「いま切り替え」2026-09-20)
+//   きっかけ= 見積アプリ側が bukken を**読み書きの本体**にした(本日16:33に458件)。
+//     カレンダーは自社工事管理アプリのGASから読む別経路のままで、直した内容が出てこない。
+//     キーボックス番号・オートロック呼出番号・間取り・アクセントクロス品番など現場で使う情報なので
+//     食い違うと困る。
+//   ⚠鉄則(予定/台帳/共有設定/在庫と同じ): 失敗・未ログイン・0件は**必ず今までのGASへ戻す**。
+//     黙って空振りしない= 理由を __bukkenReadStat に残し、bcStat_() で見えるようにする。
+const BUKKEN_DB_COLS = 'name,no,motouke,address,city,area,type,parking,water_check,denki_apply,water_apply,key_box,auto_lock,digi_key,loft,madori,accent,cf,last_work,check_date,notes,memo,doc';
+// 列(snake_case) → アプリの項目名(camelCase)。アプリ側は昔からこの名前で引いている
+const BUKKEN_COL_MAP = { water_check:'waterCheck', denki_apply:'denkiApply', water_apply:'waterApply',
+  key_box:'keyBox', auto_lock:'autoLock', digi_key:'digiKey', last_work:'lastWork', check_date:'checkDate' };
+let __bukkenReadStat = null;
+function __setBukkenReadStat_(o){
+  __bukkenReadStat = Object.assign({ at:new Date().toISOString() }, o);
+  try{ window.__bukkenReadStat = __bukkenReadStat; }catch(_){}
+  try{ if(typeof noteDbRead_==='function') noteDbRead_('物件マスタ', o); }catch(_){}
+  try{ console.log(`[bukken-read] ${o.src} ${o.n!=null?o.n+'件 ':''}${o.ms}ms${o.fallback?` ⚠fallback:${o.fallback}`:''}`); }catch(_){}
+}
+function bukkenDbReadOn_(){
+  if(typeof dbTripped_==='function' && dbTripped_()) return false;
+  try{ const o = localStorage.getItem('bc_flag_bukkenDbRead'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
+  if(typeof __staticFlags!=='undefined' && __staticFlags){ const r = __pickWriteFlag_(__staticFlags.bukkenDbRead); if(r !== null) return r; }
+  const r2 = (typeof __calFlags!=='undefined' && __calFlags) ? __pickWriteFlag_(__calFlags.bukkenDbRead) : null;
+  return r2 === true;
+}
+function bukkenDbReadWhy_(){
+  try{ if(typeof dbTripped_==='function' && dbTripped_()) return 'off(自前退避中=遮断器)'; }catch(_){}
+  try{ const o = localStorage.getItem('bc_flag_bukkenDbRead');
+    if(o==='1') return 'on(端末で1)'; if(o==='0') return 'off(端末で0)'; }catch(_){}
+  const me = (typeof getMyself==='function'? getMyself() : '') || '';
+  for(const [名, v] of [['flags.json', (typeof __staticFlags!=='undefined'&&__staticFlags)?__staticFlags.bukkenDbRead:undefined],
+                        ['共有設定',   (typeof __calFlags!=='undefined'&&__calFlags)?__calFlags.bukkenDbRead:undefined]]){
+    const r = __pickWriteFlag_(v);
+    if(r === true)  return 'on('+名+')';
+    if(r === false) return Array.isArray(v)
+      ? 'off('+名+'の一覧に自分が居ない: 自分="'+me+'" 一覧='+JSON.stringify(v)+')'
+      : 'off('+名+'でfalse)';
+  }
+  return 'off(どこにも指定が無い)';
+}
+// DBの1行 → アプリが昔から使っている形へ。⚠列を土台にし、doc は**上から重ねる**
+//   (列は全件そろっている / doc にしか無い項目 madoriDefault 等を拾うため)
+function bukkenRowToApp_(r){
+  const o = {};
+  for(const k of Object.keys(r)){
+    if(k === 'doc') continue;
+    const v = r[k];
+    if(v === null || v === undefined) continue;
+    o[BUKKEN_COL_MAP[k] || k] = v;
+  }
+  if(r.doc && typeof r.doc === 'object'){
+    for(const k of Object.keys(r.doc)){
+      const v = r.doc[k];
+      if(v === null || v === undefined || v === '') continue;
+      o[k] = v;
+    }
+  }
+  return o;
+}
+async function bukkenFetchFromDb_(){
+  const t0 = Date.now();
+  if(typeof SB_AUTH === 'undefined' || !SB_AUTH || !SB_AUTH.url) return { ok:false, reason:'no-config', ms:0 };
+  let s = (typeof sbSession_==='function') ? sbSession_() : null;
+  if(!s || !s.access_token) return { ok:false, reason:'no-session', ms:Date.now()-t0 };
+  if(s.expires_at && (s.expires_at*1000 - Date.now()) < 60000){
+    try{ await sbRefresh_(); }catch(_){}
+    s = (typeof sbSession_==='function') ? sbSession_() : null;
+    if(!s || !s.access_token) return { ok:false, reason:'no-session', ms:Date.now()-t0 };
+  }
+  try{
+    const url = `${SB_AUTH.url}/rest/v1/bukken?select=${BUKKEN_DB_COLS}&order=name.asc`;
+    const res = await fetch(url, { headers:{ apikey:SB_AUTH.key, Authorization:'Bearer '+s.access_token }, cache:'no-store' });
+    if(res.status === 401 || res.status === 403) return { ok:false, reason:'auth', status:res.status, ms:Date.now()-t0 };
+    if(!res.ok) return { ok:false, reason:'http'+res.status, ms:Date.now()-t0 };
+    let rows; try{ rows = await res.json(); }catch(_){ return { ok:false, reason:'shape', ms:Date.now()-t0 }; }
+    if(!Array.isArray(rows)) return { ok:false, reason:'shape', ms:Date.now()-t0 };
+    // 🔴0件を「そういう答え」として受け取らない= 役が無い端末はRLSで静かに0件になる
+    if(!rows.length) return { ok:false, reason:'empty(役が無い疑い)', ms:Date.now()-t0 };
+    return { ok:true, rows: rows.map(bukkenRowToApp_), ms:Date.now()-t0 };
+  }catch(e){
+    return { ok:false, reason:(e && e.name==='AbortError') ? 'timeout' : 'network', ms:Date.now()-t0 };
+  }
+}
+// 🔍 v1.30.759: **切り替える前に、DBとGASを1件ずつ突き合わせる**(コンソールから手で1回だけ)
+//   見積アプリ側から「オートロック呼出番号・アクセントクロス品番がDBに見当たらない」と指摘あり。
+//   こちらで数えると auto_lock 31件 / accent 70件は**入っていた**が、
+//   それが「元々そうだった」のか「移す時に落ちた」のかは、**両方を突き合わせないと分からない**。
+//   ⚠「DBにあるはず」で切り替えると、現場で使う情報が静かに欠ける。だから先にこれを実行する。
+window.bukkenCompare_ = async function(){
+  const 項目 = ['no','motouke','address','city','area','type','parking','waterCheck','denkiApply','waterApply',
+                'keyBox','autoLock','digiKey','loft','madori','madoriDefault','accent','cf','lastWork','checkDate','notes','memo'];
+  const nz = v => String(v==null?'':v).normalize('NFKC').replace(/\s+/g,'').trim();
+  const g = loadGasSettings();
+  if(!g.url || !g.token){ console.log('⚠ GAS設定がありません'); return; }
+  console.log('… GASとDBの両方を取得中');
+  const [gasRes, dbRes] = await Promise.all([
+    fetch(`${g.url}?token=${encodeURIComponent(g.token)}&t=${Date.now()}`, {method:'GET', redirect:'follow'})
+      .then(r=>r.json()).catch(e=>({ok:false,error:e.message})),
+    bukkenFetchFromDb_()
+  ]);
+  if(!gasRes || !gasRes.ok){ console.log('🔴 GASが読めません:', gasRes && gasRes.error); return; }
+  if(!dbRes.ok){ console.log('🔴 DBが読めません:', dbRes.reason); return; }
+  const gas = Array.isArray(gasRes.bukken) ? gasRes.bukken : [];
+  const db  = dbRes.rows;
+  const gMap = new Map(gas.map(x=>[nz(x.name), x]));
+  const dMap = new Map(db.map(x=>[nz(x.name), x]));
+  console.log(`件数  GAS ${gas.length}件 / DB ${db.length}件`);
+  const gasOnly = [...gMap.keys()].filter(k=>!dMap.has(k));
+  const dbOnly  = [...dMap.keys()].filter(k=>!gMap.has(k));
+  if(gasOnly.length) console.log(`🔴 GASにあってDBに無い物件 ${gasOnly.length}件:`, gasOnly.map(k=>gMap.get(k).name));
+  if(dbOnly.length)  console.log(`⚠ DBにあってGASに無い物件 ${dbOnly.length}件(改名の残り?):`, dbOnly.map(k=>dMap.get(k).name));
+  // 項目ごとに「GASには値があるのにDBは空」を数える= これが**切り替えで消える情報**
+  const 欠け = {}, 違い = {}, 例 = {};
+  for(const [k, gv] of gMap){
+    const dv = dMap.get(k); if(!dv) continue;
+    for(const f of 項目){
+      const a = nz(gv[f]), b = nz(dv[f]);
+      if(a && !b){ 欠け[f]=(欠け[f]||0)+1; if(!例[f]) 例[f]=`${gv.name}: GAS="${String(gv[f]).slice(0,30)}" → DB(空)`; }
+      else if(a && b && a!==b){ 違い[f]=(違い[f]||0)+1; if(!例[f]) 例[f]=`${gv.name}: GAS="${String(gv[f]).slice(0,20)}" / DB="${String(dv[f]).slice(0,20)}"`; }
+    }
+  }
+  const 欠けK = Object.keys(欠け).sort((a,b)=>欠け[b]-欠け[a]);
+  console.log('\n🔴 切り替えると**消える**情報(GASにあってDBに無い)');
+  if(!欠けK.length) console.log('   なし ✅ 切り替えて安全');
+  for(const f of 欠けK) console.log(`   ${f.padEnd(14)} ${欠け[f]}件   例) ${例[f]}`);
+  const 違いK = Object.keys(違い).sort((a,b)=>違い[b]-違い[a]);
+  console.log('\n⚠ 中身が食い違う情報(どちらが正しいかは人の判断)');
+  if(!違いK.length) console.log('   なし ✅');
+  for(const f of 違いK) console.log(`   ${f.padEnd(14)} ${違い[f]}件   例) ${例[f]}`);
+  console.log('\n→ 「消える情報」がゼロなら切り替えてよい。あるなら先にDBへ入れてもらう');
+  return { gas:gas.length, db:db.length, 欠け, 違い, gasOnly:gasOnly.length, dbOnly:dbOnly.length };
+};
 async function fetchBukkenMaster(opts={}){
   // 既に進行中の fetch があれば共有
   if(__bukkenInFlight) return __bukkenInFlight;
@@ -14892,6 +15025,21 @@ async function fetchBukkenMaster(opts={}){
   const btn = document.getElementById("bukkenBtn");
   if(btn) btn.classList.add("syncing");
   __bukkenInFlight = (async ()=>{
+    // 🏢 v1.30.759: まずDBを試す。だめなら下の従来どおりGASへ(黙って落ちない)
+    if(bukkenDbReadOn_()){
+      const __r = await bukkenFetchFromDb_();
+      if(__r.ok){
+        state.bukken = __r.rows;
+        state.bukkenFetchedAt = new Date().toISOString();
+        try{ const __n = fillAddrFromMaster_(); if(__n) console.log(`[bukken] 住所空のレコード ${__n}件をマスタで補完`); }catch(_){}
+        saveState();
+        __setBukkenReadStat_({ src:'db', n:__r.rows.length, ms:__r.ms });
+        if(!opts.silent) alert(`物件マスタ ${__r.rows.length}件 を読込しました`);
+        try{ if(typeof renderBukkenTable==='function' && document.getElementById('bukkenModal')?.classList.contains('show')) renderBukkenTable(); }catch(_){}
+        return state.bukken;
+      }
+      __setBukkenReadStat_({ src:'gas', ms:__r.ms, fallback:__r.reason });
+    }
     try{
       const res = await fetch(fetchUrl, {method:"GET", redirect:"follow"});
       if(!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -14904,6 +15052,7 @@ async function fetchBukkenMaster(opts={}){
       saveState();
       if(!opts.silent) alert(`物件マスタ ${bukken.length}件 を読込しました`);
       console.log(`[bukken] loaded ${bukken.length} items at ${state.bukkenFetchedAt}`);
+      if(!bukkenDbReadOn_()) __setBukkenReadStat_({ src:'gas', n:bukken.length, ms:0, スイッチ:bukkenDbReadWhy_() });
       // 物件マスタはレスポンス全体構造のみ簡易ログ（workVolume は task-sync 側で取得）
       console.log("[bukken] GAS GET レスポンスのキー:", Object.keys(data));
       if(Array.isArray(data.master)) console.log(`[bukken] master[] ${data.master.length}件`);
@@ -24944,6 +25093,7 @@ window.bcStat_ = function(){
     共有設定: (typeof window.__scReadStat!=='undefined') ? window.__scReadStat : '(未取得)',
     即時反映: Object.assign({}, __rtStat, { スイッチ: eventsRealtimeOn_() }),
     在庫: (typeof window.__invReadStat!=='undefined' && window.__invReadStat) ? window.__invReadStat : '(まだ在庫を開いていない)',
+    物件マスタ: (typeof window.__bukkenReadStat!=='undefined' && window.__bukkenReadStat) ? window.__bukkenReadStat : '(まだ読んでいない)',
   };
   try{ console.log(JSON.stringify(o, null, 1)); }catch(_){ console.log(o); }
   return o;
