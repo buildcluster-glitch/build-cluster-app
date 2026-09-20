@@ -2946,7 +2946,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.750</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.751</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24817,7 +24817,126 @@ document.getElementById('all-settings-test').onclick = async ()=>{
 
 // ===== ポーリング =====
 let cloudPollTimer = null;
+// ============================================================================
+// 📡 v1.30.751: 予定のRealtime購読 — 60秒ごとに全件読むのをやめ、変わった瞬間に取りに行く
+//   設計の正本= ~/claude/カレンダー_DB切替/Realtime設計案_2026-09-20.md
+//   ★方針: **Realtimeは「取りに行くきっかけ」だけ。届いた行は直接あてはめない**。
+//     ⇒ 既存のマージ(版の比較 / cloudPendingの保護 / 削除トゥームストーン)を**1行も変えずに**使える。
+//     変更は日に数回なので、これだけで**毎分920行の読みがほぼ消える**。
+//   ⚠外部ライブラリは入れない(このアプリは1ファイル完結)。**素のWebSocketでPhoenixの手順を話す**。
+//     2026-09-20に実測で疎通確認済み(join→"Subscribed to PostgreSQL")。
+//   🔴**「0件」を正常と見なさない**= RLSの bc_role() が購読時にclaimsを読めないと、
+//     **エラーではなく沈黙**になる(台帳DBの指摘)。だから**60秒ポーリングは止めない**=取りこぼし検知器。
+const RT_WS_URL = SB_AUTH.url.replace(/^https/, 'wss') + '/realtime/v1/websocket?apikey=' + encodeURIComponent(SB_AUTH.key) + '&vsn=1.0.0';
+const RT_TOPIC = 'realtime:bc-cal-events';
+const RT_HEARTBEAT_MS = 25000;
+const RT_SYNC_DEBOUNCE_MS = 600;     // 連続で届いた時にまとめて1回だけ取りに行く
+const RT_WARN_SILENT_MS = 10*60*1000;  // これ以上つながらないままなら1回だけ知らせる
+let __rtSock = null, __rtRef = 0, __rtHb = null, __rtRetryN = 0, __rtRetryTimer = null, __rtSyncTimer = null;
+let __rtStat = { on:false, state:'off', openedAt:0, joinedAt:0, received:0, lastRecvAt:0, reconnects:0, lastErr:'', downSince:0, warnedAt:0 };
+function eventsRealtimeOn_(){
+  if(typeof dbTripped_==='function' && dbTripped_()) return false;
+  try{ const o = localStorage.getItem('bc_flag_eventsRealtime'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
+  if(typeof __staticFlags!=='undefined' && __staticFlags){ const r = __pickWriteFlag_(__staticFlags.eventsRealtime); if(r !== null) return r; }
+  const r2 = (typeof __calFlags!=='undefined' && __calFlags) ? __pickWriteFlag_(__calFlags.eventsRealtime) : null;
+  return r2 === true;
+}
+window.setEventsRealtimeLocal_ = function(on){ try{ if(on==null) localStorage.removeItem('bc_flag_eventsRealtime'); else localStorage.setItem('bc_flag_eventsRealtime', on?'1':'0'); }catch(_){} console.log('[realtime] 端末上書き =', on); rtRestart_(); };
+function rtSend_(o){ try{ if(__rtSock && __rtSock.readyState===1) __rtSock.send(JSON.stringify(o)); }catch(_){} }
+function rtNote_(state, err){
+  __rtStat.state = state; if(err) __rtStat.lastErr = String(err).slice(0,120);
+  if(state==='joined'){ __rtStat.joinedAt = Date.now(); __rtStat.downSince = 0; __rtStat.warnedAt = 0; }
+  else if(state!=='connecting'){ if(!__rtStat.downSince) __rtStat.downSince = Date.now(); }
+  try{ console.log('[realtime]', state, err||''); }catch(_){}
+  // ⚠黙って落ちない: つながらないまま10分たったら1回だけ知らせる(業務は止まっていない=ポーリングが生きている)
+  if(__rtStat.downSince && Date.now()-__rtStat.downSince > RT_WARN_SILENT_MS && Date.now()-__rtStat.warnedAt > RT_WARN_SILENT_MS){
+    __rtStat.warnedAt = Date.now();
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast('⚠ 即時反映がつながっていません（1分ごとの同期は動いています）');
+  }
+}
+// 変更が届いた → まとめて1回だけ取りに行く。**中身は既存の同期がやる**
+function rtScheduleSync_(why){
+  __rtStat.received++; __rtStat.lastRecvAt = Date.now();
+  if(__rtSyncTimer) return;
+  __rtSyncTimer = setTimeout(()=>{
+    __rtSyncTimer = null;
+    try{ if(!cloudSyncInFlight) runCloudOpenSync({ realtime:true }); }catch(_){}
+  }, RT_SYNC_DEBOUNCE_MS);
+}
+function rtStop_(){
+  if(__rtHb){ clearInterval(__rtHb); __rtHb = null; }
+  if(__rtRetryTimer){ clearTimeout(__rtRetryTimer); __rtRetryTimer = null; }
+  if(__rtSock){ try{ __rtSock.onclose = null; __rtSock.close(); }catch(_){} __rtSock = null; }
+  __rtStat.on = false; rtNote_('off');
+}
+function rtScheduleRetry_(){
+  if(__rtRetryTimer || !eventsRealtimeOn_()) return;
+  const wait = Math.min(60000, 2000 * Math.pow(2, Math.min(5, __rtRetryN++)));   // 2,4,8,16,32,60秒
+  __rtRetryTimer = setTimeout(()=>{ __rtRetryTimer = null; rtStart_(); }, wait);
+}
+function rtStart_(){
+  if(!eventsRealtimeOn_()) return;
+  if(__rtSock && (__rtSock.readyState===0 || __rtSock.readyState===1)) return;
+  const s = (typeof sbSession_==='function') ? sbSession_() : null;
+  if(!s || !s.access_token){ rtNote_('no-session'); rtScheduleRetry_(); return; }   // 未ログインでは購読しない(RLSで沈黙するだけなので)
+  __rtStat.on = true; rtNote_('connecting');
+  let sock; try{ sock = new WebSocket(RT_WS_URL); }catch(e){ rtNote_('error', e && e.message); rtScheduleRetry_(); return; }
+  __rtSock = sock;
+  sock.onopen = ()=>{
+    __rtStat.openedAt = Date.now(); rtNote_('open');
+    rtSend_({ topic:RT_TOPIC, event:'phx_join', ref:String(++__rtRef), payload:{ config:{
+      broadcast:{ self:false }, presence:{ key:'' },
+      postgres_changes:[{ event:'*', schema:'public', table:'calendar_events' }]
+    }, access_token: s.access_token } });   // ⚠access_tokenを渡さないとRLSが役を見られず「沈黙」する
+    if(__rtHb) clearInterval(__rtHb);
+    __rtHb = setInterval(()=>rtSend_({ topic:'phoenix', event:'heartbeat', payload:{}, ref:String(++__rtRef) }), RT_HEARTBEAT_MS);
+  };
+  sock.onmessage = (e)=>{
+    let m; try{ m = JSON.parse(e.data); }catch(_){ return; }
+    if(m.event === 'postgres_changes'){ rtScheduleSync_('change'); return; }
+    if(m.event === 'phx_reply'){
+      const st = m.payload && m.payload.status;
+      if(st === 'ok' && __rtStat.state !== 'joined'){
+        __rtRetryN = 0; rtNote_('joined');
+        rtScheduleSync_('joined');   // ⚠つないだ直後は必ず取り直す(切れていた間の変更は届いていない)
+      } else if(st === 'error'){ rtNote_('join-error', JSON.stringify(m.payload).slice(0,120)); }
+      return;
+    }
+    if(m.event === 'system' && m.payload && m.payload.status === 'error'){ rtNote_('system-error', m.payload.message); }
+  };
+  sock.onerror = ()=>{ rtNote_('error'); };
+  sock.onclose = (ev)=>{
+    if(__rtHb){ clearInterval(__rtHb); __rtHb = null; }
+    __rtSock = null; __rtStat.reconnects++;
+    rtNote_('closed', ev && ev.code);
+    rtScheduleRetry_();
+  };
+}
+function rtRestart_(){ rtStop_(); if(eventsRealtimeOn_()) rtStart_(); }
+// 🔎 読み元と購読の状態を**どこからでも**見られるようにする(v1.30.751)
+//   ⚠これまで値が囲いの中にいて、コンソールから確認できなかった(09-20に実際に困った)。
+window.bcStat_ = function(){
+  const o = {
+    版: (document.querySelector('.app-title span')||{}).textContent || '',
+    予定: (typeof __eventsReadStat!=='undefined') ? __eventsReadStat : '(未取得)',
+    共有設定: (typeof window.__scReadStat!=='undefined') ? window.__scReadStat : '(未取得)',
+    即時反映: Object.assign({}, __rtStat, { スイッチ: eventsRealtimeOn_() }),
+  };
+  try{ console.log(JSON.stringify(o, null, 1)); }catch(_){ console.log(o); }
+  return o;
+};
 function startCloudPolling(){
+  // 📡 v1.30.751: 画面が見えたら購読を立て直し、**状態に関係なく1回取り直す**
+  //   ⚠スマホはバックグラウンドで必ず切られる。切れていた間の変更は届いていないため。
+  try{
+    document.addEventListener('visibilitychange', ()=>{
+      if(document.visibilityState !== 'visible') return;
+      if(!eventsRealtimeOn_()) return;
+      if(!__rtSock || __rtSock.readyState > 1) rtStart_();
+      rtScheduleSync_('visible');
+    });
+  }catch(_){}
+  try{ if(eventsRealtimeOn_()) rtStart_(); }catch(_){}
   if(cloudPollTimer) return;
   cloudPollTimer = setInterval(()=>{
     if(document.visibilityState === 'visible' && cloudSync.url && cloudSync.autoSync && !cloudSyncInFlight){
