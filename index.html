@@ -2946,7 +2946,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.753</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.754</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24929,20 +24929,40 @@ window.bcStat_ = function(){
   try{ console.log(JSON.stringify(o, null, 1)); }catch(_){ console.log(o); }
   return o;
 };
-function startCloudPolling(){
-  // 📡 v1.30.751: 画面が見えたら購読を立て直し、**状態に関係なく1回取り直す**
-  //   ⚠スマホはバックグラウンドで必ず切られる。切れていた間の変更は届いていないため。
+// 📡 v1.30.754: 購読の「あるべき姿」に合わせ直す。**毎分これを呼ぶ**。
+//   🔴v751の穴: スイッチを見るのが**起動時の1回だけ**だった。
+//      起動直後は共有設定がまだ読み込み中でOFF → 遠隔でONにしても**誰も見に行かない**。
+//      (2026-09-20 山田さんの端末で スイッチ:true なのに state:'off' で発覚)
+//   🔴v751のもう1つ: visibilitychange の登録を startCloudPolling() の中でやっていた。
+//      この関数は画面を切り替えるたびに呼ばれるので、**リスナーが1個ずつ増え続けていた**。
+function rtReconcile_(why){
+  let on = false;
+  try{ on = eventsRealtimeOn_(); }catch(_){ return; }
+  if(on){
+    // つながっていなければ張る。⚠再試行の待ちが入っている時は**待ちを尊重**(総当たりしない)
+    if((!__rtSock || __rtSock.readyState > 1) && !__rtRetryTimer) rtStart_();
+  }else if(__rtSock || __rtStat.on){
+    try{ rtStop_(); }catch(_){}                                    // OFFにされたら畳む(遠隔で戻せる)
+  }
+}
+let __rtVisBound = false;
+function rtBindVisibility_(){
+  if(__rtVisBound) return;                                         // ⚠必ず1回だけ
+  __rtVisBound = true;
   try{
     document.addEventListener('visibilitychange', ()=>{
       if(document.visibilityState !== 'visible') return;
-      if(!eventsRealtimeOn_()) return;
-      if(!__rtSock || __rtSock.readyState > 1) rtStart_();
-      rtScheduleSync_('visible');
+      rtReconcile_('visible');
+      if(eventsRealtimeOn_()) rtScheduleSync_('visible');           // 切れていた間の変更は届いていない
     });
   }catch(_){}
-  try{ if(eventsRealtimeOn_()) rtStart_(); }catch(_){}
+}
+function startCloudPolling(){
+  rtBindVisibility_();
+  rtReconcile_('start');
   if(cloudPollTimer) return;
   cloudPollTimer = setInterval(()=>{
+    rtReconcile_('tick');   // ⚠毎分見に行く=遠隔スイッチが**あとから届いても効く**
     if(document.visibilityState === 'visible' && cloudSync.url && cloudSync.autoSync && !cloudSyncInFlight){
       runCloudOpenSync();
     }
