@@ -2946,7 +2946,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.751</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.752</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24263,19 +24263,21 @@ function eventsDbWriteOn_(){
 function eventsDbReadOn_(){
   if(dbTripped_()) return false;   /* 🩺 v1.30.717: 自前退避中は予定もGASで読む */
   try{ const o = localStorage.getItem('bc_flag_eventsDbRead'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
-  if(__staticFlags && typeof __staticFlags.eventsDbRead === 'boolean') return __staticFlags.eventsDbRead;   // 🚦 flags.json が最優先(DBの外)
-  return !!(__calFlags && __calFlags.eventsDbRead === true);
+  if(__staticFlags){ const r = __pickWriteFlag_(__staticFlags.eventsDbRead); if(r !== null) return r; }   // 🚦 flags.json が最優先(DBの外)
+  const r2 = __calFlags ? __pickWriteFlag_(__calFlags.eventsDbRead) : null;
+  return r2 === true;
 }
 // 📡 台帳(task-sync)のDB直読みスイッチ(v1.30.708・台帳DB「②射影のDB直読み=9/10-11」)。既定off。優先=端末>flags.json>共有設定
 function ledgerDbReadOn_(){
   if(dbTripped_()) return false;   /* 🩺 v1.30.717: 自前退避中は台帳もGASで読む */
   try{ const o = localStorage.getItem('bc_flag_ledgerDbRead'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
-  if(__staticFlags && typeof __staticFlags.ledgerDbRead === 'boolean') return __staticFlags.ledgerDbRead;
-  return !!(__calFlags && __calFlags.ledgerDbRead === true);
+  if(__staticFlags){ const r = __pickWriteFlag_(__staticFlags.ledgerDbRead); if(r !== null) return r; }
+  const r2 = __calFlags ? __pickWriteFlag_(__calFlags.ledgerDbRead) : null;
+  return r2 === true;
 }
 function ledgerDbReadSource_(){
   try{ const o = localStorage.getItem('bc_flag_ledgerDbRead'); if(o==='1'||o==='0') return '端末'; }catch(_){}
-  if(__staticFlags && typeof __staticFlags.ledgerDbRead === 'boolean') return 'flags.json';
+  if(__staticFlags && __pickWriteFlag_(__staticFlags.ledgerDbRead) !== null) return 'flags.json';
   return '共有設定';
 }
 window.setLedgerDbReadLocal_ = function(on){ try{ if(on==null) localStorage.removeItem('bc_flag_ledgerDbRead'); else localStorage.setItem('bc_flag_ledgerDbRead', on?'1':'0');
@@ -24286,12 +24288,13 @@ window.setLedgerDbReadLocal_ = function(on){ try{ if(on==null) localStorage.remo
 function sharedDbReadOn_(){
   if(dbTripped_()) return false;   /* 🩺 v1.30.717: 自前退避中は共有設定もGASで読む */
   try{ const o = localStorage.getItem('bc_flag_sharedDbRead'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
-  if(__staticFlags && typeof __staticFlags.sharedDbRead === 'boolean') return __staticFlags.sharedDbRead;
-  return !!(__calFlags && __calFlags.sharedDbRead === true);
+  if(__staticFlags){ const r = __pickWriteFlag_(__staticFlags.sharedDbRead); if(r !== null) return r; }
+  const r2 = __calFlags ? __pickWriteFlag_(__calFlags.sharedDbRead) : null;
+  return r2 === true;
 }
 function sharedDbReadSource_(){
   try{ const o = localStorage.getItem('bc_flag_sharedDbRead'); if(o==='1'||o==='0') return '端末'; }catch(_){}
-  if(__staticFlags && typeof __staticFlags.sharedDbRead === 'boolean') return 'flags.json';
+  if(__staticFlags && __pickWriteFlag_(__staticFlags.sharedDbRead) !== null) return 'flags.json';
   return '共有設定';
 }
 window.setSharedDbReadLocal_ = function(on){ try{ if(on==null) localStorage.removeItem('bc_flag_sharedDbRead'); else localStorage.setItem('bc_flag_sharedDbRead', on?'1':'0'); }catch(_){}
@@ -24299,7 +24302,7 @@ window.setSharedDbReadLocal_ = function(on){ try{ if(on==null) localStorage.remo
   console.log('[shared-read] 端末スイッチ =', on); };
 function eventsDbReadSource_(){   // 診断用: どのスイッチが効いているか
   try{ const o = localStorage.getItem('bc_flag_eventsDbRead'); if(o==='1'||o==='0') return '端末'; }catch(_){}
-  if(__staticFlags && typeof __staticFlags.eventsDbRead === 'boolean') return 'flags.json';
+  if(__staticFlags && __pickWriteFlag_(__staticFlags.eventsDbRead) !== null) return 'flags.json';
   return '共有設定';
 }
 // 管理者用(コンソール): 端末だけ切替 / 全端末を切替
@@ -31946,11 +31949,14 @@ async function syncTest(){
 // ============================================================================
 let __invReadStat = null;          // 直近の読み {src:'db'|'gas', n, ms, fallback, at}
 let __invDbFallbackAt = 0;
+// 🔧 v1.30.752: 名前リスト(配列)でも効くように。751までは true のときだけONで、
+//    カナリア指定(名前で入れる)が**黙ってOFF**になっていた
 function invDbReadOn_(){
   if(typeof dbTripped_==='function' && dbTripped_()) return false;
   try{ const o = localStorage.getItem('bc_flag_invDbRead'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
-  if(typeof __staticFlags!=='undefined' && __staticFlags && typeof __staticFlags.invDbRead === 'boolean') return __staticFlags.invDbRead;
-  return !!(typeof __calFlags!=='undefined' && __calFlags && __calFlags.invDbRead === true);
+  if(typeof __staticFlags!=='undefined' && __staticFlags){ const r = __pickWriteFlag_(__staticFlags.invDbRead); if(r !== null) return r; }
+  const r2 = (typeof __calFlags!=='undefined' && __calFlags) ? __pickWriteFlag_(__calFlags.invDbRead) : null;
+  return r2 === true;
 }
 window.setInvDbReadLocal_ = function(on){ try{ if(on==null) localStorage.removeItem('bc_flag_invDbRead'); else localStorage.setItem('bc_flag_invDbRead', on?'1':'0'); }catch(_){} console.log('[inv-read] 端末上書き =', on); };
 function __setInvReadStat_(o){
