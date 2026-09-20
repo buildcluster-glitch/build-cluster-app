@@ -2946,7 +2946,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.757</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.758</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24875,6 +24875,14 @@ function rtScheduleSync_(why){
   __rtSyncTimer = setTimeout(()=>{
     __rtSyncTimer = null;
     try{ if(!cloudSyncInFlight) runCloudOpenSync({ realtime:true }); }catch(_){}
+    // 🗑 v1.30.758: **削除の印も一緒に取りに行く**。
+    //   予定の削除は calendar_events を消すのではなく、共有設定 event_deletions に印を立てる方式。
+    //   その印を取りに行くのが「起動時 / 5分おき / ☁手押し」しか無く、60秒の同期にもRealtimeにも
+    //   乗っていなかった= **消したのに最大5分消えない**(2026-09-20 山田さん実機で発覚)。
+    //   追加・変更が1〜2秒になったぶん、削除の遅れだけが際立つ。
+    //   ⚠45秒キャッシュに当たると取り直せないので、**先に無効化してから**取る。
+    try{ if(typeof window.__gcBatchInvalidate==='function') window.__gcBatchInvalidate(); }catch(_){}
+    try{ if(typeof fetchEventDeletions_==='function') fetchEventDeletions_({ silent:true }).catch(()=>{}); }catch(_){}
   }, RT_SYNC_DEBOUNCE_MS);
 }
 function rtStop_(){
