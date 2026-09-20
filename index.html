@@ -2946,7 +2946,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.756</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.757</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24188,6 +24188,12 @@ function noteDbRead_(where, o){
     }else if(o.src === 'gas' && o.fallback){
       /* 未ログイン・スイッチOFFは「DBの不調」ではない=数えると平常時に誤退避する */
       if(/未ログイン|ログイン|no-?session|off$|switch/i.test(String(o.fallback))) return;
+      /* 🔴v1.30.757: **写しの鮮度はDBの健康と無関係**。
+         在庫は1時間おきにGASがDBへ写す仕組みなので、その写しが古い/欠けているのは
+         「写す仕事が遅れている」だけで、DBは元気に答えている(現に読めている)。
+         これを不調として数えると、**予定・台帳・共有設定まで巻き添えでGASに落ちる**。
+         いちばん重い経路が、いちばん軽い機能の都合で止まるのはおかしい。 */
+      if(/^(stale|incomplete|count-mismatch)/i.test(String(o.fallback))) return;
       __dbTrip.fails = (__dbTrip.fails||0) + 1;
       __dbTrip.why = where + ': ' + o.fallback;
       if(__dbTrip.fails >= DB_TRIP_FAILS && !dbTripped_()){
