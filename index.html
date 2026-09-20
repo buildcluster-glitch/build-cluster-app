@@ -2946,7 +2946,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.752</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.753</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24924,6 +24924,7 @@ window.bcStat_ = function(){
     予定: (typeof __eventsReadStat!=='undefined') ? __eventsReadStat : '(未取得)',
     共有設定: (typeof window.__scReadStat!=='undefined') ? window.__scReadStat : '(未取得)',
     即時反映: Object.assign({}, __rtStat, { スイッチ: eventsRealtimeOn_() }),
+    在庫: (typeof window.__invReadStat!=='undefined' && window.__invReadStat) ? window.__invReadStat : '(まだ在庫を開いていない)',
   };
   try{ console.log(JSON.stringify(o, null, 1)); }catch(_){ console.log(o); }
   return o;
@@ -31951,6 +31952,23 @@ let __invReadStat = null;          // 直近の読み {src:'db'|'gas', n, ms, fa
 let __invDbFallbackAt = 0;
 // 🔧 v1.30.752: 名前リスト(配列)でも効くように。751までは true のときだけONで、
 //    カナリア指定(名前で入れる)が**黙ってOFF**になっていた
+// 🔎 v1.30.752: 「OFFだった理由」まで言う。
+//   ⚠今回の事故(名前リストを無視して黙ってOFF)は、理由を出していれば初日に気づけた。
+function invDbReadWhy_(){
+  try{ if(typeof dbTripped_==='function' && dbTripped_()) return 'off(自前退避中=遮断器)'; }catch(_){}
+  try{ const o = localStorage.getItem('bc_flag_invDbRead');
+    if(o==='1') return 'on(端末で1)'; if(o==='0') return 'off(端末で0)'; }catch(_){}
+  const me = (typeof getMyself==='function'? getMyself() : '') || '';
+  for(const [名, v] of [['flags.json', (typeof __staticFlags!=='undefined'&&__staticFlags)?__staticFlags.invDbRead:undefined],
+                        ['共有設定',   (typeof __calFlags!=='undefined'&&__calFlags)?__calFlags.invDbRead:undefined]]){
+    const r = __pickWriteFlag_(v);
+    if(r === true)  return 'on('+名+')';
+    if(r === false) return Array.isArray(v)
+      ? 'off('+名+'の一覧に自分が居ない: 自分="'+me+'" 一覧='+JSON.stringify(v)+')'
+      : 'off('+名+'でfalse)';
+  }
+  return 'off(どこにも指定が無い)';
+}
 function invDbReadOn_(){
   if(typeof dbTripped_==='function' && dbTripped_()) return false;
   try{ const o = localStorage.getItem('bc_flag_invDbRead'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
@@ -31961,6 +31979,8 @@ function invDbReadOn_(){
 window.setInvDbReadLocal_ = function(on){ try{ if(on==null) localStorage.removeItem('bc_flag_invDbRead'); else localStorage.setItem('bc_flag_invDbRead', on?'1':'0'); }catch(_){} console.log('[inv-read] 端末上書き =', on); };
 function __setInvReadStat_(o){
   __invReadStat = Object.assign({ at:new Date().toISOString() }, o);
+  // 🔎 v1.30.752: 閉じた中にあるので、外(bcStat_/コンソール)から見えるように写しておく
+  try{ window.__invReadStat = __invReadStat; }catch(_){}
   try{ if(typeof noteDbRead_==='function') noteDbRead_('在庫', o); }catch(_){}
   try{ console.log(`[inv-read] ${o.src} ${o.n!=null?o.n+'件 ':''}${o.ms}ms${o.fallback?` ⚠fallback:${o.fallback}`:''}`); }catch(_){}
 }
@@ -32055,7 +32075,7 @@ async function syncPull({ replace=false }={}){
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     data = await res.json();
     if(data.error) throw new Error(data.error);
-    if(!invDbReadOn_()) __setInvReadStat_({ src:'gas', n:(data.items||[]).length, ms:Date.now()-__t0 });
+    if(!invDbReadOn_()) __setInvReadStat_({ src:'gas', n:(data.items||[]).length, ms:Date.now()-__t0, スイッチ:invDbReadWhy_() });
   }
 
   if(replace){
