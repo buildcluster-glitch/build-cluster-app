@@ -2946,7 +2946,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.760</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.761</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -25288,6 +25288,15 @@ function cloudQueueEventChange(ev, mode, opts){
   if(mode !== 'delete') __evLogDateTimeChange_(ev);   // 📜 日時変更なら記録(v1.30.692)
   // 🗑 削除は全端末伝播のため tombstone を立てる(cloudSync未設定でもDrive GAS側に記録) v1.30.66
   if(mode === 'delete' && ev && ev.id && typeof addEventDeletion_==='function'){ try{ addEventDeletion_(ev.id); }catch(_){} }
+  // 🔴v1.30.761: **印を立てたなら、DBにも必ず消しに行く**。
+  //   これまでは この下の「同期OFFなら return」に引っかかると、**印だけ出ていってDBは生きたまま**になっていた。
+  //   ⇒ 全員の画面からは消えるのに、DBには残る。DBが正本になった今、
+  //     **画面をDBから作り直した瞬間に、消したはずの予定が復活する**。
+  //   実測(2026-09-22): この形が3件（メモチ8/4・フリューゲル最確×2 9/10・ロワジールK203事前 9/16）。
+  //     wt_ops にも「消しに来た記録」が1件も無く、印だけが先に出ていたことが裏付けられた。
+  //   ⚠v1.30.66当時は正しい設計だった（DBが無く、印がすべてだった）。DBが正本になって裏目に出た形。
+  //   ⚠DBへの削除は cal_delete_event（Supabase直）なので、**cloudSync.url が無くても届く**。
+  if(mode === 'delete' && ev && ev.id){ queueCloudOp('deleteEvent', { id: ev.id }); }
   // ⚠ 同期OFF/未設定のまま予定を作ると、その端末にしか残らない=他の端末には一生出ない。
   //    黙って捨てずに警告する(10分に1回まで)v1.30.484・山田「スマホで入れた8月の予定がPCに来ていない」
   if(!cloudSync.url || !cloudSync.autoSync){
@@ -25302,7 +25311,7 @@ function cloudQueueEventChange(ev, mode, opts){
     return;
   }
   if(mode === 'delete'){
-    queueCloudOp('deleteEvent', { id: ev.id });
+    /* 上で既に積んである(v1.30.761)。ここで積むと二重になる */
   } else {
     queueCloudOp('upsertEvent', denormalizeEventForCloud_(ev), opts);
   }
