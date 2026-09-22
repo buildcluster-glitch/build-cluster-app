@@ -2946,7 +2946,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.759</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.760</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4771,12 +4771,51 @@
   var _SC_Q_KEY = 'bc_sc_retry_q';
   function _scQLoad_(){ try{ var a = JSON.parse(localStorage.getItem(_SC_Q_KEY)||'[]'); return Array.isArray(a)?a:[]; }catch(_){ return []; } }
   function _scQSave_(a){ try{ localStorage.setItem(_SC_Q_KEY, JSON.stringify(a.slice(-50))); }catch(_){} }
+  // 🔴v1.30.760: 箱に入れる時に「**送る前のサーバの姿**」も一緒に控える。
+  //   これが無いと、再送の時に「自分が何を変えたか」が分からず、**まるごと上書き**するしかない。
+  //   実測(2026-09-22): 削除の印が4回、新しい分ごと消えていた(自己修復したので実害は無かったが、
+  //   上書き型の設定=修繕の上書き/立会の上書き/休み/電話当番 で同じことが起きると**戻らない**)。
+  function _scBaseOf_(key){
+    try{ if (_dbCache && _dbCache[key]) return String(_dbCache[key].value || ''); }catch(_){}
+    try{ if (_cache && _cache[key] != null) return String(_cache[key] || ''); }catch(_){}
+    return null;   // 分からない = 3つ比べができない(後で「相手が変えていない時だけ送る」に倒す)
+  }
   function _scQPush_(url, init){
     var key = _scKeyOf_(init && init.body);
     var q = _scQLoad_().filter(function(x){ return x.key !== key; });   // 同じキーは新しい方だけ
-    q.push({ key: key, url: String(url), body: String(init && init.body || ''), at: Date.now() });
+    q.push({ key: key, url: String(url), body: String(init && init.body || ''), at: Date.now(), base: _scBaseOf_(key) });
     _scQSave_(q);
     try{ if(typeof updateSyncFreshness_==='function') updateSyncFreshness_(); }catch(_){}
+  }
+  // ---- 3つ比べ(送る前 base / 送ろうとした ours / いまサーバにある cur) ----
+  //   ⚠**触っていない所は相手のを残す**。まるごと上書きしない。
+  function _scIsObj_(v){ return v && typeof v === 'object' && !Array.isArray(v); }
+  function _sc3way_(b, o, c){
+    if (!_scIsObj_(b) || !_scIsObj_(o) || !_scIsObj_(c)) return o;   // 物でなければ こちらの値
+    var out = {}, seen = {};
+    [b, o, c].forEach(function(m){ Object.keys(m).forEach(function(k){ seen[k] = 1; }); });
+    Object.keys(seen).forEach(function(k){
+      var bv = b[k], ov = o[k], cv = c[k];
+      if (JSON.stringify(bv) === JSON.stringify(ov)) {        // こちらは触っていない
+        if (k in c) out[k] = cv;                              //   → 相手の今の値を残す
+        return;
+      }
+      if (!(k in o)) return;                                  // こちらが消した → 出さない
+      out[k] = (_scIsObj_(bv) && _scIsObj_(ov) && _scIsObj_(cv)) ? _sc3way_(bv, ov, cv) : ov;
+    });
+    return out;
+  }
+  function _scValueOf_(bodyStr){ try{ return JSON.parse(bodyStr).value; }catch(_){ return null; } }
+  function _scWithValue_(bodyStr, value){ try{ var o = JSON.parse(bodyStr); o.value = value; return JSON.stringify(o); }catch(_){ return bodyStr; } }
+  // いまサーバにある値を**取り直す**(バッチのキャッシュを通さない)
+  function _scFetchCurrent_(key){
+    var s = (typeof loadGasSettings==='function') ? loadGasSettings() : null;
+    if (!s || !s.url || !s.token) return Promise.resolve(null);
+    return _origFetch(s.url + '?action=get-shared-config&key=' + encodeURIComponent(key)
+        + '&token=' + encodeURIComponent(s.token) + '&t=' + Date.now(), { method:'GET', redirect:'follow' })
+      .then(function(r){ return r.json(); })
+      .then(function(j){ return (j && j.ok !== false) ? String(j.value == null ? '' : j.value) : null; })
+      .catch(function(){ return null; });
   }
   var _scQBusy = false;
   function _scQFlush_(){
@@ -4785,11 +4824,45 @@
     _scQBusy = true;
     var item = q[0];
     if (Date.now() - item.at > 24*3600*1000) { _scQSave_(q.slice(1)); _scQBusy = false; _scToast_('⚠ 共有設定(' + item.key + ')は24時間再送しても保存できず、諦めました。操作をやり直してください'); return; }
-    _origFetch(item.url, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: item.body }).then(function(r){
+    // 🔴v1.30.760: **送る前に、いまの姿を読んで確かめる**。
+    //   「確定した答え」は時間の経過では得られない=読みに行って初めて分かる(2026-09-22)。
+    _scFetchCurrent_(item.key).then(function(cur){
+      if (cur == null) return item.body;                       // 読めない → 従来どおり(黙って諦めない)
+      if (cur === String(_scValueOf_(item.body) == null ? '' : _scValueOf_(item.body))) {
+        return '__DONE__';                                     // ①もう入っている = 成功していた
+      }
+      if (item.base == null || cur === item.base) return item.body;   // ②誰も触っていない = そのまま送ってよい
+      // ③相手が先に変えた → 3つ比べて**触っていない所は相手のを残す**
+      var b, o, c;
+      try{ b = JSON.parse(item.base); o = JSON.parse(_scValueOf_(item.body)); c = JSON.parse(cur); }catch(_){ return '__CONFLICT__'; }
+      if (!_scIsObj_(b) || !_scIsObj_(o) || !_scIsObj_(c)) return '__CONFLICT__';   // 混ぜられない形
+      var merged = JSON.stringify(_sc3way_(b, o, c));
+      console.log('[共有設定] 箱の再送を3つ比べで作り直しました key=' + item.key);
+      return _scWithValue_(item.body, merged);
+    }).then(function(body){
+      if (body === '__DONE__') {
+        _scQSave_(_scQLoad_().filter(function(x){ return !(x.key===item.key && x.at===item.at); }));
+        _scToast_('✅ 共有設定(' + item.key + ')は既に保存されていました');
+        _scQBusy = false; return null;
+      }
+      if (body === '__CONFLICT__') {
+        // ⚠まるごと上書きすると相手の変更が消える。**送らずに本人へ知らせる**
+        _scQSave_(_scQLoad_().filter(function(x){ return !(x.key===item.key && x.at===item.at); }));
+        _scToast_('⚠ 共有設定(' + item.key + ')は他の人が先に変えたため送れませんでした。もう一度操作してください');
+        _scQBusy = false; return null;
+      }
+      return body;
+    }).then(function(body){
+      if (body == null) return null;
+      return _origFetch(item.url, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: body });
+    }).then(function(r){
+      if (!r) return;
+      return (function(){
       return r.clone().json().then(function(j){
         if (j && j.ok === false && !j.conflict) { console.warn('[共有設定] 箱からの再送も ok:false key=' + item.key); }
         else { console.log('[共有設定] 箱からの再送成功 key=' + item.key); _scQSave_(_scQLoad_().filter(function(x){ return !(x.key===item.key && x.at===item.at); })); _scToast_('📮 保存できていなかった共有設定(' + item.key + ')をDBに届けました'); }
       }).catch(function(){ /* JSONでない=HTTP系。実行済みかもしれないので箱からは外す */ _scQSave_(_scQLoad_().filter(function(x){ return !(x.key===item.key && x.at===item.at); })); });
+      })();
     }).catch(function(){}).then(function(){ _scQBusy = false; });
   }
   setInterval(_scQFlush_, 2*60*1000);
