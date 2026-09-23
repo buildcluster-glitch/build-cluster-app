@@ -3,7 +3,7 @@
 // 更新時はバージョンを上げる → ユーザー次回起動時にキャッシュ更新
 
 // ⚠版を上げるたびにここも上げる。据え置きだと古い実体が居座り続ける(v1.30.406のまま固定されていた)
-const CACHE = 'build-cluster-app-v1.30.761';
+const CACHE = 'build-cluster-app-v1.30.762';
 const ASSETS = [
   './',
   './index.html',

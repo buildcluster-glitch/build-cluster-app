@@ -2946,7 +2946,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.761</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.762</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -5843,9 +5843,39 @@ function statusInfo(name){ return TASK_STATUSES.find(s=>s.name===name) || TASK_S
 
 // 「自分」識別: localStorage に保存（OAuth は後付け）
 const MYSELF_KEY = "buildcluster_schedule_me";
-function getMyself(){ return localStorage.getItem(MYSELF_KEY) || ""; }
+// 🔴v1.30.762: **自分の名前は必ず詰め表記(「鈴木悠平」)で持つ**。
+//   実測(2026-09-23): 誰がやったかの記録に、同じ人が「鈴木悠平」3,183件と「鈴木 悠平」1,805件の
+//   2通りで入っていました(8人中7人が該当)。出どころは 👤マイ の選択肢で、
+//   getEffectiveMembers() が **マスタ由来(スペース入り)とアプリ内蔵STAFF(詰め)を混ぜて並べて**いて、
+//   どちらを選んだかがそのまま自分の名前として保存されていました。
+//   ⚠これは見た目の問題ではありません。スペース入りで保存された端末では
+//     ・ev.staff===me の直比較が**1件も一致しない** → 👤マイ が空っぽになる
+//     ・STAFF.includes(me) が false → 週表示の絞り込みが効かない
+//     ・STAFF_COLORS[me] が undefined → 自分の色が出ない
+//   読むたびに詰め表記へ寄せ、ズレていたら保存し直します(端末は次に開いた時に自然に直る)。
+function getMyself(){
+  const raw = localStorage.getItem(MYSELF_KEY) || "";
+  if(!raw) return "";
+  let fixed = raw;
+  try{
+    if(typeof normalizeStaffName === 'function'){
+      const n = normalizeStaffName(raw);
+      // ⚠実在のスタッフ名に化ける時だけ詰める。知らない名前は触らない(勝手に別人にしない)
+      if(n && n !== raw && typeof isRealStaffName_ === 'function' && isRealStaffName_(n)) fixed = n;
+    }
+  }catch(_){}
+  if(fixed !== raw){ try{ localStorage.setItem(MYSELF_KEY, fixed); }catch(_){} }
+  return fixed;
+}
 function setMyself(name){
-  if(name) localStorage.setItem(MYSELF_KEY, name);
+  let v = name;
+  try{
+    if(v && typeof normalizeStaffName === 'function'){
+      const n = normalizeStaffName(v);
+      if(n && typeof isRealStaffName_ === 'function' && isRealStaffName_(n)) v = n;
+    }
+  }catch(_){}
+  if(v) localStorage.setItem(MYSELF_KEY, v);
   else localStorage.removeItem(MYSELF_KEY);
 }
 
@@ -30125,15 +30155,23 @@ const myselfModal = document.getElementById("myselfModal");
 // 実効メンバーリスト: master_sync staffMaster(キャッシュ) を優先 → なければSTAFF
 // 順序は staffMaster の並び順をそのまま採用 (積算アプリと共通)
 function getEffectiveMembers(){
+  // 🔴v1.30.762: マスタ由来は「鈴木 悠平」、STAFFは「鈴木悠平」と表記が違うため、
+  //   そのまま混ぜると **同じ人が2行並び、どちらを選んだかで自分の名前が変わって**いました。
+  //   実在スタッフに化けるものは詰め表記へ寄せ、重複を落としてから並べます。
+  const canon = (x)=>{
+    try{
+      if(typeof normalizeStaffName === 'function'){
+        const n = normalizeStaffName(x);
+        if(n && typeof isRealStaffName_ === 'function' && isRealStaffName_(n)) return n;
+      }
+    }catch(_){}
+    return x;
+  };
   const cached = loadCachedStaffMaster();
-  if(cached && cached.members && cached.members.length){
-    // staffMaster優先・STAFFにしかない名前を末尾に追加(欠落防止)
-    const merged = [...cached.members];
-    STAFF.forEach(s=>{ if(!merged.includes(s)) merged.push(s); });
-    return merged;
-  }
-  // staffMaster未取得 → STAFFのみ
-  return [...STAFF];
+  const src = (cached && cached.members && cached.members.length) ? [...cached.members, ...STAFF] : [...STAFF];
+  const out = [];
+  src.forEach(s=>{ const c = canon(s); if(c && !out.includes(c)) out.push(c); });
+  return out;
 }
 function openMyself(){
   // 開いた時に master_sync GAS から最新スタッフマスタを取得 (silent)
