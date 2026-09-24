@@ -2947,7 +2947,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.765</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.766</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24792,6 +24792,54 @@ function ledgerDbMonths_(maxMonths){
   return out;
 }
 let __taskProgressCache = { at:'', map:null };
+// ===========================================================
+// 📋 v1.30.766 工程の進捗を「1物件1行の表(task_progress)」から読む(山田「請求台帳と一緒にすすめて」2026-09-25)
+//   これまで = 全物件ぶん約1MBの塊(shared_config.task_progress)を読む。**進捗が1件でも変わると全端末が1MBを読み直す**。
+//   これから = 表から**変わった行だけ**を読む(updated_at が水位より新しい行)。初回だけ全行。
+//   表はGAS(ver97)が2026-09-15から二重書きしていて、9/25朝の突合で**123物件すべて塊と一致**(compare_progress.js)。
+//   ⚠スイッチ progressTableRead(既定OFF)。失敗・未ログイン・表が空 → **必ず従来の塊へ戻る**(黙って空振りしない)。
+//   ⚠水位は「表の updated_at の最大 − 60秒」。端末の時計を混ぜない(遠隔スイッチの鉄則)。重なった行は上書きされるだけ。
+//   ⚠15分に1回は全行を読み直す(行が消えた場合に追いつくため。今は行を消す経路は無い)。
+// ===========================================================
+let __tpTableCache = { newest:'', map:null, fullAt:0 };
+window.__tpReadStat = null;
+function progressTableReadOn_(){
+  if(typeof dbTripped_==='function' && dbTripped_()) return false;
+  try{ const o = localStorage.getItem('bc_flag_progressTableRead'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
+  if(typeof __staticFlags!=='undefined' && __staticFlags){ const r = __pickWriteFlag_(__staticFlags.progressTableRead); if(r !== null) return r; }
+  const r2 = (typeof __calFlags!=='undefined' && __calFlags) ? __pickWriteFlag_(__calFlags.progressTableRead) : null;
+  return r2 === true;
+}
+async function fetchTaskProgressMapFromTable_(sess){
+  const t0 = Date.now();
+  const hdr = { 'apikey': SB_AUTH.key, 'Authorization': 'Bearer '+sess.access_token, 'Accept': 'application/json' };
+  const full = !__tpTableCache.map || (Date.now() - __tpTableCache.fullAt) > 15*60*1000;
+  const since = full ? '' : __tpTableCache.newest;
+  const base = `${SB_AUTH.url}/rest/v1/task_progress?select=property_key,doc,updated_at${since ? `&updated_at=gt.${encodeURIComponent(since)}` : ''}&order=property_key.asc`;
+  const rows = []; let from = 0;
+  for(;;){
+    const res = await fetch(base, { headers: Object.assign({ 'Range': `${from}-${from+499}`, 'Range-Unit':'items' }, hdr), cache:'no-store' });
+    if(!(res.status===200 || res.status===206)) throw new Error('HTTP '+res.status);
+    const part = await res.json(); if(!Array.isArray(part)) throw new Error('bad-shape');
+    rows.push(...part);
+    if(part.length < 500) break;
+    from += 500;
+  }
+  // ⚠全行を読んで0件 = 「表が空という答え」ではなく異常とみなす(表は123物件ある)→塊へ戻す
+  if(full && !rows.length) throw new Error('表が空(全行読みで0件)');
+  const map = full ? {} : Object.assign({}, __tpTableCache.map);
+  let maxAt = full ? '' : '';
+  rows.forEach(r=>{
+    if(r && r.property_key && r.doc && typeof r.doc === 'object') map[r.property_key] = r.doc;
+    if(r && r.updated_at && String(r.updated_at) > maxAt) maxAt = String(r.updated_at);
+  });
+  // 水位 = 読めた行の最大 − 60秒(差分で1行も来なければ前回の水位のまま)
+  let newest = __tpTableCache.newest || '';
+  if(maxAt){ const t = Date.parse(maxAt); if(!isNaN(t)) newest = new Date(t - 60000).toISOString(); }
+  __tpTableCache = { newest, map, fullAt: full ? Date.now() : __tpTableCache.fullAt };
+  window.__tpReadStat = { src:'table', full, rows: rows.length, total: Object.keys(map).length, ms: Date.now()-t0, at: new Date().toISOString() };
+  return map;
+}
 async function fetchTaskProgressMapFromDb_(sess){
   const hdr = { 'apikey': SB_AUTH.key, 'Authorization': 'Bearer '+sess.access_token, 'Accept': 'application/json' };
   const meta = await fetch(`${SB_AUTH.url}/rest/v1/shared_config?select=updated_at&key=eq.task_progress`, { headers: hdr, cache:'no-store' });
@@ -24856,7 +24904,13 @@ async function fetchLedgerFromDb_({since='', maxMonths=3, signal}={}){
     }
     // ② progress の添付(_attachProgress_): shared_config 'task_progress'(value_json・key='物件名|号室')をDBから読む(updated_at が同じなら前回の値を使う)
     try{
-      const pm = await fetchTaskProgressMapFromDb_(s);
+      // 📋 v1.30.766: スイッチONなら表から(変わった行だけ)。失敗したら必ず従来の塊へ
+      let pm = null;
+      if(progressTableReadOn_()){
+        try{ pm = await fetchTaskProgressMapFromTable_(s); }
+        catch(e){ window.__tpReadStat = { src:'blob', fallback:(e && e.message)||'error', at:new Date().toISOString() }; console.warn('[progress-read] 表から読めず→塊へ:', e && e.message); pm = null; }
+      }
+      if(!pm){ pm = await fetchTaskProgressMapFromDb_(s); if(!window.__tpReadStat || window.__tpReadStat.src!=='blob') window.__tpReadStat = { src:'blob', at:new Date().toISOString() }; }
       if(pm){ propsOut.forEach(q=>{ if(!q||!q.name) return; const pr = pm[String(q.name||'').trim()+'|'+String(q.room||'').trim()]; if(pr) q.progress = pr; }); }
     }catch(e){ console.warn('[ledger-read] task_progress 取得失敗(進捗なしで続行):', e && e.message); }
     // ③ light(_stripDoneHeavy_): 完了/キャンセルで現場が動いていない案件は重い欄を省く(行は残す・tasksCount を残す)
@@ -25347,6 +25401,7 @@ window.bcStat_ = function(){
     即時反映: Object.assign({}, __rtStat, { スイッチ: eventsRealtimeOn_() }),
     在庫: (typeof window.__invReadStat!=='undefined' && window.__invReadStat) ? window.__invReadStat : '(まだ在庫を開いていない)',
     物件マスタ: (typeof window.__bukkenReadStat!=='undefined' && window.__bukkenReadStat) ? window.__bukkenReadStat : '(まだ読んでいない)',
+    進捗: Object.assign({}, window.__tpReadStat || { src:'(まだ読んでいない)' }, { スイッチ: (typeof progressTableReadOn_==='function') ? progressTableReadOn_() : '?' }),   // v1.30.766
   };
   try{ console.log(JSON.stringify(o, null, 1)); }catch(_){ console.log(o); }
   return o;
@@ -27821,7 +27876,7 @@ async function restoPushProgressNow(propId){
     const res = await fetch(s.url, {
       method:"POST", redirect:"follow",
       headers:{"Content-Type":"text/plain;charset=utf-8"},
-      body: JSON.stringify({action:"saveProgress", token:s.token, propertyName:prop.name, roomNumber:prop.room, progress}),
+      body: JSON.stringify({action:"saveProgress", token:s.token, propertyName:prop.name, roomNumber:prop.room, progress, actor:(typeof getMyself==='function'?getMyself():'')||''}),   // 👤 v1.30.766: 誰が変えたか(GASが表の書き込みに渡す・migration 055)
     });
     const data = await res.json().catch(()=>null);
     if(!data || data.ok !== true) throw new Error((data && data.error) || "サーバー応答が不正(master_sync未対応の可能性)");
