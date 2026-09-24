@@ -2946,7 +2946,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.762</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.763</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -19391,6 +19391,25 @@ function evAuthorLine_(ev, opts){
   const dark = !opts || opts.dark !== false;   // 既定=黒ポップ用の明色
   return `<div style="font-size:10px;color:${dark?'#9ca3af':'#94a3b8'};margin-top:3px">${parts.join(' ・ ')}</div>`;
 }
+// ⚠ v1.30.763(山田「ここにもアラートだしたい」): 吹き出し用のアラート枠。
+//   セルに赤字で出ている ⚠アラート が、吹き出しを開くと消えていた(題名・登録者・住所しか出していなかった)。
+//   予定/立会/修繕の吹き出しで共通に使う。キーはセルと同じもの(予定=ev.id・立会=_taikyoRawId・修繕=r.id)を渡す。
+//   複数行は1件1行。セルは幅が無いので姓だけだが、ここは全文を読ませる場所なので書いた人はフルネーム＋日時。
+function tipAlertHtml_(id){
+  try{
+    const a = (typeof getAlert_==='function' && id) ? getAlert_(id) : null;
+    if(!a) return "";
+    const lines = String(a.text||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+    if(!lines.length) return "";
+    let when = "";
+    try{ const d=new Date(a.at); if(!isNaN(d)) when = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }catch(_){}
+    const by = [a.author||"", when].filter(Boolean).join(' ');
+    return `<div class="tt-alert" style="margin-top:6px;padding:6px 8px;border-radius:6px;background:rgba(220,38,38,.18);border-left:3px solid #ef4444">`
+      + lines.map(t=>`<div style="font-size:12px;font-weight:800;color:#fecaca;line-height:1.4;white-space:pre-wrap;word-break:break-word">⚠ ${escapeHtml(t)}</div>`).join('')
+      + (by ? `<div style="font-size:10px;color:#fca5a5;margin-top:2px;text-align:right">${escapeHtml(by)}</div>` : '')
+      + `</div>`;
+  }catch(_){ return ""; }
+}
 function showChipTip(ev, mouseX, mouseY){
   const tip = ensureChipTip();
   const cont = contractorInfo(ev.contractor);
@@ -19407,6 +19426,11 @@ function showChipTip(ev, mouseX, mouseY){
   tip.style.borderLeftColor = leaderColor;
   // 中身組み立て
   const titleHtml = `<div class="tt-title">${escapeHtml(ev.title || "(無題)")}</div>`;
+  // ⚠ v1.30.763(山田「ここにもアラートだしたい」): セルに赤字で出ている ⚠アラート を吹き出しにも出す。
+  //   これまで吹き出しは題名・登録者・住所だけで、**いちばん大事な注意書きが吹き出しを開くと消えていた**。
+  //   キーはセルと同じ(立会=_taikyoRawId・それ以外=ev.id)。複数行は1件1行・書いた人と日時も添える
+  //   (セルは幅が無いので姓だけ／ここは全文を読ませる場所なのでフルネーム)。
+  const __tipAlertHtml = tipAlertHtml_(ev._taikyoRawId || ev.id);
   const rows = [];
   // バッジ行(カテゴリ+元請け)
   let badges = "";
@@ -19491,7 +19515,7 @@ function showChipTip(ev, mouseX, mouseY){
       const info = (done && typeof eventDoneInfo_==='function') ? eventDoneInfo_(ev.id) : null;
       const t = (done
         ? `<div class="tt-title">${escapeHtml(ev.title || "(無題)")} ✅</div>`
-        : titleHtml) + ((typeof evAuthorLine_==='function') ? evAuthorLine_(ev) : "") + __evAddrHtml;   // 📝 登録者+📍住所(v1.30.636)
+        : titleHtml) + __tipAlertHtml + ((typeof evAuthorLine_==='function') ? evAuthorLine_(ev) : "") + __evAddrHtml;   // ⚠アラート(v1.30.763)+📝 登録者+📍住所(v1.30.636)
       if(!__doneEligible) return t;
       const btn = done
         ? `<button class="tt-done-btn" style="background:#16a34a;color:#fff;border:0;border-radius:6px;font-size:11.5px;font-weight:700;padding:5px 10px;cursor:pointer">✓ 完了済み（タップで取消）</button>${(info&&info.by)?`<span style="font-size:10px;color:#9ca3af;margin-left:6px">${escapeHtml(info.by)}</span>`:''}`
@@ -19542,10 +19566,10 @@ function showChipTip(ev, mouseX, mouseY){
       if(ev._motouke) parts.push(`<div style="font-size:10.5px;color:#9ca3af;margin-top:2px">元請け: ${escapeHtml(ev._motouke)}</div>`);
       __tkInfo = parts.join('');
     }
-    buildTipChat_(tip, titleHtml + __tkInfo, api);   // 立会=タイトル+住所/時刻/元請け+コメント(v1.30.633)
+    buildTipChat_(tip, titleHtml + __tipAlertHtml + __tkInfo, api);   // 立会=タイトル+⚠アラート(v1.30.763)+住所/時刻/元請け+コメント(v1.30.633)
   } else {
     tip.classList.remove('interactive');
-    tip.innerHTML = titleHtml + ((typeof evAuthorLine_==='function') ? evAuthorLine_(ev) : "") + rows.join("") + memoHtml + commentsHtml;
+    tip.innerHTML = titleHtml + __tipAlertHtml + ((typeof evAuthorLine_==='function') ? evAuthorLine_(ev) : "") + rows.join("") + memoHtml + commentsHtml;   // ⚠アラート(v1.30.763)
   }
   // 位置決め(マウス右下、ウィンドウ範囲チェック)
   const margin = 14;
@@ -19635,7 +19659,7 @@ function showRepairTip(r, mouseX, mouseY){
     }
     __rpInfo = parts.join('');
   }
-  buildTipChat_(tip, titleHtml + __rpInfo, apiR);   // 修繕=タイトル+住所/依頼/お客様+コメント(v1.30.635)
+  buildTipChat_(tip, titleHtml + tipAlertHtml_(r.id) + __rpInfo, apiR);   // 修繕=タイトル+⚠アラート(v1.30.763)+住所/依頼/お客様+コメント(v1.30.635)
   // 位置決め
   const margin = 14;
   tip.style.left = "0px"; tip.style.top = "0px";
