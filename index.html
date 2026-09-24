@@ -2946,7 +2946,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.763</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.764</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -23878,8 +23878,16 @@ async function cloudSyncPush(){
     // 残りは従来経路へ(pendingはそのまま=消していない)
   }
   // スナップショット (送信中に追加されるopは次回に送る)
-  const opCount = pending.length;
-  const ops = pending.slice(0, opCount).map(p=>({ action: p.action, data: p.data }));
+  // 🔴v1.30.764: **ここで箱を掴み直す**。先頭で掴んだ `pending` は、上のDB直結(pushEventsToDb_)が
+  //   送れた分を除いて `state.cloudPending` を**別の配列に差し替えた後は古い箱**になっている。
+  //   古い箱の数で新しい箱を `splice(0, 数)` すると、**まだ送っていない操作を先頭から捨てる**。
+  //   実害(2026-09-24 18:19 木村さん「↓二人必要」): 削除の印は立ったのに、**削除の操作がDBにもGASにも届かず**、
+  //   DBでは生きたまま残った(削除の直前の保存だけが届いていた)。
+  //   ⇒ 送る分は「いまの箱」から取り、送り終わったら**送ったもの自体を名指しで**外す(数では切らない)。
+  const sendSnap = (state.cloudPending || []).slice();
+  const opCount = sendSnap.length;
+  if(!opCount) return { pushed: 0 };
+  const ops = sendSnap.map(p=>({ action: p.action, data: p.data }));
   // 📦 withPull(v1.30.529): 書き込みの応答に「取得結果」も同梱してもらう。
   //   GASは1回呼ぶだけで2〜3秒の固定オーバーヘッドがあるので、
   //   push→pull の2往復を1往復にすると保存の待ちがまるごと1回ぶん減る。
@@ -23897,15 +23905,16 @@ async function cloudSyncPush(){
   //   (同じ型を今日2つ潰している: 在庫v1.30.727 / 見積アプリの発注確定が届かない事故)
   //   ⚠result の形が想定と違う時は従来どおり全部消す=勝手に詰まらせない。
   const results = Array.isArray(data.result) ? data.result : null;
-  const snap = state.cloudPending.slice(0, opCount);
   const failed = [];
   if(results && results.length === opCount){
-    results.forEach((r, i)=>{ if(r && r.ok === false) failed.push({ op: snap[i], why: String(r.error || '') }); });
+    results.forEach((r, i)=>{ if(r && r.ok === false) failed.push({ op: sendSnap[i], why: String(r.error || '') }); });
   }
-  state.cloudPending.splice(0, opCount);
+  // 🔴v1.30.764: 送ったもの自体を外す(数で切らない)。送信中に積まれた操作は参照が違うので巻き込まない。
+  //   失敗した分は外さない＝**元の位置のまま残る**(送信中に積まれた新しい操作より前＝順番も保たれる)。
+  const __failedSet = new Set(failed.map(f=>f.op));
+  const __sentSet = new Set(sendSnap.filter(op=>!__failedSet.has(op)));
+  state.cloudPending = (state.cloudPending || []).filter(op=>!__sentSet.has(op));
   if(failed.length){
-    // 失敗した分だけ戻す(送信中に積まれた新しいopの前に置く=順番を保つ)
-    state.cloudPending.unshift(...failed.map(f=>f.op));
     console.warn('[cloud] サーバーに弾かれた予定を未送信のまま残しました:',
       failed.map(f=>`${f.op && f.op.action} ${f.op && f.op.data && f.op.data.id}: ${f.why}`));
     try{ if(typeof showAutoSyncToast==='function'){
