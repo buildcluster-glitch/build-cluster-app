@@ -2954,7 +2954,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.774</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.775</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -7265,7 +7265,7 @@ function renderCheckCard(ck, today){
   // ✅ 完了は「✓完了」マークだけ付け、グレースケールにはしない=担当者の色を残す(誰が最確したか一目で分かる・木村報告 v1.30.403)
   const __doneMark = __isDoneCk ? `<span class="badge-sm" style="background:#16a34a;color:#fff;font-weight:700;white-space:nowrap" title="最終確認 完了">✓完了</span>` : "";
   const __seisouDone = (typeof isCheckSeisouDone_==='function') && isCheckSeisouDone_(ck.id);   // 🧹 清掃完了済=青枠(v1.30.559)
-  const __whoCk = whoSetText_(ck._workerSet, '現地担当');   // 🎨 v1.30.770(描くたびに表を読み直さない=applyCheckWorkersToState_ で持たせた値を使う)
+  const __whoCk = chlogHistText_(chlogFor_(ck.id, '', '')) || whoSetText_(ck._workerSet, '現地担当');   // 🕘 v1.30.775 履歴(無ければ最後に変えた人)   // 🎨 v1.30.770(描くたびに表を読み直さない=applyCheckWorkersToState_ で持たせた値を使う)
   return `<div class="check-card ${urgCls}${isClickable?" clickable":""}${__isDoneCk?" is-done":""}${__seisouDone?" seisou-done":""}" data-check-id="${ck.id}" ${styleAttr}${__whoCk ? ` title="${escapeHtml(__whoCk)}"` : ''}>
     ${/* 🏷「最終確認」バッジは撤去(v1.30.557・山田「いらない」=帯に居る時点で自明)。修繕ラベルも同様 */""}
     <div class="ck-title" style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">${syncMark}${__doneMark}<span class="ck-name">${escapeHtml(ck.title)}</span>${volBadge}${(!__soloStaffHideName && staffBadge)?`<span style="display:inline-flex;gap:2px;align-items:center">${staffBadge}</span>`:""}${__ckCommuteBadge}</div>
@@ -7866,7 +7866,7 @@ async function mutateTaikyoOverrideRemote_(taikyoId, patch){
     const isDel = patch.dismissed===true;
     if(patch.dismissed!==undefined && !isDel) parts.push('取消解除');
     const label = (typeof taikyoLabelForLog_==='function' && taikyoLabelForLog_(taikyoId)) || ('立会 '+String(taikyoId).replace(/^sid:/,'').slice(0,28));
-    logChange_('立会', isDel?'取消':'変更', label, parts.join(' / '));
+    logChange_('立会', isDel?'取消':'変更', label, parts.join(' / '), undefined, taikyoId);
   } }catch(_){}
   if(typeof render==='function') render();
   await pushTaikyoOverridesMap_(map);
@@ -8031,7 +8031,7 @@ async function setRepairWorkerOverride_(repairId, worker){
   // 📜 変更の記録(v337): 誰がいつ修繕の作業担当を変えたか
   try{ if(typeof logChange_==='function'){ const __r=(state.repairs||[]).find(x=>x&&x.id===repairId);
     const __lbl=(__r && (__r.name||__r.bukken)) ? `${__r.name||__r.bukken}${__r.room?' '+__r.room:''}` : ('修繕 '+String(repairId).slice(0,24));
-    logChange_('修繕','変更', __lbl, '担当='+((worker||'').trim()||'空')); } }catch(_){}
+    logChange_('修繕','変更', __lbl, '担当='+((worker||'').trim()||'空'), undefined, repairId); } }catch(_){}
   const s = loadGasSettings();
   if(s.url && s.token){
     try{
@@ -8091,7 +8091,7 @@ async function setRepairContactOverride_(repairId, contact){
   let map = loadRepairOverrides_(); map[repairId] = stamp(); saveRepairOverrides_(map);
   try{ if(typeof logChange_==='function'){
     const __lbl=(__rec && (__rec.name||__rec.bukken)) ? `${__rec.name||__rec.bukken}${__rec.room?' '+__rec.room:''}` : ('修繕 '+String(repairId).slice(0,24));
-    logChange_('修繕','変更', __lbl, '連絡者='+((contact||'').trim()||'台帳値')); } }catch(_){}
+    logChange_('修繕','変更', __lbl, '連絡者='+((contact||'').trim()||'台帳値'), undefined, repairId); } }catch(_){}
   const s = loadGasSettings();
   if(s.url && s.token){
     try{ const url = `${s.url}?action=get-shared-config&key=repair_overrides&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
@@ -8161,9 +8161,14 @@ async function setCheckWorkerOverride_(checkId, worker){
   const __keepCm = (loadCheckWorkers_()[checkId]||{}).commute || '';
   const __keepFD3 = (loadCheckWorkers_()[checkId]||{}).forDate;   // 🚗 v1.30.654: 日付印を落とさない
   const stamp = ()=>({ worker: worker||'', commute: __keepCm, forDate: __keepFD3, at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
+  // 前の担当=共有の上書き表の値(無ければ空)。※呼び出し元は ck.staff を先に書き換えるので state.checks からは取らない
+  const __prevW = (loadCheckWorkers_()[checkId]||{}).at ? ((loadCheckWorkers_()[checkId]||{}).worker||'') : '';
   let map = loadCheckWorkers_();
   map[checkId] = stamp();
   saveCheckWorkers_(map);
+  // 🕘 v1.30.775 最終確認の現地担当も📜に残す(今までここだけ記録が無かった)
+  try{ if(typeof logChange_==='function' && String(__prevW||'') !== String(worker||'')){ const __ck=(state.checks||[]).find(x=>x&&x.id===checkId);
+    logChange_('最終確認','変更', __ck ? String(__ck.title||'').split('\n')[0] : ('最終確認 '+String(checkId).slice(0,24)), `担当=${(worker||'').trim()||'空'}${__prevW?`(前: ${__prevW})`:''}`, undefined, checkId); } }catch(_){}
   const s = loadGasSettings();
   if(s.url && s.token){
     try{
@@ -8493,8 +8498,33 @@ async function pushAlertsMap_(map){
   const payload={ alerts:map||{}, updatedAt:new Date().toISOString() };
   try{ await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:'alerts',value:JSON.stringify(payload),token:s.token,savedBy:'calendar-app'})}); }catch(e){ console.warn('[alerts] push失敗:', e.message); }
 }
+// ✍ v1.30.775(山田「このアラートも登録した人でるとええな」): 行ごとに書いた人と時刻(lines)を持つ。
+//   ⚠text(改行区切り1本)は今までどおり=旧版端末はlinesを知らずtextだけ読む。旧版が保存するとlinesは消え、
+//   その時は全行「最後に保存した人」の表示に戻る(嘘の名前は出さない)。同じ文面の行は前の書き手を引き継ぐ。
+function alertLinesMeta_(prev, text, me, now){
+  const pool = (prev && Array.isArray(prev.lines)) ? prev.lines.map(x=>({t:String(x.t||''), by:x.by||'', at:x.at||''}))
+             : String((prev && prev.text) || '').split(/\r?\n/).map(t=>t.trim()).filter(Boolean).map(t=>({t, by:(prev&&prev.author)||'', at:(prev&&prev.at)||'', legacy:true}));
+  return String(text||'').split(/\r?\n/).map(t=>t.trim()).filter(Boolean).map(t=>{
+    const i = pool.findIndex(x=>x.t===t);
+    if(i>=0){ const hit = pool.splice(i,1)[0]; return hit.legacy ? { t, by:hit.by, at:hit.at, legacy:true } : { t, by:hit.by, at:hit.at }; }
+    return { t, by:me, at:now };
+  });
+}
+function alertLineMeta_(e, t){
+  if(!e || !t) return null;
+  if(Array.isArray(e.lines)){ const x = e.lines.find(l=>l && l.t===t); if(x) return x; }
+  if(String(e.text||'').split(/\r?\n/).map(v=>v.trim()).includes(t)) return { t, by:e.author||'', at:e.at||'', legacy:true };
+  return null;
+}
+function alertMetaText_(m){
+  if(!m || !m.by) return '';
+  const d = new Date(m.at); const w = isNaN(d) ? '' : ` ${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  return (m.legacy ? '✍ 最後に保存した人: ' : '✍ 登録: ') + m.by + w;
+}
 async function setAlert_(id, text){
-  const stamp=()=>({ text:(text||'').trim(), author:(typeof getMyself==='function'?getMyself():'')||'', at:new Date().toISOString() });
+  const __me = (typeof getMyself==='function'?getMyself():'')||'', __now = new Date().toISOString();
+  const __lines = alertLinesMeta_(loadAlerts_()[id], text, __me, __now);
+  const stamp=()=>({ text:(text||'').trim(), author:__me, at:__now, lines:__lines });
   let map=loadAlerts_(); map[id]=stamp(); saveAlerts_(map);
   const s=loadGasSettings();
   if(s.url&&s.token){
@@ -8519,7 +8549,9 @@ function alertLinesOf_(id){
   return arr;
 }
 function alertRowHtml_(id, val, i){
-  return `<div class="qp-alert-row" style="display:flex;gap:4px;align-items:center;margin-top:${i?4:0}px">
+  const __m = alertMetaText_(alertLineMeta_((typeof getAlert_==='function') ? getAlert_(id) : null, String(val||'').trim()));
+  return `<div class="qp-alert-row" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-top:${i?4:0}px">
+    <div class="qp-alert-meta" style="order:3;flex-basis:100%;font-size:10px;color:#94a3b8;padding-left:4px;${__m?'':'display:none'}">${escapeHtml(__m)}</div>
     <input type="text" class="qp-alert-input" data-alert-id="${escapeHtml(String(id))}" data-alert-i="${i}" value="${escapeHtml(val||"")}" placeholder="${i?'（続けて書けます）':'例: 電気メーター写真お願いします'}" style="flex:1;min-width:0;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px;color:#dc2626;font-weight:600">
     <button type="button" class="qp-alert-del" title="この行を消す" style="flex-shrink:0;width:24px;height:24px;padding:0;line-height:22px;border:1px solid var(--border-strong);background:#fff;color:#dc2626;border-radius:6px;cursor:pointer;font-size:12px">✕</button>
   </div>`;
@@ -8545,6 +8577,8 @@ function wireAlertInput_(pop){
     if(v === __last) return;
     __last = v;
     if(typeof setAlert_==='function') setAlert_(id, v).catch(()=>{});
+    // ✍ v1.30.775 書いた人の表示を今の内容に合わせる(setAlert_ は手元の表を先に書き換えるので、すぐ読める)
+    try{ const __e = getAlert_(id); list.querySelectorAll('.qp-alert-row').forEach(r=>{ const mEl=r.querySelector('.qp-alert-meta'); if(!mEl) return; const x=alertMetaText_(alertLineMeta_(__e, r.querySelector('.qp-alert-input').value.trim())); mEl.textContent=x; mEl.style.display=x?'':'none'; }); }catch(_){}
     if(typeof render==='function') render();
   };
   const wireRow = row=>{
@@ -9806,7 +9840,44 @@ const CHLOG_CACHE_KEY = "buildcluster_calendar_changelog_cache";
 const CHLOG_KEEP_DAYS = 45;      // 時間基準の保持(約1ヶ月+)。これより古い記録は落とす。v1.30.338
 const CHLOG_SHARE_MAX = 44000;   // ⚠共有ストア=Sheetセル(上限≈50000字)。超えると値ごと壊れる→安全マージンで44KB上限
 function loadChlog_(){ try{ const o=JSON.parse(localStorage.getItem(CHLOG_CACHE_KEY)||"[]"); return Array.isArray(o)?o:[]; }catch(e){ return []; } }
-function saveChlog_(a){ try{ localStorage.setItem(CHLOG_CACHE_KEY, JSON.stringify(a||[])); }catch(e){} }
+function saveChlog_(a){ __chlogIdx = null; try{ localStorage.setItem(CHLOG_CACHE_KEY, JSON.stringify(a||[])); }catch(e){} }
+// 🕘 v1.30.775 案件ごとの変更履歴。カードは何百枚も描くので、記録の読み直しは記録が変わった時だけ(索引を使い回す)
+var __chlogIdx = null;   // var=読み込み途中に saveChlog_ が呼ばれても落ちない
+function chlogIndex_(){
+  if(__chlogIdx) return __chlogIdx;
+  const byRef = new Map(), byLabel = new Map();
+  loadChlog_().forEach(e=>{
+    if(!e || !e.at) return;
+    if(e.ref){ if(!byRef.has(e.ref)) byRef.set(e.ref, []); byRef.get(e.ref).push(e); }
+    else { const k = (e.kind||'')+'|'+(e.label||''); if(!byLabel.has(k)) byLabel.set(k, []); byLabel.get(k).push(e); }   // ref の無い古い記録(〜v774)は名前で
+  });
+  return (__chlogIdx = { byRef, byLabel });
+}
+// ref で引き、無ければ(=v774以前の記録)種類＋名前で引く。onlyAssign=担当の変更だけ。新しい順に max 件
+function chlogFor_(ref, kind, label, opts={}){
+  try{
+    const ix = chlogIndex_();
+    const seen = new Set(), out = [];
+    const add = arr => (arr||[]).forEach(e=>{ if(e && !seen.has(e.id)){ seen.add(e.id); out.push(e); } });
+    if(ref) add(ix.byRef.get(String(ref)));
+    if(kind && label) add(ix.byLabel.get(kind+'|'+String(label).slice(0,80)));
+    let r = out.slice().reverse();   // 同じ時刻(同じミリ秒)の記録は後から書いた方を先に=並べ替えは安定なので先に逆順にしておく
+    if(opts.onlyAssign) r = r.filter(e=>/担当/.test(e.detail||'') || /担当/.test(e.action||''));
+    r.sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+    return r.slice(0, opts.max || 5);
+  }catch(_){ return []; }
+}
+function chlogWhen_(at){ const d=new Date(at); return isNaN(d) ? '' : `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
+function chlogHistHtml_(list){
+  if(!list || !list.length) return "";
+  return `<div class="tt-hist" style="font-size:10.5px;color:#cbd5e1;margin-top:4px;line-height:1.5"><div style="color:#9ca3af">🕘 変更の履歴(新しい順)</div>`
+    + list.map(e=>`<div>・<span style="color:#9ca3af">${escapeHtml(chlogWhen_(e.at))}</span> <b style="color:#fde68a">${escapeHtml(e.by||'(名前なし)')}</b> ${escapeHtml(e.action==='変更'?'':(e.action||'')+' ')}${escapeHtml(e.detail||'')}</div>`).join('')
+    + `</div>`;
+}
+function chlogHistText_(list){
+  if(!list || !list.length) return "";
+  return '🕘 変更の履歴(新しい順)\n' + list.map(e=>`・${chlogWhen_(e.at)} ${e.by||'(名前なし)'} ${e.action==='変更'?'':(e.action||'')+' '}${e.detail||''}`).join('\n');
+}
 // 📏 保持ポリシー: ①45日より古いを落とす ②それでもセル上限(44KB)を超えるなら古い順に落とす(壊れ防止)。返り値=新しい順維持のため昇順。
 function pruneChlog_(arr){
   let a = (Array.isArray(arr)?arr:[]).filter(e=>e&&e.id);
@@ -9823,7 +9894,8 @@ const CHLOG_SYNC_KEEP = 10;   // 「同期」診断エントリの保持件数
 let __chlogPushT = null, __chlogPending = [];
 // fixedId(v1.30.492): 同じ出来事を全端末が同じidで記録する用(id union なので📜が同じ行で1本にまとまる)。
 //   例=同期での件数減少。5台が同時に気づいても記録は1行。
-function logChange_(kind, action, label, detail, fixedId){
+// 🕘 v1.30.775(山田「担当を変えた人 履歴もでるとええな」): ref=対象のid(立会/修繕/最終確認/予定)。吹き出しでその案件の履歴だけ引く用
+function logChange_(kind, action, label, detail, fixedId, ref){
   try{
     const by = (typeof getMyself==='function' ? getMyself() : '') || '';
     let a = loadChlog_();
@@ -9831,6 +9903,7 @@ function logChange_(kind, action, label, detail, fixedId){
     const e = { id: fixedId || (typeof uid==='function'?uid():String(Date.now())+Math.random().toString(36).slice(2)),
       at:new Date().toISOString(), by, kind:String(kind||''), action:String(action||''),
       label:String(label||'').slice(0,80), detail:String(detail||'').slice(0,140) };
+    if(ref) e.ref = String(ref).slice(0,120);
     a.push(e); a = pruneChlog_(a); saveChlog_(a);
     __chlogPending.push(e);
     if(document.getElementById('changelogModal') && document.getElementById('changelogModal').classList.contains('show')) renderChangelog_();
@@ -19606,8 +19679,10 @@ function tipAlertHtml_(id){
     try{ const d=new Date(a.at); if(!isNaN(d)) when = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }catch(_){}
     const by = [a.author||"", when].filter(Boolean).join(' ');
     return `<div class="tt-alert" style="margin-top:6px;padding:6px 8px;border-radius:6px;background:rgba(220,38,38,.18);border-left:3px solid #ef4444">`
-      + lines.map(t=>`<div style="font-size:12px;font-weight:800;color:#fecaca;line-height:1.4;white-space:pre-wrap;word-break:break-word">⚠ ${escapeHtml(t)}</div>`).join('')
-      + (by ? `<div style="font-size:10px;color:#fca5a5;margin-top:2px;text-align:right">${escapeHtml(by)}</div>` : '')
+      + lines.map(t=>{ const m = Array.isArray(a.lines) ? alertLineMeta_(a, t) : null;   // ✍ v1.30.775 行ごとの登録者
+          return `<div style="font-size:12px;font-weight:800;color:#fecaca;line-height:1.4;white-space:pre-wrap;word-break:break-word">⚠ ${escapeHtml(t)}</div>`
+            + ((m && m.by) ? `<div style="font-size:10px;color:#fca5a5;text-align:right">${escapeHtml(alertMetaText_(m).replace(/^✍ 登録: /,'✍ '))}</div>` : ''); }).join('')
+      + ((by && !Array.isArray(a.lines)) ? `<div style="font-size:10px;color:#fca5a5;margin-top:2px;text-align:right">${escapeHtml(by)}</div>` : '')
       + `</div>`;
   }catch(_){ return ""; }
 }
@@ -19716,7 +19791,8 @@ function showChipTip(ev, mouseX, mouseY){
       const info = (done && typeof eventDoneInfo_==='function') ? eventDoneInfo_(ev.id) : null;
       const t = (done
         ? `<div class="tt-title">${escapeHtml(ev.title || "(無題)")} ✅</div>`
-        : titleHtml) + __tipAlertHtml + ((typeof evAuthorLine_==='function') ? evAuthorLine_(ev) : "") + __evAddrHtml;   // ⚠アラート(v1.30.763)+📝 登録者+📍住所(v1.30.636)
+        : titleHtml) + __tipAlertHtml + ((typeof evAuthorLine_==='function') ? evAuthorLine_(ev) : "") + __evAddrHtml
+        + chlogHistHtml_(chlogFor_(ev.id, '', '', { onlyAssign:true }));   // 🕘 v1.30.775 担当を変えた履歴   // ⚠アラート(v1.30.763)+📝 登録者+📍住所(v1.30.636)
       if(!__doneEligible) return t;
       const btn = done
         ? `<button class="tt-done-btn" style="background:#16a34a;color:#fff;border:0;border-radius:6px;font-size:11.5px;font-weight:700;padding:5px 10px;cursor:pointer">✓ 完了済み（タップで取消）</button>${(info&&info.by)?`<span style="font-size:10px;color:#9ca3af;margin-left:6px">${escapeHtml(info.by)}</span>`:''}`
@@ -19767,7 +19843,7 @@ function showChipTip(ev, mouseX, mouseY){
       if(ev._motouke) parts.push(`<div style="font-size:10.5px;color:#9ca3af;margin-top:2px">元請け: ${escapeHtml(ev._motouke)}</div>`);
       __tkInfo = parts.join('');
     }
-    buildTipChat_(tip, titleHtml + __tipAlertHtml + __tkInfo + whoSetHtml_((typeof loadTaikyoOverrides_==='function' ? loadTaikyoOverrides_() : {})[tkId], '担当・日時'), api);   // 🎨 v1.30.770   // 立会=タイトル+⚠アラート(v1.30.763)+住所/時刻/元請け+コメント(v1.30.633)
+    buildTipChat_(tip, titleHtml + __tipAlertHtml + __tkInfo + (function(){ const __h = chlogFor_(tkId, '立会', (typeof taikyoLabelForLog_==='function' && taikyoLabelForLog_(tkId)) || ''); return __h.length ? chlogHistHtml_(__h) : whoSetHtml_((typeof loadTaikyoOverrides_==='function' ? loadTaikyoOverrides_() : {})[tkId], '担当・日時'); })(), api);   // 🕘 v1.30.775 履歴(無ければ最後に変えた人)   // 🎨 v1.30.770   // 立会=タイトル+⚠アラート(v1.30.763)+住所/時刻/元請け+コメント(v1.30.633)
   } else {
     tip.classList.remove('interactive');
     tip.innerHTML = titleHtml + __tipAlertHtml + ((typeof evAuthorLine_==='function') ? evAuthorLine_(ev) : "") + rows.join("") + memoHtml + commentsHtml;   // ⚠アラート(v1.30.763)
@@ -19860,7 +19936,7 @@ function showRepairTip(r, mouseX, mouseY){
     }
     __rpInfo = parts.join('');
   }
-  buildTipChat_(tip, titleHtml + tipAlertHtml_(r.id) + __rpInfo + whoSetHtml_((typeof loadRepairOverrides_==='function' ? loadRepairOverrides_() : {})[r.id], '作業担当'), apiR);   // 🎨 v1.30.770   // 修繕=タイトル+⚠アラート(v1.30.763)+住所/依頼/お客様+コメント(v1.30.635)
+  buildTipChat_(tip, titleHtml + tipAlertHtml_(r.id) + __rpInfo + (function(){ const __h = chlogFor_(r.id, '修繕', (r.name||r.bukken) ? `${r.name||r.bukken}${r.room?' '+r.room:''}` : ''); return __h.length ? chlogHistHtml_(__h) : whoSetHtml_((typeof loadRepairOverrides_==='function' ? loadRepairOverrides_() : {})[r.id], '作業担当'); })(), apiR);   // 🕘 v1.30.775   // 🎨 v1.30.770   // 修繕=タイトル+⚠アラート(v1.30.763)+住所/依頼/お客様+コメント(v1.30.635)
   // 位置決め
   const margin = 14;
   tip.style.left = "0px"; tip.style.top = "0px";
@@ -25591,7 +25667,9 @@ document.addEventListener('visibilitychange', ()=>{
 // 📜 v1.30.692(山田「予定の日付・時間の変更履歴は残る?」→①): 直近に同期した姿を控え、保存時に日時が変わっていたら📜に1行。
 //   控え=id→{date,start,end,allday,timeMode}。他端末の変更は pull 時に控えへ入るので、ここで拾うのは「この端末で動かした」分だけ。
 const __evSnap = {};
-function __evSnapOf_(e){ return { date:e.date||'', start:e.start||'', end:e.end||'', allday:!!e.allday, timeMode:e.timeMode||'' }; }
+function __evSnapOf_(e){ return { date:e.date||'', start:e.start||'', end:e.end||'', allday:!!e.allday, timeMode:e.timeMode||'', staff:__evStaffKey_(e) }; }
+// 🕘 v1.30.775 予定の担当(主担当＋同行)を比べられる形に
+function __evStaffKey_(e){ try{ return ((typeof eventStaffList==='function') ? eventStaffList(e) : [e.staff]).filter(Boolean).map(String).join('、'); }catch(_){ return String(e&&e.staff||''); } }
 function __evSnapRefresh_(){ try{ (state.events||[]).forEach(e=>{ if(e&&e.id) __evSnap[e.id]=__evSnapOf_(e); }); }catch(_){} }
 try{ __evSnapRefresh_(); }catch(_){}   // 起動時点(ローカル保存分)を控えに=最初のpull前に動かしても記録できる
 function __evWhenLabel_(sn){
@@ -25606,7 +25684,11 @@ function __evLogDateTimeChange_(ev){
     if(!ev||!ev.id) return;
     const prev=__evSnap[ev.id], cur=__evSnapOf_(ev);
     if(prev && (prev.date!==cur.date || prev.start!==cur.start || prev.end!==cur.end || prev.allday!==cur.allday || prev.timeMode!==cur.timeMode)){
-      if(typeof logChange_==='function') logChange_('予定','日時変更', String(ev.title||'(無題)').split(/\r?\n/)[0], `${__evWhenLabel_(prev)} → ${__evWhenLabel_(cur)}`);
+      if(typeof logChange_==='function') logChange_('予定','日時変更', String(ev.title||'(無題)').split(/\r?\n/)[0], `${__evWhenLabel_(prev)} → ${__evWhenLabel_(cur)}`, undefined, ev.id);
+    }
+    // 🕘 v1.30.775 担当の付け替えも(控えに担当が無い=この版の前に取った控え は比べない)
+    if(prev && prev.staff !== undefined && prev.staff !== cur.staff){
+      if(typeof logChange_==='function') logChange_('予定','担当変更', String(ev.title||'(無題)').split(/\r?\n/)[0], `担当=${cur.staff||'空'}${prev.staff?`(前: ${prev.staff})`:''}`, undefined, ev.id);
     }
     __evSnap[ev.id]=cur;
   }catch(_){}
