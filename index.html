@@ -2954,7 +2954,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.776</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.777</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -28109,9 +28109,13 @@ async function restoPushProgressNow(propId){
   });
   const progress = {tasks, comments:prop.comments||[], updatedAt:Date.now(), updatedBy:getMyself()||""};
   // ✍️ v1.30.767: スイッチONなら先にDBへ直接(失敗しても下のGASの二重書きが表を追いつかせる=取りこぼさない)
+  // 🧾 v1.30.777: 表に書けたら GAS へ「もう表は書いた」と伝える(dbApplied)。GAS(ver104〜)は表への写しを省く
+  //   =写しが名無し(actor=null)で本人の名前を上書きし、版も1保存で2つ進んでいた(9/25 wt_ops で全件この形)。
+  //   ⚠付けるのは applied / already_processed の時だけ。stale_version・権限・写真(data:image)でGASに任せる時は付けない=GASが写す
+  let __dbApplied = false;
   if(progressDbWriteOn_()){
     const t0 = Date.now();
-    try{ const r = await pushProgressToDb_(prop, progress); window.__tpWriteStat = { r, key:String(prop.name||'').trim()+'|'+String(prop.room||'').trim(), ms:Date.now()-t0, at:new Date().toISOString() }; if(r!=='applied' && r!=='already_processed') console.warn('[progress-write] DBへ直接書けず(GASの二重書きに任せる):', r); }
+    try{ const r = await pushProgressToDb_(prop, progress); __dbApplied = (r === 'applied' || r === 'already_processed'); window.__tpWriteStat = { r, key:String(prop.name||'').trim()+'|'+String(prop.room||'').trim(), ms:Date.now()-t0, at:new Date().toISOString() }; if(r!=='applied' && r!=='already_processed') console.warn('[progress-write] DBへ直接書けず(GASの二重書きに任せる):', r); }
     catch(e){ window.__tpWriteStat = { r:'error:'+((e&&e.message)||e), ms:Date.now()-t0, at:new Date().toISOString() }; console.warn('[progress-write] DBへ直接書けず(GASの二重書きに任せる):', e && e.message); }
   }
   if(!s.url) return;   // GASの設定が無い端末は、DBにだけ書いて終わり
@@ -28120,7 +28124,7 @@ async function restoPushProgressNow(propId){
     const res = await fetch(s.url, {
       method:"POST", redirect:"follow",
       headers:{"Content-Type":"text/plain;charset=utf-8"},
-      body: JSON.stringify({action:"saveProgress", token:s.token, propertyName:prop.name, roomNumber:prop.room, progress, actor:(typeof getMyself==='function'?getMyself():'')||''}),   // 👤 v1.30.766: 誰が変えたか(GASが表の書き込みに渡す・migration 055)
+      body: JSON.stringify({action:"saveProgress", token:s.token, propertyName:prop.name, roomNumber:prop.room, progress, actor:(typeof getMyself==='function'?getMyself():'')||'', ...(__dbApplied ? { dbApplied:true } : {})}),   // 👤 v1.30.766: 誰が変えたか(GASが表の書き込みに渡す・migration 055)
     });
     const data = await res.json().catch(()=>null);
     if(!data || data.ok !== true) throw new Error((data && data.error) || "サーバー応答が不正(master_sync未対応の可能性)");
