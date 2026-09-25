@@ -2947,7 +2947,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.770</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.771</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -22646,7 +22646,11 @@ function showQuickAddSheet_(defaults={}, editEv=null){
     ? (editEv.timeMode==="timed" ? (editEv.start||"")
       : (editEv.timeMode==="allday" || editEv.allday) ? "__allday__"
       : editEv.timeMode==="am" ? "__am__" : editEv.timeMode==="pm" ? "__pm__" : "")
-    : "";
+    // 🕐 v1.30.771(山田「13時のところで予定いれようとしたら13時で時間でるようにできる？」):
+    //   新規は、クリックした枠の時刻を**最初から選んだ状態**で開く。それまでは必ず「時間未定」で、
+    //   クリック位置は「時間未定のまま、その位置に表示する」ためだけに使っていた(v1.30.65)。
+    //   ⚠時刻の無い所(終日の段など)から開いた時は defaults.start が空=今までどおり「時間未定」。
+    : ((defaults.start && /^\d{2}:\d{2}$/.test(defaults.start)) ? defaults.start : "");
   // ✏️ 時刻の自由入力メモ(v1.30.589): 既存メモがあれば「自由入力」を初期選択
   const __noteInit = (isEdit && typeof timeNoteGet_==='function') ? ((timeNoteGet_(editEv.id)||{}).text||'') : '';
   const timeOpts = [
@@ -22659,6 +22663,11 @@ function showQuickAddSheet_(defaults={}, editEv=null){
   for(let h=7; h<=19; h++) for(let m=0; m<60; m+=15){
     const v = `${pad(h)}:${pad(m)}`;
     timeOpts.push(`<option value="${v}"${v===selTime?' selected':''}>${v}</option>`);
+  }
+  // 🕐 v1.30.771: 選んだ時刻が選択肢(7:00〜19:45・15分刻み)に無い時(早朝・夜・半端な時刻)は、その時刻を足して選ぶ
+  //   (足さないと select がどれにも当たらず、黙って「時間未定」に落ちる)
+  if(/^\d{2}:\d{2}$/.test(selTime) && !timeOpts.some(o=>o.includes(`value="${selTime}"`))){
+    timeOpts.push(`<option value="${selTime}" selected>${selTime}</option>`);
   }
   const endOf = st => st ? `${pad(Math.min(+st.slice(0,2)+1, 23))}:${st.slice(3)}` : "10:00";
   const bd = document.createElement('div');
