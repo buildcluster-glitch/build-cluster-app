@@ -2947,7 +2947,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.769</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.770</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -7258,7 +7258,8 @@ function renderCheckCard(ck, today){
   // ✅ 完了は「✓完了」マークだけ付け、グレースケールにはしない=担当者の色を残す(誰が最確したか一目で分かる・木村報告 v1.30.403)
   const __doneMark = __isDoneCk ? `<span class="badge-sm" style="background:#16a34a;color:#fff;font-weight:700;white-space:nowrap" title="最終確認 完了">✓完了</span>` : "";
   const __seisouDone = (typeof isCheckSeisouDone_==='function') && isCheckSeisouDone_(ck.id);   // 🧹 清掃完了済=青枠(v1.30.559)
-  return `<div class="check-card ${urgCls}${isClickable?" clickable":""}${__isDoneCk?" is-done":""}${__seisouDone?" seisou-done":""}" data-check-id="${ck.id}" ${styleAttr}>
+  const __whoCk = whoSetText_(ck._workerSet, '現地担当');   // 🎨 v1.30.770(描くたびに表を読み直さない=applyCheckWorkersToState_ で持たせた値を使う)
+  return `<div class="check-card ${urgCls}${isClickable?" clickable":""}${__isDoneCk?" is-done":""}${__seisouDone?" seisou-done":""}" data-check-id="${ck.id}" ${styleAttr}${__whoCk ? ` title="${escapeHtml(__whoCk)}"` : ''}>
     ${/* 🏷「最終確認」バッジは撤去(v1.30.557・山田「いらない」=帯に居る時点で自明)。修繕ラベルも同様 */""}
     <div class="ck-title" style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">${syncMark}${__doneMark}<span class="ck-name">${escapeHtml(ck.title)}</span>${volBadge}${(!__soloStaffHideName && staffBadge)?`<span style="display:inline-flex;gap:2px;align-items:center">${staffBadge}</span>`:""}${__ckCommuteBadge}</div>
     <div class="row">
@@ -8116,6 +8117,7 @@ function applyCheckWorkersToState_(){
     ck.staff = (e && e.at) ? (e.worker||"") : "";
     // 🚗 v1.30.654: 修繕と同型。最終確認日が動いたら直行は自動解除(forDate無しの旧エントリは有効扱い)
     ck.commute = (e && e.at && commuteStillValid_(e, ck.checkDate)) ? (e.commute||"") : "";
+    ck._workerSet = (e && e.at && e.by) ? { by:e.by, at:e.at } : null;   // 🎨 v1.30.770 最後に現地担当を変えた人(カードのtitleに出す)
   });
 }
 async function fetchCheckWorkers_(opts={}){
@@ -19542,6 +19544,24 @@ function evAuthorLine_(ev, opts){
 //   セルに赤字で出ている ⚠アラート が、吹き出しを開くと消えていた(題名・登録者・住所しか出していなかった)。
 //   予定/立会/修繕の吹き出しで共通に使う。キーはセルと同じもの(予定=ev.id・立会=_taikyoRawId・修繕=r.id)を渡す。
 //   複数行は1件1行。セルは幅が無いので姓だけだが、ここは全文を読ませる場所なので書いた人はフルネーム＋日時。
+// 🎨 v1.30.770(山田「誰が色つけたかとかも記録表示できる？」2026-09-25):
+//   最確カードの現地担当・立会の担当・修繕の作業担当(=チップの色)は、共有の上書き表(check_workers /
+//   taikyo_overrides / repair_overrides)に **最後に変えた人(by)と日時(at)** が前から入っていた。画面に出していなかっただけ。
+//   ⚠残っているのは「最後の1回」だけ(それより前の変更はDBの共有設定の履歴に90日ぶんある)。
+//   ⚠立会の上書きは担当だけでなく日時・取消でも更新される=「担当・日時を最後に変えた人」と書く。
+function whoSetStamp_(entry){
+  if(!entry || !entry.by || !entry.at) return null;
+  const d = new Date(entry.at); if(isNaN(d)) return null;
+  return { by: String(entry.by), when: `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` };
+}
+function whoSetHtml_(entry, what){
+  const w = whoSetStamp_(entry); if(!w) return "";
+  return `<div class="tt-whoset" style="font-size:10.5px;color:#cbd5e1;margin-top:4px">🎨 ${escapeHtml(what)}を最後に変えた人: <b style="color:#fde68a">${escapeHtml(w.by)}</b> <span style="color:#9ca3af">${escapeHtml(w.when)}</span></div>`;
+}
+function whoSetText_(entry, what){
+  const w = whoSetStamp_(entry); if(!w) return "";
+  return `🎨 ${what}を最後に変えた人: ${w.by} ${w.when}`;
+}
 function tipAlertHtml_(id){
   try{
     const a = (typeof getAlert_==='function' && id) ? getAlert_(id) : null;
@@ -19713,7 +19733,7 @@ function showChipTip(ev, mouseX, mouseY){
       if(ev._motouke) parts.push(`<div style="font-size:10.5px;color:#9ca3af;margin-top:2px">元請け: ${escapeHtml(ev._motouke)}</div>`);
       __tkInfo = parts.join('');
     }
-    buildTipChat_(tip, titleHtml + __tipAlertHtml + __tkInfo, api);   // 立会=タイトル+⚠アラート(v1.30.763)+住所/時刻/元請け+コメント(v1.30.633)
+    buildTipChat_(tip, titleHtml + __tipAlertHtml + __tkInfo + whoSetHtml_((typeof loadTaikyoOverrides_==='function' ? loadTaikyoOverrides_() : {})[tkId], '担当・日時'), api);   // 🎨 v1.30.770   // 立会=タイトル+⚠アラート(v1.30.763)+住所/時刻/元請け+コメント(v1.30.633)
   } else {
     tip.classList.remove('interactive');
     tip.innerHTML = titleHtml + __tipAlertHtml + ((typeof evAuthorLine_==='function') ? evAuthorLine_(ev) : "") + rows.join("") + memoHtml + commentsHtml;   // ⚠アラート(v1.30.763)
@@ -19806,7 +19826,7 @@ function showRepairTip(r, mouseX, mouseY){
     }
     __rpInfo = parts.join('');
   }
-  buildTipChat_(tip, titleHtml + tipAlertHtml_(r.id) + __rpInfo, apiR);   // 修繕=タイトル+⚠アラート(v1.30.763)+住所/依頼/お客様+コメント(v1.30.635)
+  buildTipChat_(tip, titleHtml + tipAlertHtml_(r.id) + __rpInfo + whoSetHtml_((typeof loadRepairOverrides_==='function' ? loadRepairOverrides_() : {})[r.id], '作業担当'), apiR);   // 🎨 v1.30.770   // 修繕=タイトル+⚠アラート(v1.30.763)+住所/依頼/お客様+コメント(v1.30.635)
   // 位置決め
   const margin = 14;
   tip.style.left = "0px"; tip.style.top = "0px";
