@@ -2954,7 +2954,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.773</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.774</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -16062,7 +16062,11 @@ async function syncChecksFromGAS(opts){
   const __gasBaseEmpty = !(state.checks||[]).some(c=>c && c.source==="gas-sync")
                       && !(state.repairs||[]).length
                       && !(state.restorations||[]).length;
-  const __forceFull  = !__lastSyncAt || __gasBaseEmpty || (Date.now() - __lastFullAt) > 60*60*1000;
+  // 💴 v1.30.774: 端末に残っている案件の写しは、発注額の欄を取り込む前(〜v772)のもの。差分同期は「変わった案件」しか
+  //   読み直さないので、9/18から動いていないペアレス505などは粗利が出ないままだった(山田 9/25)。→この版で1回だけフルで取り直す
+  let __reingestOnce = false;
+  try{ __reingestOnce = localStorage.getItem("bc_resto_reingest_v774") !== "1"; }catch(_){}
+  const __forceFull  = !__lastSyncAt || __gasBaseEmpty || __reingestOnce || (Date.now() - __lastFullAt) > 60*60*1000;
   const __since = (!!silent && !__forceFull) ? __lastSyncAt : "";   // 手動(!silent)/初回/1時間ごと/土台空=フル
   // ⏱ サーバー無応答で「読み込み中」が永久に固まるのを防ぐ打切り(v1.30.245)。
   //   v1.30.554: フル取得だけ75秒→180秒に延長。半日ぶり等でGASの投影キャッシュ(6h TTL)が全滅していると
@@ -16301,6 +16305,7 @@ async function syncChecksFromGAS(opts){
     // 🔁 差分同期: 次回の since 用にサーバー基準時刻を保存。フル同期した時刻も別途記録(1時間ごとの再照合判定用)
     localStorage.setItem("buildcluster_drive_synced_at", __syncedAt);
     if(!__partial) localStorage.setItem("buildcluster_drive_full_at", String(Date.now()));
+    if(!__partial){ try{ localStorage.setItem("bc_resto_reingest_v774", "1"); }catch(_){} }   // 💴 v1.30.774 フルで取り直せた=もう強制しない
     lastAutoSyncAt = Date.now();
     __drvRetryN = 0;   // 🔁 成功したらリトライ回数リセット(v1.30.539)
     // 📈 忙しさの日次記録(v1.30.628): 同期直後=データが新しい時に1日1回だけ。失敗しても本流に影響なし
