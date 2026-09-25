@@ -2947,7 +2947,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.767</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.768</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -6594,7 +6594,12 @@ function renderChecks(){
   const __taikyoVE = (typeof buildTaikyoVirtuals_==='function') ? buildTaikyoVirtuals_() : [];
   const __dismByDate = {};
   __taikyoVE.forEach(ev=>{
-    if(!ev || !ev._provisional || !ev._dismissed || !ev.date) return;   // 取消した立会(未定)を最終確認帯の下に出す(v1.30.216で未定限定に戻す)
+    // 🗑 v1.30.768: 取消した立会は**担当の有無にかかわらず**ここに出す(↩で戻せる口を必ず残す)。
+    //   それまでは「未定」の立会だけだった(v1.30.216)。ところがグリッドは担当に関係なく取消を外すので、
+    //   担当の決まった立会を取消すと**予定表からは消えるのに、戻す口がどこにも無い**状態になっていた。
+    //   (2026-09-25 ラフィーユ北六番丁: まどかさんが消せずに担当を「失注」にしていた件の手当て)
+    //   ⚠×(取消ボタン)を出すのは今までどおり「未定」の立会だけ(山田 v1.30.216 の決定は変えない)
+    if(!ev || !ev._dismissed || !ev.date) return;
     if(typeof motoukeKey_==='function' && hiddenCategories.has(motoukeKey_(ev.contractor))) return;
     (__dismByDate[ev.date] = __dismByDate[ev.date] || []).push(ev);
   });
