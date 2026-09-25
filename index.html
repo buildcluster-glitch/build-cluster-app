@@ -2071,6 +2071,11 @@
   .rtask .rt-qty{font-size:11px;color:var(--muted)}
   .rtask .rt-sub{font-size:11px;color:var(--muted);margin-top:1px}
   .rtask .rt-amount{color:#15803d;font-weight:600}
+  .rtask .rt-cost{color:#64748b;font-weight:600}
+  .rtask .rt-cost-missing{color:#b45309}
+  .rtask .rt-gp{color:#1d4ed8;font-weight:700}
+  .rtask .rt-gp.neg,.rcontractor-head .ch-gp.neg{color:#dc2626}
+  .rcontractor-head .ch-gp{color:#1d4ed8;font-weight:700}
   /* ログ追加ボタン(行内・小さく) */
   .rtask .rt-logbtn{flex-shrink:0;background:none;border:1px solid var(--border);border-radius:6px;
     color:var(--muted);cursor:pointer;font-size:11px;padding:2px 7px;white-space:nowrap}
@@ -2949,7 +2954,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.772</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.773</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -15675,6 +15680,23 @@ function restoFmtSchedule(s,e){
   return f(s) || f(e);
 }
 // サーバータスク明細 + 既存ローカル進捗 をマージ (TM syncTasks 相当)
+// 💴 v1.30.773 外注の粗利。発注額が分からない(null)行は数えない／0(=未入力)の行も粗利から外して件数だけ数える
+//   (0のまま計算すると「粗利100%」と出て実態とかけ離れるため)
+function restoGrossProfit_(tasks){
+  let sell=0, cost=0, counted=0, missing=0, unknown=0;
+  (tasks||[]).forEach(t=>{
+    if(!t) return;
+    if(t.orderAmount == null){ unknown++; return; }
+    if(!(+t.orderAmount) && (+t.amount)){ missing++; return; }
+    sell += (+t.amount||0); cost += (+t.orderAmount||0); counted++;
+  });
+  const gp = sell - cost;
+  return { sell, cost, gp, rate: sell ? Math.round(gp/sell*100) : null, counted, missing, unknown };
+}
+function restoGpText_(g){
+  if(!g || !g.counted) return "";
+  return `発注¥${g.cost.toLocaleString()} ・ 粗利¥${g.gp.toLocaleString()}${g.rate!=null?`(${g.rate}%)`:''}${g.missing?` ※発注未入力${g.missing}件を除く`:''}`;
+}
 function restoSyncTasks(existingTasks, serverTasks){
   if(!serverTasks || !serverTasks.length) return existingTasks || [];
   const preserved = new Map();
@@ -15701,6 +15723,11 @@ function restoSyncTasks(existingTasks, serverTasks){
       spec: spec || kept?.spec || "",
       qty, unit: st.unit || "",
       amount: Number(st.amount) || 0,
+      // 💴 v1.30.773(山田「外注金額も表示して粗利出せるようになるかな」): 台帳の射影には前から orderPrice/orderAmount が
+      //   入っていたのに、ここで欄を選んで作り直す時に**捨てていた**。発注額=発注単価×数量(9/25実測3,000件で全一致)。
+      //   ⚠射影に欄そのものが無い(古いGAS/light応答)時は null=「分からない」。0(=未入力)とは分けて持つ。
+      orderAmount: (st.orderAmount != null && isFinite(+st.orderAmount)) ? (+st.orderAmount||0)
+                 : (st.orderPrice != null && isFinite(+st.orderPrice)) ? (+st.orderPrice||0) * qty : null,
       schedule: schedule || (kept?.schedule || ""),
       periodStart: st.periodStart || kept?.periodStart || "",
       periodEnd: st.periodEnd || kept?.periodEnd || "",
@@ -28454,6 +28481,9 @@ function renderRestoDetail(){
   }
   const totalAmt = (p.tasks||[]).filter(t=>t.category==="outsource").reduce((s,t)=>s+(+t.amount||0),0);
   if(totalAmt) kv.push(["合計(外注)",`¥${totalAmt.toLocaleString()}`]);
+  // 💴 v1.30.773 外注の発注と粗利
+  { const g = restoGrossProfit_((p.tasks||[]).filter(t=>t.category==="outsource"));
+    if(g.counted){ kv.push(["外注の発注",`¥${g.cost.toLocaleString()}`]); kv.push(["外注の粗利",`¥${g.gp.toLocaleString()}${g.rate!=null?`(${g.rate}%)`:''}${g.missing?` ※未入力${g.missing}件除く`:''}`]); } }
   document.getElementById("rdKv").innerHTML = kv.map(([k,v])=>`<span class="kv"><span class="k">${escapeHtml(k)}</span><span class="v">${escapeHtml(v)}</span></span>`).join("");
   // 📄 発注書ボタン (hatchusho_data 突合)
   if(typeof updateHatchushoBtn_==='function') updateHatchushoBtn_();
@@ -28625,7 +28655,7 @@ function renderRestoTaskGroup(p, cat, listId, sumId){
   }
   const doneCount = all.filter(t=>t.status==="done").length;
   const amt = cat==="outsource" ? all.reduce((s,t)=>s+(+t.amount||0),0) : 0;
-  sum.textContent = (cat==="reduced"||cat==="proposal") ? `${all.length}件` : `${doneCount}/${all.length} 完了${amt?`　¥${amt.toLocaleString()}`:""}`;
+  sum.textContent = (cat==="reduced"||cat==="proposal") ? `${all.length}件` : `${doneCount}/${all.length} 完了${amt?`　¥${amt.toLocaleString()}`:""}${(function(){ if(cat!=="outsource") return ''; const g=restoGrossProfit_(all); return g.counted?`　粗利¥${g.gp.toLocaleString()}${g.rate!=null?`(${g.rate}%)`:''}`:''; })()}`;   // 💴 v1.30.773
   if(restoTaskStatusFilter && noStatusFilter){ el.innerHTML=""; sum.textContent="—"; return; }
   if(!tasks.length){
     el.innerHTML = `<div class="resto-empty" style="padding:10px;font-size:12px">${all.length>doneCount?"なし":"全て完了（ゴミ箱へ）"}</div>`;
@@ -28647,7 +28677,7 @@ function renderRestoTaskGroup(p, cat, listId, sumId){
       const lastAmt = ts.filter(t=>t.checkAmountAt).sort((a,b)=>b.checkAmountAt-a.checkAmountAt)[0];
       const byLine = (lastWork||lastAmt) ? `<div class="ch-by">${lastWork?`施工: <b>${escapeHtml(lastWork.checkWorkBy||"（未設定）")}</b> ${restoFmtDateTime(lastWork.checkWorkAt)}`:""}${lastWork&&lastAmt?" ・ ":""}${lastAmt?`金額: <b>${escapeHtml(lastAmt.checkAmountBy||"（未設定）")}</b> ${restoFmtDateTime(lastAmt.checkAmountAt)}`:""}</div>` : "";
       const header = `<div class="rcontractor-head" data-contractor="${escapeHtml(name)}">
-        <div class="ch-name">👷 ${escapeHtml(name)} <span class="ch-meta">　${ts.length}件${subtotal?` ・ ¥${subtotal.toLocaleString()}`:""}</span></div>
+        <div class="ch-name">👷 ${escapeHtml(name)} <span class="ch-meta">　${ts.length}件${subtotal?` ・ ¥${subtotal.toLocaleString()}`:""}${(function(){ const g=restoGrossProfit_(ts); const x=restoGpText_(g); return x?` ・ <span class="ch-gp${g.gp<0?' neg':''}">${escapeHtml(x)}</span>`:''; })()}</span></div>
         <button class="bulk-btn ${workCls}" data-bulk="work">施工 ${workOn}/${ts.length}</button>
         <button class="bulk-btn ${amtCls}" data-bulk="amount">金額 ${amtOn}/${ts.length}</button>
         ${byLine}</div>`;
@@ -28686,6 +28716,15 @@ function renderRestoTaskRow(t, cat){
   if(__otherText && __otherText !== dispName) sub.push(escapeHtml(__otherText));
   if(t.schedule) sub.push("📅 "+escapeHtml(t.schedule));
   if(t.amount) sub.push(`<span class="rt-amount">¥${(+t.amount).toLocaleString()}</span>`);
+  // 💴 v1.30.773 外注の行は発注額と粗利も(発注額が分からない行は出さない・0は「未入力」)
+  if(cat==="outsource" && t.orderAmount != null){
+    if(!(+t.orderAmount) && (+t.amount)) sub.push(`<span class="rt-cost rt-cost-missing">発注 未入力</span>`);
+    else if(+t.amount || +t.orderAmount){
+      const __gp = (+t.amount||0) - (+t.orderAmount||0);
+      sub.push(`<span class="rt-cost">発注¥${(+t.orderAmount).toLocaleString()}</span>`);
+      sub.push(`<span class="rt-gp${__gp<0?' neg':''}">粗利¥${__gp.toLocaleString()}</span>`);
+    }
+  }
   const logCount = (t.logs||[]).length;
   let logsHtml = "";
   let logBtnHtml = "";
