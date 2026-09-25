@@ -2450,6 +2450,8 @@
   }
   .quick-add-sheet h3{margin:0 0 10px;font-size:14px}
   .quick-add-sheet .qa-row{display:flex;gap:8px;margin-bottom:8px}
+  .quick-add-sheet .qa-undecided{flex-shrink:0;white-space:nowrap;padding:0 12px;border-radius:10px;border:1px solid var(--border-strong);background:#fff;color:#475569;font-size:13px;font-weight:700;cursor:pointer}
+  .quick-add-sheet .qa-undecided.on{background:#475569;border-color:#475569;color:#fff}
   .quick-add-sheet input[type="text"], .quick-add-sheet input[type="date"], .quick-add-sheet select, .quick-add-sheet textarea{
     width:100%;padding:10px;font-size:16px;  /* 16px=iOSのフォーカスズーム防止 */
     border:1px solid var(--border-strong);border-radius:8px;background:#fff;min-width:0;
@@ -2947,7 +2949,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.771</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.772</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -22686,6 +22688,7 @@ function showQuickAddSheet_(defaults={}, editEv=null){
     <div class="qa-row">
       <input type="date" id="qa-date" value="${escapeHtml(dateV)}">
       <select id="qa-time">${timeOpts.join('')}</select>
+      <button type="button" id="qa-time-undecided" class="qa-undecided" title="押すと時間未定／もう一度押すと元の時刻に戻す">時間未定</button>
     </div>
     <div class="qa-row" id="qa-time-note-row" style="display:${__noteInit?'flex':'none'}"><input type="text" id="qa-time-note" value="${escapeHtml(__noteInit)}" placeholder="例: 早め・夕方・前の現場のあと" style="color:#dc2626;font-weight:700"></div>
     <div class="qa-label">カテゴリ</div>
@@ -22760,7 +22763,21 @@ function showQuickAddSheet_(defaults={}, editEv=null){
   // ✏️ 「自由入力」を選んだ時だけ赤字メモ欄を出す(v1.30.589)
   {
     const __ts = bd.querySelector('#qa-time'), __row = bd.querySelector('#qa-time-note-row');
-    if(__ts && __row) __ts.onchange = ()=>{ const on = __ts.value==='__free__'; __row.style.display = on?'flex':'none'; if(on){ try{ __row.querySelector('input').focus(); }catch(_){} } };
+    // ⏱ v1.30.772(山田「時間の横に時間未定にするボタンがあるともっとつかいやすい」):
+    //   押すと「時間未定」、もう一度押すと元の時刻(クリックした枠の時刻・編集なら元の時刻)に戻す。ボタンは今の状態を色で見せる。
+    const __ub = bd.querySelector('#qa-time-undecided');
+    let __lastTimed = /^\d{2}:\d{2}$/.test(selTime) ? selTime : '';   // 戻し先(手で時刻を選び直したらそれに更新)
+    const __syncUb = ()=>{ if(__ub) __ub.classList.toggle('on', !!__ts && __ts.value===''); };
+    if(__ts) __ts.onchange = ()=>{
+      if(/^\d{2}:\d{2}$/.test(__ts.value)) __lastTimed = __ts.value;
+      if(__row){ const on = __ts.value==='__free__'; __row.style.display = on?'flex':'none'; if(on){ try{ __row.querySelector('input').focus(); }catch(_){} } }
+      __syncUb();
+    };
+    if(__ub && __ts) __ub.onclick = ()=>{
+      __ts.value = (__ts.value==='' && __lastTimed) ? __lastTimed : '';
+      __ts.onchange();
+    };
+    __syncUb();
   }
   // 📋 テンプレ予定(v1.30.520・山田): よく入れる予定をプルダウンから一発で。
   //   選ぶとタイトル(+指定があればカテゴリ/時間)が入る。あとは普通に編集できる。
