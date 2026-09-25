@@ -2947,7 +2947,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.768</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.769</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -7506,6 +7506,38 @@ function saveCachedTaikyo_(records){
     records, fetchedAt: new Date().toISOString()
   }));
 }
+// ⏳ v1.30.769 クラ助からの立会の更新が**止まっていないか**を見る(山田「OK」2026-09-25)
+//   9/19〜9/25、クラ助の朝の処理が重い仕事で時間切れになり、**立会の同期までたどり着かないまま**止まっていた。
+//   エラーも出ず、件数も減らない(=v1.30.743の「ごっそり減ったら」では拾えない)ので、**誰も気づかなかった**。
+//   ⇒ クラ助が立会表から作った分(id が tachiai_ で始まる)の**最終更新がどれだけ前か**を見る。
+//   ⚠72時間。土日や3連休でクラ助が走らない日を誤って鳴らさない程度に長く、止まったら3日で気づく程度に短く。
+//   ⚠朝の処理(8:26ごろ)が終わる前は判定しない(10時より前は見ない)。
+//   ⚠鳴らすのは1台につき1日1回。止めはしない(知らせるだけ)。
+const TAIKYO_STALE_H = 72;
+function checkTaikyoStale_(records, now){
+  now = now || new Date();
+  const ks = (records||[]).filter(r=>String(r && r.id || '').startsWith('tachiai_')).map(r=>Date.parse(r.updatedAt||'')).filter(t=>!isNaN(t));
+  if(!ks.length){ window.__taikyoStale = { 判定:'できない(クラ助の分に更新日時が無い)' }; return null; }
+  const newest = Math.max(...ks);
+  const ageH = (now.getTime() - newest) / 3600000;
+  const stale = ageH >= TAIKYO_STALE_H && now.getHours() >= 10;
+  const d = new Date(newest);
+  const last = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  window.__taikyoStale = { 最終更新: last, 経過時間: Math.round(ageH)+'時間', 止まっている: stale };
+  return { stale, ageH, last };
+}
+function warnTaikyoStaleOnce_(info, now){
+  if(!info || !info.stale) return false;
+  now = now || new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  try{ if(localStorage.getItem('bc_taikyo_stale_warned') === today) return false; localStorage.setItem('bc_taikyo_stale_warned', today); }catch(_){}
+  const days = Math.floor(info.ageH / 24);
+  const msg = `⚠ 立会表からの更新が${days}日止まっています（最後 ${info.last}）。新しい立会がカレンダーに出ていない可能性があります（山田さんに連絡）`;
+  console.warn('[taikyo_schedule]', msg);
+  try{ if(typeof showAutoSyncToast==='function') showAutoSyncToast(msg); }catch(_){}
+  try{ if(typeof logChange_==='function') logChange_("同期", "立会表からの更新が停止", `最後 ${info.last}・${Math.round(info.ageH)}時間`, "taikyo_tachiai_schedule", "taikyo_stale_"+today); }catch(_){}
+  return true;
+}
 async function fetchTaikyoSchedule(opts={}){
   if(__taikyoScheduleInFlight) return __taikyoScheduleInFlight;
   const s = loadGasSettings();
@@ -7584,6 +7616,7 @@ async function fetchTaikyoSchedule(opts={}){
           }
         }
       }catch(_){}
+      try{ warnTaikyoStaleOnce_(checkTaikyoStale_(records)); }catch(_){}   // ⏳ v1.30.769 更新が止まっていないか
       saveCachedTaikyo_(records);
       state.taikyoEvents = records;
       if(!opts.silent) console.log(`[taikyo_schedule] loaded ${records.length}件`);
@@ -25407,6 +25440,7 @@ window.bcStat_ = function(){
     在庫: (typeof window.__invReadStat!=='undefined' && window.__invReadStat) ? window.__invReadStat : '(まだ在庫を開いていない)',
     物件マスタ: (typeof window.__bukkenReadStat!=='undefined' && window.__bukkenReadStat) ? window.__bukkenReadStat : '(まだ読んでいない)',
     進捗: Object.assign({}, window.__tpReadStat || { src:'(まだ読んでいない)' }, { スイッチ: (typeof progressTableReadOn_==='function') ? progressTableReadOn_() : '?' }),   // v1.30.766
+    立会表からの更新: window.__taikyoStale || '(まだ読んでいない)',   // v1.30.769
     進捗の書き込み: Object.assign({}, window.__tpWriteStat || { r:'(まだ書いていない)' }, { スイッチ: (typeof progressDbWriteOn_==='function') ? progressDbWriteOn_() : '?' }),   // v1.30.767
   };
   try{ console.log(JSON.stringify(o, null, 1)); }catch(_){ console.log(o); }
