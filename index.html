@@ -2954,7 +2954,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.775</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.776</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -8519,7 +8519,7 @@ function alertLineMeta_(e, t){
 function alertMetaText_(m){
   if(!m || !m.by) return '';
   const d = new Date(m.at); const w = isNaN(d) ? '' : ` ${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-  return (m.legacy ? '✍ 最後に保存した人: ' : '✍ 登録: ') + m.by + w;
+  return '✍ 書いた人: ' + m.by + w;   // v1.30.776 山田「最後に保存というか書いた人か」=旧データも同じ呼び方に
 }
 async function setAlert_(id, text){
   const __me = (typeof getMyself==='function'?getMyself():'')||'', __now = new Date().toISOString();
@@ -19681,7 +19681,7 @@ function tipAlertHtml_(id){
     return `<div class="tt-alert" style="margin-top:6px;padding:6px 8px;border-radius:6px;background:rgba(220,38,38,.18);border-left:3px solid #ef4444">`
       + lines.map(t=>{ const m = Array.isArray(a.lines) ? alertLineMeta_(a, t) : null;   // ✍ v1.30.775 行ごとの登録者
           return `<div style="font-size:12px;font-weight:800;color:#fecaca;line-height:1.4;white-space:pre-wrap;word-break:break-word">⚠ ${escapeHtml(t)}</div>`
-            + ((m && m.by) ? `<div style="font-size:10px;color:#fca5a5;text-align:right">${escapeHtml(alertMetaText_(m).replace(/^✍ 登録: /,'✍ '))}</div>` : ''); }).join('')
+            + ((m && m.by) ? `<div style="font-size:10px;color:#fca5a5;text-align:right">${escapeHtml(alertMetaText_(m).replace(/^✍ 書いた人: /,'✍ '))}</div>` : ''); }).join('')
       + ((by && !Array.isArray(a.lines)) ? `<div style="font-size:10px;color:#fca5a5;margin-top:2px;text-align:right">${escapeHtml(by)}</div>` : '')
       + `</div>`;
   }catch(_){ return ""; }
