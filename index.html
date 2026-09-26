@@ -2955,7 +2955,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.785</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.786</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4587,7 +4587,7 @@
   </div>
 </div>
 
-<script src="projection.js?v=1.30.785"></script><!-- 📡 v1.30.780 射影(見積アプリ src/projection.js をそのまま写したもの・改造禁止。台帳のDB直接書き込みに使う) -->
+<script src="projection.js?v=1.30.786"></script><!-- 📡 v1.30.780 射影(見積アプリ src/projection.js をそのまま写したもの・改造禁止。台帳のDB直接書き込みに使う) -->
 <script>
 // =========================================================
 // ビルドクラスタ スケジュール管理アプリ Phase 1A
@@ -25529,10 +25529,18 @@ async function fetchLedgerFromDb_({since='', maxMonths=3, signal}={}){
       // 📋 v1.30.766: スイッチONなら表から(変わった行だけ)。失敗したら必ず従来の塊へ
       let pm = null;
       if(progressTableReadOn_()){
+        // 🗂 v1.30.786(見積合意 案A・進捗の塊を止める準備): 表が読めない時の予備線は**塊ではなく表の全件**。
+        //   塊(shared_config 'task_progress')は止めた日の値で凍結されるので、そこへ落ちると古い進捗を見せてしまう。
+        //   全件も読めなければ、前回読めた表の写しを使う(無ければ進捗は添付しない=手元の状態のまま)
         try{ pm = await fetchTaskProgressMapFromTable_(s); }
-        catch(e){ window.__tpReadStat = { src:'blob', fallback:(e && e.message)||'error', at:new Date().toISOString() }; console.warn('[progress-read] 表から読めず→塊へ:', e && e.message); pm = null; }
+        catch(e){
+          console.warn('[progress-read] 表の差分が読めず→表を全件で読み直し:', e && e.message);
+          try{ __tpTableCache.fullAt = 0; pm = await fetchTaskProgressMapFromTable_(s); window.__tpReadStat = Object.assign({}, window.__tpReadStat, { retried:(e&&e.message)||'error' }); }
+          catch(e2){ pm = (__tpTableCache && __tpTableCache.map) || null; window.__tpReadStat = { src: pm ? 'table-cache' : 'none', fallback:(e2&&e2.message)||'error', at:new Date().toISOString() }; console.warn('[progress-read] 表を全件でも読めず→前回の写し:', e2 && e2.message); }
+        }
+      } else {
+        pm = await fetchTaskProgressMapFromDb_(s); window.__tpReadStat = { src:'blob', at:new Date().toISOString() };   // スイッチを明示的に切った時だけ塊(従来)
       }
-      if(!pm){ pm = await fetchTaskProgressMapFromDb_(s); if(!window.__tpReadStat || window.__tpReadStat.src!=='blob') window.__tpReadStat = { src:'blob', at:new Date().toISOString() }; }
       if(pm){ propsOut.forEach(q=>{ if(!q||!q.name) return; const pr = pm[String(q.name||'').trim()+'|'+String(q.room||'').trim()]; if(pr) q.progress = pr; }); }
     }catch(e){ console.warn('[ledger-read] task_progress 取得失敗(進捗なしで続行):', e && e.message); }
     // ③ light(_stripDoneHeavy_): 完了/キャンセルで現場が動いていない案件は重い欄を省く(行は残す・tasksCount を残す)
@@ -28527,6 +28535,9 @@ async function restoPushProgressNow(propId){
   const s = loadGasSettings();
   const prop = (state.restorations||[]).find(x=>x.id===propId);
   if(!prop){ _progPendingSet_(propId, false); return; }   // 台帳から消えた物件の残骸キューは掃除
+  // 📷 v1.30.786(見積合意 案A・前提): 送る前に、写真の生データ(data:image)を先にDriveへ上げてURLに差し替える。
+  //   表には写真の生データを入れない。上がらなかった写真が残った時だけ、従来どおり GAS saveProgress が逃がす(pushProgressToDb_ が表を飛ばす)
+  try{ await restoEvacuatePropPhotos_(prop); }catch(_){}
   // buildProgressPayload 相当
   const tasks = {};
   (prop.tasks||[]).forEach(t=>{
@@ -29706,6 +29717,24 @@ function restoCompressImage(file, maxBytes, maxDim){
 function restoShowPhotoZoom(src){
   document.getElementById("photoZoomImg").src = src;
   document.getElementById("photoZoom").classList.add("on");
+}
+// 📷 v1.30.786 1物件ぶんの写真の生データ(コメント/作業ログの photo)をDriveへ上げてURLに差し替える。戻り=残った枚数
+async function restoEvacuatePropPhotos_(prop){
+  if(!prop) return 0;
+  const jobs = [];
+  (prop.comments||[]).forEach(c=>{ if(c && typeof c.photo==='string' && c.photo.indexOf('data:image/')===0) jobs.push({ get:()=>c.photo, set:v=>{ c.photo=v; } }); });
+  (prop.tasks||[]).forEach(t=>{ (t.logs||[]).forEach(l=>{ if(l && typeof l.photo==='string' && l.photo.indexOf('data:image/')===0) jobs.push({ get:()=>l.photo, set:v=>{ l.photo=v; } }); }); });
+  if(!jobs.length) return 0;
+  const s = (typeof loadGasSettings==='function') ? loadGasSettings() : {};
+  if(!s.url) return jobs.length;
+  let left = 0, changed = false;
+  for(const j of jobs){
+    try{ const r = await restoUploadToDrive(j.get(), prop.name, prop.room); if(r && r.ok && r.url){ j.set(r.url); changed = true; } else left++; }
+    catch(_){ left++; }
+  }
+  if(changed){ try{ saveState(); }catch(_){} }
+  window.__tpPhotoStat = { prop: String(prop.name||'')+' '+String(prop.room||''), up: jobs.length-left, left, at:new Date().toISOString() };
+  return left;
 }
 // Drive アップロード v1.30.531
 //   旧iframe橋(?action=uploadPage)は master_sync に受け口が存在せず【常に30秒タイムアウト】
