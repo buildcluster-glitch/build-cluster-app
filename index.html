@@ -2955,7 +2955,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.779</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.780</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4587,6 +4587,7 @@
   </div>
 </div>
 
+<script src="projection.js?v=1.30.780"></script><!-- 📡 v1.30.780 射影(見積アプリ src/projection.js をそのまま写したもの・改造禁止。台帳のDB直接書き込みに使う) -->
 <script>
 // =========================================================
 // ビルドクラスタ スケジュール管理アプリ Phase 1A
@@ -16734,6 +16735,163 @@ function noteLedgerWriteResult_(label, data){
     }
   }catch(_){}
 }
+// ============================================================
+// 📡 v1.30.780 台帳の書き込みをDBへ直接(山田「俺はGASがきらい」→「見積もりセッションと相談してすすめて」)
+//   見積(台帳DB)セッションとの合意(2026-09-26 案C→A):
+//   ・書き口=見積アプリ1043以降と同じ rpc/anken_save(p_op_id, p_doc, p_base_version, p_projection)。書き手はJWT(bc_actor_name)
+//   ・射影=見積アプリ src/projection.js を**1文字も変えずに**写した ./projection.js(bcBuildProjection)。GASの wtProjection_ と同じ
+//   ・直し方=GASの updateLedgerAppointment_ / updateLedgerFinalDate_ を io 抜きで移植。流れは GAS _taskPatchDbFirst_ と同じ
+//     (DBのdocを読む→直す→base=DBの版(source_version)→stale_versionなら1回だけ読み直してやり直す)
+//   ・Driveへの写しは**保存の直後に裏で** GAS outbox-write へ(待たない・失敗しても黙る・版を振り直さない)。
+//     夜間巡回・請求の作業は今もDriveの索引を読むので、翌朝まで待たせない。落ちても毎朝の drive_catchup が拾う
+//   ・GASへ落とすのは**確かに入っていない**時だけ(読めない/射影が作れない/4xxで断られた/stale 2回/deleted)。
+//     応答が落ちた時は**同じop_idで**送り直す(anken_save は op_id を版より先に見る=入っていれば already_processed)。
+//     それでも答えが無い=入ったか分からない → GASへ回さず、失敗として知らせる(二重に書かない)
+//   ・対象は 1=アポ・状態・完了日(task-update-appointment) と 2=最確の日付(task-update-final-date) だけ。
+//     追加工事(控えtxtの追記がGASにある)・簡易見積(kaniUpdatedAtがサーバ時刻)は、まだGASのまま
+//   ・遠隔スイッチ calendar_flags.ledgerDbWrite(true/false/名前の並び)。山田さん→全員の順に広げる
+// ============================================================
+function ledgerDbWriteOn_(){
+  if(typeof dbTripped_==='function' && dbTripped_()) return false;
+  try{ const o = localStorage.getItem('bc_flag_ledgerDbWrite'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
+  if(typeof __staticFlags!=='undefined' && __staticFlags){ const r = __pickWriteFlag_(__staticFlags.ledgerDbWrite); if(r !== null) return r; }
+  const r2 = (typeof __calFlags!=='undefined' && __calFlags) ? __pickWriteFlag_(__calFlags.ledgerDbWrite) : null;
+  return r2 === true;
+}
+const LEDGER_DB_WRITE_TIMEOUT_MS = 20000;
+function __ledgerTimeout_(p, ms){ return Promise.race([p, new Promise((_,rej)=>setTimeout(()=>rej(Object.assign(new Error('時間切れ'),{evKind:'timeout'})), ms))]); }
+// 台帳の1件をDBから(drive_file_id)。見つからない/2件以上/削除済み=null(GASに任せる)
+async function __ledgerLoadByFileId_(fid){
+  let s = sbSession_(); if(!s || !s.access_token) return null;
+  const url = `${SB_AUTH.url}/rest/v1/anken_v?select=id,doc,source_version,month,is_deleted&drive_file_id=eq.${encodeURIComponent(fid)}&limit=2`;
+  for(let i=0;i<2;i++){
+    const res = await __ledgerTimeout_(fetch(url, { headers:{ 'apikey':SB_AUTH.key, 'Authorization':'Bearer '+s.access_token, 'Accept':'application/json' }, cache:'no-store' }), LEDGER_DB_WRITE_TIMEOUT_MS);
+    if(res.status===401 && i===0){ try{ await sbRefresh_(); }catch(_){} s = sbSession_(); if(!s||!s.access_token) return null; continue; }
+    if(res.status!==200) throw new Error('HTTP '+res.status);
+    const rows = await res.json();
+    if(!Array.isArray(rows) || rows.length!==1) return null;
+    const r = rows[0];
+    if(r.is_deleted || !r.doc || typeof r.doc!=='object') return null;
+    return r;
+  }
+  return null;
+}
+// calRpc_ の例外のうち「関数が実行されていない/巻き戻った」と言い切れるもの(=GASへ回してよい)
+function __ledgerDefinitelyNotRun_(e){
+  const k = e && e.evKind;
+  if(k==='no-session' || k==='auth') return true;
+  if(k==='http' && e.status>=400 && e.status<500 && e.status!==408) return true;   // PostgRESTが断った/関数がraise=トランザクションごと無し
+  return false;
+}
+// 保存の直後に Drive へ写す(GAS outbox-write・待たない・失敗しても黙る・版を振り直さない)
+function __ledgerMirrorToDrive_(doc){
+  try{
+    const s = loadGasSettings(); if(!s.url || !s.token || !doc || !doc.id) return;
+    const body = JSON.stringify({ action:'outbox-write', token:s.token, items:[{ doc }] });
+    setTimeout(()=>{
+      fetch(s.url, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body })
+        .then(r=>r.json()).then(d=>{ const x = d && d.results && d.results[0]; window.__ledgerMirrorStat = { id:doc.id, result:(x&&x.result)||((d&&d.ok)?'?':'ng'), at:new Date().toISOString() }; })
+        .catch(e=>{ window.__ledgerMirrorStat = { id:doc.id, result:'error:'+((e&&e.message)||e), at:new Date().toISOString() }; console.warn('[台帳→Drive写し] 失敗(翌朝の追いつきが拾います)', doc.id, e && e.message); });
+    }, 0);
+  }catch(_){}
+}
+// 本体。戻り: 成功={ok:true,path:'db-direct',...} / null=何も書いていない(GASへ) / throw(unknown:true)=入ったか分からない
+async function ledgerPatchDb_(fid, patchFn, label){
+  if(!ledgerDbWriteOn_()) return null;
+  if(!fid || typeof window.bcBuildProjection!=='function') return null;
+  const s0 = sbSession_(); if(!s0 || !s0.access_token) return null;
+  const t0 = Date.now();
+  const stat = (o)=>{ window.__ledgerWriteStat = Object.assign({ label, fid, ms:Date.now()-t0, at:new Date().toISOString() }, o); };
+  for(let attempt=0; attempt<2; attempt++){
+    let row;
+    try{ row = await __ledgerLoadByFileId_(fid); }catch(e){ stat({ r:'skip:読めない '+((e&&e.message)||'') }); return null; }
+    if(!row){ stat({ r:'skip:DBに無い' }); return null; }
+    const doc = row.doc;
+    const base = Number(row.source_version) || 0;
+    const month = row.month || doc._driveMonth || '';
+    let out;
+    try{ out = patchFn(doc); }catch(e){ stat({ r:'skip:直せない '+((e&&e.message)||'') }); return null; }
+    if(!out || out.ok !== true){ stat({ r:'skip:'+((out&&out.error)||'直す所なし') }); return null; }   // 業務上の失敗はGASに同じ判定をさせる
+    doc.version = base + 1;               // ★DBの版から採番(GAS _taskPatchDbFirst_ と同じ。anken_save も同じ値を入れる)
+    doc._driveFileId = fid;
+    let pj;
+    try{ pj = window.bcBuildProjection(doc, month); }catch(e){ stat({ r:'skip:射影で例外' }); return null; }
+    if(pj && pj.__skip === true){ stat({ r:'skip:射影が作れない' }); return null; }   // 射影なしで書くとカレンダーが古い台帳を見る(見積1049の規則)
+    const opid = newCloudOpId_();
+    let r = null, lastErr = null;
+    for(let k=0; k<3; k++){
+      try{ r = await __ledgerTimeout_(calRpc_('anken_save', { p_op_id:opid, p_doc:doc, p_base_version:base, p_projection:pj }), LEDGER_DB_WRITE_TIMEOUT_MS); break; }
+      catch(e){
+        if(__ledgerDefinitelyNotRun_(e)){ stat({ r:'skip:断られた '+((e&&e.message)||'') }); return null; }
+        lastErr = e; r = null;
+        await new Promise(z=>setTimeout(z, 1500*(k+1)));   // 同じop_id・同じ中身で送り直す(入っていれば already_processed が返る)
+      }
+    }
+    if(r == null){
+      stat({ r:'unknown:'+((lastErr&&lastErr.message)||'') });
+      throw Object.assign(new Error('通信が不安定で、台帳に入ったか確かめられませんでした。少し待ってから画面を更新して確かめてください'), { unknown:true });
+    }
+    if(r === 'applied' || r === 'already_processed'){
+      __ledgerMirrorToDrive_(doc);
+      stat({ r, version:doc.version });
+      return Object.assign({}, out, { ok:true, path:'db-direct', db:r, version:doc.version, projection:(pj===null)?'null':'ok' });
+    }
+    if(r === 'stale_version' && attempt === 0) continue;   // 読み直して新しいop_idで1回だけ(断られたop_idは使い回さない)
+    stat({ r:'skip:'+r }); return null;                     // stale 2回/deleted 等=書いていない→GASへ
+  }
+  return null;
+}
+// GAS updateLedgerAppointment_ の移植(io抜き・中身は同じ)
+function __ledgerPatchAppointment_(data, body){
+  if(!data.meta) data.meta = {};
+  const changed = {};
+  const META_FIELDS = ['status', 'workflowStatus', 'salesStage', 'responseDate', 'responseTime', 'requestDate'];
+  META_FIELDS.forEach(function(f) {
+    if (Object.prototype.hasOwnProperty.call(body, f) && body[f] !== undefined && body[f] !== null) {
+      changed[f] = { before: data.meta[f] || '', after: body[f] };
+      data.meta[f] = body[f];
+    }
+  });
+  if (Object.prototype.hasOwnProperty.call(body, 'creator') && body.creator != null) {
+    changed.creator = { before: data.meta.creator || '', after: body.creator };
+    data.meta.creator = body.creator;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'tachiaiPerson') && body.tachiaiPerson != null) {
+    if (!data.meta.taikyo) data.meta.taikyo = {};
+    changed.tachiaiPerson = { before: data.meta.taikyo.tachiaiPerson || '', after: body.tachiaiPerson };
+    data.meta.taikyo.tachiaiPerson = body.tachiaiPerson;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'completeDate') && body.completeDate != null) {
+    if (!data.meta.hatchuOrder) data.meta.hatchuOrder = {};
+    changed.completeDate = { before: data.meta.hatchuOrder.completeDate || '', after: body.completeDate };
+    data.meta.hatchuOrder.completeDate = body.completeDate;
+  }
+  if (Object.keys(changed).length === 0) {
+    return { ok: false, error: 'no updatable fields provided' };
+  }
+  data.updatedAt = new Date().toISOString();
+  return { ok: true, action: 'updated', changed: changed };
+}
+// GAS updateLedgerFinalDate_ の移植(io抜き・中身は同じ)
+function __ledgerPatchFinalDate_(data, finalDate){
+  let dateStr = '';
+  if (finalDate) {
+    const d = new Date(finalDate);
+    if (!isNaN(d)) {
+      dateStr = d.getFullYear() + '-' +
+                String(d.getMonth()+1).padStart(2,'0') + '-' +
+                String(d.getDate()).padStart(2,'0');
+    } else {
+      dateStr = String(finalDate);
+    }
+  }
+  if (!data.meta) data.meta = {};
+  if (!data.meta.hatchuOrder) data.meta.hatchuOrder = {};
+  const before = data.meta.hatchuOrder.finalCheckDate || '';
+  data.meta.hatchuOrder.finalCheckDate = dateStr;
+  data.updatedAt = new Date().toISOString();
+  return { ok: true, action: 'updated', before, after: dateStr };
+}
 // 修繕アポ情報を GAS に書き戻し (v1.4.251 task-update-appointment)
 // fields: {responseDate?, responseTime?, workflowStatus?} — 渡したキーのみ更新
 const WORKFLOW_STATUSES = ["アポ・手配 未","待機","アポ・手配 済","長期連絡なし","-"];
@@ -16771,6 +16929,13 @@ async function pushAppointmentToGAS(driveFileId, fields){
   if(!s.url || !s.token) throw new Error("GAS URL/Token 未設定");
   if(!driveFileId) throw new Error("driveFileId がありません(Drive同期由来の物件のみ更新可)");
   showSyncIndicator("アポ情報を書き戻し中...");
+  // 📡 v1.30.780 DBへ直接(スイッチON時)。入ったか分からない時はGASへ回さず失敗として返す
+  try{
+    const __body = {};
+    ['responseDate','responseTime','workflowStatus','status','completeDate'].forEach(k=>{ if(fields[k] !== undefined) __body[k] = fields[k]; });
+    const __r = await ledgerPatchDb_(driveFileId, doc=>__ledgerPatchAppointment_(doc, __body), 'アポ更新');
+    if(__r){ noteLedgerWriteResult_("アポ更新", __r); hideSyncIndicator("success", "アポ更新完了"); return __r; }
+  }catch(e){ if(e && e.unknown){ hideSyncIndicator("error", "アポ更新失敗"); throw e; } console.warn('[台帳DB直接] 例外→GASへ:', e && e.message); }
   try{
     // master_sync の dispatch は kind で判定 (2026-05-31〜): "appointment"=日時/WF/status等
     // 🖊 v1.30.745: **誰が触ったかを台帳の履歴に残す**(見積GAS ver95の wtActorOf_ は actor|client|savedBy|addedBy を読む)。
@@ -16802,6 +16967,11 @@ async function pushFinalDateToGAS(driveFileId, finalDate){
   const s = loadGasSettings();
   if(!s.url || !s.token) throw new Error("GAS URL/Token 未設定");
   showSyncIndicator(`Drive に書き戻し中... ${finalDate||"(クリア)"}`);
+  // 📡 v1.30.780 DBへ直接(スイッチON時)
+  try{
+    const __r = await ledgerPatchDb_(driveFileId, doc=>__ledgerPatchFinalDate_(doc, finalDate), '最終確認日');
+    if(__r){ noteLedgerWriteResult_("最終確認日", __r); hideSyncIndicator("success", `書き戻し完了 ${finalDate||"(クリア)"}`); return __r; }
+  }catch(e){ if(e && e.unknown){ hideSyncIndicator("error", "書き戻し失敗"); throw e; } console.warn('[台帳DB直接] 例外→GASへ:', e && e.message); }
   try{
     const res = await fetch(s.url, {
       method:"POST",
@@ -25672,6 +25842,7 @@ window.bcStat_ = function(){
     進捗: Object.assign({}, window.__tpReadStat || { src:'(まだ読んでいない)' }, { スイッチ: (typeof progressTableReadOn_==='function') ? progressTableReadOn_() : '?' }),   // v1.30.766
     立会表からの更新: window.__taikyoStale || '(まだ読んでいない)',   // v1.30.769
     進捗の書き込み: Object.assign({}, window.__tpWriteStat || { r:'(まだ書いていない)' }, { スイッチ: (typeof progressDbWriteOn_==='function') ? progressDbWriteOn_() : '?' }),   // v1.30.767
+    台帳の書き込み: Object.assign({}, window.__ledgerWriteStat || { r:'(まだ書いていない)' }, { スイッチ: (typeof ledgerDbWriteOn_==='function') ? ledgerDbWriteOn_() : '?', Driveへの写し: window.__ledgerMirrorStat || '-', 射影: (typeof window.bcBuildProjection==='function') ? 'あり' : '無し' }),   // v1.30.780
   };
   try{ console.log(JSON.stringify(o, null, 1)); }catch(_){ console.log(o); }
   return o;
