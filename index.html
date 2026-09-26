@@ -2955,7 +2955,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.780</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.781</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4587,7 +4587,7 @@
   </div>
 </div>
 
-<script src="projection.js?v=1.30.780"></script><!-- 📡 v1.30.780 射影(見積アプリ src/projection.js をそのまま写したもの・改造禁止。台帳のDB直接書き込みに使う) -->
+<script src="projection.js?v=1.30.781"></script><!-- 📡 v1.30.780 射影(見積アプリ src/projection.js をそのまま写したもの・改造禁止。台帳のDB直接書き込みに使う) -->
 <script>
 // =========================================================
 // ビルドクラスタ スケジュール管理アプリ Phase 1A
@@ -16814,6 +16814,10 @@ async function ledgerPatchDb_(fid, patchFn, label){
     if(!out || out.ok !== true){ stat({ r:'skip:'+((out&&out.error)||'直す所なし') }); return null; }   // 業務上の失敗はGASに同じ判定をさせる
     doc.version = base + 1;               // ★DBの版から採番(GAS _taskPatchDbFirst_ と同じ。anken_save も同じ値を入れる)
     doc._driveFileId = fid;
+    // 🗓 v1.30.781(見積レビュー🔴): GAS wtStrictWriteLedger_ と同じく月を入れてから書く。
+    //   outbox-write は _driveMonth(無ければ中身から計算)の月フォルダで id.json を探す=doc内の月とDBの月がずれた案件(本番10件)で
+    //   GASと別の月フォルダへ写しに行き、同じ見積のファイルが2つできる(索引も二重)
+    doc._driveMonth = month || doc._driveMonth || '';
     let pj;
     try{ pj = window.bcBuildProjection(doc, month); }catch(e){ stat({ r:'skip:射影で例外' }); return null; }
     if(pj && pj.__skip === true){ stat({ r:'skip:射影が作れない' }); return null; }   // 射影なしで書くとカレンダーが古い台帳を見る(見積1049の規則)
@@ -16824,6 +16828,7 @@ async function ledgerPatchDb_(fid, patchFn, label){
       catch(e){
         if(__ledgerDefinitelyNotRun_(e)){ stat({ r:'skip:断られた '+((e&&e.message)||'') }); return null; }
         lastErr = e; r = null;
+        try{ if(typeof showSyncIndicator==='function') showSyncIndicator('通信が不安定です。台帳に入ったか確かめています…'); }catch(_){}   // v1.30.781 最悪65秒「書き戻し中」のままに見えないように
         await new Promise(z=>setTimeout(z, 1500*(k+1)));   // 同じop_id・同じ中身で送り直す(入っていれば already_processed が返る)
       }
     }
