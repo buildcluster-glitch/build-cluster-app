@@ -2955,7 +2955,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.784</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.785</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4587,7 +4587,7 @@
   </div>
 </div>
 
-<script src="projection.js?v=1.30.784"></script><!-- 📡 v1.30.780 射影(見積アプリ src/projection.js をそのまま写したもの・改造禁止。台帳のDB直接書き込みに使う) -->
+<script src="projection.js?v=1.30.785"></script><!-- 📡 v1.30.780 射影(見積アプリ src/projection.js をそのまま写したもの・改造禁止。台帳のDB直接書き込みに使う) -->
 <script>
 // =========================================================
 // ビルドクラスタ スケジュール管理アプリ Phase 1A
@@ -29894,10 +29894,18 @@ async function openExtraWorkEdit_(taskExtraId){
   showSyncIndicator("追加工事を読込中...");
   let line = null;
   try{
+    // 📡 v1.30.785(山田「1すすめて」): 台帳はDBから直接読む(台帳の直読みスイッチON時)。読めない/見つからない時だけGAS get-ledger
+    let est = null;
+    if(typeof ledgerDbReadOn_==='function' && ledgerDbReadOn_()){
+      try{ const row = await __ledgerLoadByFileId_(p.extDriveFileId); if(row && row.doc) est = row.doc; window.__xwEditReadStat = { src: est ? 'db' : 'db-miss', at:new Date().toISOString() }; }
+      catch(e){ window.__xwEditReadStat = { src:'gas', fallback:(e&&e.message)||'error', at:new Date().toISOString() }; est = null; }
+    }
+    if(!est){
     const res = await fetch(s.url, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
       body: JSON.stringify({token:s.token, action:"get-ledger", fileId:p.extDriveFileId})});
     const d = await res.json();
-    let est = d.content; if(typeof est === "string") est = JSON.parse(est);
+    est = d.content; if(typeof est === "string") est = JSON.parse(est);
+    }
     line = ((est && est.lines) || []).find(l=>l && l.extraId === taskExtraId);
     hideSyncIndicator("success", "");
   }catch(e){
