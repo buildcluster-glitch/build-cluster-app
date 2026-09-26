@@ -2955,7 +2955,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.782</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.783</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4587,7 +4587,7 @@
   </div>
 </div>
 
-<script src="projection.js?v=1.30.782"></script><!-- 📡 v1.30.780 射影(見積アプリ src/projection.js をそのまま写したもの・改造禁止。台帳のDB直接書き込みに使う) -->
+<script src="projection.js?v=1.30.783"></script><!-- 📡 v1.30.780 射影(見積アプリ src/projection.js をそのまま写したもの・改造禁止。台帳のDB直接書き込みに使う) -->
 <script>
 // =========================================================
 // ビルドクラスタ スケジュール管理アプリ Phase 1A
@@ -30194,7 +30194,14 @@ async function saveKaniModal_(){
   const s = loadGasSettings();
   if(!s.url || !s.token){ show('GAS URL/Token 未設定'); return; }
   // 入力行→送信形(名目も金額も無い行はサーバ側でもスキップされるがローカルでも落とす)
-  const rows = __kaniRowsFromInputs_().filter(l=>l.name || (Number(l.amount)||0));
+  let rows = __kaniRowsFromInputs_().filter(l=>l.name || (Number(l.amount)||0));
+  // 🛑 v1.30.783(9/26 佐藤邸): 金額を0にしただけだと「出張費 0円」の行が名前だけで残り、**簡易見積=0円**として保存される。
+  //   台帳・売上・索引は簡易見積を明細合計より優先するので、**案件の合計が0円に化ける**(佐藤邸 100,650→0)。
+  //   合計0円の簡易見積は実務上ありえない → 「消す」で良いか確かめて、行を空で送る(=簡易見積を消して明細合計に戻す)
+  if(rows.length && !rows.some(l=>(Number(l.amount)||0) !== 0)){
+    if(!confirm('簡易見積の合計が0円です。\n0円のまま保存すると、台帳の金額が0円になってしまいます。\n\n簡易見積を消して、明細合計に戻しますか？')){ show('合計0円のため保存しませんでした(金額を入れるか「クリア」してください)'); return; }
+    rows = [];
+  }
   __kaniSending = true;
   const btn = document.getElementById('kani-save');
   btn.disabled = true; btn.textContent = '保存中…';
