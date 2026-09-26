@@ -313,6 +313,7 @@
   .duty-done-btn{font-size:11px;border:1px solid #cbd5e1;background:#f8fafc;color:#475569;border-radius:8px;padding:1px 9px;cursor:pointer;white-space:nowrap;margin-left:3px;font-weight:700}
   .duty-done-btn:hover{background:#eef2f7;border-color:#16a34a;color:#16a34a}
   .duty-done-btn.on{background:#16a34a;color:#fff;border-color:#15803d}
+  .duty-done-btn.late{background:#fef2f2;color:#dc2626;border-color:#dc2626}
   .leave-badge.duty-done{opacity:.55}
   .leave-badge.duty-done .lb-staff{text-decoration:line-through}
   /* 🔄📞 ヘッダー(要対応の隣)の当番・電話番 v1.30.199 */
@@ -2954,7 +2955,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.777</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.778</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -5067,6 +5068,75 @@ function tobanOfDate_(d){
 }
 // 当番の役割(ホバー表示用)v1.30.198
 const TOBAN_ROLES_TEXT = "【役割】\n・在庫チェック\n・倉庫整理（必要であればみんなに声掛け）\n・ゴミ籠交換手配\n・敷地内除草チェック（必要であればみんなに声掛け）";
+// 📋 v1.30.778(山田「当番 完了の履歴みたいなのみれるんだっけ？」→「みられるようにしたい／忘れてスルーしちゃう人がいる」)
+//   当番の記録: 直近の週ごとに 当番・完了した人と日時・未完了。取消は📜変更の記録(ref=toban:週)から。
+//   催促: ①木曜からは未完了なら全員のヘッダーで赤「⚠未完了」 ②当番本人には木曜から1日1回、役割つきの知らせ(完了にするボタン付き)
+//   ⚠共有から一度も読めていない時は催促しない(他の端末で完了済みかもしれない)
+const TOBAN_LATE_FROM_DOW = 4;   // 木曜から「遅れ」扱い(月=1…土=6・日=0は週末なので遅れ扱い)
+function tobanIsLate_(todayStr){ const d=parseDate(todayStr); if(!d||isNaN(d)) return false; const w=d.getDay(); return w===0 || w>=TOBAN_LATE_FROM_DOW; }
+function tobanWeeks_(n){
+  const out=[]; const anchor=mondayOf_(TOBAN_ANCHOR_MONDAY); let m=mondayOf_(new Date());
+  for(let i=0; i<n && m && anchor && m>=anchor; i++){ out.push(fmtDate(m)); m=new Date(m); m.setDate(m.getDate()-7); }
+  return out;
+}
+function tobanFmtAt_(at){ const d=new Date(at); return isNaN(d)?'':`${d.getMonth()+1}/${d.getDate()}(${DOW_JA[d.getDay()]}) ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
+function openTobanHistory_(){
+  const done = loadTobanDone_(); const disp = (typeof getStaffDisplayName==='function') ? getStaffDisplayName : (x=>x);
+  const skip = new Set(TOBAN_SKIP_MONDAYS.map(x=>{ const m=mondayOf_(x); return m?fmtDate(m):''; }));
+  const thisWk = tobanWeekKey_(new Date());
+  const miss = {};
+  const rows = tobanWeeks_(14).map(wk=>{
+    const m = parseDate(wk); const e = new Date(m); e.setDate(e.getDate()+6);
+    const range = `${m.getMonth()+1}/${m.getDate()}〜${e.getMonth()+1}/${e.getDate()}`;
+    if(skip.has(wk)) return `<tr style="color:#94a3b8"><td>${range}</td><td colspan="2">休み(当番を数えない週)</td></tr>`;
+    const who = tobanOfDate_(wk); const d = done[wk];
+    const cancels = (typeof chlogFor_==='function') ? chlogFor_('toban:'+wk,'','',{max:3}).filter(x=>x.action==='取消') : [];
+    const cancelTxt = cancels.length ? `<div style="font-size:10.5px;color:#b45309">↩ 取消: ${cancels.map(c=>escapeHtml(`${c.by||'?'} ${tobanFmtAt_(c.at)}`)).join(' / ')}</div>` : '';
+    let st;
+    if(d) st = `<span style="color:#15803d;font-weight:700">✅ 完了</span> <span style="font-size:11px;color:#475569">${escapeHtml(disp(d.by||'?'))} ${escapeHtml(tobanFmtAt_(d.at))}</span>`;
+    else if(wk===thisWk) st = tobanIsLate_(fmtDate(new Date())) ? `<span style="color:#dc2626;font-weight:700">⚠ 未完了(今週)</span>` : `<span style="color:#64748b">今週・まだ</span>`;
+    else { st = `<span style="color:#dc2626;font-weight:700">✖ 未完了</span>`; miss[who]=(miss[who]||0)+1; }
+    const bg = STAFF_COLORS[who] || '#e2e8f0';
+    return `<tr${wk===thisWk?' style="background:#fffbeb"':''}><td style="white-space:nowrap">${range}</td><td><span style="background:${bg};color:${textColorFor(bg)};border-radius:6px;padding:1px 7px;font-weight:700;white-space:nowrap">${escapeHtml(disp(who))}</span></td><td>${st}${cancelTxt}</td></tr>`;
+  }).join('');
+  const missTxt = Object.keys(miss).length ? Object.entries(miss).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${escapeHtml(disp(k))} ${v}回`).join('・') : 'なし';
+  let ov = document.getElementById('tobanHistModal'); if(ov) ov.remove();
+  ov = document.createElement('div'); ov.id='tobanHistModal';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:900;display:flex;align-items:flex-start;justify-content:center;padding:60px 16px 16px;overflow:auto';
+  ov.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:520px;width:100%;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:14px 16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><b style="font-size:15px">🔄 当番の記録</b><button type="button" id="tobanHistClose" style="border:1px solid #cbd5e1;background:#fff;border-radius:8px;padding:3px 10px;cursor:pointer">✕ 閉じる</button></div>
+    <div style="font-size:11.5px;color:#475569;margin-bottom:8px">週は月曜はじまり。木曜になっても未完了だと赤く出ます。<br>この期間の未完了: <b style="color:#dc2626">${missTxt}</b><br><span style="color:#94a3b8">※9/26より前は、完了を取り消した記録が残っていません(記録の無い週=未完了として出ます)</span></div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="text-align:left;color:#64748b;font-size:11px"><th style="padding:4px">週</th><th style="padding:4px">当番</th><th style="padding:4px">状態</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>
+    <div style="font-size:11px;color:#64748b;margin-top:8px;white-space:pre-line">${escapeHtml(TOBAN_ROLES_TEXT)}</div></div>`;
+  ov.querySelectorAll('td').forEach(td=>{ td.style.padding='5px 4px'; td.style.borderTop='1px solid #f1f5f9'; td.style.verticalAlign='top'; });
+  ov.addEventListener('click', e=>{ if(e.target===ov) ov.remove(); });
+  document.body.appendChild(ov);
+  ov.querySelector('#tobanHistClose').onclick = ()=> ov.remove();
+}
+// 🔔 当番本人への催促(1日1回)。木曜〜日曜・未完了・本人の端末・共有から読めている時だけ
+function tobanNagCheck_(){
+  try{
+    if(!window.__tobanFetchedAt) return;
+    const todayStr = fmtDate(new Date()); if(!tobanIsLate_(todayStr)) return;
+    const wk = tobanWeekKey_(todayStr); if(getTobanDoneEntry_(wk)) return;
+    const who = tobanOfDate_(todayStr); const me = (typeof getMyself==='function') ? getMyself() : '';
+    const norm = x => (typeof normalizeStaffName==='function') ? normalizeStaffName(String(x||'')) : String(x||'').replace(/\s/g,'');
+    if(!me || !who || norm(me)!==norm(who)) return;
+    const k = 'bc_toban_nag_'+todayStr; try{ if(localStorage.getItem(k)) return; }catch(_){}
+    if(document.getElementById('tobanNag')) return;
+    const bar = document.createElement('div'); bar.id='tobanNag';
+    bar.style.cssText='position:fixed;left:50%;top:64px;transform:translateX(-50%);z-index:901;background:#fff7ed;border:2px solid #f97316;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.2);padding:12px 14px;max-width:min(440px,calc(100vw - 32px));width:100%';
+    bar.innerHTML = `<div style="font-weight:800;color:#c2410c;font-size:14px">🔄 今週の当番がまだ完了になっていません</div>
+      <div style="font-size:12px;color:#7c2d12;margin:4px 0 8px;white-space:pre-line">${escapeHtml(TOBAN_ROLES_TEXT)}</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" id="tobanNagLater" style="border:1px solid #cbd5e1;background:#fff;border-radius:8px;padding:5px 12px;cursor:pointer">あとで</button>
+      <button type="button" id="tobanNagDone" style="border:0;background:#16a34a;color:#fff;font-weight:700;border-radius:8px;padding:5px 12px;cursor:pointer">✓ 終わったので完了にする</button></div>`;
+    document.body.appendChild(bar);
+    const close = ()=>{ try{ localStorage.setItem(k,'1'); }catch(_){} bar.remove(); };
+    bar.querySelector('#tobanNagLater').onclick = close;
+    bar.querySelector('#tobanNagDone').onclick = ()=>{ close(); setTobanDone_(wk, true).catch(()=>{}); if(typeof render==='function') render(); };
+  }catch(_){}
+}
 const STAFF_COLORS = {
   "鈴木悠平":"#b6d7a8", // 緑 (指定 2026-05-31)
   "大村将史":"#fca5a5", // 薄赤
@@ -8365,6 +8435,7 @@ async function fetchTobanDone_(opts={}){
     const remote=(raw&&raw.done&&typeof raw.done==='object')?raw.done:{};
     const merged=mergeTobanDoneMaps_(remote, local);
     saveTobanDone_(merged);
+    window.__tobanFetchedAt = Date.now();   // 🔔 v1.30.778 共有から読めた時刻(読めていない時は催促しない=他の端末で完了済みかもしれない)
     if(!opts.silent && typeof render==='function') render();
     return merged;
   }catch(err){ if(!opts.silent) console.warn('[toban_done] fetch失敗:', err.message); return local; }
@@ -8377,6 +8448,8 @@ async function pushTobanDoneMap_(map){
 async function setTobanDone_(weekKey, done){
   const stamp=()=>({ done:true, at:new Date().toISOString(), by:(typeof getMyself==='function'?getMyself():'')||'' });
   let map=loadTobanDone_(); if(done) map[weekKey]=stamp(); else delete map[weekKey]; saveTobanDone_(map);
+  // 📜 v1.30.778 取消すと記録ごと消えるので、完了/取消は変更の記録に残す(当番の記録の画面で「取消」も見える)
+  try{ if(typeof logChange_==='function') logChange_('当番', done?'完了':'取消', `${weekKey}週 ${(typeof tobanOfDate_==='function'?tobanOfDate_(weekKey):'')}`, '', undefined, 'toban:'+weekKey); }catch(_){}
   const s=loadGasSettings();
   if(s.url&&s.token){
     try{ const url=`${s.url}?action=get-shared-config&key=toban_done&token=${encodeURIComponent(s.token)}&t=${Date.now()}`;
@@ -17306,9 +17379,10 @@ function renderHeaderDuty_(){
     // 🐞 v1.30.690(山田「完了しているようにみえる」): 未完了でも「✅」だけのボタンだったので完了と見分けにくかった。
     //   未完了=「完了にする」(灰・チェック無し) / 完了=「✅完了 名前」(緑)。取消は確認ダイアログを1回はさむ(誤タップで共有状態が変わるのを防ぐ)。
     const __doneBy = (__done && __doneE.by) ? ' '+escapeHtml(String(disp(__doneE.by)).slice(0,4)) : '';
-    html += `<span class="hd-duty" title="${escapeHtml(roleTip)}"><span class="hd-lbl">🔄当番</span>`
+    const __late = !__done && tobanIsLate_(todayStr);   // 🔔 v1.30.778 木曜から未完了は赤
+    html += `<span class="hd-duty" title="${escapeHtml(roleTip+'\n\n「🔄当番」を押すと当番の記録')}"><span class="hd-lbl" id="tobanHistBtn" style="cursor:pointer;text-decoration:underline dotted">🔄当番</span>`
       + `<span class="leave-badge duty-auto${__done?' duty-done':''}" style="background:${bg};color:${textColorFor(bg)}"><span class="lb-staff">${escapeHtml(disp(__t))}</span></span>`
-      + `<button class="duty-done-btn${__done?' on':''}" id="dutyDoneBtn" data-wk="${escapeHtml(__wk)}" title="${escapeHtml(byTip)}">${__done?'✅完了':'完了にする'}</button></span>`;   // 名前はツールチップだけ(山田「名前はいらない」v1.30.691)
+      + `<button class="duty-done-btn${__done?' on':''}${__late?' late':''}" id="dutyDoneBtn" data-wk="${escapeHtml(__wk)}" title="${escapeHtml(byTip)}">${__done?'✅完了':(__late?'⚠未完了':'完了にする')}</button></span>`;   // 名前はツールチップだけ(山田「名前はいらない」v1.30.691)
   }
   // 📞 電話番(事務まどかが今日休みの平日のみ)
   const offToday = (state.leaves||[]).filter(l=> l.type!=='当番' && l.type!=='出社' && todayStr>=l.start && todayStr<=l.end);
@@ -17348,6 +17422,8 @@ function renderHeaderDuty_(){
   if(ddb){ ddb.onclick = ()=>{ const wk=ddb.dataset.wk; if(!wk) return; const now=(typeof getTobanDoneEntry_==='function')&&getTobanDoneEntry_(wk);
     if(now && !confirm(`今週の当番の「完了」を取り消しますか？${now.by?`\n(${now.by} が付けた完了です)`:''}`)) return;   // v1.30.690: 取消だけ確認
     if(typeof setTobanDone_==='function') setTobanDone_(wk, !now).catch(()=>{}); render(); }; }
+  const thb = box.querySelector('#tobanHistBtn');
+  if(thb){ thb.onclick = (e)=>{ e.stopPropagation(); openTobanHistory_(); }; }
   const ps = box.querySelector('#phoneDutySel');
   if(ps){ ps.onchange = ()=>{ if(typeof setPhoneDuty_==='function') setPhoneDuty_(todayStr, ps.value).catch(()=>{}); render(); }; }
   const sb = box.querySelector('#sanpaiBtn');
@@ -31190,8 +31266,8 @@ setTimeout(()=>afterOpenSync_(()=>{
     }
     // ✅ 当番完了(週次・全員共有)取得 v1.30.198
     if(typeof fetchTobanDone_==='function'){
-      fetchTobanDone_({silent:true}).catch(()=>{});
-      setInterval(()=>fetchTobanDone_({silent:true}).catch(()=>{}), 5*60*1000);
+      fetchTobanDone_({silent:true}).then(()=>tobanNagCheck_()).catch(()=>{});
+      setInterval(()=>fetchTobanDone_({silent:true}).then(()=>tobanNagCheck_()).catch(()=>{}), 5*60*1000);   // 🔔 v1.30.778
       if(typeof fetchJizenDone_==='function'){ fetchJizenDone_({silent:true}).catch(()=>{}); setInterval(()=>fetchJizenDone_({silent:true}).catch(()=>{}), 5*60*1000); }   // v1.30.693
     }
     // ⚠ アラート(全員共有) 取得・初回push・以後5分ごと(v1.30.115)
