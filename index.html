@@ -2955,7 +2955,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.778</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.779</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -28224,7 +28224,46 @@ function restoSave(){
 let restoDetailAsModal = false;
 // 🪶 light応答で明細(tasks)が手元に無い完了案件を開く時、その1件だけGASから取得(v1.30.535)。
 //   手元に明細がある(以前のフル同期で受け取り済み)場合は取りに行かない=従来と同じ速さ。
+// 📡 v1.30.779(山田「GASがきらい」・task-* 移行の読み側): 完了案件の明細を DB(anken_projection_v)から直接。
+//   台帳の直読みスイッチがONの端末だけ。読めなければ従来どおり GAS task-detail へ(黙って空にしない)。
+async function fetchRestoDetailFromDb_(rec){
+  if(!(typeof ledgerDbReadOn_==='function' && ledgerDbReadOn_())) return null;
+  let s = (typeof sbSession_==='function') ? sbSession_() : null;
+  if(!s || !s.access_token || !rec || !rec.extDriveFileId) return null;
+  const get = async (url)=>{
+    for(let i=0;i<2;i++){
+      const res = await fetch(url, { headers:{ 'apikey':SB_AUTH.key, 'Authorization':'Bearer '+s.access_token, 'Accept':'application/json' }, cache:'no-store', signal:(typeof AbortSignal!=='undefined'&&AbortSignal.timeout)?AbortSignal.timeout(20000):undefined });
+      if(res.status===401 && i===0){ try{ await sbRefresh_(); }catch(_){} s = sbSession_(); if(!s||!s.access_token) throw new Error('auth'); continue; }
+      if(res.status!==200) throw new Error('HTTP '+res.status);
+      const j = await res.json(); if(!Array.isArray(j)) throw new Error('bad-shape'); return j;
+    }
+    throw new Error('auth');
+  };
+  const rows = await get(`${SB_AUTH.url}/rest/v1/${LEDGER_DB_VIEW}?select=projection&drive_file_id=eq.${encodeURIComponent(rec.extDriveFileId)}&limit=1`);
+  const p = rows[0] && rows[0].projection;
+  if(!p || typeof p!=='object' || !Array.isArray(p.tasks)) return null;   // 見つからない=GASに任せる
+  let progress = null;
+  try{
+    const key = String(p.name||rec.name||'').trim()+'|'+String(p.room||rec.room||'').trim();
+    const tp = await get(`${SB_AUTH.url}/rest/v1/task_progress?select=doc&property_key=eq.${encodeURIComponent(key)}&limit=1`);
+    progress = (tp[0] && tp[0].doc) || null;
+  }catch(_){}   // 進捗が読めなくても明細は出す(GAS task-detail も進捗が無ければ明細だけ)
+  return { tasks:p.tasks, progress, workloadStatus:p.workloadStatus||null };
+}
 async function fetchRestoDetailOnDemand_(rec){
+  // 📡 v1.30.779 先にDB。取れたらGASを呼ばない
+  try{
+    const d = await fetchRestoDetailFromDb_(rec);
+    if(d){
+      rec.tasks = restoSyncTasks(rec.tasks || [], d.tasks || []);
+      if(d.progress) restoApplyProgress(rec, d.progress);
+      if(d.workloadStatus){ rec.workloadStatus = d.workloadStatus; rec.workVolume = d.workloadStatus.level || rec.workVolume; }
+      rec._light = false;
+      saveState();
+      window.__detailReadStat = { src:'db', at:new Date().toISOString() };
+      return true;
+    }
+  }catch(e){ window.__detailReadStat = { src:'gas', fallback:(e&&e.message)||'error', at:new Date().toISOString() }; console.warn('[task-detail] DBから読めず→GASへ:', e && e.message); }
   const s = loadGasSettings();
   if(!s.url || !s.token || !rec || !rec.extDriveFileId) return false;
   try{
