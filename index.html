@@ -2955,7 +2955,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.783</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.784</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4587,7 +4587,7 @@
   </div>
 </div>
 
-<script src="projection.js?v=1.30.783"></script><!-- 📡 v1.30.780 射影(見積アプリ src/projection.js をそのまま写したもの・改造禁止。台帳のDB直接書き込みに使う) -->
+<script src="projection.js?v=1.30.784"></script><!-- 📡 v1.30.780 射影(見積アプリ src/projection.js をそのまま写したもの・改造禁止。台帳のDB直接書き込みに使う) -->
 <script>
 // =========================================================
 // ビルドクラスタ スケジュール管理アプリ Phase 1A
@@ -16816,6 +16816,7 @@ async function ledgerPatchDb_(fid, patchFn, label, opts){
     let out;
     try{ out = patchFn(doc, ctx); }catch(e){ stat({ r:'skip:直せない '+((e&&e.message)||'') }); return null; }
     if(!out || out.ok !== true){ stat({ r:'skip:'+((out&&out.error)||'直す所なし') }); return null; }   // 業務上の失敗はGASに同じ判定をさせる
+    if(out.duplicate === true || out.already === true){ stat({ r:'no_change' }); return Object.assign({}, out, { ok:true, path:'db-direct', db:'no_change' }); }   // v1.30.784 冪等ヒット=書かない(GAS _taskPatchDbFirst_ と同じ・版を進めない)
     doc.version = base + 1;               // ★DBの版から採番(GAS _taskPatchDbFirst_ と同じ。anken_save も同じ値を入れる)
     doc._driveFileId = fid;
     // 🗓 v1.30.781(見積レビュー🔴): GAS wtStrictWriteLedger_ と同じく月を入れてから書く。
@@ -16843,7 +16844,7 @@ async function ledgerPatchDb_(fid, patchFn, label, opts){
     if(r === 'applied' || r === 'already_processed'){
       __ledgerMirrorToDrive_(doc);
       stat({ r, version:doc.version });
-      return Object.assign({}, out, { ok:true, path:'db-direct', db:r, version:doc.version, projection:(pj===null)?'null':'ok' });
+      return Object.assign({}, out, { ok:true, path:'db-direct', db:r, version:doc.version, projection:(pj===null)?'null':'ok', opId:opid });
     }
     if(r === 'stale_version' && attempt === 0) continue;   // 読み直して新しいop_idで1回だけ(断られたop_idは使い回さない)
     stat({ r:'skip:'+r }); return null;                     // stale 2回/deleted 等=書いていない→GASへ
@@ -16890,6 +16891,133 @@ function __ledgerPatchKani_(data, body, stamp){
   data.meta.kaniSetBy     = String((body && body.setBy) || '');
   data.updatedAt = stamp;
   return { ok: true, action: 'set', kaniMitsu: (lines.length ? sum : null), lineCount: lines.length, kaniUpdatedAt: stamp };
+}
+// ➕ v1.30.784 追加工事もDBへ直接(見積セッション合意・案A)。スイッチ extraDbWrite。時刻は bc_now(addedAt/editedAt/extraRemoved/updatedAt)
+//   控えtxt(Dropbox 追加工事控え.txt)は、DBに入ったあとで GAS 'xw-note-append'(見積GAS ver105〜)へ裏で投げる。
+//   GASはDBを読んで「その追加工事が本当に入っている時だけ」書く・opId(=保存のop_id)で2重防止。⚠ver105が出るまでスイッチはOFFのまま
+function extraDbWriteOn_(){
+  if(typeof dbTripped_==='function' && dbTripped_()) return false;
+  try{ const o = localStorage.getItem('bc_flag_extraDbWrite'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
+  if(typeof __staticFlags!=='undefined' && __staticFlags){ const r = __pickWriteFlag_(__staticFlags.extraDbWrite); if(r !== null) return r; }
+  const r2 = (typeof __calFlags!=='undefined' && __calFlags) ? __pickWriteFlag_(__calFlags.extraDbWrite) : null;
+  return r2 === true;
+}
+// GAS addLedgerExtraWork_ の移植(io・ロック抜き)。addedAt は端末の時計でなく stamp(DBの時刻)
+function __ledgerPatchExtraAdd_(data, body, stamp){
+  if(!stamp) return { ok:false, error:'DBの時刻がない' };
+  const w = (body && body.work) || {};
+  const name = String(w.name || '').trim();
+  if (!name) return { ok:false, error:'work.name required' };
+  const billable = w.billable !== false;
+  const qty = Number(w.qty) || 1;
+  if (!Array.isArray(data.lines)) data.lines = [];
+  if (body.extraId && data.lines.some(function (l) { return l && l.extraId === body.extraId; })) {
+    return { ok: true, duplicate: true, extraId: body.extraId };
+  }
+  const line = {
+    category: '追加工事',
+    item: billable ? name : '',
+    room: String(w.room || '').trim(),
+    specs: '',
+    unit: String(w.unit || '式').trim(),
+    qty: qty,
+    unitPrice: billable ? (Number(w.unitPrice) || 0) : 0,
+    amountOverride: null,
+    burdenType: '家主',
+    supplier: String(w.supplier || '').trim(),
+    orderPrice: Number(w.orderPrice) || 0,
+    orderAmountOverride: null,
+    materialPrice: 0,
+    note: String(w.note || ''),
+    itemRef: null,
+    internalNote: '',
+    motoukeOrigin: null,
+    motoukeOrigPrice: null,
+    reduced: false,
+    reducedReason: '',
+    estHidden: false,
+    hatchuOnly: !billable,
+    hatchuPeriodStart: '', hatchuPeriodEnd: '', hatchuTime: '', hatchuPeriodMode: '',
+    hatchuSurface: '', hatchuRemark: '',
+    hatchuItem: billable ? null : name,
+    hatchuSpecs: null,
+    hatchuQty: billable ? null : qty,
+    hatchuPrintHidden: false,
+    hatchuHideForSupplier: false,
+    hatchuSection: null,
+    todoFlag: false,
+    extraId: body.extraId || '',
+    addedFrom: body.addedFrom || 'calendar',
+    addedBy: body.addedBy || '',
+    addedAt: stamp,
+  };
+  data.lines.push(line);
+  data.updatedAt = stamp;
+  return { ok: true, action: 'added', extraId: line.extraId, lineCount: data.lines.length };
+}
+// GAS updateLedgerExtraWork_ の移植(io・ロック抜き)。editedAt / extraRemoved / updatedAt は stamp
+function __ledgerPatchExtraUpdate_(data, body, stamp){
+  if(!stamp) return { ok:false, error:'DBの時刻がない' };
+  var extraId = String((body && body.extraId) || '');
+  if (!extraId) return { ok:false, error:'extraId required' };
+  if (!Array.isArray(data.lines)) data.lines = [];
+  var idx = -1;
+  for (var i = 0; i < data.lines.length; i++) { if (data.lines[i] && data.lines[i].extraId === extraId) { idx = i; break; } }
+  if (body.remove) {
+    if (idx < 0) return { ok: true, removed: false, already: true, extraId: extraId };
+    var removedName = String(data.lines[idx].item || data.lines[idx].hatchuItem || '').trim();
+    data.lines.splice(idx, 1);
+    if (!data.meta) data.meta = {};
+    if (!data.meta.extraRemoved || typeof data.meta.extraRemoved !== 'object') data.meta.extraRemoved = {};
+    data.meta.extraRemoved[extraId] = stamp;
+    data.updatedAt = stamp;
+    return { ok: true, removed: true, extraId: extraId, lineCount: data.lines.length, removedName: removedName };
+  }
+  if (idx < 0) return { ok: false, error: '追加工事の行が見つかりません(見積アプリ側で削除済みの可能性)', extraId: extraId };
+  var w = (body && body.work) || {};
+  var name = String(w.name || '').trim();
+  if (!name) return { ok:false, error:'work.name required' };
+  var billable = w.billable !== false;
+  var qty = Number(w.qty) || 1;
+  var l = data.lines[idx];
+  l.item      = billable ? name : '';
+  l.room      = String(w.room || '').trim();
+  l.unit      = String(w.unit || '式').trim();
+  l.qty       = qty;
+  l.unitPrice = billable ? (Number(w.unitPrice) || 0) : 0;
+  l.supplier  = String(w.supplier || '').trim();
+  l.orderPrice = Number(w.orderPrice) || 0;
+  l.note      = String(w.note || '');
+  l.hatchuOnly = !billable;
+  l.hatchuItem = billable ? null : name;
+  l.hatchuQty  = billable ? null : qty;
+  l.editedBy   = String(body.editedBy || '');
+  l.editedAt   = stamp;
+  data.updatedAt = stamp;
+  return { ok: true, action: 'updated', extraId: extraId };
+}
+// 控えtxtを GAS へ(DBに入ったあと・待たない・失敗しても黙る。GAS側がDBを見て本当に入っている時だけ書く)
+function __xwNoteAppend_(kind, fid, body, r){
+  try{
+    const s = loadGasSettings(); if(!s.url || !s.token || !r || !r.opId) return;
+    const req = { action:'xw-note-append', token:s.token, opId:r.opId, kind, driveFileId:fid, extraId:body.extraId||'', work:body.work||null };
+    if(kind==='add') req.addedBy = body.addedBy || ''; else req.editedBy = body.editedBy || '';
+    if(kind==='remove') req.removedName = r.removedName || '';
+    setTimeout(()=>{
+      fetch(s.url, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(req) })
+        .then(x=>x.json()).then(d=>{ window.__xwNoteStat = { kind, extraId:req.extraId, ok:!!(d&&d.ok), d, at:new Date().toISOString() }; })
+        .catch(e=>{ window.__xwNoteStat = { kind, extraId:req.extraId, ok:false, err:(e&&e.message)||String(e), at:new Date().toISOString() }; });
+    }, 0);
+  }catch(_){}
+}
+// 追加工事の保存(DBを先に)。戻り: GASと同じ形のdata / null=GASへ / throw(unknown)
+async function extraWorkDbFirst_(fid, body){
+  const isAdd = body.action === 'task-add-extra-work';
+  const label = isAdd ? '追加工事の登録' : (body.remove ? '追加工事の削除' : '追加工事の編集');
+  const r = await ledgerPatchDb_(fid, (doc, ctx)=> isAdd ? __ledgerPatchExtraAdd_(doc, body, ctx.stamp) : __ledgerPatchExtraUpdate_(doc, body, ctx.stamp), label,
+    { on: extraDbWriteOn_, prepare: async ()=>({ stamp: await __ledgerServerNow_() }) });
+  if(r && r.db !== 'no_change') __xwNoteAppend_(isAdd ? 'add' : (body.remove ? 'remove' : 'edit'), fid, body, r);
+  return r;
 }
 // GAS updateLedgerAppointment_ の移植(io抜き・中身は同じ)
 function __ledgerPatchAppointment_(data, body){
@@ -17056,12 +17184,18 @@ async function pushExtraWorkToGAS_(driveFileId, payload){
   if(!driveFileId) throw new Error("台帳リンクがありません(Drive同期由来の物件のみ登録可)");
   showSyncIndicator("追加工事を台帳に登録中...");
   try{
+    // ➕ v1.30.784 DBを先に(スイッチ extraDbWrite)。入ったか分からない時はGASへ回さない
+    let data = null;
+    try{ data = await extraWorkDbFirst_(driveFileId, Object.assign({ action:"task-add-extra-work" }, payload)); }
+    catch(e){ if(e && e.unknown) throw e; console.warn('[追加工事 DB直接] 例外→GASへ:', e && e.message); data = null; }
+    if(!data){
     const res = await fetch(s.url, {
       method:"POST",
       headers:{"Content-Type":"text/plain;charset=utf-8"},
       body: JSON.stringify({ action:"task-add-extra-work", token:s.token, driveFileId, actor: (typeof getMyself==='function'?getMyself():'')||'', ...payload }),   // v1.30.745
     });
-    const data = await res.json().catch(()=>null);
+    data = await res.json().catch(()=>null);
+    }
     if(!data) throw new Error("サーバー応答が不正です");
     if(data.ok !== true){
       if(/unknown kind/i.test(data.error||"")){
@@ -25892,7 +26026,7 @@ window.bcStat_ = function(){
     進捗: Object.assign({}, window.__tpReadStat || { src:'(まだ読んでいない)' }, { スイッチ: (typeof progressTableReadOn_==='function') ? progressTableReadOn_() : '?' }),   // v1.30.766
     立会表からの更新: window.__taikyoStale || '(まだ読んでいない)',   // v1.30.769
     進捗の書き込み: Object.assign({}, window.__tpWriteStat || { r:'(まだ書いていない)' }, { スイッチ: (typeof progressDbWriteOn_==='function') ? progressDbWriteOn_() : '?' }),   // v1.30.767
-    台帳の書き込み: Object.assign({}, window.__ledgerWriteStat || { r:'(まだ書いていない)' }, { スイッチ: (typeof ledgerDbWriteOn_==='function') ? ledgerDbWriteOn_() : '?', 簡易見積スイッチ: (typeof kaniDbWriteOn_==='function') ? kaniDbWriteOn_() : '?', Driveへの写し: window.__ledgerMirrorStat || '-', 射影: (typeof window.bcBuildProjection==='function') ? 'あり' : '無し' }),   // v1.30.780
+    台帳の書き込み: Object.assign({}, window.__ledgerWriteStat || { r:'(まだ書いていない)' }, { スイッチ: (typeof ledgerDbWriteOn_==='function') ? ledgerDbWriteOn_() : '?', 簡易見積スイッチ: (typeof kaniDbWriteOn_==='function') ? kaniDbWriteOn_() : '?', 追加工事スイッチ: (typeof extraDbWriteOn_==='function') ? extraDbWriteOn_() : '?', 控えtxt: window.__xwNoteStat || '-', Driveへの写し: window.__ledgerMirrorStat || '-', 射影: (typeof window.bcBuildProjection==='function') ? 'あり' : '無し' }),   // v1.30.780
   };
   try{ console.log(JSON.stringify(o, null, 1)); }catch(_){ console.log(o); }
   return o;
@@ -29831,11 +29965,17 @@ async function submitExtraWork_(){
     saveBtn2.disabled = true; saveBtn2.textContent = "保存中…";
     try{
       const s2 = loadGasSettings();
+      // ✎ v1.30.784 DBを先に(スイッチ extraDbWrite)
+      let data = null;
+      try{ data = await extraWorkDbFirst_(p.extDriveFileId, { action:"task-update-extra-work", extraId:__xwEditId, editedBy:(typeof getMyself==='function'?getMyself():"")||"", work:{ name, room, qty, unit, unitPrice, supplier, orderPrice, billable, note } }); }
+      catch(e){ if(e && e.unknown) throw e; console.warn('[追加工事 DB直接] 例外→GASへ:', e && e.message); data = null; }
+      if(!data){
       const res = await fetch(s2.url, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
         body: JSON.stringify({ action:"task-update-extra-work", token:s2.token, driveFileId:p.extDriveFileId,
           extraId:__xwEditId, editedBy:(typeof getMyself==='function'?getMyself():"")||"", actor: (typeof getMyself==='function'?getMyself():'')||'',   // v1.30.745(editedByは読まれないのでactorも入れる)
           work:{ name, room, qty, unit, unitPrice, supplier, orderPrice, billable, note } })});
-      const data = await res.json().catch(()=>null);
+      data = await res.json().catch(()=>null);
+      }
       if(!data) throw new Error("サーバー応答が不正です");
       if(data.ok !== true){
         if(/unknown kind/i.test(data.error||"")) throw new Error("GAS側が未対応です(master_syncの再デプロイ待ち)");
@@ -29974,10 +30114,16 @@ async function postExtraWorkPhotos_(p, workName, photos, extraId){
     const err = document.getElementById("xw-error");
     try{
       const s = loadGasSettings();
+      // 🗑 v1.30.784 DBを先に(スイッチ extraDbWrite)
+      let data = null;
+      try{ data = await extraWorkDbFirst_(p.extDriveFileId, { action:"task-update-extra-work", extraId:__xwEditId, remove:true, editedBy:(typeof getMyself==='function'?getMyself():"")||"" }); }
+      catch(e){ if(e && e.unknown) throw e; console.warn('[追加工事 DB直接] 例外→GASへ:', e && e.message); data = null; }
+      if(!data){
       const res = await fetch(s.url, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
         body: JSON.stringify({ action:"task-update-extra-work", token:s.token, driveFileId:p.extDriveFileId, extraId:__xwEditId, remove:true,
           editedBy:(typeof getMyself==='function'?getMyself():"")||"", actor: (typeof getMyself==='function'?getMyself():'')||'' })});   // v1.30.745   // 控えtxtの🗑削除行に操作者名を残す(GASはbody.editedBy対応済)
-      const data = await res.json().catch(()=>null);
+      data = await res.json().catch(()=>null);
+      }
       if(!data || data.ok !== true) throw gasWriteError_(data, "削除に失敗しました");   // v1.30.707
       noteLedgerWriteResult_("追加工事の削除", data);   // v1.30.741
       p.tasks = (p.tasks||[]).filter(t=>t.extraId !== __xwEditId);   // ローカル即除去(24h保護の対象からも外れる)
