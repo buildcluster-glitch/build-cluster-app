@@ -2955,7 +2955,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.786</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.787</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4587,7 +4587,7 @@
   </div>
 </div>
 
-<script src="projection.js?v=1.30.786"></script><!-- 📡 v1.30.780 射影(見積アプリ src/projection.js をそのまま写したもの・改造禁止。台帳のDB直接書き込みに使う) -->
+<script src="projection.js?v=1.30.787"></script><!-- 📡 v1.30.780 射影(見積アプリ src/projection.js をそのまま写したもの・改造禁止。台帳のDB直接書き込みに使う) -->
 <script>
 // =========================================================
 // ビルドクラスタ スケジュール管理アプリ Phase 1A
@@ -26033,7 +26033,7 @@ window.bcStat_ = function(){
     物件マスタ: (typeof window.__bukkenReadStat!=='undefined' && window.__bukkenReadStat) ? window.__bukkenReadStat : '(まだ読んでいない)',
     進捗: Object.assign({}, window.__tpReadStat || { src:'(まだ読んでいない)' }, { スイッチ: (typeof progressTableReadOn_==='function') ? progressTableReadOn_() : '?' }),   // v1.30.766
     立会表からの更新: window.__taikyoStale || '(まだ読んでいない)',   // v1.30.769
-    進捗の書き込み: Object.assign({}, window.__tpWriteStat || { r:'(まだ書いていない)' }, { スイッチ: (typeof progressDbWriteOn_==='function') ? progressDbWriteOn_() : '?' }),   // v1.30.767
+    進捗の書き込み: Object.assign({}, window.__tpWriteStat || { r:'(まだ書いていない)' }, { スイッチ: (typeof progressDbWriteOn_==='function') ? progressDbWriteOn_() : '?', GASを呼ばない: (typeof progressGasSkipOn_==='function') ? progressGasSkipOn_() : '?', GAS: window.__tpGasStat || '-', 写真: window.__tpPhotoStat || '-' }),   // v1.30.767
     台帳の書き込み: Object.assign({}, window.__ledgerWriteStat || { r:'(まだ書いていない)' }, { スイッチ: (typeof ledgerDbWriteOn_==='function') ? ledgerDbWriteOn_() : '?', 簡易見積スイッチ: (typeof kaniDbWriteOn_==='function') ? kaniDbWriteOn_() : '?', 追加工事スイッチ: (typeof extraDbWriteOn_==='function') ? extraDbWriteOn_() : '?', 控えtxt: window.__xwNoteStat || '-', Driveへの写し: window.__ledgerMirrorStat || '-', 射影: (typeof window.bcBuildProjection==='function') ? 'あり' : '無し' }),   // v1.30.780
   };
   try{ console.log(JSON.stringify(o, null, 1)); }catch(_){ console.log(o); }
@@ -28505,6 +28505,13 @@ function retryPendingProgress_(){
 //   ⚠版が読めない(権限が無い等)時は書かない。0(=新規)に丸めない(GASの wtTpVersion_ と同じ規則)。
 // ===========================================================
 window.__tpWriteStat = null;
+function progressGasSkipOn_(){   // v1.30.787 表に書けたら GAS saveProgress を呼ばない(既定OFF)
+  if(typeof dbTripped_==='function' && dbTripped_()) return false;
+  try{ const o = localStorage.getItem('bc_flag_progressGasSkip'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
+  if(typeof __staticFlags!=='undefined' && __staticFlags){ const r = __pickWriteFlag_(__staticFlags.progressGasSkip); if(r !== null) return r; }
+  const r2 = (typeof __calFlags!=='undefined' && __calFlags) ? __pickWriteFlag_(__calFlags.progressGasSkip) : null;
+  return r2 === true;
+}
 function progressDbWriteOn_(){
   if(typeof dbTripped_==='function' && dbTripped_()) return false;
   try{ const o = localStorage.getItem('bc_flag_progressDbWrite'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
@@ -28559,6 +28566,14 @@ async function restoPushProgressNow(propId){
     const t0 = Date.now();
     try{ const r = await pushProgressToDb_(prop, progress); __dbApplied = (r === 'applied' || r === 'already_processed'); window.__tpWriteStat = { r, key:String(prop.name||'').trim()+'|'+String(prop.room||'').trim(), ms:Date.now()-t0, at:new Date().toISOString() }; if(r!=='applied' && r!=='already_processed') console.warn('[progress-write] DBへ直接書けず(GASの二重書きに任せる):', r); }
     catch(e){ window.__tpWriteStat = { r:'error:'+((e&&e.message)||e), ms:Date.now()-t0, at:new Date().toISOString() }; console.warn('[progress-write] DBへ直接書けず(GASの二重書きに任せる):', e && e.message); }
+  }
+  // 🗂 v1.30.787(見積合意 案A 手順4): 表に書けたら GAS saveProgress を呼ばない(塊と Drive の _task_progress.json はもう読み手がいない)。
+  //   見積GAS ver106(_attachProgress_ を表から)が本番に出てから、スイッチ progressGasSkip で 山田→全員。
+  //   ⚠表に書けなかった時(写真の生データが残った/stale/権限/未ログイン)は、これまでどおり GAS が写真を逃がして表へ写す
+  if(__dbApplied && progressGasSkipOn_()){
+    _progPendingSet_(propId, false);
+    window.__tpGasStat = { skipped:true, key:String(prop.name||'').trim()+'|'+String(prop.room||'').trim(), at:new Date().toISOString() };
+    return;
   }
   if(!s.url) return;   // GASの設定が無い端末は、DBにだけ書いて終わり
   try{
