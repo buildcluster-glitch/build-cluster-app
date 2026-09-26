@@ -2955,7 +2955,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.781</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.782</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4587,7 +4587,7 @@
   </div>
 </div>
 
-<script src="projection.js?v=1.30.781"></script><!-- 📡 v1.30.780 射影(見積アプリ src/projection.js をそのまま写したもの・改造禁止。台帳のDB直接書き込みに使う) -->
+<script src="projection.js?v=1.30.782"></script><!-- 📡 v1.30.780 射影(見積アプリ src/projection.js をそのまま写したもの・改造禁止。台帳のDB直接書き込みに使う) -->
 <script>
 // =========================================================
 // ビルドクラスタ スケジュール管理アプリ Phase 1A
@@ -16796,8 +16796,9 @@ function __ledgerMirrorToDrive_(doc){
   }catch(_){}
 }
 // 本体。戻り: 成功={ok:true,path:'db-direct',...} / null=何も書いていない(GASへ) / throw(unknown:true)=入ったか分からない
-async function ledgerPatchDb_(fid, patchFn, label){
-  if(!ledgerDbWriteOn_()) return null;
+async function ledgerPatchDb_(fid, patchFn, label, opts){
+  opts = opts || {};
+  if(!(opts.on ? opts.on() : ledgerDbWriteOn_())) return null;   // v1.30.782: 簡易見積は別スイッチ(kaniDbWrite)
   if(!fid || typeof window.bcBuildProjection!=='function') return null;
   const s0 = sbSession_(); if(!s0 || !s0.access_token) return null;
   const t0 = Date.now();
@@ -16809,8 +16810,11 @@ async function ledgerPatchDb_(fid, patchFn, label){
     const doc = row.doc;
     const base = Number(row.source_version) || 0;
     const month = row.month || doc._driveMonth || '';
+    // v1.30.782: 試すたびの下ごしらえ(簡易見積=DBの時刻)。staleで読み直す時も取り直す。取れなければ書かない=GASへ
+    let ctx = {};
+    if(opts.prepare){ try{ ctx = (await opts.prepare()) || {}; }catch(e){ stat({ r:'skip:下ごしらえ失敗 '+((e&&e.message)||'') }); return null; } }
     let out;
-    try{ out = patchFn(doc); }catch(e){ stat({ r:'skip:直せない '+((e&&e.message)||'') }); return null; }
+    try{ out = patchFn(doc, ctx); }catch(e){ stat({ r:'skip:直せない '+((e&&e.message)||'') }); return null; }
     if(!out || out.ok !== true){ stat({ r:'skip:'+((out&&out.error)||'直す所なし') }); return null; }   // 業務上の失敗はGASに同じ判定をさせる
     doc.version = base + 1;               // ★DBの版から採番(GAS _taskPatchDbFirst_ と同じ。anken_save も同じ値を入れる)
     doc._driveFileId = fid;
@@ -16845,6 +16849,47 @@ async function ledgerPatchDb_(fid, patchFn, label){
     stat({ r:'skip:'+r }); return null;                     // stale 2回/deleted 等=書いていない→GASへ
   }
   return null;
+}
+// ⚡ v1.30.782 簡易見積もDBへ直接(見積セッション合意・案A)。kaniUpdatedAt は端末の時計でなく DB の時刻(rpc/bc_now・migration 058)
+//   ⚠スタンプは「後で更新した方が勝つ」保護(GAS save-ledger)の判定に使うので、時計のずれた端末の印は巻き戻しの穴になる
+function kaniDbWriteOn_(){
+  if(typeof dbTripped_==='function' && dbTripped_()) return false;
+  try{ const o = localStorage.getItem('bc_flag_kaniDbWrite'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
+  if(typeof __staticFlags!=='undefined' && __staticFlags){ const r = __pickWriteFlag_(__staticFlags.kaniDbWrite); if(r !== null) return r; }
+  const r2 = (typeof __calFlags!=='undefined' && __calFlags) ? __pickWriteFlag_(__calFlags.kaniDbWrite) : null;
+  return r2 === true;
+}
+async function __ledgerServerNow_(){
+  const v = await __ledgerTimeout_(calRpc_('bc_now', {}), 10000);
+  if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(String(v))) throw new Error('DBの時刻の形が違う: '+String(v).slice(0,40));
+  return String(v);
+}
+// GAS setLedgerKaniMitsu_ の移植(io・ロック抜き=ロックの代わりは anken_save の版の照合。中身は同じ)
+function __ledgerPatchKani_(data, body, stamp){
+  if(!stamp) return { ok:false, error:'DBの時刻がない' };
+  var KANI_MAX = 5;
+  var raw = (body && Array.isArray(body.kaniLines)) ? body.kaniLines : [];
+  var lines = [];
+  var sum = 0;
+  for (var i = 0; i < raw.length && lines.length < KANI_MAX; i++) {
+    var l = raw[i] || {};
+    var nm = String(l.name || '').trim();
+    var amt = Number(l.amount) || 0;
+    if (!nm && !amt) continue;
+    var qv = (l.qty === '' || l.qty == null) ? '' : (Number(l.qty) || 0);
+    var pv = (l.unitPrice === '' || l.unitPrice == null) ? '' : (Number(l.unitPrice) || 0);
+    lines.push({ name: nm, qty: qv, unit: String(l.unit || '').trim(), unitPrice: pv, amount: amt });
+    sum += amt;
+  }
+  if (!data.meta) data.meta = {};
+  data.meta.kaniLines     = lines.length ? lines : null;
+  data.meta.kaniMitsu     = lines.length ? sum : null;
+  data.meta.kaniHatchu    = null;
+  data.meta.kaniSupplier  = '';
+  data.meta.kaniUpdatedAt = stamp;
+  data.meta.kaniSetBy     = String((body && body.setBy) || '');
+  data.updatedAt = stamp;
+  return { ok: true, action: 'set', kaniMitsu: (lines.length ? sum : null), lineCount: lines.length, kaniUpdatedAt: stamp };
 }
 // GAS updateLedgerAppointment_ の移植(io抜き・中身は同じ)
 function __ledgerPatchAppointment_(data, body){
@@ -25847,7 +25892,7 @@ window.bcStat_ = function(){
     進捗: Object.assign({}, window.__tpReadStat || { src:'(まだ読んでいない)' }, { スイッチ: (typeof progressTableReadOn_==='function') ? progressTableReadOn_() : '?' }),   // v1.30.766
     立会表からの更新: window.__taikyoStale || '(まだ読んでいない)',   // v1.30.769
     進捗の書き込み: Object.assign({}, window.__tpWriteStat || { r:'(まだ書いていない)' }, { スイッチ: (typeof progressDbWriteOn_==='function') ? progressDbWriteOn_() : '?' }),   // v1.30.767
-    台帳の書き込み: Object.assign({}, window.__ledgerWriteStat || { r:'(まだ書いていない)' }, { スイッチ: (typeof ledgerDbWriteOn_==='function') ? ledgerDbWriteOn_() : '?', Driveへの写し: window.__ledgerMirrorStat || '-', 射影: (typeof window.bcBuildProjection==='function') ? 'あり' : '無し' }),   // v1.30.780
+    台帳の書き込み: Object.assign({}, window.__ledgerWriteStat || { r:'(まだ書いていない)' }, { スイッチ: (typeof ledgerDbWriteOn_==='function') ? ledgerDbWriteOn_() : '?', 簡易見積スイッチ: (typeof kaniDbWriteOn_==='function') ? kaniDbWriteOn_() : '?', Driveへの写し: window.__ledgerMirrorStat || '-', 射影: (typeof window.bcBuildProjection==='function') ? 'あり' : '無し' }),   // v1.30.780
   };
   try{ console.log(JSON.stringify(o, null, 1)); }catch(_){ console.log(o); }
   return o;
@@ -30154,16 +30199,25 @@ async function saveKaniModal_(){
   const btn = document.getElementById('kani-save');
   btn.disabled = true; btn.textContent = '保存中…';
   try{
+    // ⚡ v1.30.782 先にDBへ直接(スイッチ kaniDbWrite)。入ったか分からない時はGASへ回さず失敗として出す(下の catch)
+    let data = null;
+    try{
+      const __me = (typeof getMyself==='function' ? getMyself() : '') || '';
+      data = await ledgerPatchDb_(r.extDriveFileId, (doc, ctx)=>__ledgerPatchKani_(doc, { kaniLines: rows, setBy: __me }, ctx.stamp), '簡易見積',
+        { on: kaniDbWriteOn_, prepare: async ()=>({ stamp: await __ledgerServerNow_() }) });
+    }catch(e){ if(e && e.unknown) throw e; console.warn('[簡易見積 DB直接] 例外→GASへ:', e && e.message); data = null; }
+    if(!data){
     const res = await fetch(s.url, {
       method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
       body: JSON.stringify({ action:'task-set-kani-mitsu', token:s.token, driveFileId:r.extDriveFileId,
         setBy: (typeof getMyself==='function' ? getMyself() : '') || '', actor: (typeof getMyself==='function'?getMyself():'')||'', kaniLines: rows }),   // v1.30.745
     });
-    const data = await res.json().catch(()=>null);
+    data = await res.json().catch(()=>null);
     if(!data) throw new Error('サーバー応答が不正です');
     if(data.ok !== true){
       if(/unknown kind/i.test(data.error||'')) throw new Error('見積アプリ側(master_sync)が未対応です。GASデプロイを確認してください');
       throw gasWriteError_(data, 'GAS returned ok:false');   // v1.30.707
+    }
     }
     noteLedgerWriteResult_("簡易見積", data);   // v1.30.741
     // ローカル反映(合計はサーバ再計算値=kaniMitsuが正)
