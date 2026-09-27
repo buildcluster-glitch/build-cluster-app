@@ -2955,7 +2955,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.787</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.788</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4587,7 +4587,7 @@
   </div>
 </div>
 
-<script src="projection.js?v=1.30.787"></script><!-- 📡 v1.30.780 射影(見積アプリ src/projection.js をそのまま写したもの・改造禁止。台帳のDB直接書き込みに使う) -->
+<script src="projection.js?v=1.30.788"></script><!-- 📡 v1.30.780 射影(見積アプリ src/projection.js をそのまま写したもの・改造禁止。台帳のDB直接書き込みに使う) -->
 <script>
 // =========================================================
 // ビルドクラスタ スケジュール管理アプリ Phase 1A
@@ -26452,7 +26452,7 @@ function saveCalReports_(m){
 //     (今までは大きい画像が共有時に落とされ「投稿した端末でのみ表示」になっていた)。
 //   失敗時はdataURIのまま=従来動作(fail-open)。
 async function reportPhotoToDrive_(dataUrl){
-  if(!dataUrl || String(dataUrl).indexOf('http') === 0) return dataUrl;   // 既にURL
+  if(!dataUrl || String(dataUrl).indexOf('http') === 0 || sbPhotoRef_(dataUrl)) return dataUrl;   // 既にURL/置き場の参照(v1.30.788)
   try{
     const r = await restoUploadToDrive(dataUrl, 'バグ報告', '');
     if(r && r.ok && r.url) return r.url;
@@ -26501,7 +26501,7 @@ function brPhotos_(r){
   if(r.photo) arr.push(r.photo);
   if(Array.isArray(r.photosExtra)) r.photosExtra.forEach(p=>arr.push(p));
   else if(Array.isArray(r.photos)) r.photos.forEach(p=>{ if(p !== r.photo) arr.push(p); });   // 保険(初期形式)
-  return arr.filter(p=> typeof p==='string' && /^(data:image\/|https?:\/\/)/.test(p));
+  return arr.filter(p=> typeof p==='string' && /^(data:image\/|https?:\/\/|sb:photos\/)/.test(p));   // 📷 v1.30.788 sb:photos/ も写真
 }
 // 画像リストを報告オブジェクトに書き戻す(枚数印 photoCount も更新)
 function brSetPhotos_(obj, list){
@@ -29751,11 +29751,156 @@ async function restoEvacuatePropPhotos_(prop){
   window.__tpPhotoStat = { prop: String(prop.name||'')+' '+String(prop.room||''), up: jobs.length-left, left, at:new Date().toISOString() };
   return left;
 }
+// ============================================================
+// 📷 v1.30.788 写真を Supabase Storage の非公開バケット photos へ(山田「写真はうつしたい」「セキュリティ考えたらB一択」)
+//   見積(台帳DB)セッションと合意(9/27・migration 060): バケット photos(public=false・10MB・jpeg/png/webp)
+//   ・RLS=3役が SELECT/INSERT(先頭フォルダ calendar|mitsumori)・UPDATE無し(上書き不可)・DELETE=admin・anon不可
+//   ・保存する値は URL ではなく参照 `sb:photos/<path>`。表示の時に署名URL(1時間)へ変える(ログインした社員しか見られない)
+//   ・パス = calendar/<kind>/<YYYY-MM>/<uuid>.<ext>   kind = progress | bugreport | alcohol
+//   ・上げる時に Storage が使えなければ(スイッチOFF/未ログイン/HEIC等/失敗)、今までどおり GAS upload-image → Drive
+//   ・古い値(https の Drive URL・data:image)はそのまま表示できる=混在OK
+//   表示は1か所の見張り(MutationObserver)で解決: 画面に src="sb:…" の <img> が出たら、まとめて署名URLに差し替える
+//   (表示箇所=作業ログ/現場メモ/バグ報告/拡大表示 を1つずつ直さない)。<a href="sb:…">(アルコールの📷)はクリック時に開く
+// ============================================================
+function photoStorageOn_(){
+  if(typeof dbTripped_==='function' && dbTripped_()) return false;
+  try{ const o = localStorage.getItem('bc_flag_photoStorage'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
+  if(typeof __staticFlags!=='undefined' && __staticFlags){ const r = __pickWriteFlag_(__staticFlags.photoStorage); if(r !== null) return r; }
+  const r2 = (typeof __calFlags!=='undefined' && __calFlags) ? __pickWriteFlag_(__calFlags.photoStorage) : null;
+  return r2 === true;
+}
+const PHOTO_BUCKET = 'photos';
+const PHOTO_REF_PREFIX = 'sb:photos/';
+function sbPhotoRef_(v){ return typeof v === 'string' && v.indexOf(PHOTO_REF_PREFIX) === 0; }
+function __photoDataUrlToBlob_(d){
+  const m = /^data:(image\/(jpeg|png|webp));base64,([\s\S]*)$/.exec(String(d||''));
+  if(!m) return null;                                   // HEIC など = バケットが受けない → Drive へ
+  const bin = atob(m[3]); const u = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) u[i] = bin.charCodeAt(i);
+  return { blob: new Blob([u], { type: m[1] }), ext: m[2] === 'jpeg' ? 'jpg' : m[2] };
+}
+function __photoKindOf_(propName){
+  const n = String(propName||'');
+  if(n === 'アルコールチェック') return 'alcohol';
+  if(n === 'バグ報告') return 'bugreport';
+  return 'progress';
+}
+// 戻り: {ok:true, url:'sb:photos/…'} / null(=Driveへ)
+async function photoUploadToStorage_(dataUrl, kind){
+  if(!photoStorageOn_()) return null;
+  let s = (typeof sbSession_==='function') ? sbSession_() : null;
+  if(!s || !s.access_token) return null;
+  const b = __photoDataUrlToBlob_(dataUrl); if(!b) return null;
+  const d = new Date(); const ym = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  const id = (typeof crypto!=='undefined' && crypto.randomUUID) ? crypto.randomUUID() : (Date.now().toString(36)+Math.random().toString(36).slice(2,12));
+  const path = `calendar/${kind}/${ym}/${id}.${b.ext}`;
+  const t0 = Date.now();
+  for(let i=0;i<2;i++){
+    const res = await fetch(`${SB_AUTH.url}/storage/v1/object/${PHOTO_BUCKET}/${path}`, {
+      method:'POST',
+      headers:{ 'apikey':SB_AUTH.key, 'Authorization':'Bearer '+s.access_token, 'Content-Type':b.blob.type, 'x-upsert':'false', 'cache-control':'3600' },
+      body: b.blob,
+    });
+    if((res.status===401 || res.status===403) && i===0){ try{ await sbRefresh_(); }catch(_){} s = sbSession_(); if(!s || !s.access_token) break; continue; }
+    if(res.ok){ window.__photoUpStat = { r:'ok', path, kb:Math.round(b.blob.size/1024), ms:Date.now()-t0, at:new Date().toISOString() }; return { ok:true, url: PHOTO_REF_PREFIX + path }; }
+    let msg = ''; try{ msg = (await res.text()).slice(0,120); }catch(_){}
+    window.__photoUpStat = { r:'http '+res.status, msg, at:new Date().toISOString() };
+    return null;
+  }
+  window.__photoUpStat = { r:'auth', at:new Date().toISOString() };
+  return null;
+}
+// ---- 表示: 参照 → 署名URL(1時間・55分で取り直し)。まとめて取る ----
+const PHOTO_SIGN_SEC = 3600;
+const __photoSigned = new Map();     // ref -> { url, exp }
+const __photoPending = new Set();
+let __photoSignT = null;
+const PHOTO_PLACEHOLDER = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="80"><rect width="120" height="80" fill="#f1f5f9"/><text x="60" y="46" font-size="13" text-anchor="middle" fill="#94a3b8">📷 読込中…</text></svg>');
+const PHOTO_OFFLINE = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="160" height="80"><rect width="160" height="80" fill="#f1f5f9"/><text x="80" y="46" font-size="12" text-anchor="middle" fill="#64748b">📷 オンラインで表示</text></svg>');
+function __photoCached_(ref){ const c = __photoSigned.get(ref); return (c && c.exp > Date.now()) ? c.url : null; }
+async function photoSignRefs_(refs){
+  refs = [...new Set((refs||[]).filter(sbPhotoRef_))].filter(r=>!__photoCached_(r));
+  if(!refs.length) return;
+  let s = (typeof sbSession_==='function') ? sbSession_() : null;
+  if(!s || !s.access_token) throw new Error('未ログイン');
+  for(let i=0;i<2;i++){
+    const res = await fetch(`${SB_AUTH.url}/storage/v1/object/sign/${PHOTO_BUCKET}`, {
+      method:'POST', headers:{ 'apikey':SB_AUTH.key, 'Authorization':'Bearer '+s.access_token, 'Content-Type':'application/json' },
+      body: JSON.stringify({ expiresIn: PHOTO_SIGN_SEC, paths: refs.map(r=>r.slice(PHOTO_REF_PREFIX.length)) }),
+    });
+    if((res.status===401 || res.status===403) && i===0){ try{ await sbRefresh_(); }catch(_){} s = sbSession_(); if(!s || !s.access_token) throw new Error('未ログイン'); continue; }
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const arr = await res.json();
+    const exp = Date.now() + (PHOTO_SIGN_SEC - 300) * 1000;
+    (Array.isArray(arr) ? arr : []).forEach(x=>{
+      const u = x && (x.signedURL || x.signedUrl);
+      if(u && x.path) __photoSigned.set(PHOTO_REF_PREFIX + x.path, { url: /^https?:/.test(u) ? u : (SB_AUTH.url + '/storage/v1' + u), exp });
+    });
+    return;
+  }
+}
+async function photoResolve_(ref){
+  if(!sbPhotoRef_(ref)) return ref;
+  const c = __photoCached_(ref); if(c) return c;
+  await photoSignRefs_([ref]);
+  return __photoCached_(ref) || null;
+}
+function __photoApply_(img){
+  const ref = img.getAttribute('data-sb-ref'); if(!ref) return;
+  const u = __photoCached_(ref);
+  if(u){ if(img.getAttribute('src') !== u) img.setAttribute('src', u); img.removeAttribute('data-sb-wait'); }
+}
+function __photoFlush_(){
+  __photoSignT = null;
+  const refs = [...__photoPending]; __photoPending.clear();
+  if(!refs.length) return;
+  photoSignRefs_(refs).then(()=>{
+    document.querySelectorAll('img[data-sb-wait]').forEach(__photoApply_);
+  }).catch(e=>{
+    window.__photoSignStat = { r:'error:'+((e&&e.message)||e), at:new Date().toISOString() };
+    document.querySelectorAll('img[data-sb-wait]').forEach(img=>{ img.setAttribute('src', PHOTO_OFFLINE); img.title = '📷 オンラインで(ログインして)表示されます'; });
+  });
+}
+function __photoWatchImg_(img){
+  const src = img.getAttribute('src');
+  if(!sbPhotoRef_(src)) return;
+  img.setAttribute('data-sb-ref', src);
+  const u = __photoCached_(src);
+  if(u){ img.setAttribute('src', u); return; }
+  img.setAttribute('data-sb-wait', '1');
+  img.setAttribute('src', PHOTO_PLACEHOLDER);
+  __photoPending.add(src);
+  if(!__photoSignT) __photoSignT = setTimeout(__photoFlush_, 30);
+}
+try{
+  new MutationObserver(muts=>{
+    for(const m of muts){
+      if(m.type === 'attributes'){ if(m.target && m.target.tagName === 'IMG') __photoWatchImg_(m.target); continue; }
+      m.addedNodes && m.addedNodes.forEach(n=>{
+        if(n.nodeType !== 1) return;
+        if(n.tagName === 'IMG') __photoWatchImg_(n);
+        else if(n.querySelectorAll) n.querySelectorAll('img[src^="sb:"]').forEach(__photoWatchImg_);
+      });
+    }
+  }).observe(document.documentElement, { childList:true, subtree:true, attributes:true, attributeFilter:['src'] });
+  document.querySelectorAll('img[src^="sb:"]').forEach(__photoWatchImg_);
+}catch(_){}
+// <a href="sb:…">(アルコールの📷など)= クリックで署名URLを開く
+document.addEventListener('click', e=>{
+  const a = e.target && e.target.closest ? e.target.closest('a[href^="sb:"]') : null;
+  if(!a) return;
+  e.preventDefault(); e.stopPropagation();
+  const w = window.open('about:blank', '_blank');
+  photoResolve_(a.getAttribute('href')).then(u=>{ if(u){ if(w) w.location.href = u; else window.open(u, '_blank'); } else { if(w) w.close(); alert('写真を開けませんでした(ログインしているか確認してください)'); } })
+    .catch(()=>{ if(w) w.close(); alert('写真を開けませんでした(オンラインでログインしている時に開けます)'); });
+}, true);
 // Drive アップロード v1.30.531
 //   旧iframe橋(?action=uploadPage)は master_sync に受け口が存在せず【常に30秒タイムアウト】
 //   →全写真が28KBサムネイル劣化 or base64のまま進捗共有(_task_progress.json)に直載りしていた(task-sync 4.9MBの主因)。
 //   他の同期と同じ text/plain POST(action:"upload-image")で直接Driveへ。返りは無認証表示URL。
 async function restoUploadToDrive(base64Data, propName, roomNo){
+  // 📷 v1.30.788 先に Supabase Storage(非公開)へ。使えなければ(null)下の Drive へ
+  try{ const __st = await photoUploadToStorage_(base64Data, __photoKindOf_(propName)); if(__st) return __st; }catch(e){ window.__photoUpStat = { r:'error:'+((e&&e.message)||e), at:new Date().toISOString() }; }
   try{
     const s = loadGasSettings();
     if(!s.url) return {ok:false, error:"GAS URL未設定"};
@@ -29796,7 +29941,7 @@ function restoShrinkDataUrl_(dataUrl, maxBytes, maxDim){
 }
 // 📷 写真の保存先を決める: デフォでDriveへアップ→URL。GAS未設定/失敗時はlocalStorageを膨らませないよう小サムネイルで保持(写真は残る)v1.30.393・山田「デフォでドライブ保存/縮小」
 async function restoPersistPhoto_(compressed, prop){
-  if(!compressed || compressed.indexOf('https://')===0) return compressed;   // 既にURLなら何もしない
+  if(!compressed || compressed.indexOf('https://')===0 || sbPhotoRef_(compressed)) return compressed;   // 既にURL/置き場の参照なら何もしない(v1.30.788)
   const s=(typeof loadGasSettings==='function')?loadGasSettings():{};
   if(s.url){
     try{ const r=await restoUploadToDrive(compressed, prop&&prop.name, prop&&prop.room); if(r&&r.ok&&r.url) return r.url; }catch(_){}
