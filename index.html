@@ -2955,7 +2955,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.788</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.789</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4587,7 +4587,7 @@
   </div>
 </div>
 
-<script src="projection.js?v=1.30.788"></script><!-- 📡 v1.30.780 射影(見積アプリ src/projection.js をそのまま写したもの・改造禁止。台帳のDB直接書き込みに使う) -->
+<script src="projection.js?v=1.30.789"></script><!-- 📡 v1.30.780 射影(見積アプリ src/projection.js をそのまま写したもの・改造禁止。台帳のDB直接書き込みに使う) -->
 <script>
 // =========================================================
 // ビルドクラスタ スケジュール管理アプリ Phase 1A
@@ -8537,14 +8537,20 @@ function alertChipHtml_(id, opts){
   //   ホバーtitleは改行のまま=全文が縦に読める。
   const __lines = String(e.text||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
   const __title = escapeHtml('⚠ '+e.text+(e.author?(' ('+e.author+')'):''));
+  // ✍ v1.30.789(山田「アラート1行目はまどかが書いてたと思う」): 行ごとの書き手(lines)があれば、行ごとに姓を付ける。
+  //   全行が同じ人なら今までどおり最後に1つ。lines の無い古いアラートは今までどおり(最後に保存した人)
+  const __sn = n => (typeof surnameOf_==='function') ? surnameOf_(n) : (n||'');
+  const __byLine = Array.isArray(e.lines) ? __lines.map(t=>{ const m = (typeof alertLineMeta_==='function') ? alertLineMeta_(e, t) : null; return (m && m.by) ? __sn(m.by) : ''; }) : null;
+  const __perLine = !!(__byLine && __byLine.some(Boolean) && new Set(__byLine.filter(Boolean)).size > 1);
+  const __tail = (i)=> __perLine ? (__byLine[i] ? ' '+__byLine[i] : '') : ((i===__lines.length-1 && __au) ? ' '+__au : '');
   // 📝 v1.30.581(山田「ここ2行にわけてほしい」): 幅に余裕のあるカード(最終確認/原状回復)では
   //   複数アラートを**1件1行**で出す。カレンダーのチップは高さが命なので従来どおり「／」で1行に畳む。
   if(opts && opts.multiline && __lines.length > 1){
     return __lines.map((t,i)=>
-      `<span class="chip-alert" style="display:block;font-size:11.5px;font-weight:800;color:#dc2626;line-height:16px;white-space:normal;word-break:break-word" title="${__title}">${escapeHtml('⚠'+t+((i===__lines.length-1&&__au)?(' '+__au):''))}</span>`
+      `<span class="chip-alert" style="display:block;font-size:11.5px;font-weight:800;color:#dc2626;line-height:16px;white-space:normal;word-break:break-word" title="${__title}">${escapeHtml('⚠'+t+__tail(i))}</span>`
     ).join('');
   }
-  const txt = `⚠${__lines.join(' ／ ')}${__au?(' '+__au):''}`;
+  const txt = __perLine ? ('⚠' + __lines.map((t,i)=> t + __tail(i)).join(' ／ ')) : `⚠${__lines.join(' ／ ')}${__au?(' '+__au):''}`;
   const inline = opts&&opts.inline;
   const st = inline
     ? `display:inline-block;max-width:100%;font-size:11.5px;font-weight:800;color:#dc2626;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom`
