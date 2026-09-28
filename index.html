@@ -2955,7 +2955,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.789</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.790</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4587,7 +4587,7 @@
   </div>
 </div>
 
-<script src="projection.js?v=1.30.789"></script><!-- 📡 v1.30.780 射影(見積アプリ src/projection.js をそのまま写したもの・改造禁止。台帳のDB直接書き込みに使う) -->
+<script src="projection.js?v=1.30.790"></script><!-- 📡 v1.30.780 射影(見積アプリ src/projection.js をそのまま写したもの・改造禁止。台帳のDB直接書き込みに使う) -->
 <script>
 // =========================================================
 // ビルドクラスタ スケジュール管理アプリ Phase 1A
@@ -29907,6 +29907,10 @@ document.addEventListener('click', e=>{
 async function restoUploadToDrive(base64Data, propName, roomNo){
   // 📷 v1.30.788 先に Supabase Storage(非公開)へ。使えなければ(null)下の Drive へ
   try{ const __st = await photoUploadToStorage_(base64Data, __photoKindOf_(propName)); if(__st) return __st; }catch(e){ window.__photoUpStat = { r:'error:'+((e&&e.message)||e), at:new Date().toISOString() }; }
+  // 🔒 v1.30.790: 置き場がONの端末では Drive に逃がさない。Drive の写真とフォルダの「リンクを知っていれば」共有は外すので、
+  //   そこへ上げた lh3 の URL は後で誰にも見えなくなる。上げられなかった写真は呼び出し側が小さいサムネイル(data:image)で持ち、
+  //   次の送信(restoEvacuatePropPhotos_)で置き場へ上げ直す。未ログイン等でスイッチOFFの端末だけ従来どおり Drive
+  if(typeof photoStorageOn_==='function' && photoStorageOn_()) return { ok:false, error:'置き場へ上げられませんでした(Driveへは逃がしません)' };
   try{
     const s = loadGasSettings();
     if(!s.url) return {ok:false, error:"GAS URL未設定"};
