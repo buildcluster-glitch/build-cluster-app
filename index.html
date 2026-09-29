@@ -2955,7 +2955,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.791</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.792</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24459,6 +24459,12 @@ function noteEventsDbWriteFallback_(reason){
 
 // RPCを1回叩く。戻り=文字列。失敗は {__err:{kind,status,message}} を throw ではなく返す形にはせず throw する。
 async function calRpc_(fn, body){
+  const v = await calRpcRaw_(fn, body);
+  return (v==null) ? '' : String(v);
+}
+// 📦 v1.30.792: 応答をそのまま(JSONのまま)返す版。在庫の口(zaiko_*)は jsonb {result, stock} を返すため。
+//   ⚠calRpc_ の String() を通すと "[object Object]" になって中身が消える。
+async function calRpcRaw_(fn, body){
   let s = sbSession_();
   if(!s || !s.access_token) throw Object.assign(new Error('未ログイン'), { evKind:'no-session' });
   if(s.expires_at && (s.expires_at*1000 - Date.now()) < 60000){ try{ await sbRefresh_(); }catch(_){} s = sbSession_(); }
@@ -24485,7 +24491,7 @@ async function calRpc_(fn, body){
       throw Object.assign(new Error(`HTTP ${res.status} ${detail}`), { evKind:'http', status:res.status, detail });
     }
     let v; try{ v = await res.json(); }catch(_){ throw Object.assign(new Error('応答が読めません'), { evKind:'shape' }); }
-    return (v==null) ? '' : String(v);
+    return v;
   }
 }
 
@@ -33352,11 +33358,14 @@ function commitCSVImport(){
   if(!csvPreviewData) return;
   const { report } = csvPreviewData;
   // apply updates
+  const __csvStockChanged = [];
   report.update.forEach(({rec, existing})=>{
+    const prev = Number(existing.stock)||0;
     Object.keys(rec).forEach(k=>{
       if(k==='sku') return;
       existing[k] = rec[k];
     });
+    __csvStockChanged.push([existing, prev]);
   });
   // apply adds
   report.add.forEach(({rec})=>{
@@ -33385,6 +33394,8 @@ function commitCSVImport(){
   report.update.forEach(({existing})=>{
     queueOp('upsertItem', existing);
   });
+  // 📦 v1.30.792: CSVで既存品目の在庫数が変わったら棚卸1件(品目編集と同じ理由)
+  __csvStockChanged.forEach(([it, prev])=>invStockEditAsCount_(it, prev, 'CSV取込で在庫数を変更'));
   save();
   closeSheet('sheet-csv');
   alert(`インポート完了: 追加${report.add.length}件 / 更新${report.update.length}件 / スキップ${report.skip.length}件`);
@@ -33555,7 +33566,13 @@ async function invFetchFromDb_(){
 async function syncPull({ replace=false }={}){
   // 📦 v1.30.748(段2): DB直読みを先に試し、ダメなら必ず従来のGASへ。既存のマージ以下は無改修
   let data = null;
-  if(invDbReadOn_()){
+  // 📦 v1.30.792(段3): 書き込みがDBなら、読みもDBの表(zaiko_snapshot)から。ダメなら影→GASの順
+  if(invDbWriteOn_()){
+    const __s = await invFetchSnapshot_();
+    if(__s.ok && __s.data){ data = __s.data; __setInvReadStat_({ src:'db表', n:__s.n, ms:__s.ms, note:'zaiko_snapshot' }); }
+    else { noteInvDbFallback_('表: '+__s.reason); __setInvReadStat_({ src:'gas', ms:__s.ms, fallback:'表:'+__s.reason }); }
+  }
+  if(!data && invDbReadOn_()){
     const __r = await invFetchFromDb_();
     if(__r.ok && __r.data){ data = __r.data; __setInvReadStat_({ src:'db', n:(data.items||[]).length, ms:__r.ms, note:`写し ${__r.ageMin}分前`, fetchedAt:__r.fetchedAt }); }
     else { noteInvDbFallback_(__r.reason); __setInvReadStat_({ src:'gas', ms:__r.ms, fallback:__r.reason }); }
@@ -33707,13 +33724,189 @@ async function invPostOps_(ops){
 
 function invAfterPush_(){ save(); updateSyncBadge(); renderPendingList_(); }
 
+// ============================================================================
+// 📦 v1.30.792 在庫の段3: 書き込みをDBへ先に(スイッチ invDbWrite・既定OFF)
+//   設計= ~/claude/カレンダー_DB切替/在庫DB化_設計案_2026-09-10.md §9-10
+//   口の仕様= ~/claude/申し送り_カレンダー→見積アプリ_在庫の書き込み口_2026-09-29.md
+//   ①ONの端末は **DBへ先に書き、通ったものだけ従来のGASへも送る**(GASは予備線)
+//   ②**DBに断られた操作はGASへも送らない**=食い違いを作らない。送信待ちに残して理由を画面に出す
+//   ③送信待ちの形(queueOp の9種類)は変えない=画面側は無改修。ここで口へ読み替えるだけ
+//   ④op_id: 記録に紐づくもの(出庫/入庫/棚卸/取り消し)は**記録のid**、それ以外は送信待ちのキー(p.k)。
+//     どちらも再送で変わらない=「応答だけ落ちた」時に二重にならない
+//   ⚠出庫1回は adjustStock + appendLog の2つ。**両方とも同じ op_id で zaiko_move に読み替える**ので、
+//     どちらが先に届いても、片方が前回すでに届いていても、在庫は1回しか動かない
+//   ⚠「取り消し」(在庫を戻す)と「ログ削除」(在庫は戻さない)は別物。前者=zaiko_undo / 後者=zaiko_hide
+// ============================================================================
+function invDbWriteWhy_(){
+  try{ if(typeof dbTripped_==='function' && dbTripped_()) return 'off(自前退避中=遮断器)'; }catch(_){}
+  try{ const o = localStorage.getItem('bc_flag_invDbWrite');
+    if(o==='1') return 'on(端末で1)'; if(o==='0') return 'off(端末で0)'; }catch(_){}
+  const me = (typeof getMyself==='function'? getMyself() : '') || '';
+  for(const [名, v] of [['flags.json', (typeof __staticFlags!=='undefined'&&__staticFlags)?__staticFlags.invDbWrite:undefined],
+                        ['共有設定',   (typeof __calFlags!=='undefined'&&__calFlags)?__calFlags.invDbWrite:undefined]]){
+    const r = __pickWriteFlag_(v);
+    if(r === true)  return 'on('+名+')';
+    if(r === false) return Array.isArray(v)
+      ? 'off('+名+'の一覧に自分が居ない: 自分="'+me+'" 一覧='+JSON.stringify(v)+')'
+      : 'off('+名+'でfalse)';
+  }
+  return 'off(どこにも指定が無い)';
+}
+function invDbWriteOn_(){
+  if(typeof dbTripped_==='function' && dbTripped_()) return false;
+  try{ const o = localStorage.getItem('bc_flag_invDbWrite'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
+  if(typeof __staticFlags!=='undefined' && __staticFlags){ const r = __pickWriteFlag_(__staticFlags.invDbWrite); if(r !== null) return r; }
+  const r2 = (typeof __calFlags!=='undefined' && __calFlags) ? __pickWriteFlag_(__calFlags.invDbWrite) : null;
+  return r2 === true;
+}
+try{ window.invDbWriteWhy_ = invDbWriteWhy_; }catch(_){}   // 🔎 コンソールから「なぜOFFか」を聞けるように
+window.setInvDbWriteLocal_ = function(on){ try{ if(on==null) localStorage.removeItem('bc_flag_invDbWrite'); else localStorage.setItem('bc_flag_invDbWrite', on?'1':'0'); }catch(_){} console.log('[inv-write] 端末上書き =', on); };
+
+const INV_UNDO_PREFIX = 'undo_';
+// 送信待ち1件 → 口の呼び方。戻り {fn, args} / {skip:理由}(DBには何もしないがGASへは送る)
+//   snapshot= 今回送る送信待ちの並び(対になる相方を探すため) / logs= 手元の記録(相方が前回もう送れていた時に使う)
+function invDbPlan_(p, snapshot, logs, me){
+  const d = (p && p.data) || {};
+  const who = String(me||'').slice(0,60);
+  const findOp = (action, pred) => (snapshot||[]).find(q=>q && q.action===action && pred(q.data||{}));
+  const findLog = id => findOp('appendLog', x=>x.id===id)?.data || (logs||[]).find(l=>l && l.id===id) || null;
+  const moveArgs = (opId, itemId, kind, delta, log, refOrderId) => ({ fn:'zaiko_move', args:{
+    p_op_id: String(opId), p_item_id: String(itemId||''), p_kind: kind, p_delta: Math.trunc(Number(delta)||0),
+    p_qty: (log && log.qty!=null && log.qty!=='') ? Math.trunc(Number(log.qty)||0) : null,
+    p_member: String((log && log.member) || who).slice(0,60),
+    p_site: String((log && log.site) || ''), p_room: String((log && log.room) || ''),
+    p_note: String((log && log.note) || ''), p_at_text: String((log && log.datetime) || new Date().toISOString()),
+    p_ref_order_id: refOrderId ? String(refOrderId) : null } });
+  const countArgs = (opId, itemId, counted, log) => ({ fn:'zaiko_count', args:{
+    p_op_id: String(opId), p_item_id: String(itemId||''), p_counted: Math.trunc(Number(counted)||0),
+    p_member: String((log && log.member) || who).slice(0,60), p_note: String((log && log.note) || ''),
+    p_at_text: String((log && log.datetime) || new Date().toISOString()) } });
+  switch(p && p.action){
+    case 'adjustStock': {
+      const opId = String(d.opId||'');
+      if(!opId) return { skip:'opIdが無い' };
+      if(opId.startsWith(INV_UNDO_PREFIX)) return { fn:'zaiko_undo', args:{ p_op_id: opId, p_undo_of: opId.slice(INV_UNDO_PREFIX.length), p_member: who } };
+      const log = findLog(opId);
+      const kind = (log && (log.type==='out' || log.type==='in')) ? log.type : 'adjust';
+      return moveArgs(opId, d.itemId, kind, d.delta, log, d.orderId);
+    }
+    case 'setStock': {
+      if(!d.opId) return { skip:'opIdが無い' };
+      return countArgs(d.opId, d.itemId, d.stock, findLog(d.opId));
+    }
+    case 'appendLog': {
+      const t = d.type;
+      if(t==='out' || t==='in'){
+        // 相方の数を優先(同じ値のはず)。相方がもう送れていれば記録から数を起こす
+        const adj = findOp('adjustStock', x=>x.opId===d.id);
+        const delta = adj ? (adj.data||{}).delta : (t==='out' ? -1 : 1) * (Number(d.qty)||0);
+        return moveArgs(d.id, d.itemId, t, delta, d, adj && (adj.data||{}).orderId);
+      }
+      if(t==='chk'){
+        const set = findOp('setStock', x=>x.opId===d.id);
+        if(set) return countArgs(d.id, (set.data||{}).itemId, (set.data||{}).stock, d);
+        return { skip:'棚卸の数は setStock と対で送る(相方は送信済み)' };
+      }
+      // ord(発注作成)/audit(品目の作成・編集・削除) … 数は動かさない記録
+      return moveArgs(d.id, d.itemId, (t==='ord' ? 'ord' : 'audit'), 0, d);
+    }
+    case 'deleteLog': {
+      const id = String(d.id||'');
+      if(!id) return { skip:'idが無い' };
+      // 取り消し(在庫を戻す)の片割れなら zaiko_undo が引き受ける。単独なら「在庫は戻さない」ログ削除
+      if(findOp('adjustStock', x=>x.opId===INV_UNDO_PREFIX+id)) return { skip:'取り消しの片割れ(zaiko_undoで処理)' };
+      return { fn:'zaiko_hide', args:{ p_op_id: 'hide_'+id, p_movement_id: id, p_member: who } };
+    }
+    case 'upsertItem':  return { fn:'zaiko_upsert_item',  args:{ p_op_id: p.k, p_doc: d, p_base_version: null } };
+    case 'deleteItem':  return { fn:'zaiko_delete_item',  args:{ p_op_id: p.k, p_item_id: String(d.id||'') } };
+    case 'upsertOrder': return { fn:'zaiko_upsert_order', args:{ p_op_id: p.k, p_doc: d, p_base_version: null } };
+    case 'deleteOrder': return { fn:'zaiko_delete_order', args:{ p_op_id: p.k, p_order_id: String(d.id||'') } };
+    case 'setMembers':  return { fn:'cal_save_shared_config', args:{ p_op_id: p.k, p_key:'zaiko_members',
+                                   p_value: JSON.stringify(Array.isArray(d) ? d : []), p_actor: who || 'calendar' } };
+  }
+  return { skip:'知らない操作: '+(p && p.action) };
+}
+// 口の答え → ok か。'applied'/'already_processed' だけが「書けた」。stale_version などは断られた
+function invDbAnswerOk_(v){
+  const r = (v && typeof v==='object') ? v.result : v;
+  return r === 'applied' || r === 'already_processed';
+}
+// 失敗の種類: 通信・ログイン切れ・5xx=transport(後で撃ち直す) / 4xx・断り=app(何度撃っても同じ)
+function invDbErrKind_(e){
+  if(!e) return 'transport';
+  if(e.evKind==='http' && e.status>=400 && e.status<500) return 'app';
+  return 'transport';
+}
+// DBへ先に書く。戻り= GASへも送ってよい送信待ちの並び(=DBに書けたもの＋DBに用の無いもの)
+//   ⚠通信が切れたらそこで止める(後ろを飛ばして順番を狂わせない)。断られた品目の後続も送らない
+async function invPushDb_(snapshot){
+  const okForGas = [];
+  const badIds = new Set();
+  const me = (typeof getMyself==='function' && getMyself()) || state.currentUser || '';
+  let stopped = null;
+  for(const p of snapshot){
+    if(p.dbOk){ okForGas.push(p); continue; }
+    const keys = invOpKeys_(p);
+    if(keys.some(k=>badIds.has(k))){ invOpFailed_(p, '同じ品目の前の変更がDBに通っていないため保留'); continue; }
+    const plan = invDbPlan_(p, snapshot, state.logs, me);
+    if(plan.skip){ p.dbOk = true; p.dbWhy = plan.skip; okForGas.push(p); continue; }
+    let v;
+    try{ v = await calRpcRaw_(plan.fn, plan.args); }
+    catch(e){
+      invOpFailed_(p, 'DB: ' + ((e && e.message) || e));
+      if(invDbErrKind_(e) === 'transport'){ stopped = e; break; }
+      keys.forEach(k=>badIds.add(k));
+      continue;
+    }
+    if(!invDbAnswerOk_(v)){
+      invOpFailed_(p, 'DBが受け付けませんでした: ' + JSON.stringify(v).slice(0,120));
+      keys.forEach(k=>badIds.add(k));
+      continue;
+    }
+    p.dbOk = true; p.dbAt = new Date().toISOString();
+    okForGas.push(p);
+  }
+  save();
+  if(stopped) invPushFailStreak++;
+  return { okForGas, stopped };
+}
+
+// 読み: DBの表から一式(zaiko_snapshot)。形は GAS の syncPull と同じ {items, logs, orders, members}
+async function invFetchSnapshot_(){
+  const t0 = Date.now();
+  try{
+    const v = await calRpcRaw_('zaiko_snapshot', {});
+    const d = (typeof v==='string') ? JSON.parse(v) : v;
+    if(!d || !Array.isArray(d.items) || !Array.isArray(d.logs) || !Array.isArray(d.orders))
+      return { ok:false, reason:'shape', ms:Date.now()-t0 };
+    if(!d.items.length) return { ok:false, reason:'items:0', ms:Date.now()-t0 };   // ⚠空という答えで手元を消さない
+    return { ok:true, data:{ items:d.items, logs:d.logs, orders:d.orders, members:Array.isArray(d.members)?d.members:[] },
+             n:d.items.length, asOf:d.as_of||'', ms:Date.now()-t0 };
+  }catch(e){
+    return { ok:false, reason:(e && (e.evKind||'') + ':' + (e.message||'')) || 'error', ms:Date.now()-t0 };
+  }
+}
+
 async function syncPush({ isolate=false }={}){
   if(!sync.url) throw new Error('URL未設定');
   if(!state.pending.length) return { pushed: 0 };
-  const snapshot = state.pending.slice();   // 送信中に追加されるopは次回に送る
+  let snapshot = state.pending.slice();   // 送信中に追加されるopは次回に送る
+  // 📦 v1.30.792: invDbWrite ON なら先にDBへ。GASへはDBに書けたもの(とDBに用の無いもの)だけ送る
+  let dbStopped = null;
+  if(invDbWriteOn_()){
+    const r = await invPushDb_(snapshot);
+    snapshot = r.okForGas; dbStopped = r.stopped;
+    if(!snapshot.length){
+      invAfterPush_();
+      if(dbStopped){ invPushFailStreak++; throw Object.assign(dbStopped, { invKind:'transport' }); }
+      return { pushed: 0, db: true };
+    }
+  }
   // 前回コケていて複数たまっている時は、悪い1件を切り離すために1件ずつ送る
   const one = isolate || (invPushFailStreak > 0 && snapshot.length > 1);
-  return one ? await invPushOneByOne_(snapshot) : await invPushBulk_(snapshot);
+  const res = one ? await invPushOneByOne_(snapshot) : await invPushBulk_(snapshot);
+  if(dbStopped){ invPushFailStreak = Math.max(1, invPushFailStreak); throw Object.assign(dbStopped, { invKind:'transport' }); }
+  return res;
 }
 
 async function invPushBulk_(snapshot){
@@ -34118,7 +34311,7 @@ function submitReceive(){
 
   queueOp('upsertOrder', o);
   const inLog = state.logs[state.logs.length-1];
-  queueOp('adjustStock', { itemId: item.id, delta: qty, opId: inLog.id });
+  queueOp('adjustStock', { itemId: item.id, delta: qty, opId: inLog.id, orderId: o.id });   // 📦 v1.30.792: DBの入荷記録に発注を紐づける(GASは余分な欄を見ない)
   queueOp('appendLog', inLog);
   save();
   closeSheet('sheet-receive');
@@ -34159,6 +34352,18 @@ function openItemEdit(id){
   $('#inv-item-delete').classList.toggle('inv-hidden', !i);
   openSheet('sheet-item');
 }
+// 📦 v1.30.792: 在庫数の直接変更を「棚卸」の記録にする。upsertItem の後に積むこと(GASでは同じ数を上書きするだけ=無害)
+function invStockEditAsCount_(item, prevStock, note){
+  if(!item || prevStock==null) return;
+  const real = Math.trunc(Number(item.stock)||0);
+  const diff = real - (Number(prevStock)||0);
+  if(!diff) return;
+  const log = { id: uid(), type:'chk', itemId: item.id, member: state.currentUser || '',
+                datetime: new Date().toISOString(), diff, note };
+  state.logs.push(log);
+  queueOp('setStock', { itemId: item.id, stock: real, opId: log.id });
+  queueOp('appendLog', log);
+}
 function submitItem(){
   const sku = $('#inv-it-sku').value.trim();
   const name = $('#inv-it-name').value.trim();
@@ -34186,8 +34391,10 @@ function submitItem(){
 
   let saved;
   const isNew = !editingItemId;
+  let __prevStock = null;
   if(editingItemId){
     const i = state.items.find(x=>x.id===editingItemId);
+    __prevStock = Number(i.stock)||0;
     Object.assign(i, data);
     saved = i;
   }else{
@@ -34204,6 +34411,9 @@ function submitItem(){
   };
   state.logs.push(auditLog);
   queueOp('appendLog', auditLog);
+  // 📦 v1.30.792: 既存品目の在庫数をこの画面で変えたら、棚卸1件として記録も残す
+  //   (今までは記録なしで数だけ変わっていた。DBの zaiko_upsert_item は在庫数を無視するので、これが無いとDBでは数が動かない)
+  if(!isNew) invStockEditAsCount_(saved, __prevStock, '品目編集で在庫数を変更');
 
   save();
   closeSheet('sheet-item');
