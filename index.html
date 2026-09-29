@@ -1287,6 +1287,10 @@
   /* 👤自分の選択は他のどのモーダルより前面に(v1.30.661)。ここを塞がれると何も設定できなくなる=詰む */
   #myselfModal{z-index:780}
   .modal-overlay.show{display:flex}
+  /* 🖐 v1.30.793: 修繕シートを動かしたら暗幕を消し、後ろ(カレンダー)も触れるようにする(山田「これ見ながらカレンダーみたい」) */
+  #repairSheet.rs-float{background:transparent;pointer-events:none}
+  #repairSheet.rs-float .modal{pointer-events:auto;box-shadow:0 12px 40px rgba(15,23,42,.35),0 0 0 1px rgba(15,23,42,.12)}
+  @media (min-width:701px){ #rs-title{cursor:move;user-select:none} }
   .modal{
     background:#fff;border-radius:10px;width:100%;max-width:440px;
     box-shadow:0 12px 40px rgba(0,0,0,.18);
@@ -2955,7 +2959,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.792</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.793</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -28082,6 +28086,7 @@ function openRepairSheet(id){
   repairSheet.classList.add("show");
 }
 function closeRepairSheet(){ repairSheet.classList.remove("show"); editingRepairId = null; __refreshOpenRepairCommentUI_ = null;
+  rsDragReset_();   // 🖐 v1.30.793: 動かした位置は閉じたら元へ(次に開く時は真ん中・暗幕あり)
   // 📊 全体進捗から開いた時は戻る(最新stateで描き直すので進捗変更も即反映)v1.30.625
   if(typeof __dashReturn!=='undefined' && __dashReturn){ __dashReturn=false; try{ openDashboard_(); }catch(_){} }
 }
@@ -28379,6 +28384,42 @@ document.getElementById("rs-save").onclick = saveRepairSheet;
 document.getElementById("rs-complete").onclick = ()=> repairToggleComplete_(editingRepairId);
 document.getElementById("rs-dotakyan").onclick = repairDetailDotakyan_;
 repairSheet.onclick = e=>{ if(e.target===repairSheet) closeRepairSheet(); };
+// 🖐 v1.30.793: 修繕シートを見出しでつかんで動かせる(山田「これ見ながらカレンダーみたい」→「ダイアログで動かせるくらいで十分」)
+//   ・動かし始めたら暗幕を消して後ろをクリックできるようにする(ヘッダーの「今日」でカレンダーへ・スクロールも可)
+//   ・画面の外へ見失わないよう、端から80pxは必ず残す／見出しは上にはみ出させない
+//   ・スマホ(700px以下)は全画面表示なので動かさない
+function rsDragReset_(){
+  repairSheet.classList.remove('rs-float');
+  const m = repairSheet.querySelector('.modal');
+  if(m){ m.style.position=''; m.style.left=''; m.style.top=''; m.style.margin=''; }
+}
+(function(){
+  const head = document.getElementById('rs-title');
+  const modal = repairSheet.querySelector('.modal');
+  if(!head || !modal) return;
+  head.title = 'ここをつかんで動かせます(動かすと後ろのカレンダーも操作できます)';
+  let drag = null;
+  head.addEventListener('pointerdown', e=>{
+    if(window.innerWidth <= 700 || e.button !== 0) return;
+    const r = modal.getBoundingClientRect();
+    drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+    repairSheet.classList.add('rs-float');
+    modal.style.position = 'fixed'; modal.style.margin = '0';
+    modal.style.left = r.left + 'px'; modal.style.top = r.top + 'px';
+    try{ head.setPointerCapture(e.pointerId); }catch(_){}
+    e.preventDefault();
+  });
+  head.addEventListener('pointermove', e=>{
+    if(!drag) return;
+    const w = modal.offsetWidth;
+    const x = Math.min(Math.max(e.clientX - drag.dx, 80 - w), window.innerWidth - 80);
+    const y = Math.min(Math.max(e.clientY - drag.dy, 0), window.innerHeight - 40);
+    modal.style.left = x + 'px'; modal.style.top = y + 'px';
+  });
+  const end = ()=>{ drag = null; };
+  head.addEventListener('pointerup', end);
+  head.addEventListener('pointercancel', end);
+})();
 
 // ===========================================================
 // ===== 原状回復ビュー (TM 原状回復タブ移植) =====
