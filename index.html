@@ -2959,7 +2959,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.794</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.795</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4591,7 +4591,7 @@
   </div>
 </div>
 
-<script src="projection.js?v=1.30.791"></script><!-- 📡 v1.30.780 射影(見積アプリ src/projection.js をそのまま写したもの・改造禁止。台帳のDB直接書き込みに使う) -->
+<script src="projection.js?v=1.30.795"></script><!-- 📡 v1.30.780 射影(見積アプリ src/projection.js をそのまま写したもの・改造禁止。台帳のDB直接書き込みに使う) -->
 <script>
 // =========================================================
 // ビルドクラスタ スケジュール管理アプリ Phase 1A
@@ -15844,7 +15844,8 @@ function restoGrossProfit_(tasks){
   (tasks||[]).forEach(t=>{
     if(!t) return;
     if(t.orderAmount == null){ unknown++; return; }
-    if(!(+t.orderAmount) && (+t.amount)){ missing++; return; }
+    // 📦 v1.30.795: まとめ発注(見積1102)の組は先頭行に一式・他の行は0。0の行は「未入力」ではなく組の一部=売上だけ足す
+    if(!(+t.orderAmount) && (+t.amount) && !t.lumpId){ missing++; return; }
     sell += (+t.amount||0); cost += (+t.orderAmount||0); counted++;
   });
   const gp = sell - cost;
@@ -15885,6 +15886,8 @@ function restoSyncTasks(existingTasks, serverTasks){
       //   ⚠射影に欄そのものが無い(古いGAS/light応答)時は null=「分からない」。0(=未入力)とは分けて持つ。
       orderAmount: (st.orderAmount != null && isFinite(+st.orderAmount)) ? (+st.orderAmount||0)
                  : (st.orderPrice != null && isFinite(+st.orderPrice)) ? (+st.orderPrice||0) * qty : null,
+      // 📦 v1.30.795: まとめ発注の組id(射影が運ぶ。無い古い射影では空=従来どおり)
+      lumpId: String(st.lumpId || st.hatchuLumpId || ""),
       schedule: schedule || (kept?.schedule || ""),
       periodStart: st.periodStart || kept?.periodStart || "",
       periodEnd: st.periodEnd || kept?.periodEnd || "",
@@ -29364,7 +29367,11 @@ function renderRestoTaskRow(t, cat){
   if(t.schedule) sub.push("📅 "+escapeHtml(t.schedule));
   if(t.amount) sub.push(`<span class="rt-amount">¥${(+t.amount).toLocaleString()}</span>`);
   // 💴 v1.30.773 外注の行は発注額と粗利も(発注額が分からない行は出さない・0は「未入力」)
-  if(cat==="outsource" && t.orderAmount != null){
+  if(cat==="outsource" && t.orderAmount != null && t.lumpId){
+    // 📦 v1.30.795: まとめ発注は組で1つの金額(先頭行に一式)。行ごとの粗利は意味が無いので出さない(粗利は業者の見出しで組ごと)
+    sub.push(+t.orderAmount ? `<span class="rt-cost" title="複数の行をまとめて一式で発注しています">📦まとめ発注 一式¥${(+t.orderAmount).toLocaleString()}</span>`
+                            : `<span class="rt-cost" title="この行は上の一式の発注に含まれます">📦まとめ発注に含む</span>`);
+  }else if(cat==="outsource" && t.orderAmount != null){
     if(!(+t.orderAmount) && (+t.amount)) sub.push(`<span class="rt-cost rt-cost-missing">発注 未入力</span>`);
     else if(+t.amount || +t.orderAmount){
       const __gp = (+t.amount||0) - (+t.orderAmount||0);

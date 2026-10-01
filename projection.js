@@ -3,7 +3,7 @@
 //   正本は見積GAS `コード.gs` の convertEstimateToProperty_ / _buildWorkloadStatusForPayload_ / mdToIso_ /
 //   _projectContent_ と、wt_writethrough.gs の wtProjection_。
 //   **1文字も書き換えずに写しています**(改造禁止)。GAS側を直したら、ここも同じ版を写し直すこと。
-//   写した版: 見積GAS version100(ver92相当)の HEAD(2026-09-14 11:46 取得)
+//   写した版: 見積GAS ver112案(2026-10-01)= ver111 + 射影の発注金額を override 優先に + tasks.lumpId
 //
 //   なぜアプリに要るか: 台帳をDBへ直接保存する(anken_save)とき、射影も一緒に渡す必要があるため。
 //   射影はカレンダー/工事タスクが読む「派生データ」で、これが古いと現場の予定が古いまま見える。
@@ -73,8 +73,13 @@ function convertEstimateToProperty_(est, month) {
     const unitPrice = Number(l.unitPrice) || 0;
     const amount = qty * unitPrice;
     const orderPrice = Number(l.orderPrice) || 0;
-    const orderAmount = qty * orderPrice;
+    // ver112(2026-10-01): 発注金額は見積アプリの lineAmount(l,'order') と同じ規則=**orderAmountOverride が数値ならそれ**。
+    //   1102の📦「発注をまとめて1式」は先頭行の override に一式の額・他の行は 0 を入れるので、
+    //   qty×orderPrice のままだと DK 12㎡×打ち間違いの単価=480,000 のような額がカレンダーに出る(10/1 フレンドリィⅡ102)。
+    const orderAmount = (l.orderAmountOverride != null && l.orderAmountOverride !== '' && isFinite(Number(l.orderAmountOverride)))
+      ? (Number(l.orderAmountOverride) || 0) : qty * orderPrice;
     tasks.push({
+      lumpId: l.hatchuLumpId || '',   // ver112: 📦まとめ組の印(カレンダーは組の0円を「未入力」と数えず「まとめ」と出す)
       id: 'T_' + (est.id || '').slice(-10) + '_' + tasks.length,
       name: effName, // 2026-07-06: hatchuItem優先(発注書専用の追加工事行を拾う)
       room: l.room || '',
