@@ -2959,7 +2959,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.793</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.794</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -19115,7 +19115,12 @@ function renderCalendar(){
       // 月ビュー終日 & その他ビューは従来通り sub-col に絶対配置
       if(isMonth && !isFree){
         const startMinAbs = timeToMin(ev.start);
-        const hour = Math.floor(startMinAbs / 60);
+        let hour = Math.floor(startMinAbs / 60);
+        // 🩹 v1.30.794(山田「予定がうもれてる」): 9時より前/18時以降に始まる予定は、その時間の枠が無いので
+        //   下のフォールバック(sub-colに絶対配置)へ落ち、9時台の枠の上に**浮いて重なり、下の予定を隠していた**(8:30開始の実例)。
+        //   → 修繕アポ(v1.30.292)と同じく、先頭の枠(9時)/最後の枠(17時)に入れて縦積みに参加させる。表示時刻は ev.start のまま
+        const __clampEarly = hour < HOUR_START, __clampLate = hour >= HOUR_END;
+        if(__clampEarly) hour = HOUR_START; else if(__clampLate) hour = HOUR_END - 1;
         const cell = dayCol.querySelector(`.hour-cell[data-hour="${hour}"]`);
         if(cell){
           // hour-cell 内では flex 縦積み。絶対配置プロパティをクリア
@@ -19124,7 +19129,7 @@ function renderCalendar(){
           el.style.right = "";
           // 📍 開始分(15分等)を反映: そのセルの先頭チップは分ぶん下げて配置(単独予定は正しい時刻位置に)v1.30.63
           const minOffset = startMinAbs % 60;
-          if(minOffset > 0 && cell.children.length === 0){
+          if(minOffset > 0 && cell.children.length === 0 && !__clampEarly && !__clampLate){
             el.style.marginTop = (minOffset/60*HOUR_PX) + "px";
           }
           cell.appendChild(el);
@@ -19422,7 +19427,9 @@ function layoutHourCellByMinutes_(root){
     // セル内0〜59分に正規化して昇順ソート(同分は現在のDOM順=従来の積み順を維持する安定ソート)
     const items = chips.map((chip,i)=>{
       const abs = HOUR_START*60 + (parseFloat(chip.dataset.startMin)||0);
-      return { chip, i, min: ((abs%60)+60)%60, h: chip.offsetHeight };
+      // 🩹 v1.30.794: 枠の外(9時前/18時以降)から寄せた予定は、早い方は枠の先頭・遅い方は末尾に(8:30を「30分の位置」と誤読しない)
+      const min = abs < HOUR_START*60 ? -1 : (abs >= HOUR_END*60 ? 60 : ((abs%60)+60)%60);
+      return { chip, i, min, h: chip.offsetHeight };
     }).sort((a,b)=> a.min - b.min || a.i - b.i);
     plans.push({ cell, items, cellH, addH, reordered: items.some((it,idx)=> it.i !== idx) });
   });
@@ -19437,7 +19444,7 @@ function layoutHourCellByMinutes_(root){
     let py = PAD_TOP, fy = PAD_TOP;
     items.forEach((it,idx)=>{
       packed[idx] = py; py += it.h + GAP;
-      tops[idx] = Math.max(fy, it.min/60*cellH);
+      tops[idx] = Math.max(fy, Math.max(0, it.min)/60*cellH);
       fy = tops[idx] + it.h + GAP;
     });
     // ② 後ろから: セルに入り切らない分は詰めて圧縮(packedより上には潰さない=詰め切れない分は従来どおりセル内スクロール)
