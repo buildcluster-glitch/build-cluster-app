@@ -2959,7 +2959,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.796</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.797</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -16458,6 +16458,22 @@ async function syncChecksFromGAS(opts){
     state.restorations = __fullWipeRisk ? (state.restorations||[]) : (__partial
       ? (state.restorations||[]).filter(__keepOld).concat(restorations)
       : restorations);
+    // 🩹 v1.30.797(山田「自社工事におれメモ入れたはずが出ない」10/01 フレンドリィⅡ102):
+    //   進捗(メモ・完了・チェック)は台帳と一緒にしか取り込んでいなかった=**進捗だけ変えた物件は、台帳が変わるか1時間ごとのフル同期まで
+    //   他の端末に出なかった**(DBには入っている)。表の差分で変わった進捗を、手元の物件へ直接当てる。
+    //   restoApplyProgress はタスクごとに新しい方を残す合成なので、同じ進捗を2回当てても変わらない。
+    if(__ledgerProgressChanged){
+      const __pc = __ledgerProgressChanged; __ledgerProgressChanged = null;
+      let __pn = 0;
+      (state.restorations||[]).forEach(r=>{
+        if(!r || !r.name) return;
+        const pr = __pc[String(r.name||'').trim()+'|'+String(r.room||'').trim()];
+        // ⚠この端末で入力して送る前(待ち合わせ中)の物件は触らない=打ったばかりのメモを他端末の古い版で上書きしない
+        if(typeof _restoPushTimers!=='undefined' && _restoPushTimers[r.id]) return;
+        if(pr && Array.isArray(r.tasks) && r.tasks.length){ restoApplyProgress(r, pr); __pn++; }
+      });
+      if(__pn) console.log('[progress-read] 進捗だけ変わった物件にも反映:', __pn);
+    }
     // 🚨 減っていたら気づけるように(v1.30.492)。saveStateの前に見る=消えた状態を保存する前に検知
     __warnIfSyncShrunk_(__cntBefore, __mapBefore, __partial ? "差分" : "フル");
     saveState();
@@ -25500,7 +25516,9 @@ async function fetchTaskProgressMapFromTable_(sess){
   // 水位 = 読めた行の最大 − 60秒(差分で1行も来なければ前回の水位のまま)
   let newest = __tpTableCache.newest || '';
   if(maxAt){ const t = Date.parse(maxAt); if(!isNaN(t)) newest = new Date(t - 60000).toISOString(); }
-  __tpTableCache = { newest, map, fullAt: full ? Date.now() : __tpTableCache.fullAt };
+  __tpTableCache = { newest, map, fullAt: full ? Date.now() : __tpTableCache.fullAt,
+    // 🩹 v1.30.797: 今回の読みで変わった物件(差分読みなら変わった行だけ・全件読みなら全部)。台帳が変わっていない物件にも進捗を届けるため
+    changed: rows.map(r=>r && r.property_key).filter(Boolean) };
   window.__tpReadStat = { src:'table', full, rows: rows.length, total: Object.keys(map).length, ms: Date.now()-t0, at: new Date().toISOString() };
   return map;
 }
@@ -25517,6 +25535,7 @@ async function fetchTaskProgressMapFromDb_(sess){
   if(!map || typeof map!=='object') return null;
   __taskProgressCache = { at, map }; return map;
 }
+let __ledgerProgressChanged = null;   // 🩹 v1.30.797: 直近の台帳読みで一緒に読めた「変わった進捗」{物件名|号室: doc}(使ったら空にする)
 async function fetchLedgerFromDb_({since='', maxMonths=3, signal}={}){
   const t0 = Date.now();
   let s = sbSession_();
@@ -25584,6 +25603,11 @@ async function fetchLedgerFromDb_({since='', maxMonths=3, signal}={}){
         pm = await fetchTaskProgressMapFromDb_(s); window.__tpReadStat = { src:'blob', at:new Date().toISOString() };   // スイッチを明示的に切った時だけ塊(従来)
       }
       if(pm){ propsOut.forEach(q=>{ if(!q||!q.name) return; const pr = pm[String(q.name||'').trim()+'|'+String(q.room||'').trim()]; if(pr) q.progress = pr; }); }
+      // 🩹 v1.30.797: 進捗だけ変わった物件(台帳は変わっていない=差分の properties に載らない)にも届けるため、変わった進捗を持たせて返す
+      //   ⚠今回ちゃんと表を読めた時だけ(前回の写しに落ちた時は「変わった」が古いので当てない)
+      if(pm && progressTableReadOn_() && window.__tpReadStat && window.__tpReadStat.src === 'table' && __tpTableCache && Array.isArray(__tpTableCache.changed)){
+        __ledgerProgressChanged = {}; __tpTableCache.changed.forEach(k=>{ if(pm[k]) __ledgerProgressChanged[k] = pm[k]; });
+      }
     }catch(e){ console.warn('[ledger-read] task_progress 取得失敗(進捗なしで続行):', e && e.message); }
     // ③ light(_stripDoneHeavy_): 完了/キャンセルで現場が動いていない案件は重い欄を省く(行は残す・tasksCount を残す)
     { const today = fmtDate(new Date()); const HEAVY=['tasks','progress','workloadStatus','requestDetailFull'];
