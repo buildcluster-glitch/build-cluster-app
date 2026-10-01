@@ -2959,7 +2959,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.795</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.796</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -19371,6 +19371,8 @@ function renderCalendar(){
     // hour-cell スクロール式に移行したため fixChipOverlaps は不要
     // 📏 サブ行チップの下余白刈り取り(v1.30.415)→autoGrowより先(縮小後の高さで行高を計算させる)
     if(typeof trimSubrowChips_==='function') trimSubrowChips_(grid);
+    // 🩹 v1.30.795→796: 中身が入りきらず下が切れるチップは中身に合わせて伸ばす(拡大のみ)→分位置・行高の計算より先
+    if(typeof growClippedChips_==='function') growClippedChips_(grid);
     // 📍 チップを開始分に比例した縦位置へ(自動上詰めしない・v1.30.551)→trim後(実高さ確定後)・autoGrow前
     if(typeof layoutHourCellByMinutes_==='function') layoutHourCellByMinutes_(grid);
     // 📏 予定が多い時間は行を自動で広げて全部見せる(v1.30.250)→広げ切れない分だけ▼バッジ
@@ -19383,6 +19385,20 @@ function renderCalendar(){
   }
   // 時間グリッドの行高(HOUR_PX)リサイズ
   attachRowResizeHandle();
+}
+
+// 🩹 v1.30.796(山田「情報が潰れて見えない」・10/3 メゾンカルムB): チップの高さは描画前に「行数×18px」で見積もるが、
+//   改行+長い2行目の折り返し+種別バッジの行は見積もりに入らず、**中身69pxを39pxの箱に入れて下を切っていた**(時刻も2行目も見えない)。
+//   hour-cell はセル内スクロールなので、伸ばしても他の予定に重ならない(下へ押されるだけ)。**拡大のみ**・read→writeの2段。
+function growClippedChips_(grid){
+  if(!grid) return;
+  //   ⚠固定のpxで伸ばすと、あとで列幅が変わった時(列幅の調整・画面の回転)に折り返しが増えてまた切れる(実測)。
+  //     → 切れていたチップだけ「見積もりの高さを最低限に、あとは中身なり(height:auto)」にする。セルは縦積みなので重ならない。
+  const plans = [];
+  grid.querySelectorAll(".hour-cell .event-chip").forEach(chip=>{
+    if(chip.scrollHeight - chip.clientHeight > 1) plans.push([chip, chip.offsetHeight]);
+  });
+  plans.forEach(([chip, h])=>{ chip.style.minHeight = h + "px"; chip.style.height = "auto"; chip.classList.add("chip-grown"); });
 }
 
 // 📏 サブ行ありチップの下余白を実測で刈り取る(v1.30.415・山田「👇の余白が…」)
