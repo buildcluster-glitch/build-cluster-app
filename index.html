@@ -2976,7 +2976,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.801</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.802</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -11191,7 +11191,66 @@ function __matAllItems_(){ return Object.values(MAT_CATS).flat(); }
 function __matCatColor_(c){ return MAT_CAT_COLOR[c]||'#64748b'; }
 function __matLoadCache_(){ try{ const j=JSON.parse(localStorage.getItem(MATERIAL_CACHE_KEY)||'null'); if(j&&Array.isArray(j.posts)) __matPosts=j.posts; }catch(_){} }
 function __matSaveCache_(){ try{ localStorage.setItem(MATERIAL_CACHE_KEY, JSON.stringify({posts:__matPosts||[], cachedAt:new Date().toISOString()})); }catch(_){} }
+// 🗄 v1.30.802(山田「材料注文ちゃちゃっともうやっちゃおう」): 材料注文を DB の表(material_posts・1投稿1行)へ。スイッチ matDbWrite(既定OFF)。
+//   ONの端末は読みも書きも表だけ(塊 shared_config 'material_orders' は切替の日に凍結=控え)。⚠表が読めない時に塊へ戻らない(凍結した古い一覧を見せない)
+//   書き口= mo_add_post / mo_edit_post / mo_delete_post(009・本人(auth.uid)か事務/管理だけ直せる・op_id冪等・版で楽観ロック)
+function matDbWriteOn_(){
+  if(typeof dbTripped_==='function' && dbTripped_()) return false;
+  try{ const o=localStorage.getItem('bc_flag_matDbWrite'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
+  if(typeof __staticFlags!=='undefined' && __staticFlags){ const r=__pickWriteFlag_(__staticFlags.matDbWrite); if(r!==null) return r; }
+  const r2=(typeof __calFlags!=='undefined' && __calFlags) ? __pickWriteFlag_(__calFlags.matDbWrite) : null;
+  return r2===true;
+}
+window.setMatDbWriteLocal_=function(on){ try{ if(on==null) localStorage.removeItem('bc_flag_matDbWrite'); else localStorage.setItem('bc_flag_matDbWrite', on?'1':'0'); }catch(_){} console.log('[material-db] 端末上書き =', on); };
+function __matNewOpId_(){ return 'mo_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10); }
+async function __matDbFetch_(){
+  let sess=(typeof sbSession_==='function')?sbSession_():null;
+  if(sess && sess.expires_at && (sess.expires_at*1000-Date.now())<60000){ try{ await sbRefresh_(); }catch(_){} sess=sbSession_(); }
+  if(!sess||!sess.access_token) throw new Error('ログインしていないため材料注文を読めません');
+  const res=await fetch(`${SB_AUTH.url}/rest/v1/material_posts?select=id,doc,version,created_at&order=created_at.asc,id.asc`,
+    { headers:{ apikey:SB_AUTH.key, Authorization:'Bearer '+sess.access_token, Accept:'application/json' }, cache:'no-store' });
+  if(!res.ok) throw new Error('材料注文の表が読めません HTTP '+res.status);
+  const rows=await res.json(); if(!Array.isArray(rows)) throw new Error('材料注文の表の形が違います');
+  // 版(_ver)は編集・削除の楽観ロックに使う。doc の中には入れない(書く時に外す)
+  return rows.map(r=>Object.assign({}, (r.doc&&typeof r.doc==='object')?r.doc:{}, { id:r.id, _ver:r.version }));
+}
+function __matDocOf_(p){ const d=Object.assign({}, p||{}); delete d._ver; return d; }
+// 1件送る。戻り 'ok' / 'drop'(何度送っても通らない=捨てる・理由はtoast) / 例外(後で再送)
+async function __matDbSendOp_(op, posts){
+  if(!op.opId) op.opId=__matNewOpId_();
+  const cur=id=>(posts||[]).find(x=>x && x.id===id);
+  let r;
+  if(op.type==='add') r=await calRpc_('mo_add_post', { p_operation_id:op.opId, p_doc:op.post });
+  else if(op.type==='edit'){ const c=cur(op.id); if(!c) return 'drop';
+    r=await calRpc_('mo_edit_post', { p_operation_id:op.opId, p_id:op.id, p_doc:Object.assign(__matDocOf_(c), op.patch), p_version:(c._ver||1)+1 }); }
+  else if(op.type==='del'){ const c=cur(op.id); if(!c) return 'ok';   // もう無い=消えている
+    r=await calRpc_('mo_delete_post', { p_operation_id:op.opId, p_id:op.id, p_version:(c._ver||1)+1 }); }
+  else return 'drop';
+  if(r==='applied'||r==='already_processed'||r==='delete_applied') return 'ok';
+  if(r==='stale_version'){ op.opId=__matNewOpId_(); throw Object.assign(new Error('ほかの人が先に直しました(読み直して送り直します)'), { matStale:true }); }
+  if(r==='maintenance') throw new Error('材料注文は一時停止中です(自動で再送します)');
+  if(r==='not_author'){ if(typeof showAutoSyncToast==='function') showAutoSyncToast('🧾 この投稿は投稿した本人(または事務)しか直せません'); return 'drop'; }
+  if(r==='not_found'||r==='deleted') return 'drop';
+  throw new Error('材料注文の保存の答えが不明: '+r);
+}
+async function __matDbWriteOps_(ops){
+  __matSavePending_(ops);   // ⚠先に控える(読み直しで転んでも、いま押した操作を失わない)
+  let posts=await __matDbFetch_();
+  const left=ops.slice();
+  while(left.length){
+    const op=left[0];
+    try{ await __matDbSendOp_(op, posts); left.shift(); }
+    catch(e){
+      if(e && e.matStale && !op.__retried){ op.__retried=true; posts=await __matDbFetch_(); continue; }   // 版が古い=読み直して1回だけ送り直す
+      __matSavePending_(left); throw e;
+    }
+    __matSavePending_(left);
+  }
+  __matPosts=await __matDbFetch_(); __matSaveCache_();
+  return true;
+}
 async function __matFetchRemote_(){
+  if(matDbWriteOn_()) return await __matDbFetch_();
   const s=loadGasSettings(); if(!s.url||!s.token) return null;
   const res=await fetch(`${s.url}?action=get-shared-config&key=${MATERIAL_KEY}&token=${encodeURIComponent(s.token)}&t=${Date.now()}`,{cache:'no-store'});
   const d=await res.json(); if(!d.ok) throw new Error(d.error||'get失敗');
@@ -11230,8 +11289,10 @@ function __matApplyOp_(posts, op){
   return posts;
 }
 async function __matWriteOps_(newOp){
+  if(newOp && !newOp.opId) newOp.opId=__matNewOpId_();   // 🗄 v1.30.802: 操作に1つ(再送しても同じ)
   const ops=__matLoadPending_().concat(newOp?[newOp]:[]);
   if(!ops.length) return true;
+  if(matDbWriteOn_()){ try{ return await __matDbWriteOps_(ops); }catch(err){ throw err; } }
   try{
     await __matWrite_(posts=>ops.reduce((p,o)=>__matApplyOp_(p,o),posts));
     __matSavePending_([]);
