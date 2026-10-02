@@ -3,7 +3,7 @@
 //   正本は見積GAS `コード.gs` の convertEstimateToProperty_ / _buildWorkloadStatusForPayload_ / mdToIso_ /
 //   _projectContent_ と、wt_writethrough.gs の wtProjection_。
 //   **1文字も書き換えずに写しています**(改造禁止)。GAS側を直したら、ここも同じ版を写し直すこと。
-//   写した版: 見積GAS ver112案(2026-10-01)= ver111 + 射影の発注金額を override 優先に + tasks.lumpId
+//   写した版: 見積GAS ver113案(2026-10-02)= ver112 + tasks.materialAmount / estHidden(粗利計算用)
 //
 //   なぜアプリに要るか: 台帳をDBへ直接保存する(anken_save)とき、射影も一緒に渡す必要があるため。
 //   射影はカレンダー/工事タスクが読む「派生データ」で、これが古いと現場の予定が古いまま見える。
@@ -78,7 +78,13 @@ function convertEstimateToProperty_(est, month) {
     //   qty×orderPrice のままだと DK 12㎡×打ち間違いの単価=480,000 のような額がカレンダーに出る(10/1 フレンドリィⅡ102)。
     const orderAmount = (l.orderAmountOverride != null && l.orderAmountOverride !== '' && isFinite(Number(l.orderAmountOverride)))
       ? (Number(l.orderAmountOverride) || 0) : qty * orderPrice;
+    // ver113(2026-10-02 山田「カレンダーの原状回復カードにも業者別の粗利を」): 材料費(数量×材料単価・支給材料)を載せる。
+    //   粗利 = 見積金額(amount) − 発注金額(orderAmount) − 材料費(materialAmount)。見積アプリの「業者別 発注金額まとめ」と同じ式。
+    //   ⚠見積の数量(l.qty)で計算(発注書専用数量ではない)=見積アプリの lineCost と同じ
+    const materialAmount = (Number(l.qty) || 0) * (Number(l.materialPrice) || 0);
     tasks.push({
+      materialAmount: materialAmount,   // ver113
+      estHidden: !!l.estHidden,         // ver113: 見積書に出さない行(売上に数えない)
       lumpId: l.hatchuLumpId || '',   // ver112: 📦まとめ組の印(カレンダーは組の0円を「未入力」と数えず「まとめ」と出す)
       id: 'T_' + (est.id || '').slice(-10) + '_' + tasks.length,
       name: effName, // 2026-07-06: hatchuItem優先(発注書専用の追加工事行を拾う)
