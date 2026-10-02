@@ -2976,7 +2976,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.798</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.799</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -15877,10 +15877,17 @@ function restoGpText_(g){
 //   対象=減工事以外(自社/外注)。売上=Σ(見積書に出さない行は0 : amount) / 発注=Σ orderAmount(外注だけ) / 材料=Σ materialAmount
 //   粗利=売上−発注−材料 / 粗利率=粗利÷売上 / 構成比=業者の発注÷外注の発注合計。売上は税別・値引前。
 //   仕様=~/claude/申し送り_見積→カレンダー_原状回復カードに業者別粗利_2026-10-02.md
+const RESTO_GP_EST_OUT = 0.8, RESTO_GP_EST_IN_MAT = 0.4;   // 推定の割合(外注の発注/自社の材料費)
 function restoGpBreakdown_(tasks){
-  const rowOf = t=>{ const sell = t.estHidden ? 0 : (+t.amount||0); const ord = t.category==='outsource' ? (+t.orderAmount||0) : 0; const mat = +t.materialAmount||0;
-    return { t, sell, ord, mat, gp: sell-ord-mat }; };
-  const sum = rows=>{ const o={sell:0,ord:0,mat:0}; rows.forEach(r=>{ o.sell+=r.sell; o.ord+=r.ord; o.mat+=r.mat; }); o.gp=o.sell-o.ord-o.mat; o.rate=o.sell? Math.round(o.gp/o.sell*1000)/10 : null; return o; };
+  // v1.30.799(山田「材料費はいちいち計算めんどいから、外注で空白の場合は80パー、自社は売り上げの40パーで設定していい」):
+  //   外注で発注額が空白(0)の行 → 発注=売上×80%(推定)。⚠📦まとめの組の0円行は一式に含まれているので推定しない
+  //   自社で材料費が空白(0)の行 → 材料費=売上×40%(推定)。入力済みの数字があればそちらを使う
+  const rowOf = t=>{ const sell = t.estHidden ? 0 : (+t.amount||0);
+    let ord = t.category==='outsource' ? (+t.orderAmount||0) : 0, mat = +t.materialAmount||0, estOrd = false, estMat = false;
+    if(t.category==='outsource' && !ord && sell && !t.lumpId){ ord = Math.round(sell*RESTO_GP_EST_OUT); estOrd = true; }
+    if(t.category==='inhouse' && !mat && sell){ mat = Math.round(sell*RESTO_GP_EST_IN_MAT); estMat = true; }
+    return { t, sell, ord, mat, estOrd, estMat, gp: sell-ord-mat }; };
+  const sum = rows=>{ const o={sell:0,ord:0,mat:0,est:0}; rows.forEach(r=>{ o.sell+=r.sell; o.ord+=r.ord; o.mat+=r.mat; if(r.estOrd||r.estMat) o.est++; }); o.gp=o.sell-o.ord-o.mat; o.rate=o.sell? Math.round(o.gp/o.sell*1000)/10 : null; return o; };
   const out = (tasks||[]).filter(t=>t && t.category==='outsource').map(rowOf);
   const inh = (tasks||[]).filter(t=>t && t.category==='inhouse').map(rowOf);
   const byV = new Map();
@@ -15896,36 +15903,37 @@ function restoGpRateCls_(rate){ return rate==null ? '' : rate>=25 ? 'r-g' : rate
 function restoGpTableHtml_(b, openSet){
   const y = v=>`¥${Math.round(v).toLocaleString()}`, yn = v=> v<0 ? `<span class="neg-n">-¥${Math.abs(Math.round(v)).toLocaleString()}</span>` : y(v);
   const pct = r=> r==null ? '-' : `<span class="${restoGpRateCls_(r)}">${r}%</span>`;
+  const es = (v, why)=>`<span style="color:#64748b" title="${why}">≈${y(v)}</span>`;   // 推定値(v1.30.799)
   const items = (rows, isIn)=> rows.slice().sort((a,c)=>a.gp-c.gp).map(r=>{ const rr = r.sell ? Math.round(r.gp/r.sell*1000)/10 : null; const t=r.t;
     return `<tr class="it${r.sell < r.ord + r.mat ? ' neg' : ''}"><td class="nm">　${t.lumpId?'📦':''}${escapeHtml(t.name||'')}${t.room?` <span style="color:#64748b">(${escapeHtml(t.room)})</span>`:''}${t.estHidden?' <span style="color:#94a3b8">※見積非表示</span>':''}</td>`
-      + `<td>${(+t.qty||0)}${escapeHtml(t.unit||'')}</td><td>${y(r.sell)}</td><td>${isIn?'-':y(r.ord)}</td><td>${r.mat?y(r.mat):'-'}</td><td>${yn(r.gp)}</td><td>${pct(rr)}</td><td></td></tr>`; }).join('');
+      + `<td>${(+t.qty||0)}${escapeHtml(t.unit||'')}</td><td>${y(r.sell)}</td><td>${isIn?'-':(r.estOrd?es(r.ord,'発注額が空白のため売上の80%で推定'):y(r.ord))}</td><td>${r.mat?(r.estMat?es(r.mat,'材料費が空白のため売上の40%で推定'):y(r.mat)):'-'}</td><td>${yn(r.gp)}</td><td>${pct(rr)}</td><td></td></tr>`; }).join('');
   let h = `<table><thead><tr><th style="text-align:left">業者</th><th>行数/数量</th><th>売上(見積)</th><th>発注金額</th><th>材料費</th><th>粗利</th><th>粗利率</th><th>構成比</th></tr></thead><tbody>`;
   b.vendors.forEach(v=>{ const op = openSet.has(v.name);
     // 発注0円で売上がある行(📦まとめの組は除く)= 発注の入れ忘れの可能性。見積アプリと同じく数字はそのまま足し、印だけ付ける
-    const __miss = v.rows.filter(r=>!r.ord && r.sell && !r.t.lumpId).length;
-    h += `<tr class="v" data-gpv="${escapeHtml(v.name)}"><td class="nm">${op?'▼':'▶'} 👷 ${escapeHtml(v.name)}${__miss?` <span style="color:#ea580c;font-weight:600">※発注未入力${__miss}行</span>`:''}</td><td>${v.rows.length}行</td><td>${y(v.sell)}</td><td>${y(v.ord)}</td><td>${v.mat?y(v.mat):'-'}</td><td>${yn(v.gp)}</td><td>${pct(v.rate)}</td><td>${v.share==null?'-':v.share+'%'}</td></tr>`;
+    const __miss = v.rows.filter(r=>r.estOrd).length;   // v1.30.799: 発注が空白の行は売上の80%で推定済み
+    h += `<tr class="v" data-gpv="${escapeHtml(v.name)}"><td class="nm">${op?'▼':'▶'} 👷 ${escapeHtml(v.name)}${__miss?` <span style="color:#ea580c;font-weight:600" title="発注額が空白の行は売上の80%を発注とみなしています">※発注未入力${__miss}行→80%で推定</span>`:''}</td><td>${v.rows.length}行</td><td>${y(v.sell)}</td><td>${y(v.ord)}</td><td>${v.mat?y(v.mat):'-'}</td><td>${yn(v.gp)}</td><td>${pct(v.rate)}</td><td>${v.share==null?'-':v.share+'%'}</td></tr>`;
     if(op) h += items(v.rows, false); });
   h += `<tr class="tot"><td class="nm">工事店 発注 総合計(外注)</td><td>${b.vendors.reduce((s,v)=>s+v.rows.length,0)}行</td><td>${y(b.outTot.sell)}</td><td>${y(b.outTot.ord)}</td><td>${b.outTot.mat?y(b.outTot.mat):'-'}</td><td>${yn(b.outTot.gp)}</td><td>${pct(b.outTot.rate)}</td><td>${b.outTot.ord?'100%':'-'}</td></tr>`;
   if(b.inTot.rows.length){ const op = openSet.has('__inhouse__');
-    h += `<tr class="v" data-gpv="__inhouse__"><td class="nm">${op?'▼':'▶'} 🏠 自社施工(ビルドクラスタ)</td><td>${b.inTot.rows.length}行</td><td>${y(b.inTot.sell)}</td><td>-</td><td>${b.inTot.mat?y(b.inTot.mat):'-'}</td><td>${yn(b.inTot.gp)}</td><td>${pct(b.inTot.rate)}</td><td></td></tr>`;
+    const __estIn = b.inTot.rows.filter(r=>r.estMat).length;
+    h += `<tr class="v" data-gpv="__inhouse__"><td class="nm">${op?'▼':'▶'} 🏠 自社施工(ビルドクラスタ)${__estIn?` <span style="color:#64748b" title="材料費が空白の行は売上の40%を材料費とみなしています">※材料費${__estIn}行→40%で推定</span>`:''}</td><td>${b.inTot.rows.length}行</td><td>${y(b.inTot.sell)}</td><td>-</td><td>${b.inTot.mat?y(b.inTot.mat):'-'}</td><td>${yn(b.inTot.gp)}</td><td>${pct(b.inTot.rate)}</td><td></td></tr>`;
     if(op) h += items(b.inTot.rows, true); }
   h += `<tr class="grand"><td class="nm">📈 案件 総売上・総粗利(自社込み)</td><td></td><td>${y(b.grand.sell)}</td><td>${y(b.grand.ord)}</td><td>${b.grand.mat?y(b.grand.mat):'-'}</td><td>${yn(b.grand.gp)}</td><td>${pct(b.grand.rate)}</td><td></td></tr>`;
   return h + `</tbody></table>`;
 }
-const RESTO_GP_OPEN_KEY = 'bc_resto_gp_open';   // 表を開いた状態は端末ごとに覚える(全物件共通)
 const __restoGpOpenV = new Set();               // ▶で開いた業者(画面を閉じるまで)
 function renderRestoGp_(p){
   const box = document.getElementById("rdGp"); if(!box) return;
   const b = restoGpBreakdown_(p && p.tasks);
   if(!b.n || !b.grand.sell){ box.innerHTML = ""; return; }
-  let open = false; try{ open = localStorage.getItem(RESTO_GP_OPEN_KEY) === '1'; }catch(_){}
+  // v1.30.799(山田「おりたたみじゃなくて常時表示でいいよ」): 表は常に開いておく(業者ごとの▶明細は従来どおり)
+  const open = true;
   const g = b.grand;
-  box.innerHTML = `<div class="gp-head" data-gptoggle="1">${open?'▼':'▶'} <b>📊 業者別 粗利</b>`
+  box.innerHTML = `<div class="gp-head" style="cursor:default"><b>📊 業者別 粗利</b>`
     + `<span>総売上 ${'¥'+g.sell.toLocaleString()}</span><span>総粗利 ${g.gp<0?'<span class="neg-n">':''}¥${g.gp.toLocaleString()}${g.gp<0?'</span>':''} ${g.rate==null?'':`<span class="${restoGpRateCls_(g.rate)}">(${g.rate}%)</span>`}</span>`
-    + `<span style="color:#94a3b8">税別・値引前</span></div>`
+    + `<span style="color:#94a3b8">税別・値引前${g.est?`・推定${g.est}行を含む(外注の発注空白=売上の80%／自社の材料費空白=売上の40%)`:''}</span></div>`
     + (open ? `<div class="gp-wrap">${restoGpTableHtml_(b, __restoGpOpenV)}</div>` : "");
   box.onclick = e=>{
-    if(e.target.closest('[data-gptoggle]')){ try{ localStorage.setItem(RESTO_GP_OPEN_KEY, open?'0':'1'); }catch(_){} renderRestoGp_(p); return; }
     const v = e.target.closest('tr.v'); if(!v) return;
     const k = v.dataset.gpv; if(__restoGpOpenV.has(k)) __restoGpOpenV.delete(k); else __restoGpOpenV.add(k);
     renderRestoGp_(p);
