@@ -2976,7 +2976,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.800</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.801</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -5240,7 +5240,8 @@ const STAFF_QUOTA = {
 //   2026-09-01 山田判断: **9月のみ 9→11**(完全週休2日+祝日で数えると2026年9月は土日8+平日祝3=11日)。
 //   他の月は据え置き(8月14・12月11はお盆/年末年始の上乗せ込み)。年間=117→119日。
 //   🔮将来: 祝日数は年で動く(2026年は9月に3連休が来て多め)ため、固定表→暦から自動計算に変える案あり。
-const COMPANY_HOLIDAYS = {1:11, 2:9, 3:8, 4:8, 5:12, 6:8, 7:9, 8:14, 9:11, 10:9, 11:9, 12:11};
+//   2026-10-02 山田「そろえていいよ」: **10月 9→10・11月 9→11**も同じ数え方(土日+祝日)に。10月=土5+日4+スポーツの日、11月=土4+日5+文化の日+勤労感謝の日。12月は11のまま(同じ数え方でも11)。年間=119→122日。
+const COMPANY_HOLIDAYS = {1:11, 2:9, 3:8, 4:8, 5:12, 6:8, 7:9, 8:14, 9:11, 10:10, 11:11, 12:11};
 // 休暇種別の表示名(値は会社休日のまま=集計互換、表示だけ所定休日)
 function leaveTypeLabel_(t){
   if(t==="会社休日") return "所定休日";
