@@ -2976,7 +2976,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.799</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.800</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -3203,6 +3203,7 @@
         <label>進行ステータス</label>
         <div class="rs-pick" id="rs-wf-pick"></div>
       </div>
+      <div class="rd-gp" id="rsGp"></div>
       <div class="field">
         <label>💬 進捗チャット <span style="font-weight:400;color:var(--muted);font-size:11px">(全員共有・時系列。Enterで送信)</span></label>
         <div id="rs-chat" class="rchat"></div>
@@ -15802,6 +15803,14 @@ function extractRepairs(properties){
       extDriveFileId: p.driveFileId || "",
       extEstimateId: p.estimateId || "",
       updatedAt: p.updatedAt || "",
+      // 📊 v1.30.800(山田「修繕でも同じことできる？」): 業者別粗利の表に使う明細の要点だけ持つ(重い欄は持たない)。
+      //   light応答(完了案件で明細が省かれた時)は前回の値を残す
+      gpTasks: Array.isArray(p.tasks) ? p.tasks.map(t=>{ const q = Number(t.quantity != null ? t.quantity : t.qty) || 0;
+        return { category: restoNormalizeCategory(t), contractor: String(t.contractor||"").trim(), name: String(t.workName||t.name||"").trim(), room: String(t.room||"").trim(),
+          qty: q, unit: t.unit||"", amount: Number(t.amount)||0,
+          orderAmount: (t.orderAmount != null && isFinite(+t.orderAmount)) ? (+t.orderAmount||0) : ((t.orderPrice != null && isFinite(+t.orderPrice)) ? (+t.orderPrice||0)*q : null),
+          materialAmount: (t.materialAmount != null && isFinite(+t.materialAmount)) ? (+t.materialAmount||0) : 0,
+          estHidden: !!t.estHidden, lumpId: String(t.lumpId||"") }; }) : (prev?.gpTasks || null),
     });
   });
   // 🔁 台帳重複の集約 (v1.29.14): 見積パターン①②や台帳の重複行は見積IDが違うため上のseenを通過してしまう。
@@ -15922,21 +15931,27 @@ function restoGpTableHtml_(b, openSet){
   return h + `</tbody></table>`;
 }
 const __restoGpOpenV = new Set();               // ▶で開いた業者(画面を閉じるまで)
-function renderRestoGp_(p){
-  const box = document.getElementById("rdGp"); if(!box) return;
-  const b = restoGpBreakdown_(p && p.tasks);
+// v1.30.800: 原状回復カード(rdGp)と修繕の編集画面(rsGp)の両方で使う。
+//   PCは常に表示(v1.30.799)／スマホ(700px以下)は折りたたみ(山田「スマホでは折りたたみ表示でいいや」)=見出しを押すと開く(開いた状態は端末で覚える)
+const RESTO_GP_MOB_OPEN_KEY = 'bc_gp_mob_open';
+function renderRestoGp_(p){ renderGpBox_(document.getElementById("rdGp"), p && p.tasks, null); }
+function renderGpBox_(box, tasks, extraNote){
+  if(!box) return;
+  const b = restoGpBreakdown_(tasks);
   if(!b.n || !b.grand.sell){ box.innerHTML = ""; return; }
-  // v1.30.799(山田「おりたたみじゃなくて常時表示でいいよ」): 表は常に開いておく(業者ごとの▶明細は従来どおり)
-  const open = true;
+  const mob = window.innerWidth <= 700;
+  let open = true;
+  if(mob){ open = false; try{ open = localStorage.getItem(RESTO_GP_MOB_OPEN_KEY) === '1'; }catch(_){} }
   const g = b.grand;
-  box.innerHTML = `<div class="gp-head" style="cursor:default"><b>📊 業者別 粗利</b>`
+  box.innerHTML = `<div class="gp-head"${mob ? ' data-gptoggle="1"' : ' style="cursor:default"'}>${mob ? (open?'▼ ':'▶ ') : ''}<b>📊 業者別 粗利</b>`
     + `<span>総売上 ${'¥'+g.sell.toLocaleString()}</span><span>総粗利 ${g.gp<0?'<span class="neg-n">':''}¥${g.gp.toLocaleString()}${g.gp<0?'</span>':''} ${g.rate==null?'':`<span class="${restoGpRateCls_(g.rate)}">(${g.rate}%)</span>`}</span>`
-    + `<span style="color:#94a3b8">税別・値引前${g.est?`・推定${g.est}行を含む(外注の発注空白=売上の80%／自社の材料費空白=売上の40%)`:''}</span></div>`
+    + `<span style="color:#94a3b8">税別・値引前${g.est?`・推定${g.est}行を含む(外注の発注空白=売上の80%／自社の材料費空白=売上の40%)`:''}${extraNote?`・${escapeHtml(extraNote)}`:''}</span></div>`
     + (open ? `<div class="gp-wrap">${restoGpTableHtml_(b, __restoGpOpenV)}</div>` : "");
   box.onclick = e=>{
+    if(mob && e.target.closest('[data-gptoggle]')){ try{ localStorage.setItem(RESTO_GP_MOB_OPEN_KEY, open?'0':'1'); }catch(_){} renderGpBox_(box, tasks, extraNote); return; }
     const v = e.target.closest('tr.v'); if(!v) return;
     const k = v.dataset.gpv; if(__restoGpOpenV.has(k)) __restoGpOpenV.delete(k); else __restoGpOpenV.add(k);
-    renderRestoGp_(p);
+    renderGpBox_(box, tasks, extraNote);
   };
 }
 function restoSyncTasks(existingTasks, serverTasks){
@@ -28220,6 +28235,8 @@ function openRepairSheet(id){
     kaniBtn.textContent = "⚡ 簡易見積" + (r.kaniMitsu!=null ? ` ¥${(+r.kaniMitsu).toLocaleString()}` : "");
     kaniBtn.onclick = ()=> openKaniModal_(r.id);
   }
+  // 📊 v1.30.800 修繕にも業者別粗利(明細のある案件だけ。⚡簡易見積がある時は、表は明細から計算していることを書き添える)
+  try{ renderGpBox_(document.getElementById("rsGp"), r.gpTasks, (r.kaniMitsu!=null) ? `⚡簡易見積¥${(+r.kaniMitsu).toLocaleString()}は表に含まない(表は明細から計算)` : null); }catch(e){ console.warn('[粗利表/修繕]', e && e.message); }
   repairSheet.classList.add("show");
 }
 function closeRepairSheet(){ repairSheet.classList.remove("show"); editingRepairId = null; __refreshOpenRepairCommentUI_ = null;
