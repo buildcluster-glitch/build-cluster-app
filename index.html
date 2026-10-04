@@ -2976,7 +2976,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.803</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.804</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -32393,6 +32393,9 @@ const state = {
 };
 
 // ---------- sync config ----------
+// 🔐 v1.30.804(2026-10-04 セキュリティ点検🔴3): 在庫GASにも合言葉。値はカレンダーGASと同じく見積GASの合言葉(全端末に入っている)。
+//   ⚠古い在庫GASは余分な token を無視する=アプリを先に配ってから在庫GASに関門(デプロイは持ち主=山田さん)
+function invGasUrl_(){ try{ const u=new URL(sync.url); const t=(typeof calGasToken_==='function')?calGasToken_():''; if(t) u.searchParams.set('token', t); return u.toString(); }catch(_){ return sync.url; } }
 const sync = {
   url: '',
   lastSyncAt: null,
@@ -33701,7 +33704,7 @@ function undoLog(logId){
 // ---------- cloud sync ----------
 async function syncTest(){
   if(!sync.url) throw new Error('URL未設定');
-  const res = await fetch(sync.url);
+  const res = await fetch(invGasUrl_());   // 🔐v1.30.804
   if(!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   if(data.error) throw new Error(data.error);
@@ -33848,7 +33851,7 @@ async function syncPull({ replace=false }={}){
   if(!data){
     if(!sync.url) throw new Error('URL未設定');
     const __t0 = Date.now();
-    const res = await fetch(sync.url, { cache:'no-store' });
+    const res = await fetch(invGasUrl_(), { cache:'no-store' });   // 🔐v1.30.804
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     data = await res.json();
     if(data.error) throw new Error(data.error);
@@ -33978,7 +33981,7 @@ function invDropOps_(snapshot, keepSet){
 async function invPostOps_(ops){
   let res;
   try{
-    res = await fetch(sync.url, { method:'POST', body: JSON.stringify({ action:'bulkSync', data: ops }) });
+    res = await fetch(sync.url, { method:'POST', body: JSON.stringify({ action:'bulkSync', data: ops, token: (typeof calGasToken_==='function')?calGasToken_():'' }) });   // 🔐v1.30.804
   }catch(e){
     throw Object.assign(new Error(e && e.message ? e.message : '通信できません'), { invKind:'transport' });
   }
