@@ -2976,7 +2976,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.802</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.803</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24291,9 +24291,15 @@ function queueCloudOp(action, data, meta){
   scheduleCloudSync();
 }
 
+// 🔐 v1.30.803(2026-10-04 セキュリティ点検🔴1): カレンダーのGAS(工事カレンダーDB API)に合言葉を付ける。
+//   GASのURLが公開リポジトリに載っていて、合言葉なしで予定を読み書きできた。合言葉は**見積GASの設定に入っているもの**を使う
+//   (全端末に既に入っている=入れ直し不要)。GASは受け取った合言葉の指紋(SHA-256)だけで照合する(GASのソースは公開なので合言葉は書かない)。
+//   ⚠古い版のGASは余分な token を無視するので、アプリを先に配ってからGASに関門を入れる順番で安全。
+function calGasToken_(){ try{ const s=(typeof loadGasSettings==='function')?loadGasSettings():null; return (s && s.token) || ''; }catch(_){ return ''; } }
+function calGasGetUrl_(extra){ const u=new URL(cloudSync.url); const t=calGasToken_(); if(t) u.searchParams.set('token', t); if(extra) Object.keys(extra).forEach(k=>u.searchParams.set(k, extra[k])); return u.toString(); }
 async function cloudSyncTest(){
   if(!cloudSync.url) throw new Error('URL未設定');
-  const res = await fetch(cloudSync.url, { cache:'no-store' });
+  const res = await fetch(calGasGetUrl_(), { cache:'no-store' });   // 🔐v1.30.803
   if(!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   if(data.error) throw new Error(data.error);
@@ -24318,7 +24324,7 @@ async function cloudSyncPull({ replace=false, signal=null, prefetched=null, forc
   let data;
   const __gasPull = async ()=>{
     const t0 = Date.now();
-    const res = await fetch(cloudSync.url, { cache:'no-store', signal });   // signal=ハング打ち切り用(v1.30.343)
+    const res = await fetch(calGasGetUrl_(), { cache:'no-store', signal });   // 🔐v1.30.803   // signal=ハング打ち切り用(v1.30.343)
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const d = await res.json();
     __lastGasEventsPullAt = Date.now();
@@ -24847,7 +24853,7 @@ async function cloudSyncPush(){
   //   古いGASは withPull を無視して従来の応答を返す＝snapshot が無ければ従来どおり別途GETする。
   const res = await fetch(cloudSync.url, {
     method: 'POST',
-    body: JSON.stringify({ action: 'bulkSync', data: ops, withPull: true }),
+    body: JSON.stringify({ action: 'bulkSync', data: ops, withPull: true, token: calGasToken_() }),   // 🔐v1.30.803
   });
   if(!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
@@ -25982,7 +25988,7 @@ document.getElementById('all-cs-push-missing').onclick = async ()=>{
   const orig = btn.textContent;
   btn.disabled = true; btn.textContent = "🔁 照合中…";
   try{
-    const res = await fetch(cloudSync.url, { cache:'no-store' });
+    const res = await fetch(calGasGetUrl_(), { cache:'no-store' });   // 🔐v1.30.803
     if(!res.ok) throw new Error('HTTP '+res.status);
     const data = await res.json();
     if(data.error) throw new Error(data.error);
