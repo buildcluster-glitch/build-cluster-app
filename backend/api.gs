@@ -60,9 +60,24 @@ const DATETIME_KEYS = new Set(['datetime','createdAt','updatedAt']);
 
 // ===== エンドポイント =====
 
+// 🔐 ver13(2026-10-04 セキュリティ点検🔴1): **合言葉なしでは読み書きできない**ようにする。
+//   それまでは URL を知っていれば誰でも予定を読め、作成・削除・遠隔スイッチまで通った(URLは公開リポジトリに載っていた)。
+//   合言葉の値は見積GASの SHARED_TOKEN と同じ(カレンダーの全端末に既に入っている)。
+//   ⚠このファイルは公開リポジトリにあるので、**合言葉そのものは書かず、SHA-256 の指紋だけ**を持つ。
+//   合言葉を変える時は、この指紋も書き換えて再デプロイすること。
+var CAL_TOKEN_SHA256_ = '569a6a6b3e28a4d287cd62ec5a1f15573fa3549c19126bd7d8820f7156a170f1';
+function calTokenOk_(t) {
+  if (!t) return false;
+  var d = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(t), Utilities.Charset.UTF_8);
+  var hex = d.map(function (b) { var v = (b < 0 ? b + 256 : b).toString(16); return v.length === 1 ? '0' + v : v; }).join('');
+  return hex === CAL_TOKEN_SHA256_;
+}
+function unauthorized_() { return jsonResponse_({ ok: false, error: 'unauthorized', code: 401 }); }
+
 function doGet(e) {
   try {
     const p = (e && e.parameter) || {};
+    if (!calTokenOk_(p.token)) return unauthorized_();   // 🔐 ver13
     // 窓GET: from/to (yyyy-MM-dd) が両方揃っているときだけ events を期間で絞る。
     // 無指定なら従来どおり全件返す = 旧アプリと完全互換。
     const from = String(p.from || '').slice(0, 10);
@@ -102,6 +117,7 @@ function buildSnapshot_(from, to, probe) {
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents || '{}');
+    if (!calTokenOk_(body.token)) return unauthorized_();   // 🔐 ver13: 遠隔スイッチ(wt-config)も含めて全部
     const action = body.action;
     const data = body.data;
     // 🔧 遠隔スイッチ(wt-config): フラグの読み書きだけ。**門番より前**に置く=自分で解除不能にならない
