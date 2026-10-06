@@ -2976,7 +2976,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.805</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.806</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -16001,9 +16001,10 @@ function renderGpBox_(box, tasks, extraNote){
   if(!box) return;
   const b = restoGpBreakdown_(tasks);
   if(!b.n || !b.grand.sell){ box.innerHTML = ""; return; }
-  const mob = window.innerWidth <= 700;
-  let open = true;
-  if(mob){ open = false; try{ open = localStorage.getItem(RESTO_GP_MOB_OPEN_KEY) === '1'; }catch(_){} }
+  // v1.30.806(山田「業者別粗利おりたたみ」): PCも折りたたみに(最初は見出しの1行だけ・押すと開く・開閉は端末が覚える)
+  const mob = true;
+  let open = false;
+  try{ open = localStorage.getItem(RESTO_GP_MOB_OPEN_KEY) === '1'; }catch(_){}
   const g = b.grand;
   box.innerHTML = `<div class="gp-head"${mob ? ' data-gptoggle="1"' : ' style="cursor:default"'}>${mob ? (open?'▼ ':'▶ ') : ''}<b>📊 業者別 粗利</b>`
     + `<span>総売上 ${'¥'+g.sell.toLocaleString()}</span><span>総粗利 ${g.gp<0?'<span class="neg-n">':''}¥${g.gp.toLocaleString()}${g.gp<0?'</span>':''} ${g.rate==null?'':`<span class="${restoGpRateCls_(g.rate)}">(${g.rate}%)</span>`}</span>`
