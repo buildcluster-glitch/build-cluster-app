@@ -2976,7 +2976,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.804</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.805</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -17295,18 +17295,30 @@ function ledgerWriteFailNotice_(what, err){
   try{ [3000, 12000].forEach(ms=> setTimeout(()=>{ try{ if(typeof syncChecksFromGAS==='function') syncChecksFromGAS({silent:true, fromAuto:true}); }catch(_){} }, ms)); }catch(_){}
   return text;
 }
+// ⚡ v1.30.805(山田「工事完了ボタン、まだGASとおってるみたいな挙動」): 台帳の書き込みはDB直になって1秒弱で終わるのに、
+//   GASのころの「書き戻し中…」を**書き込みの前から出し、終わっても1.8秒残していた**=待たされて見えた(DB側の処理は合計0.1秒未満・10/6実測)。
+//   → 1.2秒以内に終われば何も出さない(完了はトーストで知らせる)。遅い時・GASへ回る時だけ「書き戻し中」を出す。失敗は必ず出す。
+function lazySyncIndicator_(text, delayMs){
+  let shown = false;
+  const t = setTimeout(()=>{ shown = true; showSyncIndicator(text); }, delayMs || 1200);
+  return {
+    show(){ clearTimeout(t); if(!shown){ shown = true; showSyncIndicator(text); } },
+    done(status, msg){ clearTimeout(t); if(shown){ hideSyncIndicator(status, msg); } else if(status === 'error'){ showSyncIndicator(msg); hideSyncIndicator('error', msg); } }
+  };
+}
 async function pushAppointmentToGAS(driveFileId, fields){
   const s = loadGasSettings();
   if(!s.url || !s.token) throw new Error("GAS URL/Token 未設定");
   if(!driveFileId) throw new Error("driveFileId がありません(Drive同期由来の物件のみ更新可)");
-  showSyncIndicator("アポ情報を書き戻し中...");
+  const __ind = lazySyncIndicator_("台帳を更新中...");   // ⚡v1.30.805
   // 📡 v1.30.780 DBへ直接(スイッチON時)。入ったか分からない時はGASへ回さず失敗として返す
   try{
     const __body = {};
     ['responseDate','responseTime','workflowStatus','status','completeDate'].forEach(k=>{ if(fields[k] !== undefined) __body[k] = fields[k]; });
     const __r = await ledgerPatchDb_(driveFileId, doc=>__ledgerPatchAppointment_(doc, __body), 'アポ更新');
-    if(__r){ noteLedgerWriteResult_("アポ更新", __r); hideSyncIndicator("success", "アポ更新完了"); return __r; }
-  }catch(e){ if(e && e.unknown){ hideSyncIndicator("error", "アポ更新失敗"); throw e; } console.warn('[台帳DB直接] 例外→GASへ:', e && e.message); }
+    if(__r){ noteLedgerWriteResult_("アポ更新", __r); __ind.done("success", "台帳を更新しました"); return __r; }
+  }catch(e){ if(e && e.unknown){ __ind.done("error", "台帳の更新を確かめられませんでした"); throw e; } console.warn('[台帳DB直接] 例外→GASへ:', e && e.message); }
+  __ind.show();   // GASへ回る=遅いので表示する
   try{
     // master_sync の dispatch は kind で判定 (2026-05-31〜): "appointment"=日時/WF/status等
     // 🖊 v1.30.745: **誰が触ったかを台帳の履歴に残す**(見積GAS ver95の wtActorOf_ は actor|client|savedBy|addedBy を読む)。
@@ -17326,10 +17338,10 @@ async function pushAppointmentToGAS(driveFileId, fields){
     if(data.error || data.ok === false) throw gasWriteError_(data, "GAS returned ok:false");   // v1.30.707
     console.log("[appointment] updated:", data.changed, data.after);
     noteLedgerWriteResult_("アポ更新", data);   // v1.30.741
-    hideSyncIndicator("success", "アポ更新完了");
+    __ind.done("success", "台帳を更新しました");
     return data;
   }catch(e){
-    hideSyncIndicator("error", "アポ更新失敗");
+    __ind.done("error", "台帳の更新に失敗しました");
     throw e;
   }
 }
@@ -17337,12 +17349,13 @@ async function pushAppointmentToGAS(driveFileId, fields){
 async function pushFinalDateToGAS(driveFileId, finalDate){
   const s = loadGasSettings();
   if(!s.url || !s.token) throw new Error("GAS URL/Token 未設定");
-  showSyncIndicator(`Drive に書き戻し中... ${finalDate||"(クリア)"}`);
+  const __ind = lazySyncIndicator_(`台帳を更新中... ${finalDate||"(クリア)"}`);   // ⚡v1.30.805
   // 📡 v1.30.780 DBへ直接(スイッチON時)
   try{
     const __r = await ledgerPatchDb_(driveFileId, doc=>__ledgerPatchFinalDate_(doc, finalDate), '最終確認日');
-    if(__r){ noteLedgerWriteResult_("最終確認日", __r); hideSyncIndicator("success", `書き戻し完了 ${finalDate||"(クリア)"}`); return __r; }
-  }catch(e){ if(e && e.unknown){ hideSyncIndicator("error", "書き戻し失敗"); throw e; } console.warn('[台帳DB直接] 例外→GASへ:', e && e.message); }
+    if(__r){ noteLedgerWriteResult_("最終確認日", __r); __ind.done("success", `台帳を更新しました ${finalDate||"(クリア)"}`); return __r; }
+  }catch(e){ if(e && e.unknown){ __ind.done("error", "台帳の更新を確かめられませんでした"); throw e; } console.warn('[台帳DB直接] 例外→GASへ:', e && e.message); }
+  __ind.show();   // GASへ回る=遅いので表示する
   try{
     const res = await fetch(s.url, {
       method:"POST",
@@ -17359,10 +17372,10 @@ async function pushFinalDateToGAS(driveFileId, finalDate){
     if(data.ok === false || data.error){ throw gasWriteError_(data, "GAS returned ok:false"); }   // v1.30.707
     console.log("[task-update-final-date] result:", data);
     noteLedgerWriteResult_("最終確認日", data);   // v1.30.741
-    hideSyncIndicator("success", `書き戻し完了 ${finalDate||"(クリア)"}`);
+    __ind.done("success", `台帳を更新しました ${finalDate||"(クリア)"}`);
     return data;
   }catch(e){
-    hideSyncIndicator("error", "書き戻し失敗");
+    __ind.done("error", "台帳の更新に失敗しました");
     throw e;
   }
 }
