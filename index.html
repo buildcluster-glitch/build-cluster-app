@@ -2976,7 +2976,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.806</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.807</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -10597,7 +10597,7 @@ function renderDashboard_(){
     // 🏠 v1.30.625(山田): ビュー切替でなく既存の独立ダイアログ(openRestoDialog)で開き、閉じたら全体進捗へ戻る
     if(typeof openRestoDialog==='function'){ try{ __dashReturn=true; openRestoDialog(el.dataset.drResto); return; }catch(e){ __dashReturn=false; console.warn('[dash] restoダイアログ失敗', e); } }
     currentView='resto'; if(typeof restoTaskStatusFilter!=='undefined') restoTaskStatusFilter=null;
-    restoDetailId=el.dataset.drResto;
+    __gpOpenNow = false; restoDetailId=el.dataset.drResto;
     render();
   });
   body.querySelectorAll('[data-dr-rep]').forEach(el=>el.onclick=()=>{
@@ -15995,23 +15995,23 @@ function restoGpTableHtml_(b, openSet){
 const __restoGpOpenV = new Set();               // ▶で開いた業者(画面を閉じるまで)
 // v1.30.800: 原状回復カード(rdGp)と修繕の編集画面(rsGp)の両方で使う。
 //   PCは常に表示(v1.30.799)／スマホ(700px以下)は折りたたみ(山田「スマホでは折りたたみ表示でいいや」)=見出しを押すと開く(開いた状態は端末で覚える)
-const RESTO_GP_MOB_OPEN_KEY = 'bc_gp_mob_open';
+let __gpOpenNow = false;   // 業者別粗利を今開いているか(物件を開くたびに false に戻す)
 function renderRestoGp_(p){ renderGpBox_(document.getElementById("rdGp"), p && p.tasks, null); }
 function renderGpBox_(box, tasks, extraNote){
   if(!box) return;
   const b = restoGpBreakdown_(tasks);
   if(!b.n || !b.grand.sell){ box.innerHTML = ""; return; }
   // v1.30.806(山田「業者別粗利おりたたみ」): PCも折りたたみに(最初は見出しの1行だけ・押すと開く・開閉は端末が覚える)
+  //   v1.30.807(山田「デフォで折りたたみでいいよ」): 開いた状態は覚えない=物件を開くたびに折りたたみから。画面を開いている間だけ開いたまま
   const mob = true;
-  let open = false;
-  try{ open = localStorage.getItem(RESTO_GP_MOB_OPEN_KEY) === '1'; }catch(_){}
+  const open = !!__gpOpenNow;
   const g = b.grand;
   box.innerHTML = `<div class="gp-head"${mob ? ' data-gptoggle="1"' : ' style="cursor:default"'}>${mob ? (open?'▼ ':'▶ ') : ''}<b>📊 業者別 粗利</b>`
     + `<span>総売上 ${'¥'+g.sell.toLocaleString()}</span><span>総粗利 ${g.gp<0?'<span class="neg-n">':''}¥${g.gp.toLocaleString()}${g.gp<0?'</span>':''} ${g.rate==null?'':`<span class="${restoGpRateCls_(g.rate)}">(${g.rate}%)</span>`}</span>`
     + `<span style="color:#94a3b8">税別・値引前${g.est?`・推定${g.est}行を含む(外注の発注空白=売上の80%／自社の材料費空白=売上の40%)`:''}${extraNote?`・${escapeHtml(extraNote)}`:''}</span></div>`
     + (open ? `<div class="gp-wrap">${restoGpTableHtml_(b, __restoGpOpenV)}</div>` : "");
   box.onclick = e=>{
-    if(mob && e.target.closest('[data-gptoggle]')){ try{ localStorage.setItem(RESTO_GP_MOB_OPEN_KEY, open?'0':'1'); }catch(_){} renderGpBox_(box, tasks, extraNote); return; }
+    if(mob && e.target.closest('[data-gptoggle]')){ __gpOpenNow = !open; renderGpBox_(box, tasks, extraNote); return; }
     const v = e.target.closest('tr.v'); if(!v) return;
     const k = v.dataset.gpv; if(__restoGpOpenV.has(k)) __restoGpOpenV.delete(k); else __restoGpOpenV.add(k);
     renderGpBox_(box, tasks, extraNote);
@@ -28224,6 +28224,7 @@ function populateRespTimeSelect_(current){
 function openRepairSheet(id){
   const r = state.repairs.find(x=>x.id===id);
   if(!r) return;
+  __gpOpenNow = false;   // v1.30.807 業者別粗利は毎回折りたたみから
   editingRepairId = id;
   document.getElementById("rs-title").textContent = `🔧 ${r.name}${r.room?" "+r.room:""}`;
   document.getElementById("rs-name").value     = r.name || "";
@@ -28951,6 +28952,7 @@ async function fetchRestoDetailOnDemand_(rec){
   }catch(e){ console.warn('[task-detail] 取得失敗:', e.message); return false; }
 }
 function openRestoDialog(id){
+  __gpOpenNow = false;   // v1.30.807 業者別粗利は毎回折りたたみから
   restoDetailId = id;
   restoTaskStatusFilter = null;
   // 🪶 完了案件で明細が無い→先に開いてから裏で1件取得し、届いたら描き直す(待たせない)
@@ -29132,7 +29134,7 @@ function renderRestoList(){
     return `<div class="resto-group-header"><span class="gh-tag" style="background:${clientColorFor(cat)}">${escapeHtml(cat)}</span><span class="gh-count">${groups[cat].length}件</span></div>${rows}`;
   }).join("");
   listEl.querySelectorAll(".resto-card").forEach(c=>{
-    c.onclick = ()=>{ restoDetailId = c.dataset.id; restoTaskStatusFilter = null; renderRestoView(); };
+    c.onclick = ()=>{ __gpOpenNow = false; restoDetailId = c.dataset.id; restoTaskStatusFilter = null; renderRestoView(); };
   });
   // (v1.30.701: カード上の事前完了チップは撤去。押すのは詳細ダイアログ/📊全体進捗)
 }
