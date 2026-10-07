@@ -2976,7 +2976,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.807</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.808</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24814,6 +24814,14 @@ async function pushEventsToDb_(){
     }
   }
   const n = flush_();   // 送信中に積まれた分は参照が違うので巻き込まない
+  // 🔴v1.30.808: **削除を断られたら、削除の印を外して画面に戻す**。
+  //   印は共有設定で全員に配られるため、外さないと「全員の画面からは消えるのにDBでは生きている」になる
+  //   (10/2 カーボグランデ102・10/6 フレンドリィⅡ102 消臭。トーストは出ていたが印が残った)。
+  notes.forEach(x=>{
+    if(x.action === 'deleteEvent' && x.result === 'forbidden' && typeof removeEventDeletion_==='function'){
+      try{ removeEventDeletion_(x.id); }catch(_){}
+    }
+  });
   if(notes.length) __calNoteResults_(notes);
   if(pulled || notes.length) { try{ await cloudSyncPull({ replace:false }); }catch(_){} }   // サーバーの姿に揃える
   return { ok:true, pushed: n, notes };
@@ -24822,7 +24830,7 @@ async function pushEventsToDb_(){
 // 「やり直さない答え」を人に伝える(黙って捨てない)
 function __calNoteResults_(notes){
   const msg = notes.map(n=>{
-    if(n.result === 'forbidden')        return '自分が作った予定しか削除できません';
+    if(n.result === 'forbidden')        return '自分が作った予定しか削除できません(元に戻しました)';
     if(n.result === 'deleted')          return 'この予定は他の人が削除済みです';
     if(n.result === 'not_found')        return 'この予定はサーバーにありません(削除済み)';
     if(n.result === 'rejected_virtual') return '自動表示の予定は保存されません';
