@@ -2976,7 +2976,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.808</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.809</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -25735,7 +25735,12 @@ async function fetchLedgerFromDb_({since='', maxMonths=3, signal}={}){
   if(s.expires_at && (s.expires_at*1000 - Date.now()) < 60000){ try{ await sbRefresh_(); }catch(_){} s = sbSession_(); }
   if(!s || !s.access_token) return { ok:false, reason:'no-session', ms:Date.now()-t0 };
   const months = ledgerDbMonths_(maxMonths);
-  const monthQ = `month=in.(${months.map(m=>'"'+m+'"').join(',')})`;
+  // 🩹 v1.30.809(山田「最終確認 コーポみずほ台3件がカレンダーに出ない」10/8):
+  //   月は「見積を作った月」なので、6〜7月に見積→10月に発注のような**長く寝かせた案件が窓の外に落ちていた**。
+  //   窓の月に加えて、**最終確認日が窓の始まり以降の案件**も読む(10/8時点で窓外の該当=みずほ台3件+8月に終わった14件)。
+  //   ⚠orderDate は「5/8」のような形が混ざっていて文字列で比べられないので使わない。
+  //   ⚠差分の全id(light)も同じ条件で取る=消えた案件の検出(allIds)から漏れない。
+  const monthQ = `or=(month.in.(${months.map(m=>'"'+m+'"').join(',')}),projection->>finalCheckDateIso.gte.${months[months.length-1]}-01)`;
   const hdr = tok => ({ 'apikey': SB_AUTH.key, 'Authorization': 'Bearer '+tok, 'Prefer': 'count=exact', 'Accept': 'application/json' });
   async function getAll(select, extra){
     const base = `${SB_AUTH.url}/rest/v1/${LEDGER_DB_VIEW}?select=${select}&${monthQ}${extra||''}&order=id.asc`;
