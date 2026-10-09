@@ -2976,7 +2976,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.811</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.812</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -23536,8 +23536,19 @@ function showQuickAddSheet_(defaults={}, editEv=null){
     // ⏱ v1.30.772(山田「時間の横に時間未定にするボタンがあるともっとつかいやすい」):
     //   押すと「時間未定」、もう一度押すと元の時刻(クリックした枠の時刻・編集なら元の時刻)に戻す。ボタンは今の状態を色で見せる。
     const __ub = bd.querySelector('#qa-time-undecided');
-    let __lastTimed = /^\d{2}:\d{2}$/.test(selTime) ? selTime : '';   // 戻し先(手で時刻を選び直したらそれに更新)
-    const __syncUb = ()=>{ if(__ub) __ub.classList.toggle('on', !!__ts && __ts.value===''); };
+    // 🕐 v1.30.812(山田「時間未定を時間設定ボタンにかえるとかは？」): 新規は時間未定で開くので、
+    //   **時間未定の時は「🕐 13:00」(クリックした枠の時刻)を出し、ワンタップでその時刻にする**。時刻が入ったら「時間未定」に戻すボタンになる。
+    let __lastTimed = /^\d{2}:\d{2}$/.test(selTime) ? selTime
+      : (!isEdit && /^\d{2}:\d{2}$/.test(posStart) ? posStart : '');   // 戻し先(手で時刻を選び直したらそれに更新)
+    const __syncUb = ()=>{
+      if(!__ub || !__ts) return;
+      const und = __ts.value==='';
+      const setMode = und && !!__lastTimed;   // 未定で、入れられる時刻がある=「時間設定」ボタン
+      __ub.textContent = setMode ? `🕐 ${__lastTimed}` : '時間未定';
+      __ub.title = setMode ? `押すと ${__lastTimed} にする` : '押すと時間未定にする';
+      __ub.classList.toggle('on', und && !setMode);
+      __ub.style.display = (und && !__lastTimed) ? 'none' : '';   // 未定で戻す時刻も無い=押しても何も起きないので隠す
+    };
     if(__ts) __ts.onchange = ()=>{
       if(/^\d{2}:\d{2}$/.test(__ts.value)) __lastTimed = __ts.value;
       if(__row){ const on = __ts.value==='__free__'; __row.style.display = on?'flex':'none'; if(on){ try{ __row.querySelector('input').focus(); }catch(_){} } }
@@ -23563,7 +23574,7 @@ function showQuickAddSheet_(defaults={}, editEv=null){
         const cb = bd.querySelector(`.qa-cat button[data-cat="${t.category}"]`);
         if(cb) cb.click();                   // 既存の選択処理をそのまま使う(状態がずれない)
       }
-      if(t.time !== undefined){ const ts = bd.querySelector('#qa-time'); if(ts) ts.value = t.time; }
+      if(t.time !== undefined){ const ts = bd.querySelector('#qa-time'); if(ts){ ts.value = t.time; if(typeof ts.onchange==='function') ts.onchange(); } }   // v1.30.812: ボタンの表示も合わせる
       if(ta) ta.focus();
     };
   }
