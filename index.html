@@ -2976,7 +2976,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.810</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.811</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -23420,7 +23420,9 @@ function showQuickAddSheet_(defaults={}, editEv=null){
     //   新規は、クリックした枠の時刻を**最初から選んだ状態**で開く。それまでは必ず「時間未定」で、
     //   クリック位置は「時間未定のまま、その位置に表示する」ためだけに使っていた(v1.30.65)。
     //   ⚠時刻の無い所(終日の段など)から開いた時は defaults.start が空=今までどおり「時間未定」。
-    : ((defaults.start && /^\d{2}:\d{2}$/.test(defaults.start)) ? defaults.start : "");
+    // 🕔 v1.30.811(山田「やっぱ時間かってにでちゃうのやめたい」10/9): **新規は必ず「時間未定」に戻した**。
+    //   クリック位置は従来どおり posStart で「時間未定のまま、その位置に表示する」ためだけに使う。
+    : "";
   // ✏️ 時刻の自由入力メモ(v1.30.589): 既存メモがあれば「自由入力」を初期選択
   const __noteInit = (isEdit && typeof timeNoteGet_==='function') ? ((timeNoteGet_(editEv.id)||{}).text||'') : '';
   const timeOpts = [
