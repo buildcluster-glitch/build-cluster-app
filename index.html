@@ -2976,7 +2976,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.815</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.816</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -10863,6 +10863,8 @@ function alcRowToEntry_(r){
   const e = { staff:r.staff, date:String(r.date).slice(0,10), when:r.when, car:r.car||'', result:r.result||'none', memo:r.memo||'',
               at:r.at || r.updated_at || '', remote:(r.remote!==false), via:r.via||'' };
   if(r.photo) e.photo = r.photo;
+  e.health = r.health || 'ok';                       // v1.30.816
+  if(r.detected_at) e.detectedAt = r.detected_at;    // 一度でも「数値あり」が記録された最初の時刻(後で訂正しても残る)
   e.updatedAt = r.updated_at || e.at;   // マージ(lwwMergeZombieSafe_)の基準
   return e;
 }
@@ -10877,7 +10879,8 @@ async function alcDbFetchMonth_(mk){
 async function alcDbUpsert_(entry){
   if(!entry._op) entry._op = 'alc_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8);
   const r = await calRpc_('cal_alcohol_upsert', { p_op_id: entry._op, p_date: entry.date, p_when: entry.when,
-    p_car: entry.car||'', p_photo: entry.photo||'', p_memo: entry.memo||'' });
+    p_car: entry.car||'', p_photo: entry.photo||'', p_memo: entry.memo||'',
+    p_result: entry.result||'none', p_health: entry.health||'ok' });   // v1.30.816(migration 081)
   if(r==='applied' || r==='already_processed') return true;
   throw new Error('アルコールチェックを保存できませんでした: ' + r);
 }
@@ -11052,6 +11055,9 @@ function alcRenderModal_(){
       : `<button data-alc-when="${when}" style="flex:1;background:var(--accent);color:#fff;border:0;border-radius:12px;padding:16px 10px;font-size:15px;font-weight:800;cursor:pointer">🍺✕ 酒気なし・体調OK<div style="font-size:11px;font-weight:600;opacity:.9;margin-top:2px">${label}チェックを記録${(when==='am'&&needPhotoAm)?' <span style="color:#fecaca">📷写真必須</span>':''}</div></button>`;
     self.innerHTML=`<div style="font-size:12px;color:var(--muted);margin-bottom:5px">🚙 車両: <b id="alc-mycar" style="color:var(--text);cursor:pointer;text-decoration:underline dotted" title="タップで今日の車を変更">${escapeHtml(alcCarOf_(me))}</b></div>
       <div style="display:flex;gap:8px">${btn('am','出発前(朝)',am)}${btn('pm','運転終了(夕)',pm)}</div>
+      ${(am&&pm)?'':`<div style="margin-top:6px;display:flex;gap:6px;align-items:center;font-size:11px;color:var(--muted)">いつもと違う時は →
+        <button type="button" data-alc-bad="health" class="btn" style="font-size:11px;padding:4px 8px;background:#fff7ed;border-color:#fdba74;color:#9a3412">🤒 体調がわるい</button>
+        <button type="button" data-alc-bad="detected" class="btn" style="font-size:11px;padding:4px 8px;background:#fef2f2;border-color:#fca5a5;color:#b91c1c">⚠ 数値が出た</button></div>`}
       <div style="margin-top:6px;display:flex;gap:6px;align-items:center">
         <input id="alc-memo" type="text" placeholder="指示事項・特記(任意)" style="flex:1;min-width:0;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px">
         <input id="alc-photo-in" type="file" accept="image/*" capture="environment" style="display:none">
@@ -11083,18 +11089,20 @@ function alcRenderModal_(){
       const v=prompt('今日の車両(いつもと違う車の日だけ変更):\n'+cars.join('\n'), alcCarOf_(me));
       if(v && v.trim()){ window.__alcCarToday=v.trim(); mycar.textContent=v.trim(); }
     };
-    self.querySelectorAll('[data-alc-when]').forEach(b=>{
-      b.onclick=async()=>{
+    // 🤒⚠ v1.30.816(山田「体調不良のチェックは？」→ 3択に): 普段は大きいボタン(酒気なし・体調OK)、いつもと違う時だけ小さいボタン。
+    //   result: 'none'=酒気なし / 'detected'=酒気あり、health: 'ok' / 'bad'。**ボタンを押した時は必ず両方渡す**(DB側は null=触らない)
+    const __alcDo = async(b, when, result, health, extraMemo)=>{
         // 📷 v1.30.606(山田): 朝は検知器写真を必須に。記録の信憑性(「本当に測ったのか」)を担保する。
         //   運用が回らない時は ⚙車両名 の案内どおり bc_alc_photo_required='0' で解除できる。
-        if(b.dataset.alcWhen==='am' && needPhotoAm && !window.__alcPhoto){
+        if(when==='am' && needPhotoAm && !window.__alcPhoto){
           alert('📷 朝は検知器の写真が必須です。\n\n「📷」ボタンから検知器の表示(数値が見えるように)を撮ってから、もう一度押してください。');
           const pb=self.querySelector('#alc-photo-btn'); if(pb){ pb.style.outline='2px solid #dc2626'; setTimeout(()=>{ try{ pb.style.outline=''; }catch(_){} },2500); pb.click(); }
           return;
         }
-        b.disabled=true; b.style.opacity=.6;
-        const entry={ staff:me, date:today, when:b.dataset.alcWhen, car:(window.__alcCarToday||alcCarOf_(me)),
-          result:'none', memo:(self.querySelector('#alc-memo')||{}).value||'', at:new Date().toISOString(),
+        if(b){ b.disabled=true; b.style.opacity=.6; }
+        const __m0 = (self.querySelector('#alc-memo')||{}).value||'';
+        const entry={ staff:me, date:today, when, car:(window.__alcCarToday||alcCarOf_(me)),
+          result, health, memo:[extraMemo, __m0].filter(Boolean).join(' / '), at:new Date().toISOString(),
           remote:true };   // 社用車通勤=原則ずっと非対面(法定記録の「対面でない場合の具体的方法」に対応)v1.30.606
         if(window.__alcPhoto){
           if(typeof window.__alcPhoto==='object' && window.__alcPhoto.pending){   // 📷 v1.30.814 上げられなかった写真=端末に預けて送信待ち
@@ -11104,7 +11112,23 @@ function alcRenderModal_(){
         }
         await alcRecord_(entry);
         alcRenderModal_(); alcUpdateBadge_(); if(typeof render==='function') render();
-        if(typeof showAutoSyncToast==='function') showAutoSyncToast(b.dataset.alcWhen==='am'?'🚗 いってらっしゃい(記録しました)':'🏠 おつかれさまでした(記録しました・今日の運転はここまで)');
+        if(result==='detected') alert('⚠ 記録しました。\n\n今日は運転しないでください。すぐに山田さんへ電話で連絡してください。');
+        else if(health==='bad') alert('🤒 記録しました。\n\n無理をせず、運転してよいか山田さんに相談してください。');
+        else if(typeof showAutoSyncToast==='function') showAutoSyncToast(when==='am'?'🚗 いってらっしゃい(記録しました)':'🏠 おつかれさまでした(記録しました・今日の運転はここまで)');
+    };
+    self.querySelectorAll('[data-alc-when]').forEach(b=>{ b.onclick=()=>__alcDo(b, b.dataset.alcWhen, 'none', 'ok', ''); });
+    self.querySelectorAll('[data-alc-bad]').forEach(b=>{
+      b.onclick=()=>{
+        const when = am ? 'pm' : 'am';   // 朝がまだなら朝・済んでいれば夕
+        const lbl = when==='am' ? '出発前(朝)' : '運転終了(夕)';
+        if(b.dataset.alcBad==='detected'){
+          if(!confirm(`⚠ ${lbl}のチェックで「数値が出た(酒気あり)」と記録します。よろしいですか?`)) return;
+          __alcDo(b, when, 'detected', 'ok', '検知器で数値あり');
+        } else {
+          const sym = prompt(`🤒 ${lbl}のチェックで「体調がわるい」と記録します。\n症状をひとこと(任意):`, '');
+          if(sym===null) return;
+          __alcDo(b, when, 'none', 'bad', '体調不良' + (sym.trim()?`(${sym.trim()})`:''));
+        }
       };
     });
   }
@@ -11149,7 +11173,7 @@ function alcRenderModal_(){
   const map=alcLoad_(alcMonthKey_());
   const rows=ALC_DRIVERS.map(st=>{
     const am=map[alcId_(today,st,'am')], pm=map[alcId_(today,st,'pm')];
-    const cell=e=>e?`<span style="color:#166534;font-weight:700">✅${(d=>isNaN(d)?'':`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`)(new Date(e.at))}</span>${e.memo?` <span title="${escapeHtml(e.memo)}">📝</span>`:''}${e.photo===ALC_PHOTO_PENDING?' <span title="写真は撮影済み・送信待ち(自動で送ります)" style="color:#b45309">📷⏳</span>':(e.photo && !/^(sb:|https?:)/.test(e.photo))?` <span title="クラ助で受けた写真(Dropbox): ${escapeHtml(e.photo)}" style="color:#475569">📷<span style="font-size:9px">Dropbox</span></span>`:e.photo?` <a href="${escapeHtml(e.photo)}" target="_blank" title="検知器の写真を開く" style="text-decoration:none">📷</a>`:''}`:'<span style="color:#94a3b8">—</span>';
+    const cell=e=>e?`${e.result==='detected'?'<span style="color:#b91c1c;font-weight:800" title="酒気あり(検知器で数値)">⚠':e.health==='bad'?'<span style="color:#c2410c;font-weight:800" title="体調不良">🤒':(e.detectedAt?'<span style="color:#166534;font-weight:700" title="一度「数値あり」が記録され、その後に訂正されています">✅<span style="color:#b91c1c">⚠訂正</span>':'<span style="color:#166534;font-weight:700">✅')}${(d=>isNaN(d)?'':`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`)(new Date(e.at))}</span>${e.memo?` <span title="${escapeHtml(e.memo)}">📝</span>`:''}${e.photo===ALC_PHOTO_PENDING?' <span title="写真は撮影済み・送信待ち(自動で送ります)" style="color:#b45309">📷⏳</span>':(e.photo && !/^(sb:|https?:)/.test(e.photo))?` <span title="クラ助で受けた写真(Dropbox): ${escapeHtml(e.photo)}" style="color:#475569">📷<span style="font-size:9px">Dropbox</span></span>`:e.photo?` <a href="${escapeHtml(e.photo)}" target="_blank" title="検知器の写真を開く" style="text-decoration:none">📷</a>`:''}`:'<span style="color:#94a3b8">—</span>';
     const need=alcNeedsCheck_(st);
     return `<div style="display:flex;gap:8px;align-items:center;padding:4px 6px;border-bottom:1px solid var(--border);font-size:12px">
       <span style="min-width:5.5em;font-weight:600">${need?'🚗?':''}${escapeHtml(st)}</span>
@@ -11176,7 +11200,7 @@ function alcExportCsv_(){
     const rows=Object.values(map).sort((a,b)=>String(a.date+a.at).localeCompare(String(b.date+b.at)));
     if(!rows.length){ alert('この月の記録はありません'); return; }
     const esc=v=>`"${String(v==null?'':v).replace(/"/g,'""')}"`;
-    const head=['日付','時刻','運転者','車両(通称)','自動車登録番号','タイミング','確認方法','検知器使用','酒気帯びの有無','確認者','指示事項・特記','検知器写真','管理者確認','管理者確認日時'];
+    const head=['日付','時刻','運転者','車両(通称)','自動車登録番号','タイミング','確認方法','検知器使用','酒気帯びの有無','体調','確認者','指示事項・特記','検知器写真','管理者確認','管理者確認日時'];   // v1.30.816 体調の列
     const csv=[head.join(',')].concat(rows.map(e=>{
       const d=new Date(e.at);
       const cp = alcCarParts_(e.car||'');
@@ -11186,8 +11210,9 @@ function alcExportCsv_(){
       const how = (e.remote===false) ? '対面'
         : `非対面(スマートフォンから本人が検知器で測定し記録${e.photo?'・検知器表示の写真を添付':''})`;
       return [e.date, isNaN(d)?'':`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`,
-        e.staff, cp.label, cp.plate, e.when==='am'?'運転前':'運転後', how, '有', e.result==='none'?'無':'有',
-        e.staff, e.memo||'', (e.photo===ALC_PHOTO_PENDING?'撮影済み(送信待ち)':(e.photo||'')),
+        e.staff, cp.label, cp.plate, e.when==='am'?'運転前':'運転後', how, '有', e.result==='detected'?'有':'無',
+        e.health==='bad'?'不良':'良好',
+        e.staff, [e.memo||'', (e.detectedAt && e.result!=='detected') ? `※${(d=>isNaN(d)?String(e.detectedAt):`${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`)(new Date(e.detectedAt))}に数値ありと記録→訂正` : ''].filter(Boolean).join(' / '), (e.photo===ALC_PHOTO_PENDING?'撮影済み(送信待ち)':(e.photo||'')),
         cf?cf.by:'', (cfd&&!isNaN(cfd))?`${cfd.getFullYear()}/${cfd.getMonth()+1}/${cfd.getDate()} ${String(cfd.getHours()).padStart(2,'0')}:${String(cfd.getMinutes()).padStart(2,'0')}`:''
       ].map(esc).join(',');
     })).join('\r\n');
