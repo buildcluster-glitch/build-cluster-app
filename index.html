@@ -2976,7 +2976,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.814</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.815</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -10785,6 +10785,17 @@ function alcConfirms_(){ try{ const o=JSON.parse(localStorage.getItem(ALC_CONFIR
 function alcConfirmOf_(date){ return alcConfirms_()[date]||null; }
 async function alcSetConfirm_(date){
   const me=(typeof getMyself==='function')?getMyself():''; if(!me) { alert('先に「👤 マイ」で自分を設定してください'); return; }
+  if(alcDbOn_()){   // 🗄 v1.30.815 表へ(admin/jimu だけ押せる・押した人はログインから)
+    try{
+      const r = await calRpc_('cal_alcohol_confirm', { p_date: date });
+      if(!(r==='applied'||r==='already_processed')) throw new Error(r||'保存できませんでした');
+      const map=alcConfirms_(); map[date]={ by:me, at:new Date().toISOString() };
+      try{ localStorage.setItem(ALC_CONFIRM_LOCAL, JSON.stringify(map)); }catch(_){}
+      alcRenderModal_();
+      if(typeof showAutoSyncToast==='function') showAutoSyncToast('✅ 管理者確認を記録しました');
+    }catch(e){ alert('管理者確認を記録できませんでした: '+((e&&e.message)||e)+'\n(管理者確認は山田さん・事務の人だけ押せます)'); }
+    return;
+  }
   const s=loadGasSettings(); if(!s.url||!s.token){ alert('☁設定が未設定です'); return; }
   let map=alcConfirms_();
   try{
@@ -10801,6 +10812,15 @@ async function alcSetConfirm_(date){
   if(typeof showAutoSyncToast==='function') showAutoSyncToast('✅ 管理者確認を記録しました');
 }
 async function alcFetchConfirms_(){
+  if(alcDbOn_()){
+    try{
+      const d=new Date(); d.setMonth(d.getMonth()-13);
+      const rows=await alcDbGet_(`alcohol_confirms?select=*&date=gte.${fmtDate(d)}`);
+      const map={}; rows.forEach(r=>{ if(r&&r.date) map[String(r.date).slice(0,10)]={ by:r.by||'', at:r.at||'' }; });
+      try{ localStorage.setItem(ALC_CONFIRM_LOCAL, JSON.stringify(map)); }catch(_){}
+    }catch(e){ console.warn('[alcohol] 管理者確認の表が読めません:', e&&e.message); }
+    return;
+  }
   const s=loadGasSettings(); if(!s.url||!s.token) return;
   try{
     const res=await fetch(`${s.url}?action=get-shared-config&key=alcohol_confirm&token=${encodeURIComponent(s.token)}&t=${Date.now()}`,{method:'GET',redirect:'follow'});
@@ -10810,7 +10830,59 @@ async function alcFetchConfirms_(){
   }catch(_){}
 }
 function alcId_(date, staff, when){ return `${date}_${staff}_${when}`; }
+// 🗄 v1.30.815 アルコールチェックをDBの表へ(山田「ちゃんとDBに入れてね」10/10・台帳DB migration 079)
+//   表 alcohol_checks(id=日付_名前_am|pm)/ alcohol_confirms(date PK)。書きは関数だけ:
+//     cal_alcohol_upsert(本人の分だけ・op_idで冪等・写真は空なら前の値を残す)/ cal_alcohol_confirm(admin/jimu)
+//   クラ助も kurasuke_alcohol_upsert で同じ表に書く(写真はDropboxのパス)。
+//   ⚠スイッチ alcDb(端末 bc_flag_alcDb > flags.json > calendar_flags.alcDb > 既定 ALC_DB_DEFAULT)。
+//     OFF の間は従来どおり共有設定の月の塊(alcohol_log_YYYY-MM)。**読めない時に黙って塊へ落ちない**(塊は凍結していく)
+//   ⚠端末の写し(bc_alcohol_log_YYYY-MM の {id:記録})の形は変えない=画面・CSV・🚗?判定は無改修
+const ALC_DB_DEFAULT = false;
+function alcDbOn_(){
+  try{ const o = localStorage.getItem('bc_flag_alcDb'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
+  try{ if(typeof __staticFlags!=='undefined' && __staticFlags){ const r = __pickWriteFlag_(__staticFlags.alcDb); if(r !== null) return r; } }catch(_){}
+  try{ if(typeof __calFlags!=='undefined' && __calFlags){ const r = __pickWriteFlag_(__calFlags.alcDb); if(r !== null) return r; } }catch(_){}
+  return ALC_DB_DEFAULT;
+}
+async function alcDbGet_(path){
+  let sess=(typeof sbSession_==='function')?sbSession_():null;
+  if(sess && sess.expires_at && (sess.expires_at*1000-Date.now())<60000){ try{ await sbRefresh_(); }catch(_){} sess=sbSession_(); }
+  if(!sess||!sess.access_token) throw new Error('ログインしていないためアルコールチェックを読めません');
+  const res=await fetch(`${SB_AUTH.url}/rest/v1/${path}`, { headers:{ apikey:SB_AUTH.key, Authorization:'Bearer '+sess.access_token, Accept:'application/json' }, cache:'no-store' });
+  if(!res.ok) throw new Error('アルコールチェックの表が読めません HTTP '+res.status);
+  const rows=await res.json(); if(!Array.isArray(rows)) throw new Error('アルコールチェックの表の形が違います');
+  return rows;
+}
+function alcMonthRange_(mk){
+  const ym = String(mk).replace('alcohol_log_','');
+  const [y,m] = ym.split('-').map(Number);
+  const last = new Date(y, m, 0).getDate();
+  return { from:`${ym}-01`, to:`${ym}-${String(last).padStart(2,'0')}` };
+}
+function alcRowToEntry_(r){
+  const e = { staff:r.staff, date:String(r.date).slice(0,10), when:r.when, car:r.car||'', result:r.result||'none', memo:r.memo||'',
+              at:r.at || r.updated_at || '', remote:(r.remote!==false), via:r.via||'' };
+  if(r.photo) e.photo = r.photo;
+  e.updatedAt = r.updated_at || e.at;   // マージ(lwwMergeZombieSafe_)の基準
+  return e;
+}
+async function alcDbFetchMonth_(mk){
+  const g = alcMonthRange_(mk);
+  const rows = await alcDbGet_(`alcohol_checks?select=*&date=gte.${g.from}&date=lte.${g.to}&order=date.asc,id.asc`);
+  const out = {};
+  rows.forEach(r=>{ if(r && r.id) out[r.id] = alcRowToEntry_(r); });
+  return out;
+}
+// 1件書く。戻り true(通った)/ 例外(後で再送)。op_id は記録に紐づけて持つ(再送で同じ札=二重にならない)
+async function alcDbUpsert_(entry){
+  if(!entry._op) entry._op = 'alc_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8);
+  const r = await calRpc_('cal_alcohol_upsert', { p_op_id: entry._op, p_date: entry.date, p_when: entry.when,
+    p_car: entry.car||'', p_photo: entry.photo||'', p_memo: entry.memo||'' });
+  if(r==='applied' || r==='already_processed') return true;
+  throw new Error('アルコールチェックを保存できませんでした: ' + r);
+}
 async function alcFetchRemote_(mk){
+  if(alcDbOn_()) return await alcDbFetchMonth_(mk);
   const s=loadGasSettings(); if(!s.url||!s.token) return null;
   const res=await fetch(`${s.url}?action=get-shared-config&key=${mk}&token=${encodeURIComponent(s.token)}&t=${Date.now()}`,{method:'GET',redirect:'follow'});
   if(!res.ok) throw new Error('HTTP '+res.status);
@@ -10849,6 +10921,7 @@ async function alcRecord_(entry){
   const id=alcId_(entry.date, entry.staff, entry.when);
   const map=alcLoad_(mk); map[id]=entry; alcSave_(mk,map); alcUpdateBadge_();   // 楽観反映
   try{
+    if(alcDbOn_()){ await alcDbUpsert_(entry); delete entry._op; return true; }   // 🗄 v1.30.815 表へ(1件ずつ・読み直して足す手順は要らない)
     await alcPush_(mk, next=>{ next[id]=entry; return next; });
     // 読み戻し検証: 同時打刻で他端末の保存に巻き込まれて消えていないか(消えていたら再送キューへ)
     try{ const back=await alcFetchRemote_(mk); if(back && !back[id]) throw new Error('verify-miss'); }catch(e){ if(String(e.message).includes('verify-miss')) throw e; }
@@ -10867,7 +10940,7 @@ function alcRetryPending_(){
   const rest=q.slice();
   (async()=>{
     for(const e of q){
-      try{ await alcPush_(alcMonthKey_(e.date), next=>{ next[alcId_(e.date,e.staff,e.when)]=e; return next; }); rest.splice(rest.findIndex(x=>alcId_(x.date,x.staff,x.when)===alcId_(e.date,e.staff,e.when)),1); }
+      try{ if(alcDbOn_()) await alcDbUpsert_(e); else await alcPush_(alcMonthKey_(e.date), next=>{ next[alcId_(e.date,e.staff,e.when)]=e; return next; }); rest.splice(rest.findIndex(x=>alcId_(x.date,x.staff,x.when)===alcId_(e.date,e.staff,e.when)),1); }
       catch(_){ break; }
     }
     try{ localStorage.setItem(ALC_PENDING_KEY, JSON.stringify(rest)); }catch(_){}
@@ -11076,7 +11149,7 @@ function alcRenderModal_(){
   const map=alcLoad_(alcMonthKey_());
   const rows=ALC_DRIVERS.map(st=>{
     const am=map[alcId_(today,st,'am')], pm=map[alcId_(today,st,'pm')];
-    const cell=e=>e?`<span style="color:#166534;font-weight:700">✅${(d=>isNaN(d)?'':`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`)(new Date(e.at))}</span>${e.memo?` <span title="${escapeHtml(e.memo)}">📝</span>`:''}${e.photo===ALC_PHOTO_PENDING?' <span title="写真は撮影済み・送信待ち(自動で送ります)" style="color:#b45309">📷⏳</span>':e.photo?` <a href="${escapeHtml(e.photo)}" target="_blank" title="検知器の写真を開く" style="text-decoration:none">📷</a>`:''}`:'<span style="color:#94a3b8">—</span>';
+    const cell=e=>e?`<span style="color:#166534;font-weight:700">✅${(d=>isNaN(d)?'':`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`)(new Date(e.at))}</span>${e.memo?` <span title="${escapeHtml(e.memo)}">📝</span>`:''}${e.photo===ALC_PHOTO_PENDING?' <span title="写真は撮影済み・送信待ち(自動で送ります)" style="color:#b45309">📷⏳</span>':(e.photo && !/^(sb:|https?:)/.test(e.photo))?` <span title="クラ助で受けた写真(Dropbox): ${escapeHtml(e.photo)}" style="color:#475569">📷<span style="font-size:9px">Dropbox</span></span>`:e.photo?` <a href="${escapeHtml(e.photo)}" target="_blank" title="検知器の写真を開く" style="text-decoration:none">📷</a>`:''}`:'<span style="color:#94a3b8">—</span>';
     const need=alcNeedsCheck_(st);
     return `<div style="display:flex;gap:8px;align-items:center;padding:4px 6px;border-bottom:1px solid var(--border);font-size:12px">
       <span style="min-width:5.5em;font-weight:600">${need?'🚗?':''}${escapeHtml(st)}</span>
