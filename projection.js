@@ -4,6 +4,7 @@
 //   _projectContent_ と、wt_writethrough.gs の wtProjection_。
 //   **1文字も書き換えずに写しています**(改造禁止)。GAS側を直したら、ここも同じ版を写し直すこと。
 //   写した版: 見積GAS ver113案(2026-10-02)= ver112 + tasks.materialAmount / estHidden(粗利計算用)
+//   + ver114案(2026-10-10)= 工事ボリュームの判定「重い作業0行でも普通の作業5行以上なら普」(_buildWorkloadStatusForPayload_ の1行)
 //
 //   なぜアプリに要るか: 台帳をDBへ直接保存する(anken_save)とき、射影も一緒に渡す必要があるため。
 //   射影はカレンダー/工事タスクが読む「派生データ」で、これが古いと現場の予定が古いまま見える。
@@ -267,7 +268,8 @@ function _buildWorkloadStatusForPayload_(est) {
   var heavyCount = heavyItems.length;
   var level;
   if (totalJisha === 0) level = '無';
-  else if (heavyCount === 0) level = '軽';
+  // v1.4.1123 / 見積GAS同版(10/10 山田「5行以上でいいよ」): 重い作業0行でも普通の作業5行以上なら「普」
+  else if (heavyCount === 0) level = (mediumItems.length >= 5 ? '普' : '軽');
   else if (heavyCount <= 2) level = '普';
   else if (heavyCount <= 4) level = '重';
   else level = '激重';
