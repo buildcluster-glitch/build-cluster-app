@@ -2976,7 +2976,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.813</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.814</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -10735,7 +10735,7 @@ const ALC_DRIVERS = STAFF.filter(s=>s!=='まどか');
 //   =本番前に「出っぱなしの警告」に慣れて無視されるのを防ぐ。記録自体は開始前でも練習で押せる。
 // 📅 運用開始日。**空文字=未定(導入延期)**=督促を出さず、練習だけできる状態にする(v1.30.659・山田「まだ延期で」)。
 //   再開するときは日付を入れるだけ(例 '2026-10-01')。他の判定は全部 alcStarted_() を見ているのでここ1行で足りる。
-const ALC_START_DATE = '';   // ← 旧: '2026-09-07'
+const ALC_START_DATE = '2026-11-02';   // ← v1.30.814(山田「11/2でいいよ」10/10)。旧: '2026-09-07' → ''(延期)
 function alcStarted_(){ try{ return !!ALC_START_DATE && fmtDate(new Date()) >= ALC_START_DATE; }catch(_){ return false; } }
 // 🚙 車両マスタ(東京海上日動の保険証券から転記・2026-08-24)。CSVの「自動車登録番号」列はここから入る。
 //   増減した時はここに1行足す/消すだけ。label=画面表示・plate=法定記録用の登録番号
@@ -10875,6 +10875,31 @@ function alcRetryPending_(){
   })();
 }
 setInterval(()=>alcRetryPending_(), 5*60*1000);
+// 📷 v1.30.814 送信待ちの写真(上げられなかった朝の検知器写真)。端末に {id: dataUrl} で預け、上がったら記録の photo を差し替える
+const ALC_PHOTO_PENDING = 'pending';
+const ALC_PHOTO_PEND_KEY = 'bc_alcohol_photo_pending';
+function alcPhotoPend_(){ try{ const o=JSON.parse(localStorage.getItem(ALC_PHOTO_PEND_KEY)||'{}'); return (o&&typeof o==='object')?o:{}; }catch(_){ return {}; } }
+function alcPhotoPendPut_(id, data){ const m=alcPhotoPend_(); m[id]=data; try{ localStorage.setItem(ALC_PHOTO_PEND_KEY, JSON.stringify(m)); }catch(e){ if(typeof __lsQuotaWarnOnce_==='function') __lsQuotaWarnOnce_(); } }
+function alcPhotoPendDel_(id){ const m=alcPhotoPend_(); delete m[id]; try{ localStorage.setItem(ALC_PHOTO_PEND_KEY, JSON.stringify(m)); }catch(_){} }
+let __alcPhotoFlushing = false;
+async function alcFlushPhotos_(){
+  if(__alcPhotoFlushing) return; __alcPhotoFlushing = true;
+  try{
+    const m = alcPhotoPend_(); let n = 0;
+    for(const id of Object.keys(m)){
+      const date = id.slice(0,10);
+      const cur = alcLoad_(alcMonthKey_(date))[id];
+      if(!cur){ continue; }                                   // 記録がまだこの端末に無い(=記録の送信待ち)→次回
+      if(cur.photo && cur.photo !== ALC_PHOTO_PENDING){ alcPhotoPendDel_(id); continue; }   // 既に差し替わっている
+      let r = null; try{ r = await restoUploadToDrive(m[id], 'アルコールチェック', ''); }catch(_){}
+      if(!(r && r.ok && r.url)) break;                        // まだ上げられない(未ログイン・圏外)→次回
+      const ok = await alcRecord_(Object.assign({}, cur, { photo: r.url }));
+      if(ok) { alcPhotoPendDel_(id); n++; }
+    }
+    if(n && typeof showAutoSyncToast==='function') showAutoSyncToast(`📷 送信待ちだった検知器の写真を${n}枚送りました`);
+  }finally{ __alcPhotoFlushing = false; }
+}
+setInterval(()=>{ alcFlushPhotos_().catch(()=>{}); }, 5*60*1000);
 // 当日の自分の状態
 function alcTodayOf_(staff, when){ const d=fmtDate(new Date()); return alcLoad_(alcMonthKey_())[alcId_(d, staff, when)] || null; }
 // 🚗? バッジ判定: 運転スタッフで今日の朝チェックが無い(17時以降は帰社チェック無しも)。休みの人は除外
@@ -10969,9 +10994,11 @@ function alcRenderModal_(){
         pbtn.disabled=true; pbtn.textContent='⏳';
         try{
           const comp=await restoCompressImage(f, 60000, 1000);
-          let url=comp;
+          // 📷 v1.30.814: 上げられなかった時に**写真そのもの(data:image・約60KB)を記録に入れない**。
+          //   記録は共有設定の月の塊なので、溜まると毎月の塊が数MBに太る。端末に預けて「送信待ち」とし、後で上げ直す(alcFlushPhotos_)
+          let url=null;
           try{ const r=await restoUploadToDrive(comp, 'アルコールチェック', ''); if(r&&r.ok&&r.url) url=r.url; }catch(_){}
-          window.__alcPhoto=url;
+          window.__alcPhoto = url || { pending:true, data:comp };
           pbtn.textContent='📷'; pbtn.insertAdjacentHTML('beforeend','<span id="alc-photo-mark">✓</span>');
         }catch(e){ alert('写真の読み込みに失敗: '+e.message); pbtn.textContent='📷'; }
         pbtn.disabled=false;
@@ -10996,7 +11023,12 @@ function alcRenderModal_(){
         const entry={ staff:me, date:today, when:b.dataset.alcWhen, car:(window.__alcCarToday||alcCarOf_(me)),
           result:'none', memo:(self.querySelector('#alc-memo')||{}).value||'', at:new Date().toISOString(),
           remote:true };   // 社用車通勤=原則ずっと非対面(法定記録の「対面でない場合の具体的方法」に対応)v1.30.606
-        if(window.__alcPhoto){ entry.photo=window.__alcPhoto; window.__alcPhoto=null; }   // 📷 任意(v1.30.603)
+        if(window.__alcPhoto){
+          if(typeof window.__alcPhoto==='object' && window.__alcPhoto.pending){   // 📷 v1.30.814 上げられなかった写真=端末に預けて送信待ち
+            entry.photo = ALC_PHOTO_PENDING; alcPhotoPendPut_(alcId_(entry.date, entry.staff, entry.when), window.__alcPhoto.data);
+          } else entry.photo = window.__alcPhoto;
+          window.__alcPhoto=null;
+        }
         await alcRecord_(entry);
         alcRenderModal_(); alcUpdateBadge_(); if(typeof render==='function') render();
         if(typeof showAutoSyncToast==='function') showAutoSyncToast(b.dataset.alcWhen==='am'?'🚗 いってらっしゃい(記録しました)':'🏠 おつかれさまでした(記録しました・今日の運転はここまで)');
@@ -11044,7 +11076,7 @@ function alcRenderModal_(){
   const map=alcLoad_(alcMonthKey_());
   const rows=ALC_DRIVERS.map(st=>{
     const am=map[alcId_(today,st,'am')], pm=map[alcId_(today,st,'pm')];
-    const cell=e=>e?`<span style="color:#166534;font-weight:700">✅${(d=>isNaN(d)?'':`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`)(new Date(e.at))}</span>${e.memo?` <span title="${escapeHtml(e.memo)}">📝</span>`:''}${e.photo?` <a href="${escapeHtml(e.photo)}" target="_blank" title="検知器の写真を開く" style="text-decoration:none">📷</a>`:''}`:'<span style="color:#94a3b8">—</span>';
+    const cell=e=>e?`<span style="color:#166534;font-weight:700">✅${(d=>isNaN(d)?'':`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`)(new Date(e.at))}</span>${e.memo?` <span title="${escapeHtml(e.memo)}">📝</span>`:''}${e.photo===ALC_PHOTO_PENDING?' <span title="写真は撮影済み・送信待ち(自動で送ります)" style="color:#b45309">📷⏳</span>':e.photo?` <a href="${escapeHtml(e.photo)}" target="_blank" title="検知器の写真を開く" style="text-decoration:none">📷</a>`:''}`:'<span style="color:#94a3b8">—</span>';
     const need=alcNeedsCheck_(st);
     return `<div style="display:flex;gap:8px;align-items:center;padding:4px 6px;border-bottom:1px solid var(--border);font-size:12px">
       <span style="min-width:5.5em;font-weight:600">${need?'🚗?':''}${escapeHtml(st)}</span>
@@ -11057,7 +11089,7 @@ function openAlcModal_(){
   const bk=ensureAlcModal_();
   bk.classList.add('show');
   alcRenderModal_();
-  alcRetryPending_();
+  alcRetryPending_(); alcFlushPhotos_().catch(()=>{});
   alcFetch_({silent:true}).then(()=>alcRenderModal_()).catch(()=>{});
 }
 function alcExportCsv_(){
@@ -11082,7 +11114,7 @@ function alcExportCsv_(){
         : `非対面(スマートフォンから本人が検知器で測定し記録${e.photo?'・検知器表示の写真を添付':''})`;
       return [e.date, isNaN(d)?'':`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`,
         e.staff, cp.label, cp.plate, e.when==='am'?'運転前':'運転後', how, '有', e.result==='none'?'無':'有',
-        e.staff, e.memo||'', e.photo||'',
+        e.staff, e.memo||'', (e.photo===ALC_PHOTO_PENDING?'撮影済み(送信待ち)':(e.photo||'')),
         cf?cf.by:'', (cfd&&!isNaN(cfd))?`${cfd.getFullYear()}/${cfd.getMonth()+1}/${cfd.getDate()} ${String(cfd.getHours()).padStart(2,'0')}:${String(cfd.getMinutes()).padStart(2,'0')}`:''
       ].map(esc).join(',');
     })).join('\r\n');
@@ -11159,7 +11191,7 @@ async function alcFetchCars_(){
   }catch(_){}
 }
 { const b=document.getElementById('alcBtn'); if(b) b.onclick=openAlcModal_; }
-setTimeout(()=>{ alcFetch_({silent:true}).catch(()=>{}); alcFetchCars_(); alcFetchConfirms_(); alcRetryPending_(); }, 8000);
+setTimeout(()=>{ alcFetch_({silent:true}).catch(()=>{}); alcFetchCars_(); alcFetchConfirms_(); alcRetryPending_(); alcFlushPhotos_().catch(()=>{}); }, 8000);
 setInterval(()=>{ alcFetch_({silent:true}).catch(()=>{}); }, 5*60*1000);
 document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible'){ alcUpdateBadge_(); } });
 
