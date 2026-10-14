@@ -2976,7 +2976,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.816</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.817</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -6803,9 +6803,11 @@ function showCheckStaffPicker(el, ck){
         <button data-seisou="1" class="${(typeof isCheckSeisouDone_==='function' && isCheckSeisouDone_(ck.id))?'on':''}" style="background:#dbeafe;color:#1e40af;font-weight:700" title="清掃が完了した物件に付ける印。最終確認カードが青枠になります(全端末共有)">🧹 清掃完了済</button>
       </div>
     </div>
-    ${alertInputHtml_((typeof checkAlertId_==='function') ? checkAlertId_(ck, (state.restorations||[]).find(r=>
-        (ck.extDriveFileId && r.extDriveFileId===ck.extDriveFileId) || (ck.extEstimateId && r.extEstimateId===ck.extEstimateId)
-      )) : ck.id)}
+    ${(()=>{ const __lr = (state.restorations||[]).find(r=>
+        (ck.extDriveFileId && r.extDriveFileId===ck.extDriveFileId) || (ck.extEstimateId && r.extEstimateId===ck.extEstimateId));
+      const __nm = (__lr && __lr.name) || String(ck.title||"").replace(/\s*\S*$/,"") || ck.title || "";
+      const __jz = (typeof jizenAlertNoteHtml_==='function') ? jizenAlertNoteHtml_(__nm, (__lr && __lr.room) || "") : "";
+      return alertInputHtml_(ck.id) + (__jz ? `<div class="qp-sec" style="margin-top:-4px">${__jz}</div>` : ""); })()}
     <div class="qp-actions">
       <button class="qp-detail" data-role="open-modal">✏️ 詳細編集</button>
       <button class="qp-close" data-role="close">✓ 保存</button>
@@ -7388,11 +7390,12 @@ function renderCheckCard(ck, today){
       const __m2 = __mp.join(" / ");
       return __m2 ? `<div class="ck-memo">${escapeHtml(__m2)}</div>` : "";
     })()}
-    ${(()=>{ // ⚠ アラート: 事前チップ等で入力された1本もキー解決で拾う(v1.30.426・山田「最終確認時ピカール…」が出なかった)
+    ${(()=>{ // ⚠ アラート: 最確自身の分だけ赤字。事前の分は灰色の参考(v1.30.817・事前と最確を切り離し)
       if(typeof alertChipHtml_!=='function') return "";
-      const __ak = (typeof checkAlertId_==='function') ? checkAlertId_(ck, linkedResto) : ck.id;
-      const __h = alertChipHtml_(__ak, {multiline:true});   // 📝 カードは幅があるので複数アラートを1件1行で(v1.30.581)
-      return __h ? `<div style="margin-top:2px">${__h}</div>` : "";
+      const __h = alertChipHtml_(ck.id, {multiline:true});   // 📝 カードは幅があるので複数アラートを1件1行で(v1.30.581)
+      const __nm = (linkedResto && linkedResto.name) || String(ck.title||"").replace(/\s*\S*$/,"") || ck.title || "";
+      const __jz = (typeof jizenAlertNoteHtml_==='function') ? jizenAlertNoteHtml_(__nm, (linkedResto && linkedResto.room) || "") : "";
+      return (__h || __jz) ? `<div style="margin-top:2px">${__h}${__jz}</div>` : "";
     })()}
   </div>`;
 }
@@ -8660,18 +8663,19 @@ function alertRowHtml_(id, val, i){
     <button type="button" class="qp-alert-del" title="この行を消す" style="flex-shrink:0;width:24px;height:24px;padding:0;line-height:22px;border:1px solid var(--border-strong);background:#fff;color:#dc2626;border-radius:6px;cursor:pointer;font-size:12px">✕</button>
   </div>`;
 }
-function alertInputHtml_(id){
+function alertInputHtml_(id, label, note){
   const lines = alertLinesOf_(id);
   return `<div class="qp-sec" data-alert-sec="${escapeHtml(String(id))}">
-    <div class="qp-label">⚠ アラート <span style="font-weight:400;color:#94a3b8;font-size:10px">(常時赤字でチップ表示・全員共有)</span></div>
+    <div class="qp-label">${escapeHtml(label||'⚠ アラート')} <span style="font-weight:400;color:#94a3b8;font-size:10px">${escapeHtml(note||'(常時赤字でチップ表示・全員共有)')}</span></div>
     <div class="qp-alert-list">${lines.map((v,i)=>alertRowHtml_(id,v,i)).join("")}</div>
     <button type="button" class="qp-alert-add" style="margin-top:5px;font-size:11px;padding:3px 10px;border:1px solid var(--border-strong);background:#fff;border-radius:6px;cursor:pointer">＋ 項目を追加</button>
   </div>`;
 }
 // ⚠ 未確定のアラート入力を確定させる(「✓ 保存」押下時の保険。blur自動保存と二重でも__lastガードで無害)v1.30.412
-function flushAlertInput_(pop){ try{ const inp=pop && pop.querySelector('.qp-alert-input'); if(inp) inp.dispatchEvent(new Event('blur')); }catch(_){} }
-function wireAlertInput_(pop){
-  const sec = pop.querySelector('[data-alert-sec]'); if(!sec) return;
+function flushAlertInput_(pop){ try{ (pop ? [...pop.querySelectorAll('[data-alert-sec]')] : []).forEach(sec=>{ const inp=sec.querySelector('.qp-alert-input'); if(inp) inp.dispatchEvent(new Event('blur')); }); }catch(_){} }
+// v1.30.817: 1つの画面にアラート欄が複数(進捗ダイアログの「事前」「最確」)あっても全部配線する
+function wireAlertInput_(pop){ if(!pop) return; pop.querySelectorAll('[data-alert-sec]').forEach(__wireAlertSec_); }
+function __wireAlertSec_(sec){
   const id = sec.dataset.alertSec;
   const list = sec.querySelector('.qp-alert-list');
   const joined = ()=> [...list.querySelectorAll('.qp-alert-input')].map(x=>x.value.trim()).filter(Boolean).join("\n");
@@ -29615,11 +29619,45 @@ function renderRestoDetail(){
 //   → 物件に紐づく候補キーを走査し、**既にアラートが実在するキーを優先**して返す(実在キーだけ採用=誤リンク低リスク)。
 //   ownKey(自分のレコードのキー)に有ればそれが最優先=各レコードは自分のアラートを優先表示。
 //   入力(進捗ダイアログ)も表示(最終確認カード)も同じ解決を通す=どこで書いても同じ1本を共有する。
-function alertKeyResolve_(ownKey, name, room){
+// 🔀 v1.30.817(鈴木🐞「アラート、事前と最確で連動させないでほしい」10/14 → 山田「それでやってみようか」):
+//   **事前と最確のアラートを切り離した**。10/14時点で事前カードのアラート13件のうち最確向けは1件だけ
+//   (「最終確認時ピカールで…」)で、残り12件(エプロン回収・挨拶文・材料設置…)が最確の日にも赤字で出ていた。
+//   ・最確カード/最確のピッカー/進捗ダイアログの「最確」欄 = 最確自身のキー(ck.id)だけ
+//   ・事前のアラートは最確カードに**灰色の参考**(jizenAlertNoteHtml_)で出す=書き換え不可・赤字にしない
+//   ・進捗ダイアログは「事前アラート」「最確アラート」の2欄
+//   ⚠データの形は変えない(キー=予定id/ck.id のまま)。既存のアラートは消えない
+function alertKeyResolve_(ownKey, name, room){ return ownKey; }
+const __alertNorm_ = s => String(s||"").normalize("NFKC").replace(/\s|　/g,"");
+// 物件名+号室に当たる事前の予定(アラートがある方を優先・無ければ日付が新しい方)。無ければ null
+function jizenEventFor_(name, room){
+  const nm = __alertNorm_(name), rm = __alertNorm_(room);
+  if(!nm) return null;
+  const amap = (typeof loadAlerts_==='function') ? loadAlerts_() : {};
+  const hits = [];
+  for(const ev of (state.events||[])){
+    if(!ev || !(typeof isJizenEvent_==='function' && isJizenEvent_(ev))) continue;
+    const evNm = __alertNorm_(ev._bukken||""), evRm = __alertNorm_(ev._room||"");
+    const title = __alertNorm_(String(ev.title||"").split(/\r?\n/)[0]);
+    if((evNm && evNm===nm && (!rm || evRm===rm)) || (title.indexOf(nm)>=0 && (!rm || title.indexOf(rm)>=0))) hits.push(ev);
+  }
+  if(!hits.length) return null;
+  const k = ev => ev._taikyoRawId || ev.id;
+  hits.sort((a,b)=> (amap[k(b)]&&amap[k(b)].text?1:0)-(amap[k(a)]&&amap[k(a)].text?1:0) || String(b.date||'').localeCompare(String(a.date||'')));
+  return hits[0];
+}
+function jizenAlertKeyFor_(name, room){ const ev = jizenEventFor_(name, room); return ev ? (ev._taikyoRawId || ev.id) : ""; }
+// 最確カード用: 事前のアラートを灰色の参考で(赤字にしない・書き換え不可)
+function jizenAlertNoteHtml_(name, room){
+  const k = jizenAlertKeyFor_(name, room); if(!k) return "";
+  const e = (typeof getAlert_==='function') ? getAlert_(k) : null; if(!e) return "";
+  const t = String(e.text||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean).join(' ／ ');
+  return `<div class="jz-alert-note" style="font-size:10.5px;color:#64748b;line-height:15px;white-space:normal;word-break:break-word" title="事前の予定に書かれたアラート(参考)。最確のアラートとは別です">📝事前のメモ: ${escapeHtml(t)}</div>`;
+}
+function __alertKeyResolveOld_(ownKey, name, room){   // 旧v1.30.426〜816の解決(参照用に残す・どこからも呼ばない)
   const amap = (typeof loadAlerts_==='function') ? loadAlerts_() : {};
   const has = k => { const e = k && amap[k]; return !!(e && e.text); };
   if(has(ownKey)) return ownKey;
-  const norm = s => String(s||"").normalize("NFKC").replace(/\s|　/g,"");
+  const norm = __alertNorm_;
   const nm = norm(name), rm = norm(room);
   if(!nm) return ownKey;
   //   🐞 v1.30.685(鈴木報告「スケジュールのアラートと最確のアラートをリンクさせないでほしい」):
@@ -29657,9 +29695,14 @@ function renderRestoAlert_(p){
   const sec = document.getElementById("rdAlertSec");
   if(!sec) return;
   if(typeof alertInputHtml_!=='function'){ sec.innerHTML=""; return; }
-  const aid = restoAlertId_(p);
+  const aid = restoAlertId_(p);   // 最確(ck.id)
   if(!aid){ sec.innerHTML=""; return; }
-  sec.innerHTML = alertInputHtml_(aid);
+  // 🔀 v1.30.817: 「事前アラート」「最確アラート」の2欄。事前の予定がまだ無い物件は案内だけ
+  const jk = jizenAlertKeyFor_(p.name, p.room);
+  sec.innerHTML = (jk
+      ? alertInputHtml_(jk, '⚠ 事前アラート', '(事前の予定にだけ赤字で出ます・全員共有)')
+      : `<div class="qp-sec"><div class="qp-label">⚠ 事前アラート</div><div style="font-size:11px;color:#94a3b8">事前の予定がまだありません(事前の予定を入れると書けます)</div></div>`)
+    + alertInputHtml_(aid, '⚠ 最確アラート', '(最終確認のカードにだけ赤字で出ます・全員共有)');
   if(typeof wireAlertInput_==='function') wireAlertInput_(sec);
 }
 
