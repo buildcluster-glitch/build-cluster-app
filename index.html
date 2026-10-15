@@ -2976,7 +2976,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.817</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.818</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4967,6 +4967,7 @@
   function _scNoteFallback_(why){
     try{
       console.warn('[共有設定] DB直書きに失敗 → GAS経路へ: ' + why);
+      try{ if(typeof noteDbFallback_==='function') noteDbFallback_('shared-write', why); }catch(_){}
       if(Date.now() - __scDbFallbackAt > 600000){        // 10分に1回だけ(黙って落ちない・うるさくしない)
         __scDbFallbackAt = Date.now();
         if(typeof showAutoSyncToast==='function') showAutoSyncToast('⚠ 共有設定の保存が旧経路に落ちています（保存はできています）');
@@ -24996,12 +24997,14 @@ async function cloudSyncPush(){
   const pending = state.cloudPending || [];
   if(!pending.length) return { pushed: 0 };
   // ✍️ v1.30.734: スイッチONなら先にDBへ直接。未ログイン/失敗/OFFは**必ず**従来のGAS経路へ落ちる。
+  if(!eventsDbWriteOn_()){ try{ noteDbFallback_('events-write', 'switch-off:' + (dbTripped_() ? 'db-trip' : (sbSession_() ? 'flag' : 'no-session'))); }catch(_){} }
   if(eventsDbWriteOn_()){
     let r = null;
     try{ r = await pushEventsToDb_(); }
     catch(e){ r = { ok:false, reason:'exception', message:(e&&e.message)||'' }; }
     if(r && r.ok) return { pushed: r.pushed, viaDb: true, notes: r.notes || [] };
     noteEventsDbWriteFallback_((r && (r.reason+':'+(r.message||''))) || 'unknown');
+    try{ noteDbFallback_('events-write', (r && (r.reason+':'+(r.message||''))) || 'unknown'); }catch(_){}
     if(!(state.cloudPending||[]).length) return { pushed: (r && r.pushed) || 0, viaDb: true, partial: true };
     // 残りは従来経路へ(pendingはそのまま=消していない)
   }
@@ -25480,18 +25483,103 @@ async function sbLogin_(email, password){
   const d = await sbAuthFetch_('token?grant_type=password', { email:String(email||'').trim(), password:String(password||'') });
   return sbStoreToken_(d);
 }
-async function sbRefresh_(){
-  const s = sbSession_(); if(!s || !s.refresh_token) return null;
+// 🔑 v1.30.818(山田「なんで鈴木がそんなにかたよってんだろ」10/15): ログインの延長がぶつからないように。
+//   ①同じ画面の中で同時に何本も延長を頼まない(1本にまとめる)
+//   ②カレンダー・単価表・工程表(同じログインを共有)の間でも順番待ち(navigator.locks 'bc_sb_refresh')
+//   ③順番が来たら**読み直す**: 別の画面がもう延長していれば、それを使う(古い券で頼んで断られない)
+//   ④断られても**すぐにログインを消さない**: 読み直して別の画面の延長が入っていればそれを使い、無ければ1回だけ頼み直す
+//   (10/14 朝の鈴木さんのMac: 寝起きの延長が7:10まで通らず、7:08〜7:09の保存7件がGASへ流れていた)
+// 📝 v1.30.818 予備の道(GAS)へ流れた理由の記録。端末に貯め(最大50件)、DBへ書ける時に共有設定 calendar_fallback_log へまとめて送る。
+//   予備の道を外せるか(10月中旬の判断)を推測でなく実物で決めるため。送るのは「誰・いつ・どこ・理由」だけ(中身は送らない)
+const FB_LOG_KEY = 'bc_fb_log';
+function noteDbFallback_(where, why){
   try{
-    const d = await sbAuthFetch_('token?grant_type=refresh_token', { refresh_token: s.refresh_token });
-    return sbStoreToken_(d);
-  }catch(e){
-    // 期限切れ/失効。fail-open=アプリは動かし続け、次の機会に再ログインを促すだけ
-    console.warn('[auth] セッション更新に失敗:', e && e.message);
-    if(e && (e.status===400 || e.status===401)){ sbSaveSession_(null); renderAuthState_(); }
-    return null;
-  }
+    const a = JSON.parse(localStorage.getItem(FB_LOG_KEY)||'[]') || [];
+    const me = (typeof getMyself==='function' ? getMyself() : '') || '';
+    const last = a[a.length-1];
+    if(last && last.where===where && last.why===String(why).slice(0,120) && (Date.now()-Date.parse(last.at))<60000){ last.n=(last.n||1)+1; }
+    else a.push({ id: Date.now().toString(36)+Math.random().toString(36).slice(2,6), at:new Date().toISOString(), who:me, where, why:String(why||'').slice(0,120),
+      ver:(document.querySelector('#appVerChip span')||{}).textContent||'', dev:(navigator.userAgent||'').replace(/^Mozilla\/5\.0 \(/,'').slice(0,40), n:1 });
+    localStorage.setItem(FB_LOG_KEY, JSON.stringify(a.slice(-50)));
+  }catch(_){}
 }
+let __fbFlushing = false;
+async function flushDbFallbackLog_(){
+  if(__fbFlushing) return; __fbFlushing = true;
+  try{
+    const a = JSON.parse(localStorage.getItem(FB_LOG_KEY)||'[]') || [];
+    if(!a.length || !sbSession_() || dbTripped_()) return;
+    const s = loadGasSettings(); if(!s.url || !s.token) return;
+    const res = await fetch(`${s.url}?action=get-shared-config&key=calendar_fallback_log&token=${encodeURIComponent(s.token)}&t=${Date.now()}`, {method:'GET',redirect:'follow'});
+    if(!res.ok) return;
+    const d = await res.json(); let raw = d.value; if(typeof raw==='string'){ try{ raw = JSON.parse(raw); }catch(_){ raw = null; } }
+    const cur = (raw && Array.isArray(raw.entries)) ? raw.entries : [];
+    const ids = new Set(cur.map(x=>x.id));
+    const merged = cur.concat(a.filter(x=>!ids.has(x.id))).slice(-400);
+    const w = await fetch(s.url, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({action:'save-shared-config', key:'calendar_fallback_log', value: JSON.stringify({entries:merged, updatedAt:new Date().toISOString()}), token:s.token, savedBy:'calendar-app'})});
+    const j = await w.json().catch(()=>null);
+    if(j && j.ok && j._dbWrite){ const sent = new Set(a.map(x=>x.id)); const now = JSON.parse(localStorage.getItem(FB_LOG_KEY)||'[]')||[]; localStorage.setItem(FB_LOG_KEY, JSON.stringify(now.filter(x=>!sent.has(x.id)))); }   // ⚠DBに書けた時だけ消す(GASに落ちた時は持ち越し)
+  }catch(_){}
+  finally{ __fbFlushing = false; }
+}
+setInterval(()=>{ flushDbFallbackLog_().catch(()=>{}); }, 10*60*1000);
+setTimeout(()=>{ flushDbFallbackLog_().catch(()=>{}); }, 90*1000);
+let __sbRefreshP = null;
+async function sbRefresh_(){
+  if(__sbRefreshP) return __sbRefreshP;
+  const run = async ()=>{
+    const before = sbSession_(); if(!before || !before.refresh_token) return null;
+    const fresh = s => s && s.expires_at && (s.expires_at*1000 - Date.now()) > 120000;
+    const attempt = async ()=>{
+      const cur = sbSession_(); if(!cur || !cur.refresh_token) return null;
+      if(cur.refresh_token !== before.refresh_token && fresh(cur)){ sbScheduleRefresh_(); return cur; }   // ③別の画面が延長済み
+      const d = await sbAuthFetch_('token?grant_type=refresh_token', { refresh_token: cur.refresh_token });
+      return sbStoreToken_(d);
+    };
+    try{ return await attempt(); }
+    catch(e){
+      console.warn('[auth] セッション更新に失敗:', e && e.message);
+      try{ if(typeof noteDbFallback_==='function') noteDbFallback_('auth-refresh', (e && (e.status+' '+e.message)) || 'error'); }catch(_){}
+      if(e && (e.status===400 || e.status===401)){
+        // ④読み直し→別の画面の延長が入っていればそれを使う。無ければ少し待って1回だけ頼み直す
+        await new Promise(r=>setTimeout(r, 1500));
+        const again = sbSession_();
+        if(again && again.refresh_token !== before.refresh_token && fresh(again)){ sbScheduleRefresh_(); renderAuthState_(); return again; }
+        try{ return await attempt(); }
+        catch(e2){
+          if(e2 && (e2.status===400 || e2.status===401)){
+            const last = sbSession_();
+            if(last && last.refresh_token !== before.refresh_token && fresh(last)) return last;
+            sbSaveSession_(null); renderAuthState_();
+          }
+          return null;
+        }
+      }
+      return null;   // 通信などの失敗はログインを消さない(次の機会に再挑戦)
+    }
+  };
+  __sbRefreshP = (async ()=>{
+    try{
+      if(typeof navigator!=='undefined' && navigator.locks && navigator.locks.request) return await navigator.locks.request('bc_sb_refresh', run);
+      return await run();
+    }finally{ __sbRefreshP = null; }
+  })();
+  return __sbRefreshP;
+}
+// ⏰ v1.30.818 寝起きの先回り: 画面が見えたまま寝ていたMacは visibilitychange が来ないので、
+//   1分ごとに「時計が飛んだ(=寝ていた)か」「期限が5分以内か」を見て、保存より先に延長する。focus/online/pageshow でも見る
+let __sbWakeLast = Date.now();
+function __sbWakeCheck_(){
+  try{
+    const now = Date.now(), slept = (now - __sbWakeLast) > 150000; __sbWakeLast = now;
+    const s = sbSession_(); if(!s || !s.expires_at) return;
+    if(slept || (s.expires_at*1000 - now) < 300000) sbRefresh_().catch(()=>{});
+    if(slept) sbScheduleRefresh_();   // 寝ている間に止まったタイマーを掛け直す
+  }catch(_){}
+}
+setInterval(__sbWakeCheck_, 60000);
+['focus','online','pageshow'].forEach(ev=>{ try{ window.addEventListener(ev, ()=>{ __sbWakeLast = 0; __sbWakeCheck_(); }); }catch(_){} });
 function sbLogout_(){
   const s = sbSession_();
   if(s && s.access_token){
@@ -25609,6 +25697,9 @@ function noteDbRead_(where, o){
     }else if(o.src === 'gas' && o.fallback){
       /* 未ログイン・スイッチOFFは「DBの不調」ではない=数えると平常時に誤退避する */
       if(/未ログイン|ログイン|no-?session|off$|switch/i.test(String(o.fallback))) return;
+      /* 🔑v1.30.818: **ログインの期限切れ(401/403・auth)もDBの不調ではない**。寝起きのMacで期限切れの読みが3回続くと
+         「DB不調」と判断して5分間 予定の保存までGASに回していた(鈴木さんの保存がGASへ偏った候補)。延長は sbRefresh_ が担う */
+      if(/^auth|http40[13]|\b40[13]\b|unauthor|jwt|expired/i.test(String(o.fallback))){ try{ noteDbFallback_('read-auth', where+': '+o.fallback); }catch(_){} return; }
       /* 🔴v1.30.757: **写しの鮮度はDBの健康と無関係**。
          在庫は1時間おきにGASがDBへ写す仕組みなので、その写しが古い/欠けているのは
          「写す仕事が遅れている」だけで、DBは元気に答えている(現に読めている)。
@@ -25619,6 +25710,7 @@ function noteDbRead_(where, o){
       __dbTrip.why = where + ': ' + o.fallback;
       if(__dbTrip.fails >= DB_TRIP_FAILS && !dbTripped_()){
         __dbTrip.until = Date.now() + DB_TRIP_MIN*60000;
+        try{ noteDbFallback_('db-trip', __dbTrip.why); }catch(_){}
         try{ console.warn('[db-trip] 連続'+__dbTrip.fails+'回DBに振られた → '+DB_TRIP_MIN+'分 読みを見送る:', __dbTrip.why); }catch(_){}
         if(typeof showAutoSyncToast==='function') showAutoSyncToast('🩺 データベースが不調です。'+DB_TRIP_MIN+'分ほど従来経路で動きます(保存はできます)');
       }
