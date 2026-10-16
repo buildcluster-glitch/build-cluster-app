@@ -2976,7 +2976,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.818</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.819</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -23585,7 +23585,7 @@ function showQuickAddSheet_(defaults={}, editEv=null){
       <option value="">📋 テンプレから選ぶ…</option>
       ${QUICK_TEMPLATES.map(t=>`<option value="${escapeHtml(t.id)}">${escapeHtml(t.label)}</option>`).join('')}
     </select></div>`}
-    <div class="qa-row"><textarea id="qa-title" rows="2" placeholder="タイトル (例: 〇〇 立会)  ※Enterで改行・2行まで" autocomplete="off">${escapeHtml(titleV)}</textarea></div>
+    <div class="qa-row"><textarea id="qa-title" rows="2" placeholder="タイトル (例: 〇〇 立会)  ※Enterで改行できます" autocomplete="off">${escapeHtml(titleV)}</textarea></div>
     <!-- 💬 v1.30.671→v1.30.672でタイトル直下に移動(山田「タイトル・コメント・アラートの順に」)(山田「この時点でコメントも書けるようにしておきたい」): 登録と同時に1件目のコメント(チャット)を残す。
          アラート=常時赤字で全員に見せる"注意書き" / コメント=💬チャット(履歴・返信・リアクション)。用途が違うので両方置く -->
     <div class="qa-label">💬 コメント <span style="font-weight:400;color:var(--muted);font-size:10px">(任意・この予定のチャットに1件目として残る・全員共有)</span></div>
@@ -23721,16 +23721,14 @@ function showQuickAddSheet_(defaults={}, editEv=null){
       b.classList.toggle('on', selCommute[k]);
     };
   });
-  // 📝 タイトルは2行まで改行可。3行目以降は入力させない(v1.30.164)
+  // 📝 タイトルの改行(v1.30.164は2行まで)→ v1.30.819(山田「2行制限解放してほしい」10/16)で**制限なし**。
+  //   欄は中身に合わせて縦に伸びる(最大8行ぶん・それ以上は欄の中でスクロール)
   const __qaTitle = bd.querySelector('#qa-title');
   if(__qaTitle){
-    const __limit2 = ()=>{ const ls=__qaTitle.value.split('\n'); if(ls.length>2){ __qaTitle.value = ls.slice(0,2).join('\n'); } };
-    __qaTitle.addEventListener('input', __limit2);
-    __qaTitle.addEventListener('keydown', e=>{
-      if(e.key==='Enter' && !e.isComposing && e.keyCode!==229){
-        if(__qaTitle.value.indexOf('\n') >= 0){ e.preventDefault(); }   // 既に2行=これ以上改行しない
-      }
-    });
+    const __grow = ()=>{ try{ __qaTitle.style.height='auto'; const lh=parseFloat(getComputedStyle(__qaTitle).lineHeight)||20; const max=lh*8+16;
+      __qaTitle.style.height = Math.min(__qaTitle.scrollHeight+2, max)+'px'; __qaTitle.style.overflowY = (__qaTitle.scrollHeight+2>max)?'auto':'hidden'; }catch(_){} };
+    __qaTitle.addEventListener('input', __grow);
+    setTimeout(__grow, 0);
     // ⌨ 開いた瞬間にタイトルへカーソル(v1.30.561・鈴木要望「すぐ文字入力できるように」)。
     //   編集時は末尾にカーソル。setTimeout=シートDOM確定後にfocus(rAFはバックグラウンドで発火しない環境があるため不使用)
     setTimeout(()=>{ try{ __qaTitle.focus(); const L=__qaTitle.value.length; __qaTitle.setSelectionRange(L, L); }catch(_){} }, 30);
