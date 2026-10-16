@@ -1984,6 +1984,14 @@
   .rd-gp tr.it.neg td{background:#fef2f2}
   .rd-gp .r-g{color:#16a34a;font-weight:700} .rd-gp .r-y{color:#ca8a04;font-weight:700} .rd-gp .r-r{color:#dc2626;font-weight:700}
   .rd-gp .neg-n{color:#dc2626}
+  .rd-info-toggle{display:none}
+  @media (max-width:767px){
+    .rd-info-toggle{display:flex;align-items:center;gap:6px;width:100%;box-sizing:border-box;margin:2px 0 4px;padding:6px 10px;border:1px solid var(--border-strong);border-radius:8px;background:#f8fafc;color:var(--text);font-size:12px;font-weight:700;text-align:left;cursor:pointer}
+    .rd-info-toggle .rit-sum{font-weight:500;color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+    #restoDetailMode.rd-info-closed .rd-kv,
+    #restoDetailMode.rd-info-closed .rd-gp,
+    #restoDetailMode.rd-info-closed .rd-jisha-progress{display:none !important}
+  }
   .rd-kv{display:flex;flex-wrap:wrap;gap:3px 6px;font-size:11px;
     background:#fafbfc;border:1px solid var(--border);border-radius:7px;padding:5px 8px;margin-bottom:6px}
   .rd-kv .kv{display:inline-flex;align-items:center;gap:3px;white-space:nowrap;
@@ -2976,7 +2984,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.819</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.820</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -3255,6 +3263,8 @@
       <!-- 完了ボタンは下部の大きな緑ボタンに移動 (v1.8.5) -->
     </div>
     <div class="rd-sub" id="rdSub"></div>
+    <!-- 📱 v1.30.820(鈴木「スマホで見た時ここの欄折りたためるような機能欲しい」10/16): スマホだけ物件情報・粗利・進捗を折りたたむ -->
+    <button type="button" class="rd-info-toggle" id="rdInfoToggle"></button>
     <div class="rd-kv" id="rdKv"></div>
     <div class="rd-gp" id="rdGp"></div>
     <div class="rd-jisha-progress" id="rdJishaProgress"></div>
@@ -29636,6 +29646,19 @@ function renderRestoDetail(){
     pBar.innerHTML = "";
     pBar.style.display = "none";
   }
+  // 📱 v1.30.820 スマホの折りたたみ(既定=たたむ・開いた/たたんだは端末に覚える)。PCは常に全部見せる(CSSでボタンを出さない)
+  try{
+    const tg = document.getElementById("rdInfoToggle"), mode = document.getElementById("restoDetailMode");
+    if(tg && mode){
+      let open = false; try{ open = localStorage.getItem('bc_rd_info_open') === '1'; }catch(_){}
+      const pick = l => { const x = kv.find(([k])=>k===l); return x ? x[1] : ''; };
+      const sum = [pick('入居日') && ('入居 '+pick('入居日')), pick('最終確認日') && ('最確 '+String(pick('最終確認日')).replace(/^\d{4}-/,'').replace('-','/')), pr_.total ? ('自社 '+pr_.pct+'%') : ''].filter(Boolean).join(' ・ ');
+      const paint = ()=>{ mode.classList.toggle('rd-info-closed', !open);
+        tg.innerHTML = open ? '▼ 物件情報・粗利・進捗を<b>たたむ</b>' : `▶ 物件情報・粗利・進捗 <span class="rit-sum">${escapeHtml(sum)}</span>`; };
+      tg.onclick = ()=>{ open = !open; try{ localStorage.setItem('bc_rd_info_open', open?'1':'0'); }catch(_){} paint(); };
+      paint();
+    }
+  }catch(_){}
   // アーカイブ済み表示
   const archBtn = document.getElementById("rdArchiveBtn");
   const archived = restoIsArchived(p);
