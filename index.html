@@ -2984,7 +2984,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.820</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.821</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -17099,10 +17099,16 @@ function ledgerDbWriteOn_(){
 }
 const LEDGER_DB_WRITE_TIMEOUT_MS = 20000;
 function __ledgerTimeout_(p, ms){ return Promise.race([p, new Promise((_,rej)=>setTimeout(()=>rej(Object.assign(new Error('時間切れ'),{evKind:'timeout'})), ms))]); }
-// 台帳の1件をDBから(drive_file_id)。見つからない/2件以上/削除済み=null(GASに任せる)
+// 🆔 v1.30.821(山田「Driveやめるで進めて」10/17): **Driveの番号を持たない案件は、番号の代わりに id(E2026…)で扱う**。
+//   これからDBで作る案件には drive_file_id が付かない(10/16 ヴィラひより台 E20261016_181710_t8n7 が最初)。
+//   カレンダーは extDriveFileId を最確カードのid("gas-"+番号)や共有の上書きのキーに使っているので、**番号のある既存案件はキーを変えない**。
+//   番号欄に E2026… が入っていたら「それは id」と読んで、DBを id=eq. で引く(ledgerKeyQuery_)。
+function isLedgerIdKey_(k){ return /^E\d{8}_\d{6}_[0-9a-z]+$/i.test(String(k||'')); }
+function ledgerKeyQuery_(k){ return (isLedgerIdKey_(k) ? 'id=eq.' : 'drive_file_id=eq.') + encodeURIComponent(k); }
+// 台帳の1件をDBから(drive_file_id か id)。見つからない/2件以上/削除済み=null(GASに任せる)
 async function __ledgerLoadByFileId_(fid){
   let s = sbSession_(); if(!s || !s.access_token) return null;
-  const url = `${SB_AUTH.url}/rest/v1/anken_v?select=id,doc,source_version,month,is_deleted&drive_file_id=eq.${encodeURIComponent(fid)}&limit=2`;
+  const url = `${SB_AUTH.url}/rest/v1/anken_v?select=id,doc,source_version,month,is_deleted&${ledgerKeyQuery_(fid)}&limit=2`;
   for(let i=0;i<2;i++){
     const res = await __ledgerTimeout_(fetch(url, { headers:{ 'apikey':SB_AUTH.key, 'Authorization':'Bearer '+s.access_token, 'Accept':'application/json' }, cache:'no-store' }), LEDGER_DB_WRITE_TIMEOUT_MS);
     if(res.status===401 && i===0){ try{ await sbRefresh_(); }catch(_){} s = sbSession_(); if(!s||!s.access_token) return null; continue; }
@@ -17337,6 +17343,8 @@ function __ledgerPatchExtraUpdate_(data, body, stamp){
 }
 // 控えtxtを GAS へ(DBに入ったあと・待たない・失敗しても黙る。GAS側がDBを見て本当に入っている時だけ書く)
 function __xwNoteAppend_(kind, fid, body, r){
+  // 🛑 v1.30.821(山田「やめていいよ」10/17): 追加工事控え.txt への書き足しは**やめた**(追加工事の記録は台帳=DBに全部ある・GASを減らす)
+  return;
   try{
     const s = loadGasSettings(); if(!s.url || !s.token || !r || !r.opId) return;
     const req = { action:'xw-note-append', token:s.token, opId:r.opId, kind, driveFileId:fid, extraId:body.extraId||'', work:body.work||null };
@@ -26014,6 +26022,7 @@ async function fetchLedgerFromDb_({since='', maxMonths=3, signal}={}){
     rows.forEach(r=>{
       const pj = r && r.projection; if(!pj || typeof pj!=='object') return;
       if(!pj.driveFileId && r.drive_file_id) pj.driveFileId = r.drive_file_id;
+      if(!pj.driveFileId && r.id) pj.driveFileId = r.id;   // 🆔 v1.30.821 番号の無い案件は id を番号の代わりに(キーの重複・空キーを防ぐ)
       if(!pj.estimateId && r.id) pj.estimateId = r.id;
       if(!pj.month && r.month) pj.month = r.month;
       properties.push(pj);
@@ -26063,7 +26072,7 @@ async function fetchLedgerFromDb_({since='', maxMonths=3, signal}={}){
     const data = {
       ok:true, properties: propsOut, patternAggregated: !partial,
       allIds: light.map(r=>r.id).filter(Boolean),
-      allFileIds: light.map(r=>r.drive_file_id).filter(Boolean),
+      allFileIds: light.map(r=>r.drive_file_id || r.id).filter(Boolean),   // 🆔 v1.30.821
       partial, newestModifiedAt: newest || new Date().toISOString(), syncedAt: new Date().toISOString(),
       totalCount: light.length, _dbRead:true, _src:'db'
     };
@@ -29171,7 +29180,7 @@ async function fetchRestoDetailFromDb_(rec){
     }
     throw new Error('auth');
   };
-  const rows = await get(`${SB_AUTH.url}/rest/v1/${LEDGER_DB_VIEW}?select=projection&drive_file_id=eq.${encodeURIComponent(rec.extDriveFileId)}&limit=1`);
+  const rows = await get(`${SB_AUTH.url}/rest/v1/${LEDGER_DB_VIEW}?select=projection&${ledgerKeyQuery_(rec.extDriveFileId)}&limit=1`);   // 🆔 v1.30.821
   const p = rows[0] && rows[0].projection;
   if(!p || typeof p!=='object' || !Array.isArray(p.tasks)) return null;   // 見つからない=GASに任せる
   let progress = null;
