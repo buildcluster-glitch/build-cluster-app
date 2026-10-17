@@ -1985,6 +1985,12 @@
   .rd-gp .r-g{color:#16a34a;font-weight:700} .rd-gp .r-y{color:#ca8a04;font-weight:700} .rd-gp .r-r{color:#dc2626;font-weight:700}
   .rd-gp .neg-n{color:#dc2626}
   .rd-info-toggle{display:none}
+  .rl-filter-toggle{display:none}
+  @media (max-width:767px){
+    .rl-filter-toggle{display:flex;align-items:center;gap:6px;width:100%;box-sizing:border-box;margin:2px 0 4px;padding:6px 10px;border:1px solid var(--border-strong);border-radius:8px;background:#f8fafc;color:var(--text);font-size:12px;font-weight:700;text-align:left;cursor:pointer}
+    .rl-filter-toggle .rft-sum{font-weight:500;color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+    #restoListMode.rl-filters-closed .resto-toolbar{display:none !important}
+  }
   @media (max-width:767px){
     .rd-info-toggle{display:flex;align-items:center;gap:6px;width:100%;box-sizing:border-box;margin:2px 0 4px;padding:6px 10px;border:1px solid var(--border-strong);border-radius:8px;background:#f8fafc;color:var(--text);font-size:12px;font-weight:700;text-align:left;cursor:pointer}
     .rd-info-toggle .rit-sum{font-weight:500;color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
@@ -2984,7 +2990,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.824</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.825</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -3237,6 +3243,8 @@
 <div class="resto-view" id="restoView" style="display:none">
   <!-- リストモード -->
   <div class="resto-list-mode" id="restoListMode">
+    <!-- 📱 v1.30.825(鈴木「ここの欄もデフォで畳まれた状態にしたい」10/16): スマホだけ絞り込み欄を折りたたむ(既定=たたむ) -->
+    <button type="button" class="rl-filter-toggle" id="restoFilterToggle"></button>
     <div class="resto-toolbar">
       <div class="resto-filters" id="restoFilters"></div>
       <!-- ✅ 完了済はデフォルト非表示。見たい時だけON(v1.30.478・山田) -->
@@ -29400,6 +29408,20 @@ function renderRestoList(){
       })).join("");
     pEl.querySelectorAll(".rf-chip").forEach(b=>{ b.onclick=()=>{ const p=b.dataset.p; restoPersonFilter=(p==="all"||restoPersonFilter===p)?"all":p; renderRestoList(); }; });
   }
+  // 📱 v1.30.825 スマホの絞り込み欄の折りたたみ(既定=たたむ・端末に覚える)。たたんでいる時は今の絞り込みを1行で見せる
+  try{
+    const tg = document.getElementById("restoFilterToggle"), mode = document.getElementById("restoListMode");
+    if(tg && mode){
+      let open = false; try{ open = localStorage.getItem('bc_rl_filter_open') === '1'; }catch(_){}
+      const st = (statusChips.find(c=>c.key===restoStatusFilter)||{}).label || '';
+      const q = ((document.getElementById("restoSearch")||{}).value||'').trim();
+      const sum = [st, restoPersonFilter==="all" ? '' : (restoPersonFilter||'未設定'), restoShowDone ? '完了済も表示' : '', q ? ('🔎'+q) : ''].filter(Boolean).join(' ・ ');
+      const paint = ()=>{ mode.classList.toggle('rl-filters-closed', !open);
+        tg.innerHTML = open ? '▼ 絞り込みを<b>たたむ</b>' : `▶ 絞り込み <span class="rft-sum">${escapeHtml(sum)}</span>`; };
+      tg.onclick = ()=>{ open = !open; try{ localStorage.setItem('bc_rl_filter_open', open?'1':'0'); }catch(_){} paint(); };
+      paint();
+    }
+  }catch(_){}
   // 作成者で絞り込み
   if(restoPersonFilter!=="all") items = items.filter(p=>(p.staff||"").trim()===restoPersonFilter);
 
@@ -29910,7 +29932,11 @@ function renderRestoTaskGroup(p, cat, listId, sumId){
     //   tasks は上で発注書順に並べ替え済み=挿入順がそのまま業者の並び順になる。
     const groups = new Map();
     tasks.forEach(t=>{ const k=t.contractor||"（業者未設定）"; if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(t); });
-    el.innerHTML = [...groups.entries()].map(([name,ts])=>{
+    // 📅 v1.30.825(鈴木「外注業者を工期の早い順に並び替えてほしい」10/16): 業者のまとまりを**工期の始まりが早い順**に。
+    //   業者の中の並び(発注書順)は今までどおり。工期の無い業者は最後・同じ日は元の順(安定ソート)
+    const __gStart = ts => ts.map(t=>normalizeDate(t.periodStart || t.schedule || '')).filter(Boolean).sort()[0] || '9999-99-99';
+    const __gList = [...groups.entries()].map(([name,ts],i)=>({name,ts,i,st:__gStart(ts)})).sort((a,b)=> a.st===b.st ? a.i-b.i : (a.st<b.st?-1:1));
+    el.innerHTML = __gList.map(({name,ts})=>{
       const subtotal = ts.reduce((s,t)=>s+(+t.amount||0),0);
       const workOn = ts.filter(t=>t.checkWork).length;
       const amtOn = ts.filter(t=>t.checkAmount).length;
