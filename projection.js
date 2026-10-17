@@ -5,6 +5,7 @@
 //   **1文字も書き換えずに写しています**(改造禁止)。GAS側を直したら、ここも同じ版を写し直すこと。
 //   写した版: 見積GAS ver113案(2026-10-02)= ver112 + tasks.materialAmount / estHidden(粗利計算用)
 //   + ver114案(2026-10-10)= 工事ボリュームの判定「重い作業0行でも普通の作業5行以上なら普」(_buildWorkloadStatusForPayload_ の1行)
+//   + ver115案(2026-10-17)= 日付の年の補い方(mdToIso_): 発注確定日を手がかりに・台帳の月が1年以上前なら今日(VIP仙台二日町409)
 //
 //   なぜアプリに要るか: 台帳をDBへ直接保存する(anken_save)とき、射影も一緒に渡す必要があるため。
 //   射影はカレンダー/工事タスクが読む「派生データ」で、これが古いと現場の予定が古いまま見える。
@@ -14,7 +15,7 @@
 // ============================================================
 (function (global) {
   'use strict';
-function mdToIso_(v, monthCtx) {
+function mdToIso_(v, monthCtx, anchorIso) {
   var s = String(v == null ? '' : v).trim();
   if (!s) return '';
   var isoM = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
@@ -24,7 +25,20 @@ function mdToIso_(v, monthCtx) {
   if (!md) return '';
   var mo = Number(md[1]), da = Number(md[2]);
   if (mo < 1 || mo > 12 || da < 1 || da > 31) return '';
-  var year, ym = String(monthCtx || '').match(/(\d{4})-(\d{1,2})/);
+  // ver115(2026-10-17): 年を決める手がかりを ①発注確定日(anchorIso) ②台帳の月(monthCtx・1年以上前なら今日) の順にした。
+  //   旧は台帳の月だけ=1〜2年前の見積に発注が来ると、その年で補って最終確認日が1年前になった
+  //   (VIP仙台二日町409: 台帳の月 2025-04・発注確定 2026-10-17・最終確認「10/26(月)」→ 2025-10-26 になりカレンダーに出なかった)。
+  //   山田「1〜2年前の見積で発注が来る」型。10/17 本番全件で年が変わるのはこの1件だけ(他の最終確認253件・対応予定238件は不変)。
+  var ctx = monthCtx, am = String(anchorIso || '').match(/^(\d{4})-(\d{2})/);
+  if (am) ctx = am[1] + '-' + am[2];
+  else {
+    var mm = String(monthCtx || '').match(/^(\d{4})-(\d{1,2})/);
+    if (mm) {
+      var nw = new Date();
+      if ((nw.getFullYear() * 12 + nw.getMonth()) - (Number(mm[1]) * 12 + Number(mm[2]) - 1) >= 12) ctx = nw.getFullYear() + '-' + ('0' + (nw.getMonth() + 1)).slice(-2);
+    }
+  }
+  var year, ym = String(ctx || '').match(/(\d{4})-(\d{1,2})/);
   if (ym) {
     year = Number(ym[1]);
     var fm = Number(ym[2]);
@@ -146,7 +160,7 @@ function convertEstimateToProperty_(est, month) {
     movein: ho.nyukyoDate || '',
     finalDate: ho.finalCheckDate || '',
     finalCheckDate: ho.finalCheckDate || '',             // 2026-06-13: カレンダーが読むキー名(finalDateと同値だが別名で漏れて最終確認カードが日付に立たなかった)
-    finalCheckDateIso: mdToIso_(ho.finalCheckDate, month), // 2026-06-13: ISO化(M/D「6/18(月)」→YYYY-MM-DD。カレンダーの日付アンカー)
+    finalCheckDateIso: mdToIso_(ho.finalCheckDate, month, ho.confirmedAt), // ver115: 年は発注確定日を手がかりに / 2026-06-13: ISO化(M/D「6/18(月)」→YYYY-MM-DD。カレンダーの日付アンカー)
     checkDate: ho.finalCheckDate || '',                  // 2026-06-13: カレンダー最終確認カードの別名フォールバック(同値)
     originalFinalDate: ho.originalFinalCheckDate || '',  // 当初の最終確認日(スリップ表示用)
     completeDate: ho.completeDate || '',
@@ -192,7 +206,7 @@ function convertEstimateToProperty_(est, month) {
     requestDetail:     meta.requestDetail || '',       // ショート版(AI生成、20字目安)
     requestDetailFull: meta.requestDetailFull || '',   // 本文ママ(PDF/メール原文・v1.4.135〜)
     responseDate:   meta.responseDate || '',                      // 対応予定日(自由入力・M/D等の生値)
-    responseDateIso: mdToIso_(meta.responseDate, month),          // 2026-06-13: ISO化(M/D「6/13」→YYYY-MM-DD。カレンダー修繕アポの日付アンカー)
+    responseDateIso: mdToIso_(meta.responseDate, month, (meta.hatchuOrder || {}).confirmedAt), // ver115          // 2026-06-13: ISO化(M/D「6/13」→YYYY-MM-DD。カレンダー修繕アポの日付アンカー)
     responseTime:   meta.responseTime || '',                      // 対応予定時間(v1.4.250〜・クラ助のアポ更新用)
     responseContractor: meta.responseContractor || '',            // 対応業者(修繕。例:思綺美装。カレンダー修繕予定に表示 2026-06-09)
     creatorMemo:    meta.creatorMemo || '',                       // 進捗詳細メモ
