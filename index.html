@@ -2984,7 +2984,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.821</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.822</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -5002,7 +5002,9 @@
         { status:200, headers:{ 'Content-Type':'application/json' } });
     }).catch(function(e){
       // ②⑤失敗しても保存を落とさない= 今までの経路へ。再送・記録の仕組みはそのまま効く
-      _scNoteFallback_((e && e.evKind ? e.evKind + ': ' : '') + ((e && e.message) || e));
+      // 🔁 v1.30.822: 予備の道の記録(calendar_fallback_log)そのものの失敗は記録しない・トーストも出さない
+      //   (10/17 見積が発見: このキーがDBの許可リストに無く毎回400→その失敗がまた記録に積まれる堂々巡りで254件中238件がこれだった)
+      if(String(body.key) !== 'calendar_fallback_log') _scNoteFallback_(String(body.key) + ': ' + (e && e.evKind ? e.evKind + ': ' : '') + ((e && e.message) || e));
       return _scPostGas_(input, init);
     });
   }
@@ -25524,18 +25526,23 @@ async function flushDbFallbackLog_(){
   if(__fbFlushing) return; __fbFlushing = true;
   try{
     const a = JSON.parse(localStorage.getItem(FB_LOG_KEY)||'[]') || [];
-    if(!a.length || !sbSession_() || dbTripped_()) return;
+    if(!a.length || !sbSession_() || dbTripped_() || window.__fbFlushStop) return;
+    // v1.30.822 自分自身の失敗の記録は送らない(過去に積まれた分も捨てる)
+    const a2 = a.filter(x=>!/calendar_fallback_log/.test(String(x.why||'')));
+    if(a2.length !== a.length){ localStorage.setItem(FB_LOG_KEY, JSON.stringify(a2)); if(!a2.length) return; }
     const s = loadGasSettings(); if(!s.url || !s.token) return;
     const res = await fetch(`${s.url}?action=get-shared-config&key=calendar_fallback_log&token=${encodeURIComponent(s.token)}&t=${Date.now()}`, {method:'GET',redirect:'follow'});
     if(!res.ok) return;
     const d = await res.json(); let raw = d.value; if(typeof raw==='string'){ try{ raw = JSON.parse(raw); }catch(_){ raw = null; } }
-    const cur = (raw && Array.isArray(raw.entries)) ? raw.entries : [];
+    const self_ = x => /calendar_fallback_log/.test(String((x && x.why) || ''));   // v1.30.822 自分自身の失敗の記録は表からも外す(掃除)
+    const cur = ((raw && Array.isArray(raw.entries)) ? raw.entries : []).filter(x=>!self_(x));
     const ids = new Set(cur.map(x=>x.id));
-    const merged = cur.concat(a.filter(x=>!ids.has(x.id))).slice(-400);
+    const merged = cur.concat(a2.filter(x=>!ids.has(x.id))).slice(-400);
     const w = await fetch(s.url, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
       body: JSON.stringify({action:'save-shared-config', key:'calendar_fallback_log', value: JSON.stringify({entries:merged, updatedAt:new Date().toISOString()}), token:s.token, savedBy:'calendar-app'})});
     const j = await w.json().catch(()=>null);
-    if(j && j.ok && j._dbWrite){ const sent = new Set(a.map(x=>x.id)); const now = JSON.parse(localStorage.getItem(FB_LOG_KEY)||'[]')||[]; localStorage.setItem(FB_LOG_KEY, JSON.stringify(now.filter(x=>!sent.has(x.id)))); }   // ⚠DBに書けた時だけ消す(GASに落ちた時は持ち越し)
+    if(!(j && j._dbWrite)){ window.__fbFlushStop = true; return; }   // v1.30.822 DBに書けない(許可前など)=この画面ではもう送らない(GASへ流し続けない)
+    if(j && j.ok && j._dbWrite){ const sent = new Set(a2.map(x=>x.id)); const now = JSON.parse(localStorage.getItem(FB_LOG_KEY)||'[]')||[]; localStorage.setItem(FB_LOG_KEY, JSON.stringify(now.filter(x=>!sent.has(x.id)))); }   // ⚠DBに書けた時だけ消す(GASに落ちた時は持ち越し)
   }catch(_){}
   finally{ __fbFlushing = false; }
 }
