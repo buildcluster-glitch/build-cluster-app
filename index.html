@@ -2984,7 +2984,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.822</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.823</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -25990,6 +25990,38 @@ async function fetchTaskProgressMapFromDb_(sess){
   __taskProgressCache = { at, map }; return map;
 }
 let __ledgerProgressChanged = null;   // 🩹 v1.30.797: 直近の台帳読みで一緒に読めた「変わった進捗」{物件名|号室: doc}(使ったら空にする)
+// 📅 v1.30.823 射影の日付(finalCheckDateIso/responseDateIso)の年は、見積の月(month)の年で補われる。
+//   古い見積(例 2025-04)が今年発注されると「10/26」が 2025-10-26 になり、カレンダーの最終確認に出ない。
+//   → 発注確定がある案件だけ、発注確定日より**60日以上前**の日付なら、元のM/Dを「発注確定日に一番近い年」で読み直す。
+//   年が正しい日付は触らない(見積側の補い方が直れば、ここは何もしなくなる)
+function ledgerNearestYearIso_(md, anchor){
+  const m = String(md||'').match(/(\d{1,2})[\/月](\d{1,2})/); if(!m) return '';
+  const mo = +m[1], d = +m[2]; if(!(mo>=1&&mo<=12&&d>=1&&d<=31)) return '';
+  const a = new Date(anchor); if(isNaN(a)) return '';
+  let best = '', bestDiff = Infinity;
+  for(const y of [a.getFullYear()-1, a.getFullYear(), a.getFullYear()+1]){
+    const t = new Date(y, mo-1, d); if(t.getMonth()!==mo-1) continue;
+    const diff = Math.abs(t - a); if(diff < bestDiff){ bestDiff = diff; best = `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
+  }
+  return best;
+}
+function ledgerFixIsoYear_(pj){
+  try{
+    if(!pj) return;
+    const anchor = pj.hatchuConfirmedAt ? String(pj.hatchuConfirmedAt) : new Date().toISOString();
+    const aDay = anchor.slice(0,10);
+    const old = (iso)=> iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) && ((Date.parse(aDay) - Date.parse(iso)) > 60*86400000);
+    if(!pj.hatchuConfirmedAt) return;   // ⚠発注確定が無い案件は触らない(昔の本当の過去日を今年に動かさない)。最終確認が発注確定より60日以上前はあり得ない
+    if(old(pj.finalCheckDateIso)){
+      const fixed = ledgerNearestYearIso_(pj.finalCheckDate || pj.finalDate || pj.checkDate || pj.finalCheckDateIso.slice(5).replace('-','/'), anchor);
+      if(fixed && fixed > pj.finalCheckDateIso){ pj._isoYearFixed = (pj._isoYearFixed||[]).concat('finalCheckDateIso:'+pj.finalCheckDateIso+'→'+fixed); pj.finalCheckDateIso = fixed; }
+    }
+    if(old(pj.responseDateIso)){
+      const fixed = ledgerNearestYearIso_(pj.responseDate || pj.responseDateIso.slice(5).replace('-','/'), anchor);
+      if(fixed && fixed > pj.responseDateIso){ pj._isoYearFixed = (pj._isoYearFixed||[]).concat('responseDateIso:'+pj.responseDateIso+'→'+fixed); pj.responseDateIso = fixed; }
+    }
+  }catch(_){}
+}
 async function fetchLedgerFromDb_({since='', maxMonths=3, signal}={}){
   const t0 = Date.now();
   let s = sbSession_();
@@ -26001,9 +26033,11 @@ async function fetchLedgerFromDb_({since='', maxMonths=3, signal}={}){
   //   月は「見積を作った月」なので、6〜7月に見積→10月に発注のような**長く寝かせた案件が窓の外に落ちていた**。
   //   窓の月に加えて、**最終確認日が窓の始まり以降の案件**も読む(10/8時点で窓外の該当=みずほ台3件+8月に終わった14件)。
   //   v1.30.810: 修繕は最終確認日が空のことがある(10/8時点で受注済み・空が9件)ので、**アポ日(responseDateIso)が窓の始まり以降**も読む(今は該当0件・予防)。
+  //   v1.30.823(山田「VIP409 発注確定しても出ない」10/17): **発注確定(hatchuConfirmedAt・ISO時刻)が窓の始まり以降**も読む。
+  //   2025年4月の見積が2026年10月に発注=month は古いまま正しい(山田「このままでいい」)。
   //   ⚠orderDate は「5/8」のような形が混ざっていて文字列で比べられないので使わない。
   //   ⚠差分の全id(light)も同じ条件で取る=消えた案件の検出(allIds)から漏れない。
-  const monthQ = `or=(month.in.(${months.map(m=>'"'+m+'"').join(',')}),projection->>finalCheckDateIso.gte.${months[months.length-1]}-01,projection->>responseDateIso.gte.${months[months.length-1]}-01)`;
+  const monthQ = `or=(month.in.(${months.map(m=>'"'+m+'"').join(',')}),projection->>finalCheckDateIso.gte.${months[months.length-1]}-01,projection->>responseDateIso.gte.${months[months.length-1]}-01,projection->>hatchuConfirmedAt.gte.${months[months.length-1]}-01)`;
   const hdr = tok => ({ 'apikey': SB_AUTH.key, 'Authorization': 'Bearer '+tok, 'Prefer': 'count=exact', 'Accept': 'application/json' });
   async function getAll(select, extra){
     const base = `${SB_AUTH.url}/rest/v1/${LEDGER_DB_VIEW}?select=${select}&${monthQ}${extra||''}&order=id.asc`;
@@ -26028,6 +26062,7 @@ async function fetchLedgerFromDb_({since='', maxMonths=3, signal}={}){
     let newest = since || '';
     rows.forEach(r=>{
       const pj = r && r.projection; if(!pj || typeof pj!=='object') return;
+      ledgerFixIsoYear_(pj);   // 📅 v1.30.823 古い見積の年で補われた日付を読み直す(VIP409: 10/26(月)→2025-10-26)
       if(!pj.driveFileId && r.drive_file_id) pj.driveFileId = r.drive_file_id;
       if(!pj.driveFileId && r.id) pj.driveFileId = r.id;   // 🆔 v1.30.821 番号の無い案件は id を番号の代わりに(キーの重複・空キーを防ぐ)
       if(!pj.estimateId && r.id) pj.estimateId = r.id;
