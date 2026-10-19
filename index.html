@@ -972,6 +972,21 @@
   .quick-pop .qp-actions .qp-detail{background:#e0e7ff;color:var(--accent)}
   .quick-pop .qp-actions .qp-del-event{background:#fee2e2;color:#b91c1c;flex:0 0 auto}
   .quick-pop .qp-actions .qp-close{background:#f3f4f6;color:#64748b}
+  /* 📱 v1.30.827(山田「スマホ予定フォーム小さい」10/19): スマホでは予定を押した時の画面を横いっぱい・文字とボタンを大きく。
+     入力欄は16px以上=iPhoneが勝手に拡大しない。位置(top)は今までどおりJSが高さを測って画面内に収める */
+  @media (max-width:767px){
+    .quick-pop{left:6px !important;right:6px !important;width:auto !important;min-width:0 !important;max-width:none !important;
+      font-size:15px;padding:14px;max-height:86vh}
+    .quick-pop .qp-title{font-size:16px}
+    .quick-pop .qp-label{font-size:12.5px}
+    .quick-pop .qp-worker-pick{gap:6px}
+    .quick-pop .qp-worker-pick button{font-size:14px !important;padding:7px 12px !important;border-radius:16px}
+    .quick-pop .qp-worker-pick .qp-dot{width:10px;height:10px}
+    .quick-pop input,.quick-pop select,.quick-pop textarea{font-size:16px !important}
+    .quick-pop .qp-actions button{font-size:15px;padding:11px 8px}
+    .quick-pop .qp-comment-input button,.quick-pop .tk-cmt-add button{font-size:14px;padding:8px 12px}
+    .quick-pop .tk-cmt-text{font-size:14px}
+  }
   /* 🕐 立会 日時変更 */
   .quick-pop .tk-dt-row{display:flex;gap:6px;align-items:center}
   .quick-pop .tk-dt-row input{font-size:13px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px;font-family:inherit;background:#fff;min-width:0}
@@ -2990,7 +3005,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.826</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.827</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
