@@ -3005,7 +3005,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.827</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.828</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -16717,6 +16717,7 @@ async function syncChecksFromGAS(opts){
     // 🔁 差分マージ準備(v1.30.213): 今回更新があった台帳(driveFileId/estimateId)=差替対象、allIdsに無い台帳=削除されたのでprune
     const __changedFids = new Set();
     if(__partial){ properties.forEach(p=>{ if(p&&p.driveFileId) __changedFids.add(p.driveFileId); if(p&&p.estimateId) __changedFids.add(p.estimateId); }); }
+    if(__partial && Array.isArray(data.dropFids)) data.dropFids.forEach(f=>{ if(f) __changedFids.add(f); });   // 🔀 v1.30.828 パターンの代表に選ばれなかった案件は画面から外す
     const __allIdSet = (__partial && __allIds) ? new Set(__allIds) : null;
     const __isChanged = it => !!it && ((it.extDriveFileId && __changedFids.has(it.extDriveFileId)) || (it.extEstimateId && __changedFids.has(it.extEstimateId)));
     // 🚨 v1.30.492【予定消失事故の根治】差分同期での prune(allIdsに無い=削除とみなして即消す)を廃止。
@@ -26083,25 +26084,48 @@ async function fetchLedgerFromDb_({since='', maxMonths=3, signal}={}){
     const light = partial ? await getAll('id,drive_file_id', '') : rows;   // 差分の時は窓内の全idだけ軽く取る(消えた案件の検出用)
     const properties = [];
     let newest = since || '';
-    rows.forEach(r=>{
-      const pj = r && r.projection; if(!pj || typeof pj!=='object') return;
+    const __normPj = r=>{
+      const pj = r && r.projection; if(!pj || typeof pj!=='object') return null;
       ledgerFixIsoYear_(pj);   // 📅 v1.30.823 古い見積の年で補われた日付を読み直す(VIP409: 10/26(月)→2025-10-26)
       if(!pj.driveFileId && r.drive_file_id) pj.driveFileId = r.drive_file_id;
       if(!pj.driveFileId && r.id) pj.driveFileId = r.id;   // 🆔 v1.30.821 番号の無い案件は id を番号の代わりに(キーの重複・空キーを防ぐ)
       if(!pj.estimateId && r.id) pj.estimateId = r.id;
       if(!pj.month && r.month) pj.month = r.month;
+      return pj;
+    };
+    rows.forEach(r=>{
+      const pj = __normPj(r); if(!pj) return;
       properties.push(pj);
       if(r.updated_at && String(r.updated_at) > String(newest)) newest = String(r.updated_at);
     });
     // ── GAS task-sync がやっていた後処理の再現(台帳DB 2026-09-10 09:40 契約) ──
     // ① パターン集約(フル同期時・_aggregatePatterns_ と同じ規則): 確定1件→それだけ / 確定2件以上→確定全部+未確定の代表 / 確定なし→代表(オリジナル→estimateId昇順)
     let propsOut = properties;
-    if(!partial){
+    const dropFids = [];
+    // 🔀 v1.30.828(最上🐞「関場貸家で別パターン見積を作成したら予定が増えた」10/19): **差分同期でもパターンを集約する**。
+    //   旧はフル同期の時だけ集約していた=差分で届いた新しいパターン(②)が、代表(オリジナル)と別の予定として足されていた。
+    //   差分に patternGroupId 付きの案件があれば、そのグループの全員(窓内)を読み直して同じ規則で代表を選ぶ。
+    //   選ばれなかった人は dropFids に入れ、画面にすでに出ていれば外す(task-sync 側で「変わった扱い」にして出し直さない)
+    let __aggSrc = properties;
+    if(partial){
+      const gids = [...new Set(properties.map(q=>q && q.patternGroupId).filter(Boolean))];
+      if(gids.length){
+        const grows = await getAll('id,drive_file_id,month,updated_at,projection', `&projection->>patternGroupId=in.(${gids.map(g=>'"'+String(g).replace(/"/g,'')+'"').join(',')})`);
+        const seen = new Set(properties.map(q=>q.estimateId));
+        __aggSrc = properties.slice();
+        grows.forEach(r=>{ const pj = __normPj(r); if(pj && !seen.has(pj.estimateId)){ seen.add(pj.estimateId); __aggSrc.push(pj); } });
+      }
+    }
+    if(!partial || __aggSrc !== properties){
       const groups = {}, out = [];
-      properties.forEach(q=>{ const gid = q && q.patternGroupId; if(!gid){ out.push(q); return; } (groups[gid] = groups[gid] || []).push(q); });
+      __aggSrc.forEach(q=>{ const gid = q && q.patternGroupId; if(!gid){ out.push(q); return; } (groups[gid] = groups[gid] || []).push(q); });
       const rep = arr => arr.slice().sort((a,b)=>{ const ao=(a.patternLabel==='オリジナル')?0:1, bo=(b.patternLabel==='オリジナル')?0:1; if(ao!==bo) return ao-bo; return String(a.estimateId||'').localeCompare(String(b.estimateId||'')); })[0];
       Object.keys(groups).forEach(gid=>{ const g=groups[gid]; const c=g.filter(q=>q.isConfirmed), n=g.filter(q=>!q.isConfirmed);
-        if(c.length===1) out.push(c[0]); else if(c.length>=2){ c.forEach(q=>out.push(q)); if(n.length) out.push(rep(n)); } else out.push(rep(g)); });
+        const keep = [];
+        if(c.length===1) keep.push(c[0]); else if(c.length>=2){ c.forEach(q=>keep.push(q)); if(n.length) keep.push(rep(n)); } else keep.push(rep(g));
+        keep.forEach(q=>out.push(q));
+        if(partial) g.filter(q=>!keep.includes(q)).forEach(q=>{ if(q.driveFileId) dropFids.push(q.driveFileId); if(q.estimateId) dropFids.push(q.estimateId); });
+      });
       propsOut = out;
     }
     // ② progress の添付(_attachProgress_): shared_config 'task_progress'(value_json・key='物件名|号室')をDBから読む(updated_at が同じなら前回の値を使う)
@@ -26135,7 +26159,7 @@ async function fetchLedgerFromDb_({since='', maxMonths=3, signal}={}){
         const fc=String(q.finalCheckDateIso||'').slice(0,10); if(fc && fc>=today) return;
         q._light=true; q.tasksCount=Array.isArray(q.tasks)?q.tasks.length:0; HEAVY.forEach(k=>{ if(k in q) delete q[k]; }); }); }
     const data = {
-      ok:true, properties: propsOut, patternAggregated: !partial,
+      ok:true, properties: propsOut, patternAggregated: true, dropFids,
       allIds: light.map(r=>r.id).filter(Boolean),
       allFileIds: light.map(r=>r.drive_file_id || r.id).filter(Boolean),   // 🆔 v1.30.821
       partial, newestModifiedAt: newest || new Date().toISOString(), syncedAt: new Date().toISOString(),
