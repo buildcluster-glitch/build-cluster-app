@@ -2990,7 +2990,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.825</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.826</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -27491,17 +27491,24 @@ function __toPngBlob_(srcBlobOrUrl){
 }
 async function copyImageToClipboard_(src){
   if(!navigator.clipboard || !window.ClipboardItem) throw new Error('この端末はコピー非対応');
-  let pngBlob;
-  if(/^data:image\//.test(src)){
-    // data URI: fetchでBlob化→(PNGでなければ)canvas変換
-    const resp = await fetch(src);
-    const blob = await resp.blob();
-    pngBlob = blob.type==='image/png' ? blob : await __toPngBlob_(blob);
-  } else {
-    // https URL: Imageで直接読んでcanvas→PNG(CORS許可が前提。不可ならcatch)
-    pngBlob = await __toPngBlob_(src);
-  }
-  await navigator.clipboard.write([ new ClipboardItem({ 'image/png': pngBlob }) ]);
+  // 📋 v1.30.826(山田「バグ報告で画像コピーすると失敗ってなる」10/19): 写真は9/28から非公開の置き場(sb:photos/…)。
+  //   旧は sb: をそのまま <img src> に入れて読めず失敗していた → 署名URLに変えて fetch→Blob→PNG。
+  //   ⚠iPhone(Safari)は「押した瞬間」にクリップボードへ書かないと断られるので、中身は Promise で渡す(先に write を呼ぶ)
+  const toPng = async ()=>{
+    let url = src;
+    if(typeof sbPhotoRef_==='function' && sbPhotoRef_(src)){
+      url = await photoResolve_(src);
+      if(!url) throw new Error('写真を開けませんでした(ログインしているか確認してください)');
+    }
+    if(/^data:image\//.test(url) || /^https?:/.test(url) || /^blob:/.test(url)){
+      try{
+        const resp = await fetch(url, { cache:'no-store' });
+        if(resp.ok){ const blob = await resp.blob(); return blob.type==='image/png' ? blob : await __toPngBlob_(blob); }
+      }catch(_){}
+    }
+    return await __toPngBlob_(url);   // 最後の手段(同じ場所の画像など)
+  };
+  await navigator.clipboard.write([ new ClipboardItem({ 'image/png': toPng() }) ]);
 }
 // 📱 v1.30.597: 各端末の版を一覧で見せる(「反映されたりされなかったり」の切り分けを事実で)。
 //   出どころ=プレゼンス心拍のmeta。最近ひらいた端末だけが並ぶ。**現行より古い版は赤**。
