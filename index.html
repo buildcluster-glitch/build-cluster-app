@@ -3005,7 +3005,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.828</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.829</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -29041,8 +29041,19 @@ const RESTO_STATUS_LABEL = {todo:"未対応", wip:"進行中", done:"完了"};
 
 // 🚫 表示・進捗カウントから除外する諸経費系タスク名 (運搬費/廃棄物/現場管理諸経費 等)
 const RESTO_EXCLUDED_TASK_NAMES = /資材機材運搬費|産業廃棄物運搬処分|現場管理諸経費|諸経費|運搬処分|運搬費/;
+// 🧾 v1.30.829(南部「プリンプ・ハウス103 見積アプリで減工事なのにカレンダーの減工事に入っていない」10/20):
+//   名前に『運搬費』を含むだけで隠していたため、**撤去や処分そのものの工事**まで消えていた
+//   (例「ハンガーパイプ長押タイプ撤去解体運搬費」×2・「残置物撤去運搬費」「家具家電 運搬処分費」「カーテン・ブラインド撤去提案（運搬費）」)。
+//   → 隠すのは**本当の諸経費だけ**: 名前に「諸経費」を含む／または括弧と空白を除いた名前が運搬・処分の費目そのもの
+const RESTO_OVERHEAD_EXACT_ = /^(産業廃棄物(収集)?運搬処分費?|資材機材運搬費|運搬費|運搬処分費?|収集運搬費)$/;
+function isRestoOverheadName_(name){
+  const n = String(name||'');
+  if(/諸経費/.test(n)) return true;
+  const core = n.replace(/[（(][^）)]*[）)]/g,'').replace(/[\s　]/g,'');
+  return RESTO_OVERHEAD_EXACT_.test(core);
+}
 function isExcludedRestoTask(t){
-  if(!RESTO_EXCLUDED_TASK_NAMES.test(String(t?.name||""))) return false;
+  if(!isRestoOverheadName_(t?.name)) return false;
   // 🧾 v1.30.729(山田 09-14「発注書印刷ようだと初期のままになってるかも」の調査で判明):
   //   この除外は「社内の諸経費(現場管理諸経費/諸経費 等)は施工チェックする物が無いから隠す」ためのもの。
   //   ところが名前に『運搬費』を含むだけで、**業者に実際に発注している行**まで巻き添えで消えていた。
