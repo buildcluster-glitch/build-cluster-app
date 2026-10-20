@@ -3005,7 +3005,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.829</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.830</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -11731,7 +11731,8 @@ function __matSyncInvSeg_(){
   const bk=document.getElementById('materialModal'); if(!bk) return;
   const dest=bk.querySelector('#mat-form').dataset.dest||'';
   const any=__matDraft.some(d=>d.forStock);
-  bk.querySelector('#mat-inv-seg-wrap').style.display=(dest==='在庫'||(dest==='物件'&&any))?'flex':'none';
+  // 🛑 v1.30.830(山田「材料注文が在庫管理に反映される機能、逆に混乱するからいらない」10/20): 在庫への反映はやめた=選ぶ欄も出さない
+  bk.querySelector('#mat-inv-seg-wrap').style.display='none'; void dest; void any;
 }
 function __matRefreshDestDl_(){
   const dl=document.getElementById('matDestDl'); if(!dl) return;
@@ -11792,7 +11793,7 @@ async function __matSubmit_(){
   if(!items.length){ alert('商品を1つ以上追加してください'); return; }
   const btn=bk.querySelector('#mat-send'); btn.disabled=true; btn.textContent='送信中…';
   let invMsg='';
-  const invMode=form.dataset.invmode||'order';
+  const invMode='none';   // 🛑 v1.30.830 材料注文から在庫管理へは反映しない(発注台帳への登録も在庫の即＋もしない)
   const stockItems=items.filter(it=>it.forStock);
   if(!__matEditing && stockItems.length && invMode!=='none' && !window.__matInvDoneOnce){
     const fn=(invMode==='stock')?window.__invAddStockFromMaterial_:window.__invCreateOrdersFromMaterial_;
