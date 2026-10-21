@@ -3005,7 +3005,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.830</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.831</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -16581,6 +16581,12 @@ async function syncChecksFromGAS(opts){
       if(__lr && __lr.ok){ data = __lr.data; __setLedgerReadStat_({ src:'db', n:data.properties.length, total:data.totalCount, ms:__lr.ms, partial:data.partial }); }
       else { __setLedgerReadStat_({ src:'gas', n:0, ms:(__lr&&__lr.ms)||0, fallback:(__lr&&__lr.reason)||'?' }); }
     }
+    // 🛑 v1.30.831 GASの task-sync へは回さない(DBが読めない時は今の表示のまま・理由を出す)
+    if(!data && !ledgerGasFallbackOn_()){
+      if(__syncTO) clearTimeout(__syncTO);
+      const __why = ((typeof __ledgerReadStat!=='undefined' && __ledgerReadStat && __ledgerReadStat.fallback) || '') || ((typeof ledgerDbReadOn_==='function' && !ledgerDbReadOn_()) ? 'DBの不調で一時退避中' : '');
+      throw new Error('台帳をデータベースから読めませんでした' + (__why ? `（${__why}）` : '') + '。しばらくして🔄を押してください');
+    }
     if(!data){
       const __gt0 = Date.now();
       const res = await fetch(s.url, {
@@ -17487,6 +17493,22 @@ function lazySyncIndicator_(text, delayMs){
     done(status, msg){ clearTimeout(t); if(shown){ hideSyncIndicator(status, msg); } else if(status === 'error'){ showSyncIndicator(msg); hideSyncIndicator('error', msg); } }
   };
 }
+// 🛑 v1.30.831(山田「いまやれることすすめていいよ」10/21・Driveの写しをやめる準備): **台帳のGASへの予備の道を外した**。
+//   台帳の読み(task-sync/task-detail/get-ledger)・書き(アポ/最終確認日/追加工事/簡易見積)は DB だけ。
+//   GAS の台帳は Drive を読み書きしていて、10月下旬に Drive の写しを止めると黙って古い/空の答えになるため。
+//   ⚠非常用に遠隔スイッチ ledgerGas(端末 bc_flag_ledgerGas > flags.json > calendar_flags.ledgerGas・既定OFF)で一時的に戻せる。
+//   DBに書けない時は**黙ってGASに回さず**、理由を出して失敗させる(入力はそのまま残る)
+function ledgerGasFallbackOn_(){
+  try{ const o = localStorage.getItem('bc_flag_ledgerGas'); if(o==='1') return true; if(o==='0') return false; }catch(_){}
+  try{ if(typeof __staticFlags!=='undefined' && __staticFlags){ const r = __pickWriteFlag_(__staticFlags.ledgerGas); if(r !== null) return r; } }catch(_){}
+  try{ if(typeof __calFlags!=='undefined' && __calFlags){ const r = __pickWriteFlag_(__calFlags.ledgerGas); if(r !== null) return r; } }catch(_){}
+  return false;
+}
+function ledgerNoGasError_(what, why){
+  const loggedIn = (typeof sbSession_==='function') && !!sbSession_();
+  const e = new Error(`${what}をデータベースに保存できませんでした。${loggedIn ? '通信を確かめて、もう一度お試しください' : '左上の「🔐ログイン」からログインしてから、もう一度お試しください'}${why ? `（${why}）` : ''}`);
+  e.ledgerNoGas = true; return e;
+}
 async function pushAppointmentToGAS(driveFileId, fields){
   const s = loadGasSettings();
   if(!s.url || !s.token) throw new Error("GAS URL/Token 未設定");
@@ -17498,7 +17520,9 @@ async function pushAppointmentToGAS(driveFileId, fields){
     ['responseDate','responseTime','workflowStatus','status','completeDate'].forEach(k=>{ if(fields[k] !== undefined) __body[k] = fields[k]; });
     const __r = await ledgerPatchDb_(driveFileId, doc=>__ledgerPatchAppointment_(doc, __body), 'アポ更新');
     if(__r){ noteLedgerWriteResult_("アポ更新", __r); __ind.done("success", "台帳を更新しました"); return __r; }
-  }catch(e){ if(e && e.unknown){ __ind.done("error", "台帳の更新を確かめられませんでした"); throw e; } console.warn('[台帳DB直接] 例外→GASへ:', e && e.message); }
+  }catch(e){ if(e && e.unknown){ __ind.done("error", "台帳の更新を確かめられませんでした"); throw e; } console.warn('[台帳DB直接] 例外:', e && e.message);
+    if(!ledgerGasFallbackOn_()){ __ind.done("error", "台帳の更新に失敗しました"); throw ledgerNoGasError_('アポ', e && e.message); } }
+  if(!ledgerGasFallbackOn_()){ __ind.done("error", "台帳の更新に失敗しました"); throw ledgerNoGasError_('アポ', ''); }   // v1.30.831 GASへは回さない
   __ind.show();   // GASへ回る=遅いので表示する
   try{
     // master_sync の dispatch は kind で判定 (2026-05-31〜): "appointment"=日時/WF/status等
@@ -17535,7 +17559,9 @@ async function pushFinalDateToGAS(driveFileId, finalDate){
   try{
     const __r = await ledgerPatchDb_(driveFileId, doc=>__ledgerPatchFinalDate_(doc, finalDate), '最終確認日');
     if(__r){ noteLedgerWriteResult_("最終確認日", __r); __ind.done("success", `台帳を更新しました ${finalDate||"(クリア)"}`); return __r; }
-  }catch(e){ if(e && e.unknown){ __ind.done("error", "台帳の更新を確かめられませんでした"); throw e; } console.warn('[台帳DB直接] 例外→GASへ:', e && e.message); }
+  }catch(e){ if(e && e.unknown){ __ind.done("error", "台帳の更新を確かめられませんでした"); throw e; } console.warn('[台帳DB直接] 例外:', e && e.message);
+    if(!ledgerGasFallbackOn_()){ __ind.done("error", "台帳の更新に失敗しました"); throw ledgerNoGasError_('最終確認日', e && e.message); } }
+  if(!ledgerGasFallbackOn_()){ __ind.done("error", "台帳の更新に失敗しました"); throw ledgerNoGasError_('最終確認日', ''); }   // v1.30.831
   __ind.show();   // GASへ回る=遅いので表示する
   try{
     const res = await fetch(s.url, {
@@ -17574,7 +17600,8 @@ async function pushExtraWorkToGAS_(driveFileId, payload){
     // ➕ v1.30.784 DBを先に(スイッチ extraDbWrite)。入ったか分からない時はGASへ回さない
     let data = null;
     try{ data = await extraWorkDbFirst_(driveFileId, Object.assign({ action:"task-add-extra-work" }, payload)); }
-    catch(e){ if(e && e.unknown) throw e; console.warn('[追加工事 DB直接] 例外→GASへ:', e && e.message); data = null; }
+    catch(e){ if(e && e.unknown) throw e; console.warn('[追加工事 DB直接] 例外:', e && e.message); if(!ledgerGasFallbackOn_()) throw ledgerNoGasError_('追加工事', e && e.message); data = null; }
+    if(!data && !ledgerGasFallbackOn_()) throw ledgerNoGasError_('追加工事', '');   // v1.30.831
     if(!data){
     const res = await fetch(s.url, {
       method:"POST",
@@ -27956,7 +27983,26 @@ function __archiveDate_(p){
     || normalizeDate(p.orderDate) || (p.move_out_month||"") || "";
   return String(d||"");
 }
+// 📚 v1.30.831 過去の記録もDBから(GAS task-sync の60か月読みをやめる)。欄は下の行づくりで使う分だけ取る(明細は重いので取らない)
+async function fetchArchivePropsFromDb_(){
+  let s = sbSession_(); if(!s || !s.access_token) throw new Error('ログインしていないため過去の記録を読めません');
+  if(s.expires_at && (s.expires_at*1000 - Date.now()) < 60000){ try{ await sbRefresh_(); }catch(_){} s = sbSession_(); }
+  const F = ['finalCheckDateIso','finalCheckDate','checkDate','finalDate','responseDateIso','responseDate','completeDate','requestDate','orderDate',
+             'kojiName','name','room','clientRaw','contractor','contractorName','clientCat','estimatedBy','pic','salesPerson','atenaTantou',
+             'status','workflowStatus','amountExTax','requestDetail','requestDetailFull'];
+  const sel = F.map(k=>`${k}:projection->>${k}`).concat(['tmRepair:projection->tmRepair','move_out_month:month']).join(',');
+  const out = []; let from = 0;
+  for(let guard=0; guard<50; guard++){
+    const res = await fetch(`${SB_AUTH.url}/rest/v1/${LEDGER_DB_VIEW}?select=${sel}&order=id.asc`,
+      { headers:{ apikey:SB_AUTH.key, Authorization:'Bearer '+s.access_token, Accept:'application/json', 'Range':`${from}-${from+999}`, 'Range-Unit':'items' }, cache:'no-store' });
+    if(!(res.status===200 || res.status===206)) throw new Error('過去の記録を読めません HTTP '+res.status);
+    const rows = await res.json(); if(!Array.isArray(rows)) throw new Error('過去の記録の形が違います');
+    out.push(...rows); if(rows.length < 1000) break; from += 1000;
+  }
+  return out;
+}
 async function fetchArchiveYear_(year){
+  if(!ledgerGasFallbackOn_()) return __archiveRowsFrom_(await fetchArchivePropsFromDb_(), year);   // 🛑 v1.30.831 DBから
   const s = loadGasSettings();
   if(!s.url||!s.token) throw new Error("GAS未設定");
   const now = new Date();
@@ -27967,7 +28013,9 @@ async function fetchArchiveYear_(year){
     body: JSON.stringify({action:"task-sync", token:s.token, kojiFilter:"all", maxMonths:mm})});
   const data = await res.json();
   if(data.error) throw new Error(data.error);
-  const props = data.properties || [];
+  return __archiveRowsFrom_(data.properties || [], year);
+}
+function __archiveRowsFrom_(props, year){
   const Y = String(year);
   const rows = [];
   props.forEach(p=>{
@@ -27981,7 +28029,7 @@ async function fetchArchiveYear_(year){
       client: p.clientRaw || p.contractor || p.contractorName || p.clientCat || "",
       pic: p.estimatedBy || p.pic || p.salesPerson || p.atenaTantou || "",
       status: p.status||"", workflow: p.workflowStatus||"",
-      amount: (p.tmRepair && p.tmRepair.amountExTax) || p.amountExTax || 0,
+      amount: Number((p.tmRepair && p.tmRepair.amountExTax) || p.amountExTax || 0) || 0,   // v1.30.831 DBの ->> は文字列で来るので数にする
       desc: (p.requestDetail || p.requestDetailFull || (koji && koji!=="原状回復工事" ? koji : "") || "").replace(/\s+/g," ").slice(0,120),
     });
   });
@@ -29313,6 +29361,7 @@ async function fetchRestoDetailOnDemand_(rec){
       return true;
     }
   }catch(e){ window.__detailReadStat = { src:'gas', fallback:(e&&e.message)||'error', at:new Date().toISOString() }; console.warn('[task-detail] DBから読めず→GASへ:', e && e.message); }
+  if(!ledgerGasFallbackOn_()) return false;   // 🛑 v1.30.831 GASの task-detail へは回さない(明細は前回の写しのまま)
   const s = loadGasSettings();
   if(!s.url || !s.token || !rec || !rec.extDriveFileId) return false;
   try{
@@ -30843,6 +30892,7 @@ async function openExtraWorkEdit_(taskExtraId){
       try{ const row = await __ledgerLoadByFileId_(p.extDriveFileId); if(row && row.doc) est = row.doc; window.__xwEditReadStat = { src: est ? 'db' : 'db-miss', at:new Date().toISOString() }; }
       catch(e){ window.__xwEditReadStat = { src:'gas', fallback:(e&&e.message)||'error', at:new Date().toISOString() }; est = null; }
     }
+    if(!est && !ledgerGasFallbackOn_()) throw new Error('台帳をデータベースから読めませんでした(ログインと通信を確かめてください)');   // 🛑 v1.30.831
     if(!est){
     const res = await fetch(s.url, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
       body: JSON.stringify({token:s.token, action:"get-ledger", fileId:p.extDriveFileId})});
@@ -30919,7 +30969,8 @@ async function submitExtraWork_(){
       // ✎ v1.30.784 DBを先に(スイッチ extraDbWrite)
       let data = null;
       try{ data = await extraWorkDbFirst_(p.extDriveFileId, { action:"task-update-extra-work", extraId:__xwEditId, editedBy:(typeof getMyself==='function'?getMyself():"")||"", work:{ name, room, qty, unit, unitPrice, supplier, orderPrice, billable, note } }); }
-      catch(e){ if(e && e.unknown) throw e; console.warn('[追加工事 DB直接] 例外→GASへ:', e && e.message); data = null; }
+      catch(e){ if(e && e.unknown) throw e; console.warn('[追加工事 DB直接] 例外:', e && e.message); if(!ledgerGasFallbackOn_()) throw ledgerNoGasError_('追加工事', e && e.message); data = null; }
+      if(!data && !ledgerGasFallbackOn_()) throw ledgerNoGasError_('追加工事', '');   // v1.30.831
       if(!data){
       const res = await fetch(s2.url, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
         body: JSON.stringify({ action:"task-update-extra-work", token:s2.token, driveFileId:p.extDriveFileId,
@@ -31068,7 +31119,8 @@ async function postExtraWorkPhotos_(p, workName, photos, extraId){
       // 🗑 v1.30.784 DBを先に(スイッチ extraDbWrite)
       let data = null;
       try{ data = await extraWorkDbFirst_(p.extDriveFileId, { action:"task-update-extra-work", extraId:__xwEditId, remove:true, editedBy:(typeof getMyself==='function'?getMyself():"")||"" }); }
-      catch(e){ if(e && e.unknown) throw e; console.warn('[追加工事 DB直接] 例外→GASへ:', e && e.message); data = null; }
+      catch(e){ if(e && e.unknown) throw e; console.warn('[追加工事 DB直接] 例外:', e && e.message); if(!ledgerGasFallbackOn_()) throw ledgerNoGasError_('追加工事', e && e.message); data = null; }
+      if(!data && !ledgerGasFallbackOn_()) throw ledgerNoGasError_('追加工事', '');   // v1.30.831
       if(!data){
       const res = await fetch(s.url, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
         body: JSON.stringify({ action:"task-update-extra-work", token:s.token, driveFileId:p.extDriveFileId, extraId:__xwEditId, remove:true,
@@ -31309,7 +31361,8 @@ async function saveKaniModal_(){
       const __me = (typeof getMyself==='function' ? getMyself() : '') || '';
       data = await ledgerPatchDb_(r.extDriveFileId, (doc, ctx)=>__ledgerPatchKani_(doc, { kaniLines: rows, setBy: __me }, ctx.stamp), '簡易見積',
         { on: kaniDbWriteOn_, prepare: async ()=>({ stamp: await __ledgerServerNow_() }) });
-    }catch(e){ if(e && e.unknown) throw e; console.warn('[簡易見積 DB直接] 例外→GASへ:', e && e.message); data = null; }
+    }catch(e){ if(e && e.unknown) throw e; console.warn('[簡易見積 DB直接] 例外:', e && e.message); if(!ledgerGasFallbackOn_()) throw ledgerNoGasError_('簡易見積', e && e.message); data = null; }
+    if(!data && !ledgerGasFallbackOn_()) throw ledgerNoGasError_('簡易見積', '');   // v1.30.831
     if(!data){
     const res = await fetch(s.url, {
       method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
