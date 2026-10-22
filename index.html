@@ -3005,7 +3005,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.833</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.834</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -5700,8 +5700,9 @@ function saveState(){
   // 🗃 IDB管理コレクション(原状回復/修繕/最終確認/物件マスタ/立会)はIndexedDBへ。localStorageはそれらを除いた軽量版(v1.30.396)
   const idbOn = (__idbActive && __idbReady);
   if(idbOn){ IDB_KEYS.forEach(k=>{ try{ idbSet_(k, state[k]||[]).catch(e=>console.warn('[idb] '+k+'保存失敗:', e && e.message)); }catch(_){} }); }
-  let __lightState = state;
-  if(idbOn){ __lightState = Object.assign({}, state); IDB_KEYS.forEach(k=>{ __lightState[k]=[]; }); }
+  let __lightState = Object.assign({}, state);
+  if(idbOn){ IDB_KEYS.forEach(k=>{ __lightState[k]=[]; }); }
+  __lightState.events = eventsForLocalSave_(state.events);   // 🪶 v1.30.834 旧スプシ取込の過去分は端末に置かない
   const json = JSON.stringify(__lightState);
   try{
     localStorage.setItem(STORAGE_KEY, json);
@@ -5739,10 +5740,17 @@ const SNAP_KEEP_DAYS = 7;    // v1.30.291: 14→7(予定が増え1個≒86KBに�
 const SNAP_MAX_COUNT = 3;    // v1.30.667: 5→3。672件で1本≒320KB・09-02実測で6本(=MAX+1のoff-by-one)1.9MB/合計3.18MBと警告3.5MBの目前。☁サーバー14世代があるので3で足りる
 // (旧)v1.30.516: 10→5。予定351件で1個≒170KBまで肥大し8個で約1.4MB=localStorage(上限5MB)の3割を占めていた(山田の実測)。⏪復元は直近5世代+☁サーバーバックアップ14世代で足りる
 // 🪶 軽量バックアップの中身: ローカル編集で失うと困るデータだけ(events に事務タスクも含まれる)
+// 🪶 v1.30.834(山田「データがふえてきました4.5M」10/22): 旧スプシから取り込んだ1〜7月(importedFrom・約1.6MB)を
+//   端末(localStorage・上限約5MB)や軽量バックアップに入れない。DBが正本で、その月を開けば読み直す(ensureEventsMonthLoaded_)。
+//   窓(eventsWindowFrom_)より新しい取込分・手入力の予定はこれまで通り保存。未送信の編集は cloudPending 側に残るので消えない。
+function eventsForLocalSave_(evs){
+  const wf = (typeof eventsWindowFrom_==='function') ? eventsWindowFrom_() : '';
+  return (evs||[]).filter(e=> !(e && e.importedFrom && wf && String(e.date||'') < wf));
+}
 function buildLightSnap_(){
   return JSON.stringify({
     _light: 1,
-    events: state.events || [],
+    events: eventsForLocalSave_(state.events),
     leaves: state.leaves || [],
     tasks: state.tasks || [],
     taskTrash: state.taskTrash || [],
