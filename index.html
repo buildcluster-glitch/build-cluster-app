@@ -3005,7 +3005,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.832</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.833</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -13406,6 +13406,9 @@ async function fetchJizenSchedule(opts={}){
 // 受信レコードを state.events にマージ (新規のみinsert / 既知は触らない / 削除はトーストのみ)
 // 事前イベントかどうか
 function isJizenEvent_(e){
+  // 🗂 v1.30.833: 旧スプシから取り込んだ過去の予定(importedFrom)は「事前」の仕組み(同じ物件名の自動まとめ・事前帯)に入れない。
+  //   まとめは日付を見ないので、今の事前と同じ名前の昔の予定があると、今の予定が消される恐れがあるため
+  if(e && e.importedFrom) return false;
   return e && (e.category === '事前' || (e.title||'').startsWith('事前 '));
 }
 // 事務タスク(チェックリスト)イベントか — カレンダーのグリッドには出さず「出社/休暇バッジ」専用にする
