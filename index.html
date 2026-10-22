@@ -3005,7 +3005,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.834</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.835</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -5745,8 +5745,10 @@ const SNAP_MAX_COUNT = 3;    // v1.30.667: 5→3。672件で1本≒320KB・09-02
 //   窓(eventsWindowFrom_)より新しい取込分・手入力の予定はこれまで通り保存。未送信の編集は cloudPending 側に残るので消えない。
 function eventsForLocalSave_(evs){
   const wf = (typeof eventsWindowFrom_==='function') ? eventsWindowFrom_() : '';
-  return (evs||[]).filter(e=> !(e && e.importedFrom && wf && String(e.date||'') < wf));
+  return (evs||[]).filter(e=> !(isImportedEvent_(e) && wf && String(e.date||'') < wf));
 }
+// 🗂 v1.30.835 旧スプシ取込か(印 importedFrom が無くても id の頭 ssev で分かる=834までの版で印が落ちた分も拾う)
+function isImportedEvent_(e){ return !!(e && (e.importedFrom || /^ssev[0-9a-f]{14}$/.test(String(e.id||'')))); }
 function buildLightSnap_(){
   return JSON.stringify({
     _light: 1,
@@ -13416,7 +13418,7 @@ async function fetchJizenSchedule(opts={}){
 function isJizenEvent_(e){
   // 🗂 v1.30.833: 旧スプシから取り込んだ過去の予定(importedFrom)は「事前」の仕組み(同じ物件名の自動まとめ・事前帯)に入れない。
   //   まとめは日付を見ないので、今の事前と同じ名前の昔の予定があると、今の予定が消される恐れがあるため
-  if(e && e.importedFrom) return false;
+  if(isImportedEvent_(e)) return false;
   return e && (e.category === '事前' || (e.title||'').startsWith('事前 '));
 }
 // 事務タスク(チェックリスト)イベントか — カレンダーのグリッドには出さず「出社/休暇バッジ」専用にする
@@ -24847,6 +24849,7 @@ function normalizeCloudEvent_(x){
     createdBy: x.createdBy || '',
     createdAt: x.createdAt || '',
     updatedAt: x.updatedAt || '',
+    ...(x.importedFrom ? { importedFrom: x.importedFrom } : {}),   // 🗂 v1.30.835 旧スプシ取込の印を落とさない(落ちると事前除外・端末に置かない判定が効かない)
   };
 }
 function normalizeCloudProperty_(x){
@@ -24887,6 +24890,7 @@ function denormalizeEventForCloud_(ev){
     createdBy: ev.createdBy || getMyself() || '',
     createdAt: ev.createdAt || new Date().toISOString(),
     updatedAt: ev.updatedAt || new Date().toISOString(),
+    ...(ev.importedFrom ? { importedFrom: ev.importedFrom } : {}),   // 🗂 v1.30.835 編集しても取込の印を残す
     updatedBy: getMyself() || '',   // 📜 v1.30.692: 最後にこの予定を保存した人(DB履歴の「誰が」。シートには列が無いので落ちる=無害)
   };
 }
