@@ -3009,7 +3009,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.839</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.840</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24268,25 +24268,8 @@ function renderYearStats(year){
   });
   html += `</tr>`;
 
-  // 年間付与日数(編集可)
-  html += `<tr class="ys-quota-row"><td class="ys-month-label">年間付与</td>`;
-  YS_STAFF.forEach(s=>{
-    html += `<td colspan="${CATS.length}"><input class="ys-quota-input" data-staff="${s}" type="number" min="0" value="${STAFF_QUOTA[s]||0}">日</td>`;
-  });
-  html += `</tr>`;
-
-  // 残日数 = 付与 - (年休 + 有給 + 半休)
-  // BC policy: 年休も付与から差し引き (5日義務分も有給扱い)
-  html += `<tr class="ys-remain-row"><td class="ys-month-label">残日数</td>`;
-  YS_STAFF.forEach(s=>{
-    const quota = STAFF_QUOTA[s]||0;
-    const used = totals[s]["年休"] + totals[s]["有給"] + totals[s]["半休"];
-    const remain = quota - used;
-    const warn = remain < 0 ? "warn" : "";
-    html += `<td colspan="${CATS.length}" class="${warn}">${remain.toFixed(1).replace(/\.0$/,"")}日</td>`;
-  });
-  html += `</tr>`;
-
+  // 🚫 v1.30.840(山田「かれんだーの有給年間付与数けしてほしい」10/22): 「年間付与」と、それを元にした「残日数」の行を撤去。
+  //   STAFF_QUOTA と入力の配線は残置(行が無いので無害)。
   // 合計休日数 (会社休日 + 年休 + 有給 + 半休)
   html += `<tr class="ys-sum-row"><td class="ys-month-label">合計休日数</td>`;
   YS_STAFF.forEach(s=>{
