@@ -3005,7 +3005,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.831</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.832</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -6545,6 +6545,7 @@ function gotoMonthTab_(y, mo){
 }
 
 function render(){
+  try{ if(typeof __maybeLoadOldEvents_==='function') __maybeLoadOldEvents_(); }catch(_){}   // 🗓 v1.30.832 前の月を開いたらその月の予定を取りに行く
   if(typeof bumpTaikyoEpoch_==='function') bumpTaikyoEpoch_();  // 立会仮想イベントのフレームキャッシュを更新(v1.30.46)
   try{ localStorage.setItem(VIEW_STORAGE_KEY, currentView); }catch(_){}  // 📱 ビュー記憶
   // 📱 下部ナビのアクティブ表示
@@ -24556,7 +24557,7 @@ async function cloudSyncPull({ replace=false, signal=null, prefetched=null, forc
   let data;
   const __gasPull = async ()=>{
     const t0 = Date.now();
-    const res = await fetch(calGasGetUrl_(), { cache:'no-store', signal });   // 🔐v1.30.803   // signal=ハング打ち切り用(v1.30.343)
+    const res = await fetch(calGasGetUrl_({ from: eventsWindowFrom_(), to: '2099-12-31' }), { cache:'no-store', signal });   // 🔐v1.30.803 / 🗓v1.30.832 GASも窓(窓GET)   // signal=ハング打ち切り用(v1.30.343)
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const d = await res.json();
     __lastGasEventsPullAt = Date.now();
@@ -24598,7 +24599,10 @@ async function cloudSyncPull({ replace=false, signal=null, prefetched=null, forc
   if(data.error) throw new Error(data.error);
 
   if(replace){
-    state.events = (data.events || []).map(normalizeCloudEvent_);
+    // 🗓 v1.30.832 窓の外(前の月を開いて取ってきた分)は手元を残す=全置換で過去の週が空にならない
+    const __wf = eventsWindowFrom_();
+    const __newEv = (data.events || []).map(normalizeCloudEvent_); const __ids = new Set(__newEv.map(e=>e.id));
+    state.events = __newEv.concat((state.events||[]).filter(e=> e && e.id && !__ids.has(e.id) && String(e.date||'') < __wf));
     if(typeof __evSnapRefresh_==='function') __evSnapRefresh_();   // 📜 v1.30.692
     state.cloudProperties = (data.properties || []).map(normalizeCloudProperty_);
     state.cloudLogs = (data.logs || []).map(normalizeCloudLog_);
@@ -25095,7 +25099,7 @@ async function cloudSyncPush(){
   //   古いGASは withPull を無視して従来の応答を返す＝snapshot が無ければ従来どおり別途GETする。
   const res = await fetch(cloudSync.url, {
     method: 'POST',
-    body: JSON.stringify({ action: 'bulkSync', data: ops, withPull: true, token: calGasToken_() }),   // 🔐v1.30.803
+    body: JSON.stringify({ action: 'bulkSync', data: ops, withPull: true, from: eventsWindowFrom_(), to: '2099-12-31', token: calGasToken_() }),   // 🔐v1.30.803 / 🗓v1.30.832 同梱の取得も窓
   });
   if(!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
@@ -26199,13 +26203,49 @@ async function fetchLedgerFromDb_({since='', maxMonths=3, signal}={}){
     return { ok:false, reason: (e && e.name==='AbortError') ? 'timeout' : m.slice(0,60), ms:Date.now()-t0 };
   }
 }
-async function fetchEventsFromDb_({signal}={}){
+// 🗓 v1.30.832(山田「1月からの予定全部コピーできる？」→ 先にカレンダーを軽く 10/22):
+//   予定は**直近だけ**読む(今月の2か月前の1日〜先の予定すべて)。それより前の月は、その週を開いた時にその月だけ取りに行く。
+//   旧スプシの1〜7月(約4,000件)を足しても、起動の読み込みが増えないようにするため。
+//   ⚠マージは追加/更新だけ(cloudMergeById_)=窓の外の手元の予定は消えない。replace(全置換)の時も窓の外は手元を残す
+const EVENTS_WINDOW_MONTHS = 2;
+function eventsWindowFrom_(){ const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - EVENTS_WINDOW_MONTHS); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`; }
+const __evOldMonthsLoaded = new Set(), __evOldMonthsLoading = new Set();
+async function ensureEventsMonthLoaded_(ym){
+  if(!ym || !/^\d{4}-\d{2}$/.test(ym)) return;
+  if(ym + '-01' >= eventsWindowFrom_()) return;                 // 窓の中=いつもの読み込みで来る
+  if(__evOldMonthsLoaded.has(ym) || __evOldMonthsLoading.has(ym)) return;
+  if(!(typeof eventsDbReadOn_==='function' && eventsDbReadOn_())) return;
+  __evOldMonthsLoading.add(ym);
+  try{
+    const [y,m] = ym.split('-').map(Number); const last = new Date(y, m, 0).getDate();
+    const r = await fetchEventsFromDb_({ from: ym+'-01', to: `${ym}-${String(last).padStart(2,'0')}` });
+    if(r && r.ok){
+      const evs = (r.events||[]).map(normalizeCloudEvent_).filter(e=> typeof isEventTombstoned_!=='function' || !isEventTombstoned_(e));
+      const pend = new Set((state.cloudPending||[]).filter(p=>CLOUD_SYNC_ACTIONS_EVENT.includes(p.action)).map(p=>p.data?.id).filter(Boolean));
+      cloudMergeById_(state.events, evs, pend);
+      __evOldMonthsLoaded.add(ym);
+      if(typeof render==='function') render();
+    }
+  }catch(e){ console.warn('[events-old] 読めず:', ym, e && e.message); }
+  finally{ __evOldMonthsLoading.delete(ym); }
+}
+function __maybeLoadOldEvents_(){
+  try{
+    if(typeof currentDate==='undefined' || !currentDate) return;
+    const d = new Date(currentDate); if(isNaN(d)) return;
+    const yms = new Set();
+    [-7, 0, 7].forEach(off=>{ const x = new Date(d); x.setDate(x.getDate()+off); yms.add(`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}`); });
+    yms.forEach(ym=>{ ensureEventsMonthLoaded_(ym); });
+  }catch(_){}
+}
+async function fetchEventsFromDb_({signal, from: __wFrom, to: __wTo}={}){
   const t0 = Date.now();
+  const __from = __wFrom || eventsWindowFrom_();
   let s = sbSession_();
   if(!s || !s.access_token) return { ok:false, reason:'no-session', ms:Date.now()-t0 };
   if(s.expires_at && (s.expires_at*1000 - Date.now()) < 60000){ try{ await sbRefresh_(); }catch(_){} s = sbSession_(); }
   if(!s || !s.access_token) return { ok:false, reason:'no-session', ms:Date.now()-t0 };
-  const base = `${SB_AUTH.url}/rest/v1/calendar_events?select=doc&is_deleted=eq.false&order=id.asc`;
+  const base = `${SB_AUTH.url}/rest/v1/calendar_events?select=doc&is_deleted=eq.false&doc->>date=gte.${__from}${__wTo ? `&doc->>date=lte.${__wTo}` : ''}&order=id.asc`;   // 🗓 v1.30.832 窓
   const hdr = tok => ({ 'apikey': SB_AUTH.key, 'Authorization': 'Bearer '+tok, 'Prefer': 'count=exact', 'Accept': 'application/json' });
   const all = []; let total = null, from = 0, retriedAuth = false;
   while(true){
@@ -28082,6 +28122,8 @@ function renderArchiveModal_(){
     __archiveLoading = true; __archiveYear = y; renderArchiveModal_();
     try{ __archiveRows = await fetchArchiveYear_(y); }
     catch(e){ __archiveRows = []; if(typeof showAutoSyncToast==='function') showAutoSyncToast("📚 読み込み失敗: "+e.message); }
+    // 🗓 v1.30.832 予定は直近しか手元に無いので、その年の月を全部取りに行ってから件数・保存に使う
+    try{ if(typeof ensureEventsMonthLoaded_==='function') await Promise.all(Array.from({length:12},(_,i)=>ensureEventsMonthLoaded_(`${y}-${String(i+1).padStart(2,'0')}`))); }catch(_){}
     __archiveLoading = false; renderArchiveModal_();
   });
   // 種別フィルタ
