@@ -1215,7 +1215,7 @@
   /* 🗑 取消した立会を最終確認帯の最下部に小さく(v1.30.208) */
   .ss-check-card{padding:2px 5px !important;cursor:pointer}
   .ss-check-card .ssc-row{display:flex;align-items:center;gap:4px;font-size:11px}
-  .ss-check-card .ssc-badge{background:#e11d48;color:#fff;font-size:8px;font-weight:700;padding:0 4px;border-radius:4px;white-space:nowrap;flex-shrink:0}
+  .ss-check-card .ssc-badge{background:#e11d48;color:#fff;box-shadow:0 0 0 1px #fff;font-size:8px;font-weight:700;padding:0 4px;border-radius:4px;white-space:nowrap;flex-shrink:0}
   .ss-check-card .ssc-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .taikyo-dismissed-card{opacity:.6;background:#f8fafc !important;border-left:3px solid #d8b4fe !important;padding:2px 4px !important}
   .taikyo-dismissed-card .tdc-row{display:flex;align-items:center;gap:4px;font-size:11px}
@@ -3009,7 +3009,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.837</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.838</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -6781,7 +6781,7 @@ function renderChecks(){
   const __ssCheckCardHtml = ev=>{
     const sc = (typeof STAFF_COLORS!=='undefined' && STAFF_COLORS[ev.staff]) || '';
     const t = String(ev.title||'').split('\n')[0];
-    return `<div class="check-card ss-check-card" data-ss-check-ev="${escapeHtml(ev.id)}" style="${sc?`border-left:4px solid ${sc} !important;`:''}" title="${escapeHtml(t+(ev.staff?(' / '+ev.staff):'')+' (旧スプシから移行・台帳とはつながっていません)')}"><div class="ssc-row"><span class="ssc-badge">最確</span><span class="ssc-name">${escapeHtml(t)}</span></div></div>`;
+    return `<div class="check-card ss-check-card" data-ss-check-ev="${escapeHtml(ev.id)}" style="${sc?`background:${sc} !important;color:${(typeof textColorFor==='function')?textColorFor(sc):'#000'} !important;border-left:4px solid ${sc} !important;font-weight:700;`:''}" title="${escapeHtml(t+(ev.staff?(' / '+ev.staff):'')+' (旧スプシから移行・台帳とはつながっていません)')}"><div class="ssc-row"><span class="ssc-badge">最確</span><span class="ssc-name">${escapeHtml(t)}</span></div></div>`;
   };
   const colCount = cols.length;
   const syncedAt = localStorage.getItem("buildcluster_gas_synced_at");
