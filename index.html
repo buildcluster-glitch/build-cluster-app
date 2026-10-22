@@ -3005,7 +3005,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.835</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.836</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -5768,6 +5768,18 @@ function listSnapshots_(){
   }
   return ks.sort(); // キー=日付_時刻 なので文字列ソート=時系列
 }
+// 🪶 v1.30.836(山田の内訳: 16:58のバックアップ1本が1837KB): 834/835より前に撮った端末バックアップに入ってしまった
+//   旧スプシ取込の過去分を抜いて書き直す(中身の他の予定・タスク・休暇はそのまま)。取込分はDBが正本。
+function slimSnapshots_(){
+  listSnapshots_().forEach(k=>{
+    try{
+      const raw = localStorage.getItem(k); if(!raw || raw.indexOf('ssev')<0) return;
+      const o = JSON.parse(raw); if(!o || !o._light || !Array.isArray(o.events)) return;
+      const ev = eventsForLocalSave_(o.events); if(ev.length === o.events.length) return;
+      o.events = ev; localStorage.setItem(k, JSON.stringify(o));
+    }catch(_){}
+  });
+}
 function pruneSnapshots_(){
   const cutoff = snapDateStr_(new Date(Date.now() - SNAP_KEEP_DAYS*86400000));
   listSnapshots_().forEach(k=>{
@@ -5928,7 +5940,7 @@ function cleanupLegacySnapshots_(){
 }
 // 起動15秒後(クラウド同期が落ち着いてから)＋以後5分おきに枠チェック
 setTimeout(cleanupLegacySnapshots_, 8000);   // 軽量化前の重いバックアップを掃除
-setTimeout(()=>{ try{ pruneSnapshots_(); }catch(_){} }, 5000);
+setTimeout(()=>{ try{ pruneSnapshots_(); }catch(_){} try{ slimSnapshots_(); }catch(_){} }, 5000);
 // 📦 v1.30.605: 起動時に「書けるか」を実測し、書けなければ再取得できるキャッシュを自動解放する。
 //   鈴木iPhone事件=localStorage満杯→**全ての保存が黙って失敗**→担当色が何度直しても消える、が3日続いた。
 //   診断ボタンを押してもらわなくても、アプリを開いた時点で自動で復旧させる。
