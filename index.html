@@ -3009,7 +3009,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.838</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.839</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -6148,7 +6148,9 @@ function isHoliday(d){
       if(q.getDay()===0 && JP_HOLIDAYS.has(fmtDate(q)) && (dt - q) <= 7*86400000){
         // dt と q の間がすべて祝日であることを確認
         let ok=true; const x=new Date(q); x.setDate(x.getDate()+1);
-        while(x < dt){ if(!JP_HOLIDAYS.has(fmtDate(x))){ ok=false; break; } x.setDate(x.getDate()+1); }
+        //   🐞 v1.30.839: 間に挟めるのは日付固定の祝日(5/4みどり・5/5こども)だけ。表に入っている振替(例 2026-05-06)を
+        //   「間の祝日」と数えると、その翌日(2026-05-07 木)まで休日になっていた(旧スプシ移行の日祝判定で発覚 10/22)。
+        while(x < dt){ const md=fmtDate(x).slice(5); if(!JP_HOLIDAYS.has(fmtDate(x)) || (md!=='05-04' && md!=='05-05')){ ok=false; break; } x.setDate(x.getDate()+1); }
         if(ok) return true;
       }
     }
