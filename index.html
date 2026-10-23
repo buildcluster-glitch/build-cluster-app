@@ -3009,7 +3009,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.843</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.844</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -12048,10 +12048,13 @@ async function mutateAnnounce_(mutator){
   if(s.url&&s.token){ try{ await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save-shared-config',key:ANNOUNCE_KEY,value:JSON.stringify(map),token:s.token,savedBy:'calendar-app'})}); }catch(e){ console.warn('[announce] push失敗:',e.message); } }
   return map;
 }
-const ANNOUNCE_MAX = 3;   // 📢 表示中の連絡事項は最大3件(v1.30.304・山田)
+const ANNOUNCE_MAX = 3;   // 📢 表示中の連絡事項は最大3件(v1.30.304・山田) → v1.30.844から「1人あたり」3件
+// 🐞 v1.30.844(まどか🐞10/23「3件あるから出せない」): 上限が全員共通だったので、山田の連絡3件でまどかが何も出せなかった。
+//   **出した人ごとに**3件まで(他の人の連絡は消せないため)。
+function announceMyActiveCount_(me){ return announceActiveItems_().filter(it=> it && it.by===me).length; }
 function addAnnounce_(text, to){
   text=String(text||'').trim(); if(!text) return;
-  if(announceActiveItems_().length >= ANNOUNCE_MAX) return;   // 上限ガード(ボタン側でもチェック)
+  if(announceMyActiveCount_((typeof getMyself==='function')?getMyself():"") >= ANNOUNCE_MAX) return;   // 上限ガード(ボタン側でもチェック)・1人あたり v1.30.844
   const me=(typeof getMyself==='function')?getMyself():"";
   const __all=announceStaffAll_();
   const __to=(Array.isArray(to)?to:[]).filter(s=>__all.includes(s));   // 🎯 空=全員(v1.30.488)
@@ -22760,7 +22763,7 @@ function openAnnounceCompose_(){
   if(!me){ alert('先に「👤 自分」を設定してください(👤マイ)'); return; }
   // 🔕 v1.30.585: 上限に達していても**画面は開く**(履歴を見に来た時に開けないと困るため)。
   //   出せないことは中の注意書きと「📢出す」ボタンの無効化で伝える。
-  const __overMax = (typeof announceActiveItems_==='function' && announceActiveItems_().length>=ANNOUNCE_MAX);
+  const __overMax = (typeof announceMyActiveCount_==='function' && announceMyActiveCount_(me)>=ANNOUNCE_MAX);   // 1人あたり v1.30.844
   let ov=document.getElementById('announceComposeModal');
   if(!ov){
     ov=document.createElement('div'); ov.className='modal-overlay'; ov.id='announceComposeModal';
@@ -22857,7 +22860,7 @@ function openAnnounceCompose_(){
     post.style.opacity = __overMax ? .5 : '';
     post.style.cursor = __overMax ? 'not-allowed' : '';
     mx.style.display = __overMax ? 'block' : 'none';
-    mx.textContent = __overMax ? `いま表示中の連絡が${ANNOUNCE_MAX}件あるため、新しくは出せません。確認が済んだ連絡を🗑で消してからどうぞ（下の履歴は見られます）。` : '';
+    mx.textContent = __overMax ? `あなたが出している連絡が${ANNOUNCE_MAX}件表示中のため、新しくは出せません。確認が済んだ自分の連絡を🗑で消してからどうぞ（下の履歴は見られます）。` : '';
   }
   ov.querySelector('#ac-post').onclick=()=>{
     if(__overMax) return;
