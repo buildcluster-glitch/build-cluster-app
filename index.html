@@ -1988,6 +1988,15 @@
   /* KV: 横並びインラインフロー(コンパクト) */
   /* 📊 v1.30.798 業者別 売上/発注/材料費/粗利(見積アプリ1105の発注書タブと同じ表) */
   .rd-gp{margin:4px 0 2px;font-size:11px}
+  /* 📝 見積の備考(v1.30.845): 現場メモの上・最初は1行だけ(押すと全文) */
+  .rd-remarks{margin:0 0 8px}
+  .rd-remarks:empty{display:none}
+  .rd-remarks .rm-head{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;padding:6px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;font-size:12px;min-width:0}
+  .rd-remarks .rm-head b{white-space:nowrap}
+  .rd-remarks .rm-peek{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#475569}
+  .rd-remarks .rm-n{color:var(--muted);white-space:nowrap;font-size:11px}
+  .rd-remarks .rm-body{white-space:pre-wrap;word-break:break-word;font-size:12.5px;line-height:1.7;padding:8px 12px;border:1px solid #cbd5e1;border-top:0;border-radius:0 0 8px 8px;background:#fff;max-height:50vh;overflow:auto}
+  .rd-remarks.open .rm-head{border-radius:8px 8px 0 0}
   .rd-gp:empty{display:none}
   .rd-gp .gp-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;cursor:pointer;user-select:none;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:#f8fafc}
   .rd-gp .gp-head b{font-size:12px}
@@ -3009,7 +3018,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.844</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.845</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -3298,6 +3307,8 @@
     <div class="rd-summary" id="rdSummary"></div>
     <div class="rd-filter-bar hide" id="rdFilterBar"></div>
     <div class="rd-scroll">
+      <!-- 📝 見積の備考(v1.30.845・山田「見積もりアプリの備考欄に書いた内容…折りたたみ状態で」) -->
+      <div class="rd-remarks" id="rdRemarks"></div>
       <!-- 💬 現場メモは最上部(v1.30.479・山田): 工事一覧をスクロールしなくても書ける/読める -->
       <div class="rd-group rd-group-memo">
         <div class="rd-group-head">💬 現場メモ</div>
@@ -29837,7 +29848,7 @@ function renderRestoDetail(){
   const __rdKeep = rdCaptureInputs_();   // 📝 入力中の作業ログ/未送信写真を退避(v1.30.462)
   // 📷 別物件に切り替わったら未確定の現場メモ下書き(写真/本文)を破棄。
   //    ダイアログのDOMは全物件共有のため、放置すると他物件でも表示され続ける(鈴木報告 v1.30.440)
-  if(p.id !== __rdLastDetailId){ resetRdCommentDraft_(); __rdLastDetailId = p.id; }
+  if(p.id !== __rdLastDetailId){ resetRdCommentDraft_(); __rdLastDetailId = p.id; __rdRemarksOpen = false; }   // 📝 備考は物件を開くたびに畳む(v1.30.845)
   // 📋 営業/工事ステータスバッジ付きタイトル (v1.9.3〜)
   const tEl = document.getElementById("rdTitle");
   // 営業ステータス色: 受注系=緑/見積中=青/失注=グレー
@@ -29989,9 +30000,60 @@ function renderRestoDetail(){
   renderRestoTrash(p);
   renderRestoComments(p);
   renderRestoAlert_(p);   // ⚠ アラート(常時赤字・全員共有) 現場メモの下 v1.30.410
+  renderRestoRemarks_(p);   // 📝 見積の備考(v1.30.845)
   rdRestoreInputs_(__rdKeep);   // 📝 打ちかけの作業ログ・カーソル位置・未送信写真を復元(v1.30.462)
 }
 
+// 📝 v1.30.845(山田「見積もりアプリの備考欄に書いた内容 カレンダーの原状回復進捗カードに出せる？…めちゃ長い時もあるから折りたたみ状態で」10/26):
+//   見積の備考(anken.doc.meta.remarks)を、物件を開いた時にDBから読んで現場メモの上に出す。最初は1行だけ・押すと全文。
+//   台帳の射影(projection)には入っていないので、射影は変えずにその物件の1行だけ取りに行く(見積側の変更不要)。読むだけ。
+var __rdRemarksOpen = false;   // var=起動途中の描画でも未初期化エラーにしない
+var __rdRemarksCache = new Map();   // 物件id → { text, at }
+function __rdRemarksQuery_(p){
+  if(p && p.extEstimateId && isLedgerIdKey_(p.extEstimateId)) return 'id=eq.' + encodeURIComponent(p.extEstimateId);
+  if(p && p.extDriveFileId) return ledgerKeyQuery_(p.extDriveFileId);
+  return '';
+}
+async function fetchRestoRemarks_(p){
+  const q = __rdRemarksQuery_(p); if(!q) return null;
+  let s = sbSession_(); if(!s || !s.access_token) return null;
+  const url = `${SB_AUTH.url}/rest/v1/anken_v?select=remarks:doc->meta->>remarks,is_deleted&${q}&limit=2`;
+  for(let i=0;i<2;i++){
+    const res = await fetch(url, { headers:{ 'apikey':SB_AUTH.key, 'Authorization':'Bearer '+s.access_token, 'Accept':'application/json' }, cache:'no-store' });
+    if(res.status===401 && i===0){ try{ await sbRefresh_(); }catch(_){} s = sbSession_(); if(!s||!s.access_token) return null; continue; }
+    if(res.status!==200) return null;
+    const rows = (await res.json()).filter(r=> r && !r.is_deleted);
+    if(rows.length!==1) return null;
+    return String(rows[0].remarks||'');
+  }
+  return null;
+}
+function drawRestoRemarks_(text){
+  const box = document.getElementById('rdRemarks'); if(!box) return;
+  const t = String(text||'').replace(/\s+$/,'');
+  if(!t){ box.innerHTML=''; box.classList.remove('open'); return; }
+  const lines = t.split(/\r?\n/);
+  box.classList.toggle('open', __rdRemarksOpen);
+  box.innerHTML = `<div class="rm-head" data-rmtoggle="1" title="押すと${__rdRemarksOpen?'閉じます':'全文を開きます'}">${__rdRemarksOpen?'▼':'▶'} <b>📝 見積の備考</b>`
+    + (__rdRemarksOpen ? '' : `<span class="rm-peek">${escapeHtml(lines[0])}</span>`)
+    + `<span class="rm-n">${lines.length>1?lines.length+'行':''}</span></div>`
+    + (__rdRemarksOpen ? `<div class="rm-body">${escapeHtml(t)}</div>` : '');
+  const h = box.querySelector('[data-rmtoggle]');
+  if(h) h.onclick = ()=>{ __rdRemarksOpen = !__rdRemarksOpen; drawRestoRemarks_(t); };
+}
+function renderRestoRemarks_(p){
+  if(typeof __rdRemarksCache==="undefined" || !__rdRemarksCache || !p) return;
+  const c = __rdRemarksCache.get(p.id);
+  drawRestoRemarks_(c ? c.text : '');
+  if(c && Date.now()-c.at < 60000) return;   // 1分以内に読んだばかりなら取り直さない(描き直しのたびに読まない)
+  const pid = p.id;
+  __rdRemarksCache.set(pid, { text: c ? c.text : '', at: Date.now() });
+  fetchRestoRemarks_(p).then(t=>{
+    if(t === null) return;
+    __rdRemarksCache.set(pid, { text: t, at: Date.now() });
+    if(restoDetailId === pid) drawRestoRemarks_(t);
+  }).catch(e=>{ console.warn('[備考] 読めず:', e && e.message); });
+}
 // ⚠ アラートのキー解決 v1.30.426(共通化・v1.30.411の restoAlertId_ を一般化)
 //   同じ物件でも**レコードごとにアラートのキーが違う**(最終確認ck.id="gas-"+fid / 事前・予定ev.id / 立会_taikyoRawId)。
 //   そのため「事前チップに書いたアラートが最終確認カードに出ない」事故が起きる(山田報告 2026-07-15:
