@@ -3018,7 +3018,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.845</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.846</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -28037,8 +28037,10 @@ function deviceInfo_(){
     try{ standalone = !!(window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)); }catch(_){}
     if(standalone) parts.push('ホーム画面');
     try{   // 端末の保存容量(5MB上限・過去に容量圧迫で保存失敗した実績あり)
-      let bytes=0; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); bytes += (k.length + (localStorage.getItem(k)||'').length); }
+      let bytes=0; const grp={}; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); const n=(k.length + (localStorage.getItem(k)||'').length); bytes += n; const g=(k.indexOf(SNAP_PREFIX)===0)?'控え':(k===STORAGE_KEY?'本体':k.replace(/^(buildcluster_|bc_)/,'')); grp[g]=(grp[g]||0)+n; }
       parts.push(bytes >= 1048576 ? (bytes/1048576).toFixed(1)+'MB' : Math.round(bytes/1024)+'KB');   // 1MB未満はKB表示(消したて端末が0.0MBに見えるのを防ぐ)
+      // 🔍 v1.30.846(山田「南部のカレンダーで容量がいっぱい」10/27): 3MBを超えたら上位3つも載せる=本人に🔍内訳を押してもらわずに原因が分かる
+      if(bytes >= 3*1048576) parts.push('['+Object.keys(grp).sort((a,b)=>grp[b]-grp[a]).slice(0,3).map(g=>g+Math.round(grp[g]/1024)+'K').join(',')+']');
     }catch(_){}
     if(!os) parts.push(ua.slice(0,60));   // 未知端末の時だけUAの頭を残す(判別できないと調べようがないため)
     return parts.join(' ');
