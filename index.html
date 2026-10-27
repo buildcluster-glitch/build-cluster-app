@@ -3018,7 +3018,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.846</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.847</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -5761,7 +5761,9 @@ const SNAP_SLOTS = [9, 13, 18];
 //   原状回復/物件マスタ/立会/修繕/最終確認はクラウド/Driveから再取得できるのでバックアップに含めない。
 //   軽くなったので保持期間・件数を元に戻す(2週間×3枠ぶん)。
 const SNAP_KEEP_DAYS = 7;    // v1.30.291: 14→7(予定が増え1個≒86KBに肥大→枠を絞る)
-const SNAP_MAX_COUNT = 3;    // v1.30.667: 5→3。672件で1本≒320KB・09-02実測で6本(=MAX+1のoff-by-one)1.9MB/合計3.18MBと警告3.5MBの目前。☁サーバー14世代があるので3で足りる
+const SNAP_MAX_COUNT = 1;    // v1.30.847(山田「南部のカレンダーで容量がいっぱい」10/27): 3→1。予定が増え1本≒700KB・まどか端末の実測で控え3本=2.1MB(全体3.9MBの過半)/南部4.6MBで警告4.3MB超え。
+//   予定の正本はDB(calendar_events)＋☁サーバー控え24世代(calendar_backup_h00〜h23)があるので、端末の控えは直近1本で足りる。
+// (旧)v1.30.667: 5→3。672件で1本≒320KB・09-02実測で6本(=MAX+1のoff-by-one)1.9MB/合計3.18MBと警告3.5MBの目前。☁サーバー14世代があるので3で足りる
 // (旧)v1.30.516: 10→5。予定351件で1個≒170KBまで肥大し8個で約1.4MB=localStorage(上限5MB)の3割を占めていた(山田の実測)。⏪復元は直近5世代+☁サーバーバックアップ14世代で足りる
 // 🪶 軽量バックアップの中身: ローカル編集で失うと困るデータだけ(events に事務タスクも含まれる)
 // 🪶 v1.30.834(山田「データがふえてきました4.5M」10/22): 旧スプシから取り込んだ1〜7月(importedFrom・約1.6MB)を
@@ -5804,7 +5806,7 @@ function slimSnapshots_(){
     }catch(_){}
   });
 }
-function pruneSnapshots_(){
+function pruneSnapshots_(keep){
   const cutoff = snapDateStr_(new Date(Date.now() - SNAP_KEEP_DAYS*86400000));
   listSnapshots_().forEach(k=>{
     const dateStr = k.slice(SNAP_PREFIX.length, SNAP_PREFIX.length+10); // YYYY-MM-DD
@@ -5813,7 +5815,9 @@ function pruneSnapshots_(){
   // 件数上限: 直近 SNAP_MAX_COUNT 件だけ残す(古い順に削除)v1.30.122
   let ks = listSnapshots_();
   // v1.30.667: この関数は「撮る直前」に呼ばれるので MAX-1 まで落とす=撮った後にちょうど MAX 本(従来は MAX+1 本残っていた)
-  while(ks.length > Math.max(0, SNAP_MAX_COUNT-1)){ localStorage.removeItem(ks.shift()); }
+  //   v1.30.847: 起動時の整理は keep=SNAP_MAX_COUNT(撮る前ではないので0本にしない=⏪の一覧を空にしない)
+  const lim = (keep != null) ? keep : SNAP_MAX_COUNT-1;
+  while(ks.length > Math.max(0, lim)){ localStorage.removeItem(ks.shift()); }
 }
 // v1.30.153: 軽量化したので「9/13/18時の枠」ではなく、内容が変わったら最短8分間隔でこまめにバックアップ。
 //   →スロット間(例14時)に追加して消えたタスクも数分以内にバックアップされ、消失しても戻せる。
@@ -5964,7 +5968,7 @@ function cleanupLegacySnapshots_(){
 }
 // 起動15秒後(クラウド同期が落ち着いてから)＋以後5分おきに枠チェック
 setTimeout(cleanupLegacySnapshots_, 8000);   // 軽量化前の重いバックアップを掃除
-setTimeout(()=>{ try{ pruneSnapshots_(); }catch(_){} try{ slimSnapshots_(); }catch(_){} }, 5000);
+setTimeout(()=>{ try{ pruneSnapshots_(SNAP_MAX_COUNT); }catch(_){} try{ slimSnapshots_(); }catch(_){} }, 5000);
 // 📦 v1.30.605: 起動時に「書けるか」を実測し、書けなければ再取得できるキャッシュを自動解放する。
 //   鈴木iPhone事件=localStorage満杯→**全ての保存が黙って失敗**→担当色が何度直しても消える、が3日続いた。
 //   診断ボタンを押してもらわなくても、アプリを開いた時点で自動で復旧させる。
