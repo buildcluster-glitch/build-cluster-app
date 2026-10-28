@@ -3018,7 +3018,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.851</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.852</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -36028,11 +36028,17 @@ window.__invAddStockFromMaterial_ = (entries)=>{
 //     2つの部品は📖を開いた時だけ cdnjs から読む(起動を重くしない)。読めない時は本文をそのまま文字で出す。
 //   保存は版つき: 開いた時の版と今の版が違えば保存しない(「〇〇さんが先に直しました」)。消す=ゴミ箱(戻せる)。
 //   NotePMからの引っ越し分は id='np_<NotePMのページコード>'、ページ間リンクは '#manual:np_…' に書き換え済み。
+//   v1.30.852(山田「トップページ・リアクション・投稿・検索もほしい」・migration 093):
+//     🏠トップ=お知らせ(id 'mp_notice' の普通のページ)・新着/更新・よく見られている(30日の閲覧人数)・自分が最近開いた(この端末)
+//     リアクション=6種(👍❤️🙏👀🎉😂)・押した人の名前を出す / 閲覧はページを開くたびに manual_view で1回数える
+//     編集=太字・見出し・箇条書き・表などのボタン、📷その場で撮る、画像の貼り付け / 検索=フォルダ・直した人・期間・並び順で絞る
 // ====================================================================
 const MAN_BUCKET = 'manuals';
 const MAN_REF_PREFIX = 'sb:manuals/';
 const MAN_LAST_KEY = 'bc_manual_last';
 const MAN_DRAFT_PREFIX = 'bc_manual_draft_';
+const MAN_RECENT_KEY = 'bc_manual_recent';   // 自分が最近開いたページ(id・題名だけ10件)
+const MAN_EMOJIS = ['👍', '❤️', '🙏', '👀', '🎉', '😂'];   // 093のCHECKと同じ6種
 const MAN_LIBS = [
   ['marked', 'https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js'],
   ['DOMPurify', 'https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js'],
@@ -36041,7 +36047,8 @@ const MAN_LIBS = [
 const MAN_URI_RE = /^(?:(?:(?:f|ht)tps?|mailto|tel|sb):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i;
 const MAN_IMG_EXT = /^(jpe?g|jfif|png|gif|webp|bmp)$/i;
 const MAN_VIDEO_EXT = /^(mp4|mov|m4v|webm)$/i;
-const __man = { tree:null, trash:false, cur:null, mode:'view', q:'', results:null, open:new Set(), libs:null, signed:new Map(), hist:null, busy:false, folderId:'' };
+const __man = { tree:null, trash:false, cur:null, mode:'view', q:'', results:null, open:new Set(), libs:null, signed:new Map(), hist:null, busy:false, folderId:'',
+                hl:'', filt:{ folder:'', user:'', days:'', sort:'' }, filtOpen:false };
 
 function manExtOf_(name){ const m = /\.([A-Za-z0-9]{1,8})(?:$|\?)/.exec(String(name||'')); return m ? m[1].toLowerCase() : ''; }
 function manIsRef_(v){ return typeof v === 'string' && v.indexOf(MAN_REF_PREFIX) === 0; }
@@ -36096,6 +36103,60 @@ function manSnippetHtml_(snippet, q){
   const i = s.toLowerCase().indexOf(String(q).toLowerCase());
   if(i < 0) return esc(s);
   return esc(s.slice(0,i)) + '<b style="background:#fef08a">' + esc(s.slice(i, i+q.length)) + '</b>' + esc(s.slice(i+q.length));
+}
+// 最近開いたページ: 先頭に足し、同じidは前のを消す・10件まで
+function manRecentPush_(list, id, title){
+  const out = [{ id:String(id), title:String(title||'').slice(0,80) }];
+  (Array.isArray(list) ? list : []).forEach(x => { if(x && x.id && x.id !== id && out.length < 10) out.push({ id:x.id, title:x.title }); });
+  return out;
+}
+// 「3時間前」「昨日」「10/2」の形
+function manAgo_(iso, now){
+  const t = Date.parse(iso||''); if(isNaN(t)) return '';
+  const n = now || Date.now(), m = Math.floor((n - t) / 60000);
+  if(m < 1) return 'たった今';
+  if(m < 60) return m + '分前';
+  if(m < 24*60) return Math.floor(m/60) + '時間前';
+  const d = new Date(t), today = new Date(n);
+  const days = Math.round((new Date(today.getFullYear(),today.getMonth(),today.getDate()) - new Date(d.getFullYear(),d.getMonth(),d.getDate())) / 86400000);
+  if(days === 1) return '昨日';
+  if(days < 7) return days + '日前';
+  return (d.getFullYear() === today.getFullYear() ? '' : d.getFullYear() + '/') + (d.getMonth()+1) + '/' + d.getDate();
+}
+// 期間の絞り込み(日数) → 'YYYY-MM-DD'(その日以降)。空=絞らない
+function manSinceDate_(days, now){
+  const n = Number(days); if(!n) return null;
+  const d = new Date((now || Date.now()) - n*86400000);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+// 編集ボタン: 選んだ文字を前後で囲む / 行の頭に記号を付ける。戻り={value, start, end}
+function manWrapText_(value, start, end, kind){
+  const v = String(value||''); const sel = v.slice(start, end);
+  const lineStart = v.lastIndexOf('\n', start - 1) + 1;
+  const pre = (t) => { const lines = (sel || '').split('\n'); return lines.map((l,i) => t(i) + l).join('\n'); };
+  let ins, s0 = start, e0 = end;
+  switch(kind){
+    case 'bold':  ins = '**' + (sel || '太字') + '**'; break;
+    case 'red':   ins = '<span style="color:#dc2626">' + (sel || '赤字') + '</span>'; break;
+    case 'h2': case 'h3': {
+      const mark = kind === 'h2' ? '## ' : '### ';
+      const lineEnd = v.indexOf('\n', start); const le = lineEnd < 0 ? v.length : lineEnd;
+      const line = v.slice(lineStart, le).replace(/^#{1,6}\s*/, '');
+      const nv = v.slice(0, lineStart) + mark + (line || '見出し') + v.slice(le);
+      const pos = lineStart + mark.length + (line || '見出し').length;
+      return { value:nv, start:pos, end:pos };
+    }
+    case 'ul':    ins = (start === lineStart ? '' : '\n') + pre(() => '- ') + (sel ? '' : '項目'); break;
+    case 'ol':    ins = (start === lineStart ? '' : '\n') + pre(i => (i+1) + '. ') + (sel ? '' : '項目'); break;
+    case 'check': ins = (start === lineStart ? '' : '\n') + pre(() => '- [ ] ') + (sel ? '' : 'やること'); break;
+    case 'quote': ins = (start === lineStart ? '' : '\n') + pre(() => '> ') + (sel ? '' : '注意書き'); break;
+    case 'link':  ins = '[' + (sel || 'リンクの文字') + '](https://)'; break;
+    case 'table': ins = '\n| 項目 | 内容 | 備考 |\n| --- | --- | --- |\n|  |  |  |\n|  |  |  |\n'; break;
+    case 'hr':    ins = '\n\n---\n\n'; break;
+    default: return { value:v, start, end };
+  }
+  const nv = v.slice(0, s0) + ins + v.slice(e0);
+  return { value:nv, start:s0 + ins.length, end:s0 + ins.length };
 }
 function manRpc_(fn, body){ return calRpcRaw_(fn, body||{}); }
 
@@ -36189,6 +36250,23 @@ function manEnsureModal_(){
   #manualModal .markdown-body pre{background:#f8fafc;padding:8px;overflow:auto;border-radius:6px}
   #manualModal .markdown-body blockquote{border-left:4px solid #cbd5e1;margin:6px 0;padding:2px 10px;color:#475569}
   #manualModal .man-att{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;padding-top:10px;border-top:1px dashed var(--border)}
+  #manualModal .man-home{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:14px}
+  #manualModal .man-card{border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:#fff;min-width:0}
+  #manualModal .man-card h3{margin:0 0 6px;font-size:14px}
+  #manualModal .man-item{display:flex;gap:6px;align-items:baseline;padding:5px 2px;border-bottom:1px solid #f1f5f9;cursor:pointer;font-size:13px}
+  #manualModal .man-item:hover{background:#f8fafc}
+  #manualModal .man-item .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #manualModal .man-item .m{font-size:11px;color:var(--muted);white-space:nowrap}
+  #manualModal .man-notice{max-height:46vh;overflow:auto;font-size:13px}
+  #manualModal .man-react{display:flex;flex-wrap:wrap;gap:6px;margin-top:16px;align-items:center}
+  #manualModal .man-react button{border:1px solid var(--border);background:#fff;border-radius:999px;padding:3px 10px;font-size:15px;cursor:pointer}
+  #manualModal .man-react button.on{background:#dbeafe;border-color:#60a5fa}
+  #manualModal .man-react button b{font-size:12px;margin-left:3px}
+  #manualModal .man-tools{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px}
+  #manualModal .man-tools button,#manualModal .man-tools label{font-size:12px;padding:3px 8px;border:1px solid var(--border);background:#f8fafc;border-radius:6px;cursor:pointer}
+  #manualModal mark.man-hl{background:#fde047;padding:0 1px}
+  #manualModal .man-filt{display:grid;grid-template-columns:auto 1fr;gap:4px 6px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--border);font-size:12px;background:#f8fafc}
+  #manualModal .man-filt select,#manualModal .man-filt input{font-size:12px;padding:3px 4px;min-width:0;width:100%;box-sizing:border-box}
   #manualModal textarea.man-body{width:100%;min-height:52vh;font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.5;padding:8px;border:1px solid var(--border);border-radius:6px;box-sizing:border-box}
   @media (max-width:760px){
     #manualModal .modal{width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;border-radius:0}
@@ -36197,6 +36275,7 @@ function manEnsureModal_(){
     #manualModal .man-wrap.show-main .man-side{display:none}
     #manualModal .man-wrap:not(.show-main) .man-main{display:none}
     #manualModal .man-main{padding:10px 12px 40px}
+    #manualModal .man-home{grid-template-columns:minmax(0,1fr)}
   }`;
   document.head.appendChild(st);
   const ov = document.createElement('div'); ov.className = 'modal-overlay'; ov.id = 'manualModal';
@@ -36206,6 +36285,7 @@ function manEnsureModal_(){
         <span>📖 社内マニュアル</span>
         <span id="man-status" style="font-weight:400;font-size:11px;color:var(--muted)"></span>
         <span style="margin-left:auto;display:flex;gap:6px">
+          <button class="btn man-mini" id="man-home" title="トップ(お知らせ・新着・よく見られている)">🏠 トップ</button>
           <button class="btn man-mini" id="man-trash-toggle" title="ゴミ箱に入れたページを見る・戻す">🗑 ゴミ箱</button>
           <button class="btn man-mini" id="man-close">閉じる</button>
         </span>
@@ -36213,8 +36293,17 @@ function manEnsureModal_(){
       <div class="man-wrap" id="man-wrap">
         <div class="man-side">
           <div style="padding:8px;display:flex;gap:6px;border-bottom:1px solid var(--border)">
-            <input id="man-q" type="search" placeholder="🔍 題名・本文を検索" style="flex:1;min-width:0;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+            <input id="man-q" type="search" placeholder="🔍 題名・本文・添付名で検索" style="flex:1;min-width:0;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+            <button class="btn man-mini" id="man-filt-toggle" title="フォルダ・直した人・期間で絞り込む">絞込▾</button>
             <button class="btn man-mini" id="man-new-page" title="選んでいるフォルダに新しいページを作る">＋ページ</button>
+          </div>
+          <div class="man-filt" id="man-filt" style="display:none">
+            <span>フォルダ</span><select id="man-f-folder"></select>
+            <span>直した人</span><input id="man-f-user" list="man-f-users" placeholder="名前の一部">
+            <span>期間</span><select id="man-f-days"><option value="">すべて</option><option value="7">1週間以内</option><option value="30">1か月以内</option><option value="90">3か月以内</option><option value="365">1年以内</option></select>
+            <span>並び</span><select id="man-f-sort"><option value="">当たりの良い順</option><option value="new">更新の新しい順</option></select>
+            <datalist id="man-f-users"></datalist>
+            <span></span><button class="btn man-mini" id="man-f-clear">絞り込みを外す</button>
           </div>
           <div class="man-list" id="man-list"></div>
         </div>
@@ -36225,8 +36314,16 @@ function manEnsureModal_(){
   ov.onclick = e => { if(e.target === ov) manClose_(); };
   ov.querySelector('#man-close').onclick = manClose_;
   ov.querySelector('#man-trash-toggle').onclick = () => { __man.trash = !__man.trash; __man.q=''; ov.querySelector('#man-q').value=''; __man.results=null; manLoadTree_(); };
+  ov.querySelector('#man-home').onclick = () => { if(__man.mode === 'edit' && !confirm('編集中です。下書きを残してトップへ戻りますか？')) return; __man.mode = 'view'; __man.cur = null; manRenderList_(); manRenderHome_(); manShowMain_(true); };
   let qt = null;
   ov.querySelector('#man-q').oninput = e => { clearTimeout(qt); const q = e.target.value.trim(); qt = setTimeout(()=>manSearch_(q), 350); };
+  ov.querySelector('#man-filt-toggle').onclick = () => { __man.filtOpen = !__man.filtOpen; ov.querySelector('#man-filt').style.display = __man.filtOpen ? '' : 'none'; if(__man.filtOpen) manFillFilters_(); };
+  const refilt = () => { __man.filt = { folder: ov.querySelector('#man-f-folder').value, user: ov.querySelector('#man-f-user').value.trim(),
+                                         days: ov.querySelector('#man-f-days').value, sort: ov.querySelector('#man-f-sort').value };
+                         manMarkFilter_(); manSearch_(ov.querySelector('#man-q').value.trim()); };
+  ['#man-f-folder','#man-f-days','#man-f-sort'].forEach(id => ov.querySelector(id).onchange = refilt);
+  let ut = null; ov.querySelector('#man-f-user').oninput = () => { clearTimeout(ut); ut = setTimeout(refilt, 400); };
+  ov.querySelector('#man-f-clear').onclick = () => { ['#man-f-folder','#man-f-user','#man-f-days','#man-f-sort'].forEach(id => { ov.querySelector(id).value = ''; }); refilt(); };
   ov.querySelector('#man-new-page').onclick = () => manStartNew_();
 }
 function manClose_(){
@@ -36247,11 +36344,7 @@ async function manOpen_(){
   }
   manLoadLibs_().catch(()=>{});
   await manLoadTree_();
-  if(!__man.cur){
-    let last = ''; try{ last = localStorage.getItem(MAN_LAST_KEY) || ''; }catch(_){}
-    if(last && window.innerWidth > 760) manOpenPage_(last, { quiet:true });
-    else if(window.innerWidth > 760) manRenderHome_();
-  }
+  if(!__man.cur && __man.mode !== 'edit'){ manRenderHome_(); manShowMain_(true); }
 }
 async function manLoadTree_(){
   manStatus_('読み込み中…');
@@ -36272,9 +36365,12 @@ function manRenderList_(){
   const host = document.getElementById('man-list'); if(!host || !__man.tree) return;
   if(__man.results){
     const rs = __man.results;
-    host.innerHTML = `<div style="font-size:11px;color:var(--muted);padding:4px 6px">「${escapeHtml(__man.q)}」 ${rs.length}件${rs.length>=100?'(先頭100件)':''}</div>` +
+    const byId = manBuildTree_(__man.tree).byId;
+    host.innerHTML = `<div style="font-size:11px;color:var(--muted);padding:4px 6px">${__man.q?`「${escapeHtml(__man.q)}」 `:''}${manFilterActive_()?'(絞り込み中) ':''}${rs.length}件${rs.length>=200?'(先頭200件)':''}</div>` +
       (rs.length ? rs.map(r => `<div class="man-row${__man.cur&&__man.cur.id===r.id?' on':''}" data-pid="${escapeHtml(r.id)}" style="flex-direction:column;align-items:flex-start">
-         <div>📄 ${escapeHtml(r.title)}</div>${r.snippet?`<div style="font-size:11px;color:#64748b;font-weight:400">${manSnippetHtml_(r.snippet, __man.q)}</div>`:''}</div>`).join('')
+         <div>📄 ${escapeHtml(r.title)}${r.hit_att?' <span style="font-size:10px;color:#7c3aed">📎添付名</span>':''}</div>
+         <div style="font-size:10px;color:var(--muted);font-weight:400">${escapeHtml(manFolderPath_(byId, r.folder_id).slice(-2).join(' › '))}${r.updated_by?` ・ ${escapeHtml(r.updated_by)}`:''}${r.updated_at?` ${escapeHtml(manAgo_(r.updated_at))}`:''}</div>
+         ${r.snippet?`<div style="font-size:11px;color:#64748b;font-weight:400">${manSnippetHtml_(r.snippet, __man.q)}</div>`:''}</div>`).join('')
         : '<div style="padding:16px;color:var(--muted)">見つかりませんでした</div>');
   } else if(__man.trash){
     const ps = (__man.tree.pages||[]).slice().sort((a,b)=>String(b.updated_at).localeCompare(String(a.updated_at)));
@@ -36299,7 +36395,7 @@ function manRenderList_(){
       `<div style="padding:10px 6px"><button class="btn man-mini" id="man-new-root">＋ 最上位にフォルダ</button></div>`;
     const nr = host.querySelector('#man-new-root'); if(nr) nr.onclick = () => manFolderNew_(null);
   }
-  host.querySelectorAll('[data-pid]').forEach(el => el.onclick = () => manOpenPage_(el.dataset.pid));
+  host.querySelectorAll('[data-pid]').forEach(el => el.onclick = () => { __man.hl = __man.results ? __man.q : ''; manOpenPage_(el.dataset.pid); });
   host.querySelectorAll('[data-fid]').forEach(el => el.onclick = e => {
     if(e.target.closest('[data-fmenu]')) return;
     const id = el.dataset.fid; __man.folderId = id;
@@ -36308,7 +36404,19 @@ function manRenderList_(){
   });
   host.querySelectorAll('[data-fmenu]').forEach(b => b.onclick = e => { e.stopPropagation(); manFolderMenu_(b.dataset.fmenu); });
 }
-function manRenderHome_(){
+function manFilterActive_(){ const f = __man.filt; return !!(f.folder || f.user || f.days || f.sort); }
+function manMarkFilter_(){ const b = document.getElementById('man-filt-toggle'); if(b){ b.textContent = manFilterActive_() ? '絞込●' : '絞込▾'; b.style.cssText = manFilterActive_() ? 'background:#fef3c7' : ''; } }
+function manFillFilters_(){
+  const sel = document.getElementById('man-f-folder'); if(!sel || !__man.tree) return;
+  sel.innerHTML = '<option value="">すべてのフォルダ</option>' + manFolderOptions_(__man.filt.folder);
+  const dl = document.getElementById('man-f-users');
+  if(dl){ const names = [...new Set((__man.tree.pages||[]).map(p => p.updated_by).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ja'));
+          dl.innerHTML = names.map(n => `<option value="${escapeHtml(n)}">`).join(''); }
+}
+function manRecentLoad_(){ try{ const v = JSON.parse(localStorage.getItem(MAN_RECENT_KEY) || '[]'); return Array.isArray(v) ? v : []; }catch(_){ return []; } }
+function manRecentSave_(id, title){ try{ localStorage.setItem(MAN_RECENT_KEY, JSON.stringify(manRecentPush_(manRecentLoad_(), id, title))); }catch(_){} }
+function manRenderHome_(){ manLoadHome_(); }
+function manRenderHomeOld_(){
   const main = document.getElementById('man-main'); if(!main) return;
   main.innerHTML = `<div style="color:#475569;line-height:1.9;padding:20px 4px">
     <div style="font-size:16px;font-weight:700;margin-bottom:6px">📖 社内マニュアル</div>
@@ -36316,13 +36424,67 @@ function manRenderHome_(){
     ページはログインした全員が直せます。直すたびに版が残り、🕘履歴から前の版に戻せます。<br>
     <span style="font-size:12px;color:var(--muted)">2026/10/28 に NotePM から引っ越しました(画像・添付も)。</span></div>`;
 }
+async function manLoadHome_(){
+  const main = document.getElementById('man-main'); if(!main) return;
+  main.innerHTML = '<div style="padding:30px;color:var(--muted)">トップを読み込み中…</div>';
+  let h;
+  try{ [h] = await Promise.all([manRpc_('manual_home', { p_limit: 30 }), manLoadLibs_().catch(()=>{})]); }
+  catch(e){ manRenderHomeOld_(); return; }
+  if(__man.cur || __man.mode === 'edit') return;   // 読み込み中に別のページを開いた
+  const ACT = { import:'NotePMから', create:'新規', edit:'更新', restore:'復元' };
+  const item = (x, meta) => `<div class="man-item" data-pid="${escapeHtml(x.id)}"><span class="t">📄 ${escapeHtml(x.title)}</span><span class="m">${meta}</span></div>`;
+  const recent = (h.recent||[]).map(x => item(x, `${escapeHtml(ACT[x.action]||'')} ${escapeHtml(x.edited_by||'')} ${escapeHtml(manAgo_(x.edited_at))}${x.reacts?` 👍${x.reacts}`:''}`)).join('');
+  const popular = (h.popular||[]).map((x,i) => item(x, `${x.viewers}人が見た`)).join('');
+  const mine = manRecentLoad_().map(x => item(x, '')).join('');
+  const nt = h.notice;
+  main.innerHTML = `
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      <b style="font-size:17px">🏠 トップ</b>
+      <button class="btn man-mini" id="man-h-tree" style="display:${window.innerWidth<=760?'':'none'}">📚 フォルダ一覧</button>
+      <button class="btn man-mini" id="man-h-new" style="margin-left:auto;background:var(--accent);color:#fff;font-weight:700">＋ 新しいページ</button>
+    </div>
+    <div class="man-home">
+      <div class="man-card">
+        <h3>📢 お知らせ ${nt?`<a href="#" id="man-h-nedit" style="font-size:11px;font-weight:400;margin-left:6px">✏️ 直す</a>`:''}</h3>
+        <div class="man-notice markdown-body" id="man-h-notice">${nt ? manToHtml_(nt.body) : '<span style="color:var(--muted)">お知らせはまだありません</span>'}</div>
+        ${nt?`<div style="font-size:10px;color:var(--muted);margin-top:4px">最終更新 ${escapeHtml(manFmtDate_(nt.updated_at))} ${escapeHtml(nt.updated_by||'')}</div>`:''}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+        <div class="man-card"><h3>🆕 新着・更新</h3>${recent || '<span style="color:var(--muted);font-size:12px">まだありません</span>'}</div>
+        <div class="man-card"><h3>⭐ よく見られている <span style="font-size:10px;font-weight:400;color:var(--muted)">30日</span></h3>${popular || '<span style="color:var(--muted);font-size:12px">見られた記録がたまると出ます</span>'}</div>
+        ${mine ? `<div class="man-card"><h3>🕘 自分が最近開いた</h3>${mine}</div>` : ''}
+      </div>
+    </div>`;
+  main.querySelectorAll('.man-item[data-pid]').forEach(el => el.onclick = () => { __man.hl = ''; manOpenPage_(el.dataset.pid); });
+  const q = s => main.querySelector(s);
+  if(q('#man-h-tree')) q('#man-h-tree').onclick = () => manShowMain_(false);
+  if(q('#man-h-nedit')) q('#man-h-nedit').onclick = e => { e.preventDefault(); manOpenPage_('mp_notice'); };
+  q('#man-h-new').onclick = () => manNewFromHome_();
+  const nb = q('#man-h-notice'); if(nb) manWireBody_(nb);
+}
+// トップの「＋ 新しいページ」: フォルダを選んでから書き始める
+function manNewFromHome_(){
+  if(!__man.tree){ return; }
+  const main = document.getElementById('man-main');
+  const box = document.createElement('div');
+  box.className = 'man-card'; box.style.cssText = 'margin-bottom:10px;border-color:#60a5fa';
+  box.innerHTML = `<div style="font-size:13px;margin-bottom:6px">どのフォルダに作りますか？</div>
+    <select id="man-nf" style="max-width:100%;font-size:13px">${manFolderOptions_(__man.folderId || '')}</select>
+    <button class="btn man-mini" id="man-nf-go" style="background:var(--accent);color:#fff">書き始める</button>`;
+  main.prepend(box);
+  box.querySelector('#man-nf-go').onclick = () => { __man.folderId = box.querySelector('#man-nf').value; manStartNew_(); };
+}
 async function manSearch_(q){
   __man.q = q;
-  if(!q){ __man.results = null; manRenderList_(); return; }
+  const f = __man.filt;
+  if(!q && !manFilterActive_()){ __man.results = null; manRenderList_(); return; }
   manStatus_('検索中…');
-  try{ __man.results = await manRpc_('manual_search', { p_q: q }); manStatus_(''); }
-  catch(e){ __man.results = []; manStatus_('検索できませんでした'); }
-  if(__man.q === q) manRenderList_();
+  const key = JSON.stringify([q, f]); __man.searchKey = key;
+  let rs;
+  try{ rs = await manRpc_('manual_search2', { p_q: q, p_folder_id: f.folder || null, p_user: f.user || null, p_since: manSinceDate_(f.days), p_sort: f.sort || null }); manStatus_(''); }
+  catch(e){ rs = []; manStatus_('検索できませんでした'); }
+  if(__man.searchKey !== key) return;   // 打っている間に次の検索が始まった
+  __man.results = rs; manRenderList_();
 }
 // 開いているページのフォルダまで目次を開く
 function manRevealFolder_(folderId){
@@ -36346,6 +36508,7 @@ async function manOpenPage_(id, opt){
   }
   __man.cur = p; __man.folderId = p.folder_id;
   try{ localStorage.setItem(MAN_LAST_KEY, p.id); }catch(_){}
+  if(!p.is_deleted){ manRecentSave_(p.id, p.title); manRpc_('manual_view', { p_page_id: p.id }).catch(()=>{}); }
   manRevealFolder_(p.folder_id); manRenderList_();
   await manRenderPage_();
   if(opt.quiet) manShowMain_(true);
@@ -36372,7 +36535,8 @@ async function manRenderPage_(){
       ${draft && !p.is_deleted ? `<span style="font-size:11px;color:#d97706;align-self:center">✎ 書きかけの下書きがあります(✏️編集で続き)</span>` : ''}
     </div>
     <div class="markdown-body" id="man-body">${manToHtml_(p.body)}</div>
-    ${atts.length ? `<div class="man-att">${atts.map((a,i)=>`<a href="${escapeHtml(a.ref)}" class="btn man-mini" title="${escapeHtml(a.name)}">📎 ${escapeHtml(String(a.name).slice(0,40))}</a>`).join('')}</div>` : ''}`;
+    ${atts.length ? `<div class="man-att">${atts.map((a,i)=>`<a href="${escapeHtml(a.ref)}" class="btn man-mini" title="${escapeHtml(a.name)}">📎 ${escapeHtml(String(a.name).slice(0,40))}</a>`).join('')}</div>` : ''}
+    ${p.is_deleted ? '' : '<div class="man-react" id="man-react"></div><div id="man-react-who" style="font-size:11px;color:var(--muted);margin-top:4px"></div>'}`;
   const q = s => main.querySelector(s);
   if(q('#man-back')) q('#man-back').onclick = () => manShowMain_(false);
   if(q('#man-edit')) q('#man-edit').onclick = () => manStartEdit_();
@@ -36380,6 +36544,46 @@ async function manRenderPage_(){
   if(q('#man-del')) q('#man-del').onclick = () => manTrash_(false);
   if(q('#man-restore')) q('#man-restore').onclick = () => manTrash_(true);
   manWireBody_(main);
+  if(__man.hl) manHighlight_(q('#man-body'), __man.hl);
+  if(!p.is_deleted) manLoadReactions_(p.id);
+}
+// 検索した語に色を付け、最初の1か所まで動かす(本文の文字だけ・タグの中は触らない)
+function manHighlight_(root, word){
+  if(!root || !word) return 0;
+  const w = String(word).toLowerCase(); let n = 0, first = null;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+  const hits = []; let t;
+  while((t = walker.nextNode())) if(t.nodeValue.toLowerCase().indexOf(w) >= 0) hits.push(t);
+  hits.forEach(node => {
+    const txt = node.nodeValue, low = txt.toLowerCase(); const frag = document.createDocumentFragment(); let i = 0, k;
+    while((k = low.indexOf(w, i)) >= 0){
+      frag.appendChild(document.createTextNode(txt.slice(i, k)));
+      const m = document.createElement('mark'); m.className = 'man-hl'; m.textContent = txt.slice(k, k + w.length); frag.appendChild(m);
+      if(!first) first = m; n++; i = k + w.length;
+    }
+    frag.appendChild(document.createTextNode(txt.slice(i)));
+    node.parentNode.replaceChild(frag, node);
+  });
+  if(first) setTimeout(() => { try{ first.scrollIntoView({ block:'center' }); }catch(_){} }, 50);
+  return n;
+}
+// ---- リアクション ----
+function manRenderReactions_(pageId, list){
+  const box = document.getElementById('man-react'); if(!box || !__man.cur || __man.cur.id !== pageId) return;
+  const by = new Map((Array.isArray(list)?list:[]).map(x => [x.emoji, x]));
+  box.innerHTML = MAN_EMOJIS.map(e => { const x = by.get(e);
+    return `<button data-emo="${e}" class="${x&&x.mine?'on':''}" title="${x?escapeHtml((x.names||[]).join('・')):'押す'}">${e}${x?`<b>${x.n}</b>`:''}</button>`; }).join('');
+  const who = document.getElementById('man-react-who');
+  if(who) who.innerHTML = [...by.values()].map(x => `${x.emoji} ${escapeHtml((x.names||[]).filter(Boolean).join('・'))}`).join(' ／ ');
+  box.querySelectorAll('[data-emo]').forEach(b => b.onclick = async () => {
+    if(b.disabled) return; b.disabled = true;
+    const on = !b.classList.contains('on');
+    try{ const r = await manRpc_('manual_react', { p_page_id: pageId, p_emoji: b.dataset.emo, p_on: on, p_editor: manEditor_() }); manRenderReactions_(pageId, r); }
+    catch(e){ b.disabled = false; alert('押せませんでした: ' + (e.message||e)); }
+  });
+}
+async function manLoadReactions_(pageId){
+  try{ manRenderReactions_(pageId, await manRpc_('manual_reactions', { p_page_id: pageId })); }catch(_){ manRenderReactions_(pageId, []); }
 }
 // ---- 編集 ----
 function manFolderOptions_(selected){
@@ -36418,7 +36622,15 @@ function manStartEdit_(){
       <label class="btn man-mini" style="cursor:pointer">📎 写真・ファイルを入れる<input type="file" id="man-file" multiple style="display:none"></label>
       <span id="man-up" style="color:var(--muted)"></span>
     </div>
-    <textarea class="man-body" id="man-text" placeholder="本文(Markdown)。# 見出し / - 箇条書き / **太字** / | 表 | が使えます">${escapeHtml(d.body)}</textarea>
+    <div class="man-tools" id="man-tools">
+      <button data-tool="bold" title="太字"><b>B</b> 太字</button><button data-tool="red" title="赤い文字">🟥 赤字</button>
+      <button data-tool="h2" title="大見出し">見出し大</button><button data-tool="h3" title="小見出し">見出し小</button>
+      <button data-tool="ul" title="箇条書き">・箇条書き</button><button data-tool="ol" title="番号つき">1. 番号</button><button data-tool="check" title="チェックリスト">☑ チェック</button>
+      <button data-tool="quote" title="注意書き(引用)">❝ 注意書き</button><button data-tool="table" title="表を入れる">▦ 表</button>
+      <button data-tool="link" title="リンク">🔗 リンク</button><button data-tool="hr" title="区切り線">― 区切り</button>
+      <label title="カメラでその場で撮って入れる">📷 撮る<input type="file" id="man-cam" accept="image/*" capture="environment" style="display:none"></label>
+    </div>
+    <textarea class="man-body" id="man-text" placeholder="本文。上のボタンで太字・見出し・箇条書き・表が入れられます。写真は📷か、コピーした画像を貼り付け(Ctrl/⌘+V)でも入ります">${escapeHtml(d.body)}</textarea>
     <div id="man-preview" class="markdown-body" style="display:none;border:1px solid var(--border);border-radius:6px;padding:10px;min-height:40vh"></div>
     <div id="man-atts" class="man-att"></div>`;
   const q = s => main.querySelector(s);
@@ -36440,6 +36652,30 @@ function manStartEdit_(){
     __man.mode = 'view';
     if(p.isNew){ __man.cur = null; manRenderHome_(); manShowMain_(false); } else manRenderPage_();
   };
+  q('#man-tools').querySelectorAll('[data-tool]').forEach(b => b.onclick = e => {
+    e.preventDefault(); const ta = q('#man-text');
+    const r = manWrapText_(ta.value, ta.selectionStart, ta.selectionEnd, b.dataset.tool);
+    ta.value = r.value; ta.focus(); ta.selectionStart = r.start; ta.selectionEnd = r.end; saveDraft();
+  });
+  const upFiles = async files => {
+    for(const f of files){
+      q('#man-up').textContent = `⏫ ${f.name || '画像'} を上げています…`;
+      try{
+        const att = await manUpload_(f);
+        d.atts.push(att); renderAtts();
+        manInsertAtCursor_(q('#man-text'), '\n' + manAttachMarkdown_(att) + '\n'); saveDraft();
+        q('#man-up').textContent = `✓ ${f.name || '画像'}`;
+      }catch(err){ q('#man-up').textContent = ''; alert(`${f.name || '画像'} を上げられませんでした: ${err.message||err}`); }
+    }
+  };
+  q('#man-cam').onchange = e => { const fs = [...(e.target.files||[])]; e.target.value = ''; upFiles(fs); };
+  q('#man-text').addEventListener('paste', e => {
+    const items = [...((e.clipboardData && e.clipboardData.items) || [])].filter(it => it.kind === 'file' && /^image\//.test(it.type));
+    if(!items.length) return;
+    e.preventDefault();
+    upFiles(items.map((it, i) => { const f = it.getAsFile(); const ext = (f.type.split('/')[1] || 'png').replace('jpeg','jpg');
+      return new File([f], `貼り付け_${Date.now()}_${i}.${ext}`, { type: f.type }); }));
+  });
   q('#man-file').onchange = async e => {
     const files = [...(e.target.files||[])]; e.target.value = '';
     for(const f of files){
