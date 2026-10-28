@@ -3018,7 +3018,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.847</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.848</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -12748,6 +12748,12 @@ function showTaikyoStaffPicker(el, ev){
     const d = ev._taikyoOrigDate || ev.date || (pop.querySelector('.tk-dt-date')||{}).value || "";
     const t = String(ev._taikyoOrigTime || "").trim();
     if(!d){ alert('元の立会日付が空です'); return; }
+    // 🔄 v1.30.848(山田バグ報告10/28: 太子堂East707 が 10/29 12:30→10:30 の時刻だけ変更で、同じ日にグレー跡が残り予定が2つに見えた):
+    //   同じ日の時刻変更は跡を作らない(予定のほうの v1.30.679 と同じ決まり)。日にちが変わる時だけ残す。
+    //   ⚠先に🔄を押してから日付を変える順番もある=まだ何も変えていない(日付も時刻も元のまま)なら止めない。
+    const __curD = (pop.querySelector('.tk-dt-date')||{}).value || ev.date || "";
+    const __curT = String((pop.querySelector('.tk-dt-time')||{}).value || "").trim();
+    if(__curD && __curD === d && t && __curT && __curT !== t){ alert('同じ日の時刻変更なので、変更跡は残しません。\n（日にちを変えた時だけ、元の日に跡を残せます）'); return; }
     const lbl = (`${ev._bukken||''} ${ev._room||''}`).trim() || (ev.title||'').split(/\r?\n/)[0].replace(/^立会\s*/,'');
     if(!confirm(`元の立会 ${d}${t?(" "+t):""} に「日時変更」跡(グレー)を残しますか？\n（新しい日時は上の「日時」で変更すると立会本体が移動します）`)) return;
     createDotakyanGhost_(`立会 ${lbl}`, d, t);
