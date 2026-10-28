@@ -3018,7 +3018,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.853</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.854</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -23433,6 +23433,12 @@ let __calTouched = false;
   document.addEventListener("touchstart", mark, {capture:true, passive:true});
   document.addEventListener("wheel",      mark, {capture:true, passive:true});
 })();
+// 🔍 見た目px→素のpxの換算率(v1.30.854)。calendarWrap の CSS zoom 中は getBoundingClientRect が倍率ぶん縮む。
+//   実測(見た目幅÷素の幅)で出すので、rect を縮めないブラウザでも 1 になり壊れない
+function calRectScale_(body){
+  try{ const r = body.getBoundingClientRect().width / body.offsetWidth; if(r > 0.05 && isFinite(r)) return r; }catch(_){}
+  return 1;
+}
 function scrollToToday(force){
   const body = document.getElementById("calBody");
   if(!body) return;
@@ -23466,7 +23472,9 @@ function scrollToToday(force){
     // calBody基準の left を算出
     const colRect = todayEl.getBoundingClientRect();
     const bodyRect = body.getBoundingClientRect();
-    const colLeftInBody = colRect.left - bodyRect.left + body.scrollLeft;
+    // 🔍 v1.30.854(山田「スマホで今日を押すと変な日に飛ぶ」): 表示倍率(CSS zoom)中は rect が縮んだ見た目px・
+    //   scrollLeft は素のpx。そのまま足すと50%で行き先が半分(=約1週間前)になっていた→見た目pxを倍率で割って素のpxへ
+    const colLeftInBody = (colRect.left - bodyRect.left) / calRectScale_(body) + body.scrollLeft;
     // 時間列分のオフセットを引いて少し余白 (今日が左から少し奥に来る位置)
     const targetLeft = Math.max(0, colLeftInBody - TIME_COL_W - 8);
     body.scrollLeft = targetLeft;
@@ -23535,7 +23543,7 @@ function navigate(dir){
       const el = body.querySelector(`.day-col[data-col-key="date-${fmtDate(currentDate)}"]`)
               || body.querySelector(`.day-col-header[data-col-key="date-${fmtDate(currentDate)}"]`);
       if(el){
-        const colLeft = el.getBoundingClientRect().left - body.getBoundingClientRect().left + body.scrollLeft;
+        const colLeft = (el.getBoundingClientRect().left - body.getBoundingClientRect().left) / calRectScale_(body) + body.scrollLeft;   // 🔍 倍率補正(v1.30.854)
         body.scrollLeft = Math.max(0, colLeft - TIME_COL_W - 8);
       } else {
         body.scrollLeft = 0;
