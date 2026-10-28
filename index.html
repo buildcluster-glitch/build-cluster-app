@@ -3018,7 +3018,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.859</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.860</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -3194,6 +3194,7 @@
   <div class="modal" style="max-width:680px;width:96vw">
     <div class="modal-header" id="rs-title">修繕案件</div>
     <div class="modal-body" style="max-height:75vh;overflow-y:auto">
+      <div style="text-align:right;margin-bottom:4px"><button type="button" id="rs-relman" style="padding:5px 10px;border:1px solid #c4b5fd;background:#f5f3ff;color:#6d28d9;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer" title="この修繕に関係する社内マニュアル(水回り工事など＋物件名で検索)">📖 関連マニュアル</button></div>
       <div class="field-row">
         <div class="field"><label>物件名</label><input id="rs-name" readonly></div>
         <div class="field" style="max-width:120px"><label>号室</label><input id="rs-room" readonly></div>
@@ -3297,6 +3298,7 @@
       <span style="flex:1"></span>
       <button class="nav-btn" id="rdAddExtraBtn" style="display:none" title="追加工事を台帳に登録">＋ 追加工事</button>
       <button class="nav-btn" id="rdHatchushoBtn" style="display:none" title="発注書">📄 発注書</button>
+      <button class="nav-btn" id="rdRelManBtn" title="この物件に関係する社内マニュアル(特殊見積など＋物件名で検索)">📖</button>
       <!-- 完了ボタンは下部の大きな緑ボタンに移動 (v1.8.5) -->
     </div>
     <div class="rd-sub" id="rdSub"></div>
@@ -3970,6 +3972,7 @@
   <div class="modal">
     <div class="modal-header" id="taskModalTitle">タスクを追加</div>
     <div class="modal-body">
+      <div style="text-align:right;margin-bottom:4px"><button type="button" id="tk-relman" style="padding:5px 10px;border:1px solid #c4b5fd;background:#f5f3ff;color:#6d28d9;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer" title="このタスクの題名で社内マニュアルを検索">📖 関連マニュアル</button></div>
       <div class="field">
         <label>タイトル *</label>
         <textarea id="tk-title" rows="2" placeholder="例: 〇〇マンションの見積作成"></textarea>
@@ -4095,6 +4098,7 @@
   <div class="modal">
     <div class="modal-header" id="eventModalTitle">予定を追加</div>
     <div class="modal-body">
+      <div style="text-align:right;margin-bottom:4px"><button type="button" id="ev-relman" style="padding:5px 10px;border:1px solid #c4b5fd;background:#f5f3ff;color:#6d28d9;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer" title="この予定のカテゴリ・題名に関係する社内マニュアル">📖 関連マニュアル</button></div>
       <div class="field">
         <label>🔧 最終確認工事から選択 <span style="font-weight:400;color:var(--muted);font-size:11px">(事前補修などの予定をワンタップ作成)</span></label>
         <select id="ev-from-check"><option value="">― 選択するとタイトル/元請けを自動入力 ―</option></select>
@@ -12652,6 +12656,7 @@ function showTaikyoStaffPicker(el, ev){
       <button class="tk-dt-dotakyan" style="margin-top:6px;padding:5px 10px;border:1px solid #cbd5e1;background:#f1f5f9;color:#475569;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">🔄 日時変更(この日に変更跡を残す)</button>
       <div class="tk-dt-hint" style="font-size:10px;color:var(--muted);margin-top:4px"></div>
     </div>
+    <div style="margin-top:6px;text-align:right"><button class="tk-relman" style="padding:5px 10px;border:1px solid #c4b5fd;background:#f5f3ff;color:#6d28d9;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer" title="立会テクニック・山一必須知識＋物件名で社内マニュアルを検索">📖 関連マニュアル</button></div>
     <div class="qp-sec">
       <div class="qp-label">⏰ リマインド <span style="font-weight:400;color:#94a3b8;font-size:10px">(この日から担当の⏰に出す)</span></div>
       <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
@@ -12744,6 +12749,8 @@ function showTaikyoStaffPicker(el, ev){
   }
   // 🚫 ドタキャン: 跡は「元の立会日時」(_taikyoOrig=ヒントの『元』)で残す。日時を先に変えてもズレない(山田 v1.30.226)
   //   新しい日時は上の「日時」変更で立会本体が移動。ドタキャン跡は取消された元の枠に残る。
+  // 📖 関連マニュアル(v1.30.860)。ポップ(z9999)の下にマニュアルが隠れないよう先に閉じる
+  { const __rm = pop.querySelector('.tk-relman'); if(__rm) __rm.onclick = ()=>{ pop.remove(); openRelatedManual_({ kind:'taikyo', title: ev.title||'', bukken: ev._bukken||'', room: ev._room||'' }); }; }
   const __tkDota = pop.querySelector('.tk-dt-dotakyan');
   if(__tkDota){ __tkDota.onclick = ()=>{
     const d = ev._taikyoOrigDate || ev.date || (pop.querySelector('.tk-dt-date')||{}).value || "";
@@ -22378,6 +22385,26 @@ document.getElementById("ev-comment-input").addEventListener("keydown", (e)=>{
   }
 });
 
+// 📖 予定・タスク・修繕・原状回復・立会から「関連マニュアル」を開く(v1.30.860・山田)。
+//   入口 manOpenRelated_ はマニュアル側(v1.30.859)。読み込めていない版でも壊れないよう存在を確かめて呼ぶ
+function openRelatedManual_(ctx){
+  if(typeof manOpenRelated_ !== 'function'){ alert('マニュアルを開けませんでした。アプリを開き直してください'); return; }
+  try{ manOpenRelated_(ctx); }catch(e){ console.warn('[relman]', e); }
+}
+function wireRelatedManualBtns_(){
+  const v = id => { const el = document.getElementById(id); return el ? String(el.value||'').trim() : ''; };
+  const on = (id, fn) => { const b = document.getElementById(id); if(b) b.onclick = fn; };
+  on('ev-relman', ()=>{
+    const cat = v('ev-category');
+    openRelatedManual_({ kind: cat, title: v('ev-title') });
+  });
+  on('tk-relman', ()=> openRelatedManual_({ kind:'task', title: v('tk-title') }));
+  on('rs-relman', ()=> openRelatedManual_({ kind:'repair', bukken: v('rs-name'), room: v('rs-room'), title: v('rs-reqdesc') }));
+  on('rdRelManBtn', ()=>{
+    const p = (state.restorations||[]).find(x=>x.id===restoDetailId) || {};
+    openRelatedManual_({ kind:'resto', bukken: p.name||'', room: p.room||'', title: p.kojiName||'' });
+  });
+}
 function openEventModal(ev, defaults){
   editingEventId = ev ? ev.id : null;
   document.getElementById("eventModalTitle").textContent = ev ? "予定を編集" : "予定を追加";
@@ -29195,6 +29222,7 @@ document.getElementById("rs-cancel").onclick = closeRepairSheet;
 document.getElementById("rs-save").onclick = saveRepairSheet;
 document.getElementById("rs-complete").onclick = ()=> repairToggleComplete_(editingRepairId);
 document.getElementById("rs-dotakyan").onclick = repairDetailDotakyan_;
+try{ wireRelatedManualBtns_(); }catch(e){ console.warn("[relman] wire", e); }   // 📖 関連マニュアルのボタン(v1.30.860)
 repairSheet.onclick = e=>{ if(e.target===repairSheet) closeRepairSheet(); };
 // 🖐 v1.30.793: 修繕シートを見出しでつかんで動かせる(山田「これ見ながらカレンダーみたい」→「ダイアログで動かせるくらいで十分」)
 //   ・動かし始めたら暗幕を消して後ろをクリックできるようにする(ヘッダーの「今日」でカレンダーへ・スクロールも可)
