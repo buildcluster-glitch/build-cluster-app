@@ -3018,7 +3018,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.855</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.856</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -36047,6 +36047,9 @@ window.__invAddStockFromMaterial_ = (entries)=>{
 //     ‹ ›=マニュアルの中の行き来の履歴(__man.nav)。カテゴリ=NotePMのタグを移したもの(2段)・カードとページに札。
 //     ページ内の目次・⬆先頭へ・🔗リンクのコピー(#manual=<id>)・★お気に入り(DB・人ごと)・前/次のページ(同じフォルダ)・
 //     関連ページ(同じカテゴリ)・🖨印刷(本文だけ)・文字の大きさ(bc_manual_font)。
+//   v1.30.856(山田「ホバーでトップに戻るとかヘッダーふっだーもまだ弱い」): 紺のヘッダー(📖を押すとトップ)・読んだ割合の線・
+//     下に読み進めると題名の帯が上に付いてくる・右下の⬆(乗せると「ページの先頭へ」に伸びる・輪で読んだ割合)・
+//     どの画面も一番下にフッター(ノート・カテゴリ・便利の案内)。スクロールの見張りは manOnScroll_ 1本。
 // ====================================================================
 const MAN_BUCKET = 'manuals';
 const MAN_REF_PREFIX = 'sb:manuals/';
@@ -36375,8 +36378,40 @@ function manEnsureModal_(){
   #manualModal .man-toc a:hover{text-decoration:underline}
   #manualModal .man-toc a.l3{padding-left:14px;font-size:12px}
   #manualModal .man-toc a.l1{font-weight:700}
-  #manualModal .man-totop{position:sticky;bottom:12px;float:right;margin-right:-6px;display:none;border-radius:999px;width:40px;height:40px;border:1px solid #cbd5e1;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.18);font-size:18px;cursor:pointer;z-index:5}
-  #manualModal .man-totop.show{display:block}
+  #manualModal .modal-header.man-head{position:relative;background:linear-gradient(120deg,#0f172a,#1e3a8a 55%,#2563eb);color:#fff;border-bottom:none;box-shadow:0 2px 10px rgba(15,23,42,.28);z-index:8}
+  #manualModal .man-head .btn{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.3);color:#fff;transition:background .15s}
+  #manualModal .man-head .btn:hover:not(:disabled){background:rgba(255,255,255,.26)}
+  #manualModal .man-head #man-status{color:rgba(255,255,255,.72) !important}
+  #manualModal .man-brand{display:flex;align-items:center;gap:7px;color:#fff;text-decoration:none;padding:2px 8px 2px 4px;border-radius:8px;transition:background .15s}
+  #manualModal .man-brand:hover{background:rgba(255,255,255,.14)}
+  #manualModal .man-brand .ic{width:30px;height:30px;border-radius:8px;background:#fff;display:grid;place-items:center;font-size:17px;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+  #manualModal .man-brand b{font-size:15px;letter-spacing:.04em;display:block;line-height:1.2}
+  #manualModal .man-brand small{display:block;font-size:9px;letter-spacing:.22em;opacity:.7;font-weight:600;line-height:1.2}
+  #manualModal .man-prog{position:absolute;left:0;bottom:0;height:3px;width:0;background:linear-gradient(90deg,#fbbf24,#f97316);transition:width .1s;border-radius:0 2px 2px 0}
+  #manualModal .man-wrap{position:relative}
+  #manualModal .man-stick{position:sticky;top:-12px;height:0;z-index:6}
+  #manualModal .man-stick .in{position:absolute;left:-18px;right:-18px;top:0;display:flex;align-items:center;gap:8px;padding:7px 18px;background:rgba(255,255,255,.96);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-bottom:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(15,23,42,.08);transform:translateY(-120%);transition:transform .2s;pointer-events:none}
+  #manualModal .man-stick.show .in{transform:none;pointer-events:auto}
+  #manualModal .man-stick .dot{width:10px;height:10px;border-radius:3px;flex:none}
+  #manualModal .man-stick .tt{flex:1;min-width:0;font-weight:800;font-size:14px;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #manualModal .man-fab{position:absolute;right:20px;bottom:20px;z-index:7;height:48px;min-width:48px;padding:0;border-radius:999px;border:none;background:#1e3a8a;color:#fff;box-shadow:0 0 0 2px #fff,0 4px 14px rgba(30,58,138,.4);cursor:pointer;display:flex;align-items:center;opacity:0;transform:translateY(16px) scale(.85);pointer-events:none;transition:opacity .2s,transform .2s,background .15s,box-shadow .15s}
+  #manualModal .man-fab.show{opacity:1;transform:none;pointer-events:auto}
+  #manualModal .man-fab:hover{background:#2563eb;box-shadow:0 0 0 2px #fff,0 6px 20px rgba(37,99,235,.5);transform:translateY(-2px)}
+  #manualModal .man-fab .ring{width:48px;height:48px;flex:none;position:relative;display:grid;place-items:center;font-size:18px;font-weight:800}
+  #manualModal .man-fab svg{position:absolute;inset:0;transform:rotate(-90deg)}
+  #manualModal .man-fab .lb{max-width:0;overflow:hidden;white-space:nowrap;font-size:13px;font-weight:700;transition:max-width .25s,padding .25s}
+  #manualModal .man-fab:hover .lb,#manualModal .man-fab:focus-visible .lb{max-width:140px;padding-right:16px}
+  #manualModal .man-foot{margin:34px -18px -40px;background:#0f172a;color:#cbd5e1;font-size:12px}
+  #manualModal .man-foot .cols{display:grid;grid-template-columns:minmax(0,1.3fr) repeat(3,minmax(0,1fr));gap:18px;padding:22px 24px 16px}
+  #manualModal .man-foot h4{margin:0 0 8px;font-size:11px;letter-spacing:.14em;color:#94a3b8;font-weight:800}
+  #manualModal .man-foot a{display:block;color:#e2e8f0;text-decoration:none;padding:3px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #manualModal .man-foot a:hover{color:#fbbf24;text-decoration:underline}
+  #manualModal .man-foot .bd{font-size:16px;font-weight:800;color:#fff;letter-spacing:.04em}
+  #manualModal .man-foot .bd small{display:block;font-size:9px;letter-spacing:.22em;color:#94a3b8;margin-top:2px}
+  #manualModal .man-foot .stat{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  #manualModal .man-foot .stat span{background:rgba(255,255,255,.08);border-radius:6px;padding:2px 8px;font-size:11px;white-space:nowrap}
+  #manualModal .man-foot .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-top:1px solid rgba(255,255,255,.1);padding:10px 24px;font-size:11px;color:#94a3b8}
+  #manualModal .man-foot .bar a{display:inline;padding:0}
   #manualModal .man-pn{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
   #manualModal .man-pn .man-pc{font-size:12px}
   #manualModal.font-s .markdown-body{font-size:13px}
@@ -36386,7 +36421,7 @@ function manEnsureModal_(){
     body.man-printing > *:not(#manualModal){display:none !important}
     body.man-printing #manualModal{position:static !important;background:none !important;display:block !important}
     body.man-printing #manualModal .modal{box-shadow:none !important;height:auto !important;max-height:none !important;width:auto !important;max-width:none !important;overflow:visible !important}
-    body.man-printing #manualModal .modal-header,body.man-printing #manualModal .man-side,body.man-printing #manualModal .man-noprint,body.man-printing #manualModal .man-totop{display:none !important}
+    body.man-printing #manualModal .modal-header,body.man-printing #manualModal .man-side,body.man-printing #manualModal .man-noprint,body.man-printing #manualModal .man-fab,body.man-printing #manualModal .man-foot,body.man-printing #manualModal .man-stick{display:none !important}
     body.man-printing #manualModal .man-wrap,body.man-printing #manualModal .man-main{display:block !important;overflow:visible !important;height:auto !important;background:#fff !important}
     body.man-printing #manualModal .man-paper,body.man-printing #manualModal .man-hero{box-shadow:none !important;border:none !important}
   }
@@ -36425,15 +36460,24 @@ function manEnsureModal_(){
     #manualModal .man-home{grid-template-columns:minmax(0,1fr)}
     #manualModal .man-cards{grid-template-columns:minmax(0,1fr)}
     #manualModal .man-paper{padding:10px 12px}
+    #manualModal .man-stick .in{left:-12px;right:-12px;padding:7px 12px}
+    #manualModal .man-foot{margin:28px -12px -40px}
+    #manualModal .man-foot .cols{grid-template-columns:minmax(0,1fr) minmax(0,1fr);padding:18px 16px 12px}
+    #manualModal .man-foot .cols>div:first-child{grid-column:1 / -1}
+    #manualModal .man-foot .bar{padding:10px 16px}
+    #manualModal .man-wrap:not(.show-main) .man-fab{display:none}
+    #manualModal .man-fab{right:14px;bottom:calc(14px + env(safe-area-inset-bottom))}
+    #manualModal .man-brand small{display:none}
   }`;
   document.head.appendChild(st);
   const ov = document.createElement('div'); ov.className = 'modal-overlay'; ov.id = 'manualModal';
   ov.innerHTML = `
     <div class="modal">
-      <div class="modal-header" style="display:flex;align-items:center;gap:8px;padding:10px 14px">
+      <div class="modal-header man-head" style="display:flex;align-items:center;gap:8px;padding:9px 14px">
         <button class="btn man-mini man-navbtn" id="man-back-nav" title="戻る (Alt+←)" disabled>‹</button>
         <button class="btn man-mini man-navbtn" id="man-fwd-nav" title="進む (Alt+→)" disabled>›</button>
-        <span>📖 社内マニュアル</span>
+        <div class="man-prog" id="man-prog"></div>
+        <a href="#" class="man-brand" id="man-brand" title="マニュアルのトップへ"><span class="ic">📖</span><span><b>社内マニュアル</b><small>BUILD CLUSTER</small></span></a>
         <span id="man-status" style="font-weight:400;font-size:11px;color:var(--muted)"></span>
         <span style="margin-left:auto;display:flex;gap:6px">
           <button class="btn man-mini" id="man-font" title="文字の大きさ(小・中・大)">Aa</button>
@@ -36461,11 +36505,15 @@ function manEnsureModal_(){
           <div class="man-list" id="man-list"></div>
         </div>
         <div class="man-main" id="man-main"></div>
+        <button class="man-fab" id="man-fab" title="ページの先頭へ" aria-label="ページの先頭へ"><span class="ring"><svg viewBox="0 0 48 48" width="48" height="48"><circle cx="24" cy="24" r="21" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="3"/><circle id="man-fab-arc" cx="24" cy="24" r="21" fill="none" stroke="#fbbf24" stroke-width="3" stroke-linecap="round" stroke-dasharray="131.95" stroke-dashoffset="131.95"/></svg>⬆</span><span class="lb">ページの先頭へ</span></button>
       </div>
     </div>`;
   document.body.appendChild(ov);
   ov.onclick = e => { if(e.target === ov) manClose_(); };
   ov.querySelector('#man-close').onclick = manClose_;
+  ov.querySelector('#man-brand').onclick = e => { e.preventDefault(); ov.querySelector('#man-home').click(); };
+  ov.querySelector('#man-fab').onclick = () => manScrollTop_();
+  ov.querySelector('#man-main').addEventListener('scroll', manOnScroll_, { passive:true });
   ov.querySelector('#man-trash-toggle').onclick = () => { __man.trash = !__man.trash; __man.q=''; ov.querySelector('#man-q').value=''; __man.results=null; manLoadTree_(); };
   ov.querySelector('#man-back-nav').onclick = () => manNavGo_(-1);
   ov.querySelector('#man-fwd-nav').onclick = () => manNavGo_(1);
@@ -36641,7 +36689,7 @@ async function manLoadHome_(){
         <div class="man-cards one">${manBuildTree_(__man.tree || { folders:[], pages:[] }).roots.map(f => manFolderCardHtml_(f, byId)).join('')}</div>
       </div>
     </div>`;
-  manWireCards_(main);
+  manWireCards_(main); manAddFooter_(main);
   const nc = main.querySelector('#man-h-newcat'); if(nc) nc.onclick = async () => { const id = await manCategoryNew_(); if(id) manRenderCategory_(id); };
   const q = s => main.querySelector(s);
   if(q('#man-h-tree')) q('#man-h-tree').onclick = () => manShowMain_(false);
@@ -36730,7 +36778,7 @@ function manRenderCategory_(cid){
       ${c.children.length?`<div class="man-pc-row" style="margin-top:8px">${manCatChipsHtml_(c.children.map(k=>k.id), ci.byId)}</div>`:''}
     </div>
     <div class="man-cards">${pages.length ? pages.map(p => manPageCardHtml_(p, byId, { catById: ci.byId })).join('') : '<span style="color:var(--muted);font-size:12px">このカテゴリのページはまだありません。ページの✏️編集でカテゴリを付けられます</span>'}</div>`;
-  manWireCards_(main);
+  manWireCards_(main); manAddFooter_(main);
   const hm = main.querySelector('[data-home]'); if(hm) hm.onclick = e => { e.preventDefault(); __man.mode = 'view'; __man.cur = null; manRenderHome_(); };
   main.querySelector('#man-cv-menu').onclick = () => manCategoryMenu_(cid);
   main.scrollTop = 0; manShowMain_(true);
@@ -36824,7 +36872,7 @@ function manRenderFolder_(fid, opt){
       <div class="man-cards">${f.children.map(c => manFolderCardHtml_(c, t.byId)).join('')}</div>` : ''}
     <div class="man-sec"><span class="gh-tag" style="background:${color}">📄 ページ</span><span class="gh-count">${f.pages.length}</span></div>
     <div class="man-cards">${f.pages.length ? f.pages.slice().sort((a,b)=>String(b.updated_at||'').localeCompare(String(a.updated_at||''))).map(p => manPageCardHtml_(p, t.byId, { catById: manCatIndex_(__man.tree).byId })).join('') : '<span style="color:var(--muted);font-size:12px">このフォルダにはまだページがありません</span>'}</div>`;
-  manWireCards_(main);
+  manWireCards_(main); manAddFooter_(main);
   const hm = main.querySelector('[data-home]'); if(hm) hm.onclick = e => { e.preventDefault(); __man.mode = 'view'; __man.cur = null; manRenderHome_(); };
   main.querySelector('#man-fv-new').onclick = () => { __man.folderId = fid; manStartNew_(); };
   main.querySelector('#man-fv-menu').onclick = () => manFolderMenu_(fid);
@@ -36868,6 +36916,11 @@ async function manRenderPage_(){
   let draft = ''; try{ draft = localStorage.getItem(MAN_DRAFT_PREFIX + p.id) || ''; }catch(_){}
   const __color = manNoteColor_(byId, p.folder_id);
   main.innerHTML = `
+    <div class="man-stick man-noprint" id="man-stick"><div class="in"><span class="dot" style="background:${p.is_deleted?'#dc2626':__color}"></span>
+      <span class="tt">${escapeHtml(p.title)}</span>
+      ${p.is_deleted ? '' : '<button class="btn man-mini" data-stk="edit">✏️ 編集</button>'}
+      <button class="btn man-mini" data-stk="link" title="このページのリンクをコピー">🔗</button>
+      <button class="btn man-mini" data-stk="top" title="ページの先頭へ">⬆</button></div></div>
     <div class="man-hero" style="border-left-color:${p.is_deleted?'#dc2626':__color}">
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
       <button class="btn man-mini" id="man-back" style="display:${window.innerWidth<=760?'':'none'}">‹ 一覧</button>
@@ -36901,8 +36954,7 @@ async function manRenderPage_(){
     ${p.is_deleted ? '' : '<div class="man-react man-noprint" id="man-react"></div><div id="man-react-who" class="man-noprint" style="font-size:11px;color:var(--muted);margin-top:4px"></div>'}
     </div>
     <div class="man-noprint" id="man-pn-host"></div>
-    <div class="man-noprint" id="man-rel-host"></div>
-    <button class="man-totop man-noprint" id="man-totop" title="ページの先頭へ">⬆</button>`;
+    <div class="man-noprint" id="man-rel-host"></div>`;
   main.querySelectorAll('[data-fopen]').forEach(el => el.onclick = e => { e.preventDefault(); manRenderFolder_(el.dataset.fopen); });
   const q = s => main.querySelector(s);
   if(q('#man-back')) q('#man-back').onclick = () => manShowMain_(false);
@@ -36913,16 +36965,56 @@ async function manRenderPage_(){
   if(q('#man-favbtn')) q('#man-favbtn').onclick = () => manToggleFav_();
   q('#man-link').onclick = () => manCopyLink_();
   q('#man-print').onclick = () => manPrint_();
-  manWireCards_(q('.man-hero'));
+  manWireCards_(q('.man-hero')); manAddFooter_(main);
+  main.querySelectorAll('[data-stk]').forEach(b => b.onclick = () => { const k = b.dataset.stk;
+    if(k === 'edit') manStartEdit_(); else if(k === 'link') manCopyLink_(); else manScrollTop_(); });
   manWireBody_(main);
   manRenderToc_(main);
   manRenderPrevNext_(p);
   if(!p.is_deleted) manLoadRelated_(p.id);
-  const tt = q('#man-totop');
-  main.onscroll = () => { if(tt) tt.classList.toggle('show', main.scrollTop > 500); };
-  if(tt) tt.onclick = () => main.scrollTo({ top:0, behavior:'smooth' });
   if(__man.hl) manHighlight_(q('#man-body'), __man.hl);
   if(!p.is_deleted) manLoadReactions_(p.id);
+}
+// スクロールの見張り(1本): ヘッダー下の読んだ割合の線・右下の⬆と輪・ページの題名の帯
+function manOnScroll_(){
+  const main = document.getElementById('man-main'); if(!main) return;
+  const max = main.scrollHeight - main.clientHeight;
+  const pct = max > 0 ? Math.min(1, Math.max(0, main.scrollTop / max)) : 0;
+  const pr = document.getElementById('man-prog'); if(pr) pr.style.width = (pct * 100).toFixed(1) + '%';
+  const fab = document.getElementById('man-fab'); if(fab) fab.classList.toggle('show', main.scrollTop > 300);
+  const arc = document.getElementById('man-fab-arc'); if(arc) arc.setAttribute('stroke-dashoffset', (131.95 * (1 - pct)).toFixed(2));
+  const stk = main.querySelector('#man-stick'), hero = main.querySelector('.man-hero');
+  if(stk && hero) stk.classList.toggle('show', hero.getBoundingClientRect().bottom < main.getBoundingClientRect().top + 8);
+}
+function manScrollTop_(){ const main = document.getElementById('man-main'); if(main) main.scrollTo({ top:0, behavior:'smooth' }); }
+// フッター(トップ・フォルダ・カテゴリ・ページの一番下): ノート・カテゴリ・便利の案内
+function manFooterHtml_(){
+  const tree = __man.tree || { folders:[], pages:[] };
+  const roots = manBuildTree_(tree).roots;
+  const cats = manCatIndex_(tree).roots || [];
+  const live = (tree.pages||[]).filter(p => !p.is_deleted);
+  const last = live.reduce((m,p) => String(p.updated_at||'') > m ? String(p.updated_at||'') : m, '');
+  return `<footer class="man-foot man-noprint"><div class="cols">
+    <div><div class="bd">📖 社内マニュアル<small>BUILD CLUSTER</small></div>
+      <div style="margin-top:8px;line-height:1.7">手順書はみんなで直せます。<br>気づいたら ✏️編集 から直してください。</div>
+      <div class="stat"><span>📄 ${live.length}ページ</span><span>📚 ${roots.length}ノート</span>${cats.length?`<span>🏷 ${(tree.categories||[]).length}カテゴリ</span>`:''}${last?`<span>🕘 最終更新 ${escapeHtml(manAgo_(last))}</span>`:''}</div></div>
+    <div><h4>ノート</h4>${roots.map(f => `<a href="#" data-fopen="${escapeHtml(f.id)}">📚 ${escapeHtml(f.name)}</a>`).join('')}</div>
+    <div><h4>カテゴリ</h4>${cats.slice(0,8).map(c => `<a href="#" data-copen="${escapeHtml(c.id)}"><span style="color:${c.color}">●</span> ${escapeHtml(c.name)}</a>`).join('') || '<span style="color:#64748b">まだありません</span>'}</div>
+    <div><h4>便利</h4><a href="#" data-fact="home">🏠 トップ</a><a href="#" data-fact="new">＋ 新しいページ</a><a href="#" data-fact="trash">🗑 ゴミ箱</a><a href="#" data-fact="top">⬆ ページの先頭へ</a></div>
+  </div><div class="bar"><span>© BUILD CLUSTER 社内マニュアル</span><span>NotePMから2026年10月に引っ越し</span><a href="#" data-fact="top" style="margin-left:auto;color:#fbbf24">⬆ 先頭へ</a></div></footer>`;
+}
+function manAddFooter_(main){
+  if(!main || __man.mode === 'edit') return;
+  const old = main.querySelector(':scope > .man-foot'); if(old) old.remove();
+  main.insertAdjacentHTML('beforeend', manFooterHtml_());
+  const ft = main.querySelector(':scope > .man-foot');
+  manWireCards_(ft);
+  ft.querySelectorAll('[data-fact]').forEach(a => a.onclick = e => { e.preventDefault(); const k = a.dataset.fact;
+    if(k === 'top') manScrollTop_();
+    else if(k === 'home') document.getElementById('man-home').click();
+    else if(k === 'trash') document.getElementById('man-trash-toggle').click();
+    else if(k === 'new'){ manScrollTop_(); manNewFromHome_(); } });
+  manOnScroll_();
 }
 // ページ内の目次(見出し3つ以上の時だけ・スマホは閉じた状態)
 function manRenderToc_(main){
