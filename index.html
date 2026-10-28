@@ -3018,7 +3018,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.857</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.858</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -36053,6 +36053,9 @@ window.__invAddStockFromMaterial_ = (entries)=>{
 //   v1.30.857(山田「ページ最大化 記事一覧サムネ」・migration 095):
 //     ⛶=画面いっぱい(目次を隠して本文を広く・bc_manual_max)。カードに本文の最初の画像のサムネ(manual_tree の thumb)。
 //     ⚠別ウィンドウはやめた: index.html をもう1つ開くとアプリ全体が起動し saveState・同期が2窓で並ぶため(カレンダー担当)。
+//   v1.30.858(山田「サムネ読み込み遅いな あと記事作成日と作成者と更新日も」・migration 096):
+//     サムネは Supabase の画像縮小(192×144)で署名し1日使い回す(bc_manual_thumbs・同じURLなのでブラウザの控えが効く)。
+//     縮小が使えない時は元の画像。カードとページに 📝作成(日付・作成者)と 🔄更新(日付・直した人)。
 // ====================================================================
 const MAN_BUCKET = 'manuals';
 const MAN_REF_PREFIX = 'sb:manuals/';
@@ -36072,6 +36075,7 @@ const __man = { tree:null, trash:false, cur:null, mode:'view', q:'', results:nul
                 hl:'', filt:{ folder:'', user:'', days:'', sort:'', cat:'' }, filtOpen:false, nav:{ stack:[], i:-1 }, navLock:false };
 const MAN_FONT_KEY = 'bc_manual_font';   // 文字の大きさ s/m/l(この端末)
 const MAN_MAX_KEY = 'bc_manual_max';     // ⛶ 画面いっぱい(この端末)
+const MAN_THUMB_KEY = 'bc_manual_thumbs'; // サムネの縮小版の署名URL(1日・合計100KBまで・共通の頭は省く)。同じURLを使い回してブラウザの控えを効かせる
 
 function manExtOf_(name){ const m = /\.([A-Za-z0-9]{1,8})(?:$|\?)/.exec(String(name||'')); return m ? m[1].toLowerCase() : ''; }
 function manIsRef_(v){ return typeof v === 'string' && v.indexOf(MAN_REF_PREFIX) === 0; }
@@ -36185,8 +36189,9 @@ function manPageCardHtml_(p, byId, opt){
   const pills = [];
   if(opt.rank) pills.push(`<span class="man-pill" style="background:#fef3c7;color:#b45309">${opt.rank}位</span>`);
   if(opt.badge) pills.push(opt.badge);
-  if(when) pills.push(`<span class="man-chip" title="${esc(manFmtDate_(when))}">🕘 ${esc(manAgo_(when))}</span>`);
-  if(who) pills.push(`<span class="man-chip">✏️ ${esc(who)}</span>`);
+  const cr = manCreatedOf_(p);
+  if(cr.at && !opt.compact) pills.push(`<span class="man-chip man-cr" title="作成 ${esc(manFmtDate_(cr.at))}">📝 作成 ${esc(manYmd_(cr.at))}${cr.by?' '+esc(cr.by):''}</span>`);
+  if(when) pills.push(`<span class="man-chip man-up" title="更新 ${esc(manFmtDate_(when))}">🔄 更新 ${esc(manAgo_(when))}${who?' '+esc(who):''}</span>`);
   if(p.att_n) pills.push(`<span class="man-chip">📎 ${p.att_n}</span>`);
   if(p.reacts) pills.push(`<span class="man-chip">👍 ${p.reacts}</span>`);
   if(p.viewers) pills.push(`<span class="man-chip">👀 ${p.viewers}人</span>`);
@@ -36204,6 +36209,14 @@ function manPageCardHtml_(p, byId, opt){
       </div>${th}
     </div>`;
 }
+// 作成日・作成者(manual_tree の created_*・096)。トップの新着などは目次の同じページから引く
+function manCreatedOf_(p){
+  if(!p) return { at:'', by:'' };
+  let x = p;
+  if(p.created_at === undefined && typeof __man !== 'undefined' && __man.tree) x = ((__man.tree.pages||[]).find(q => q.id === p.id)) || {};
+  return { at: x.created_at || '', by: x.created_by || '' };
+}
+function manYmd_(iso){ const d = new Date(iso||''); return isNaN(d) ? '' : `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`; }
 // サムネの元(manual_tree の thumb=本文の最初の画像)。トップの新着などは目次の同じページから引く
 function manThumbOf_(p){
   if(!p) return '';
@@ -36211,13 +36224,56 @@ function manThumbOf_(p){
   if(t === undefined && typeof __man !== 'undefined' && __man.tree) t = (((__man.tree.pages||[]).find(x => x.id === p.id)) || {}).thumb;
   return (typeof t === 'string' && manIsRef_(t)) ? t : '';
 }
-// カードのサムネを署名URLにして入れる(まとめて1回・見えたものから読み込む)。読めない画像は📄に戻す
+// カードのサムネ: 縮小版(192×144)の署名URLを入れる。縮小が使えない時は元の画像(まとめて1回)。読めない画像は📄に戻す
 async function manLoadThumbs_(root){
   const imgs = [...root.querySelectorAll('img[data-thumb]:not([src])')]; if(!imgs.length) return;
-  try{ await manSign_(imgs.map(i => i.dataset.thumb)); }catch(_){ return; }
-  imgs.forEach(i => { const u = manSigned_(i.dataset.thumb); if(!u) return;
-    i.onerror = () => { const b = i.parentNode; if(b){ b.classList.add('ph'); b.textContent = '📄'; } };
+  const refs = [...new Set(imgs.map(i => i.dataset.thumb))];
+  let small = {}; try{ small = await manSignThumbs_(refs); }catch(_){ small = {}; }
+  const rest = refs.filter(r => !small[r]);
+  if(rest.length){ try{ await manSign_(rest); }catch(_){} }
+  imgs.forEach(i => { const r = i.dataset.thumb; const u = small[r] || manSigned_(r); if(!u) return;
+    const ph = () => { const b = i.parentNode; if(b){ b.classList.add('ph'); b.textContent = '📄'; } };
+    i.onerror = () => {   // 縮小版が読めない → 控えを捨てて元の画像を1回だけ
+      if(i.dataset.orig){ ph(); return; } i.dataset.orig = '1'; manThumbCacheDrop_(r);
+      manSign_([r]).then(() => { const o = manSigned_(r); if(o) i.src = o; else ph(); }).catch(ph); };
     i.src = u; });
+}
+function manThumbCacheLoad_(){ try{ const o = JSON.parse(localStorage.getItem(MAN_THUMB_KEY) || '{}'); return (o && typeof o === 'object') ? o : {}; }catch(_){ return {}; } }
+function manThumbCacheSave_(c){
+  const now = Date.now();
+  const keep = []; let size = 2;   // 端末の容量(4.3MB警告)のため文字数で上限: 新しい順に100KBまで・400件まで
+  Object.entries(c).filter(([k,v]) => v && v.exp > now).sort((a,b) => b[1].exp - a[1].exp).forEach(e => {
+    const n = JSON.stringify(e[0]).length + JSON.stringify(e[1]).length + 2;
+    if(keep.length < 400 && size + n <= 100000){ keep.push(e); size += n; } });
+  try{ localStorage.setItem(MAN_THUMB_KEY, JSON.stringify(Object.fromEntries(keep))); }catch(_){}
+}
+function manThumbCacheDrop_(ref){ const c = manThumbCacheLoad_(); if(c[ref]){ delete c[ref]; manThumbCacheSave_(c); } }
+// 縮小版の署名(1件ずつ・同時6本)。1日有効で端末に覚え、同じURLを使い回す(ブラウザの画像の控えが効く)
+async function manSignThumbs_(refs){
+  const out = {}, now = Date.now(), cache = manThumbCacheLoad_();
+  const need = [];
+  const base = SB_AUTH.url + '/storage/v1';   // 控えには共通の頭を省いて持つ
+  refs.forEach(r => { const c = cache[r]; if(c && c.exp > now + 10*60*1000 && c.u) out[r] = c.u.charAt(0) === '/' ? base + c.u : c.u; else need.push(r); });
+  if(!need.length || __man.noXform) return out;
+  let sess = sbSession_(); if(!sess || !sess.access_token) return out;
+  let refreshed = false;
+  const one = async ref => {
+    const path = ref.slice(MAN_REF_PREFIX.length).split('/').map(encodeURIComponent).join('/');
+    for(let k=0;k<2;k++){
+      const res = await fetch(`${SB_AUTH.url}/storage/v1/object/sign/${MAN_BUCKET}/${path}`, {
+        method:'POST', headers:{ apikey:SB_AUTH.key, Authorization:'Bearer '+sess.access_token, 'Content-Type':'application/json' },
+        body: JSON.stringify({ expiresIn: 86400, transform:{ width:192, height:144, resize:'cover', quality:70 } }) });
+      if((res.status===401 || res.status===403) && k===0 && !refreshed){ refreshed = true; try{ await sbRefresh_(); }catch(_){} sess = sbSession_() || sess; continue; }
+      if(!res.ok){ if(res.status === 400 || res.status === 422){ const t = await res.text().catch(()=> ''); if(/transform/i.test(t)) __man.noXform = true; } return; }
+      const j = await res.json().catch(() => null); const u = j && (j.signedURL || j.signedUrl); if(!u) return;
+      const url = /^https?:/.test(u) ? u : (SB_AUTH.url + '/storage/v1' + u);
+      out[ref] = url; cache[ref] = { u: url.indexOf(base) === 0 ? url.slice(base.length) : url, exp: Date.now() + 23*60*60*1000 };
+      return;
+    }
+  };
+  for(let i=0;i<need.length;i+=6){ if(__man.noXform) break; await Promise.all(need.slice(i, i+6).map(r => one(r).catch(() => {}))); }
+  manThumbCacheSave_(cache);
+  return out;
 }
 // フォルダのカード
 function manFolderCardHtml_(f, byId){
@@ -36383,6 +36439,8 @@ function manEnsureModal_(){
   #manualModal .man-pc-name{font-weight:700;font-size:14px;color:#0f172a;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.4;margin-bottom:5px}
   #manualModal .man-pc.compact .man-pc-name{-webkit-line-clamp:1;font-size:13px;margin-bottom:3px}
   #manualModal .man-pc-row{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+  #manualModal .man-chip.man-cr{background:#ecfdf5;color:#047857}
+  #manualModal .man-chip.man-up{background:#eff6ff;color:#1d4ed8}
   #manualModal .man-pc.has-th{display:flex;gap:10px;align-items:flex-start}
   #manualModal .man-pc-tx{flex:1;min-width:0}
   #manualModal .man-pc-th{flex:none;width:96px;height:72px;border-radius:7px;overflow:hidden;background:#f1f5f9;border:1px solid #e2e8f0;display:grid;place-items:center;font-size:26px}
@@ -36978,8 +37036,8 @@ async function manRenderPage_(){
     </div>
     <div style="font-size:21px;font-weight:800;line-height:1.4;color:#0f172a">${p.is_deleted?'🗑 ':''}${escapeHtml(p.title)}</div>
     <div class="man-pc-row" style="margin:6px 0 10px">
-      <span class="man-chip" title="${escapeHtml(manFmtDate_(p.updated_at))}">🕘 ${escapeHtml(manAgo_(p.updated_at))}</span>
-      ${p.updated_by?`<span class="man-chip">✏️ ${escapeHtml(p.updated_by)}</span>`:''}
+      ${p.created_at?`<span class="man-chip man-cr" title="${escapeHtml(manFmtDate_(p.created_at))}">📝 作成 ${escapeHtml(manYmd_(p.created_at))}${p.created_by?' '+escapeHtml(p.created_by):''}</span>`:''}
+      <span class="man-chip man-up" title="${escapeHtml(manFmtDate_(p.updated_at))}">🔄 更新 ${escapeHtml(manYmd_(p.updated_at))}${p.updated_by?' '+escapeHtml(p.updated_by):''}（${escapeHtml(manAgo_(p.updated_at))}）</span>
       <span class="man-chip">版 ${p.version}</span>
       ${atts.length?`<span class="man-chip">📎 ${atts.length}</span>`:''}
       ${p.is_deleted?'<span class="man-pill" style="background:#fee2e2;color:#b91c1c">ゴミ箱</span>':''}
