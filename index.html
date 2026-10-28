@@ -3018,7 +3018,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.856</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.857</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -36050,6 +36050,9 @@ window.__invAddStockFromMaterial_ = (entries)=>{
 //   v1.30.856(山田「ホバーでトップに戻るとかヘッダーふっだーもまだ弱い」): 紺のヘッダー(📖を押すとトップ)・読んだ割合の線・
 //     下に読み進めると題名の帯が上に付いてくる・右下の⬆(乗せると「ページの先頭へ」に伸びる・輪で読んだ割合)・
 //     どの画面も一番下にフッター(ノート・カテゴリ・便利の案内)。スクロールの見張りは manOnScroll_ 1本。
+//   v1.30.857(山田「ページ最大化 記事一覧サムネ」・migration 095):
+//     ⛶=画面いっぱい(目次を隠して本文を広く・bc_manual_max)。カードに本文の最初の画像のサムネ(manual_tree の thumb)。
+//     ⚠別ウィンドウはやめた: index.html をもう1つ開くとアプリ全体が起動し saveState・同期が2窓で並ぶため(カレンダー担当)。
 // ====================================================================
 const MAN_BUCKET = 'manuals';
 const MAN_REF_PREFIX = 'sb:manuals/';
@@ -36068,6 +36071,7 @@ const MAN_VIDEO_EXT = /^(mp4|mov|m4v|webm)$/i;
 const __man = { tree:null, trash:false, cur:null, mode:'view', q:'', results:null, open:new Set(), libs:null, signed:new Map(), hist:null, busy:false, folderId:'',
                 hl:'', filt:{ folder:'', user:'', days:'', sort:'', cat:'' }, filtOpen:false, nav:{ stack:[], i:-1 }, navLock:false };
 const MAN_FONT_KEY = 'bc_manual_font';   // 文字の大きさ s/m/l(この端末)
+const MAN_MAX_KEY = 'bc_manual_max';     // ⛶ 画面いっぱい(この端末)
 
 function manExtOf_(name){ const m = /\.([A-Za-z0-9]{1,8})(?:$|\?)/.exec(String(name||'')); return m ? m[1].toLowerCase() : ''; }
 function manIsRef_(v){ return typeof v === 'string' && v.indexOf(MAN_REF_PREFIX) === 0; }
@@ -36188,12 +36192,32 @@ function manPageCardHtml_(p, byId, opt){
   if(p.viewers) pills.push(`<span class="man-chip">👀 ${p.viewers}人</span>`);
   if(opt.meta) pills.push(`<span class="man-chip">${opt.meta}</span>`);
   const catChips = opt.catById ? manCatChipsHtml_(p.cats, opt.catById, true) : '';
-  return `<div class="man-pc${opt.compact?' compact':''}" data-pid="${esc(p.id)}" style="border-left-color:${color}">
+  const thumb = manThumbOf_(p);
+  const th = thumb ? `<div class="man-pc-th"><img data-thumb="${esc(thumb)}" alt="" loading="lazy" decoding="async"></div>`
+           : (opt.compact ? '' : `<div class="man-pc-th ph" style="background:${color}14;color:${color}">📄</div>`);
+  return `<div class="man-pc${opt.compact?' compact':''}${th?' has-th':''}" data-pid="${esc(p.id)}" style="border-left-color:${color}">
+      <div class="man-pc-tx">
       <div class="man-pc-name">${p.fav?'<span style="color:#f59e0b">★</span> ':''}📄 ${esc(p.title)}</div>
       ${pills.length?`<div class="man-pc-row">${pills.join('')}</div>`:''}
       ${catChips?`<div class="man-pc-row" style="margin-top:4px">${catChips}</div>`:''}
       ${path.length?`<div class="man-pc-sub">${esc(path.join(' › '))}</div>`:''}
+      </div>${th}
     </div>`;
+}
+// サムネの元(manual_tree の thumb=本文の最初の画像)。トップの新着などは目次の同じページから引く
+function manThumbOf_(p){
+  if(!p) return '';
+  let t = p.thumb;
+  if(t === undefined && typeof __man !== 'undefined' && __man.tree) t = (((__man.tree.pages||[]).find(x => x.id === p.id)) || {}).thumb;
+  return (typeof t === 'string' && manIsRef_(t)) ? t : '';
+}
+// カードのサムネを署名URLにして入れる(まとめて1回・見えたものから読み込む)。読めない画像は📄に戻す
+async function manLoadThumbs_(root){
+  const imgs = [...root.querySelectorAll('img[data-thumb]:not([src])')]; if(!imgs.length) return;
+  try{ await manSign_(imgs.map(i => i.dataset.thumb)); }catch(_){ return; }
+  imgs.forEach(i => { const u = manSigned_(i.dataset.thumb); if(!u) return;
+    i.onerror = () => { const b = i.parentNode; if(b){ b.classList.add('ph'); b.textContent = '📄'; } };
+    i.src = u; });
 }
 // フォルダのカード
 function manFolderCardHtml_(f, byId){
@@ -36359,6 +36383,18 @@ function manEnsureModal_(){
   #manualModal .man-pc-name{font-weight:700;font-size:14px;color:#0f172a;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.4;margin-bottom:5px}
   #manualModal .man-pc.compact .man-pc-name{-webkit-line-clamp:1;font-size:13px;margin-bottom:3px}
   #manualModal .man-pc-row{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+  #manualModal .man-pc.has-th{display:flex;gap:10px;align-items:flex-start}
+  #manualModal .man-pc-tx{flex:1;min-width:0}
+  #manualModal .man-pc-th{flex:none;width:96px;height:72px;border-radius:7px;overflow:hidden;background:#f1f5f9;border:1px solid #e2e8f0;display:grid;place-items:center;font-size:26px}
+  #manualModal .man-pc-th img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .25s}
+  #manualModal .man-pc:hover .man-pc-th img{transform:scale(1.06)}
+  #manualModal .man-pc-th.ph{border-color:transparent;opacity:.85}
+  #manualModal .man-pc.compact .man-pc-th{width:56px;height:42px;font-size:18px;border-radius:6px}
+  #manualModal.man-max .modal{width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;border-radius:0}
+  #manualModal.man-max .man-side{display:none}
+  #manualModal.man-max .man-main>*:not(.man-foot):not(.man-stick){max-width:1040px;margin-left:auto;margin-right:auto}
+  #manualModal.man-max .man-cards{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
+  #manualModal .man-head .btn.on{background:rgba(251,191,36,.3);border-color:#fbbf24}
   #manualModal .man-pc-sub{font-size:11px;color:var(--muted);margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #manualModal .man-pill{padding:1px 8px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap}
   #manualModal .man-chip{font-size:11px;color:#475569;font-weight:600;background:#f1f5f9;padding:1px 7px;border-radius:6px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
@@ -36468,6 +36504,8 @@ function manEnsureModal_(){
     #manualModal .man-wrap:not(.show-main) .man-fab{display:none}
     #manualModal .man-fab{right:14px;bottom:calc(14px + env(safe-area-inset-bottom))}
     #manualModal .man-brand small{display:none}
+    #manualModal #man-max{display:none}
+    #manualModal .man-pc-th{width:72px;height:56px}
   }`;
   document.head.appendChild(st);
   const ov = document.createElement('div'); ov.className = 'modal-overlay'; ov.id = 'manualModal';
@@ -36480,6 +36518,7 @@ function manEnsureModal_(){
         <a href="#" class="man-brand" id="man-brand" title="マニュアルのトップへ"><span class="ic">📖</span><span><b>社内マニュアル</b><small>BUILD CLUSTER</small></span></a>
         <span id="man-status" style="font-weight:400;font-size:11px;color:var(--muted)"></span>
         <span style="margin-left:auto;display:flex;gap:6px">
+          <button class="btn man-mini" id="man-max" title="画面いっぱいに広げる(目次を隠して本文を広く)・もう一度で戻す">⛶</button>
           <button class="btn man-mini" id="man-font" title="文字の大きさ(小・中・大)">Aa</button>
           <button class="btn man-mini" id="man-home" title="トップ(お知らせ・新着・よく見られている)">🏠 トップ</button>
           <button class="btn man-mini" id="man-trash-toggle" title="ゴミ箱に入れたページを見る・戻す">🗑 ゴミ箱</button>
@@ -36511,6 +36550,9 @@ function manEnsureModal_(){
   document.body.appendChild(ov);
   ov.onclick = e => { if(e.target === ov) manClose_(); };
   ov.querySelector('#man-close').onclick = manClose_;
+  ov.querySelector('#man-max').onclick = () => { let on = false; try{ on = localStorage.getItem(MAN_MAX_KEY) === '1'; }catch(_){}
+    try{ localStorage.setItem(MAN_MAX_KEY, on ? '0' : '1'); }catch(_){} manApplyMax_(); };
+  manApplyMax_();
   ov.querySelector('#man-brand').onclick = e => { e.preventDefault(); ov.querySelector('#man-home').click(); };
   ov.querySelector('#man-fab').onclick = () => manScrollTop_();
   ov.querySelector('#man-main').addEventListener('scroll', manOnScroll_, { passive:true });
@@ -36540,6 +36582,13 @@ function manEnsureModal_(){
 function manClose_(){
   if(__man.mode === 'edit' && !confirm('編集中の内容は下書きとして残しています。閉じますか？')) return;
   const ov = document.getElementById('manualModal'); if(ov) ov.classList.remove('show');
+}
+// ⛶ 画面いっぱい(この端末で覚える)
+function manApplyMax_(){
+  const ov = document.getElementById('manualModal'); if(!ov) return;
+  let on = false; try{ on = localStorage.getItem(MAN_MAX_KEY) === '1'; }catch(_){}
+  ov.classList.toggle('man-max', on);
+  const b = document.getElementById('man-max'); if(b){ b.classList.toggle('on', on); b.textContent = on ? '⛶ 戻す' : '⛶'; }
 }
 function manStatus_(t){ const el = document.getElementById('man-status'); if(el) el.textContent = t || ''; }
 function manShowMain_(on){ const w = document.getElementById('man-wrap'); if(w) w.classList.toggle('show-main', !!on); }
@@ -36788,6 +36837,7 @@ function manWireCards_(root){
   root.querySelectorAll('.man-pc[data-pid]').forEach(el => el.onclick = e => { if(e.target.closest('[data-copen]')) return; __man.hl = ''; manOpenPage_(el.dataset.pid); });
   root.querySelectorAll('.man-pc[data-fopen],a[data-fopen]').forEach(el => el.onclick = e => { e.preventDefault(); manRenderFolder_(el.dataset.fopen); });
   root.querySelectorAll('[data-copen]').forEach(el => el.onclick = e => { e.preventDefault(); e.stopPropagation(); manRenderCategory_(el.dataset.copen); });
+  manLoadThumbs_(root);
 }
 async function manCatSave_(id, base, parent, name, color){
   let r; try{ r = await manRpc_('manual_save_category', { p_operation_id: manOpId_(), p_id: id, p_base_version: base, p_parent_id: parent, p_name: name, p_color: color, p_editor: manEditor_() }); }
