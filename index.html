@@ -3018,7 +3018,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.858</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.859</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -36056,6 +36056,10 @@ window.__invAddStockFromMaterial_ = (entries)=>{
 //   v1.30.858(山田「サムネ読み込み遅いな あと記事作成日と作成者と更新日も」・migration 096):
 //     サムネは Supabase の画像縮小(192×144)で署名し1日使い回す(bc_manual_thumbs・同じURLなのでブラウザの控えが効く)。
 //     縮小が使えない時は元の画像。カードとページに 📝作成(日付・作成者)と 🔄更新(日付・直した人)。
+//   v1.30.859(山田「新着の知らせ・予定から開く・古いページの見直し」・migration 097):
+//     📖の赤い点=前回開いた後に他の人が更新したページがある(manual_changes・起動8秒後と画面に戻った時30分に1回・bc_manual_seen)。
+//     トップに「前回から変わったページ」。1年以上見直されていない/本文200字未満のページに札・トップと🧹の画面・✓見直した(manual_mark_reviewed)。
+//     manOpenRelated_({kind,title,bukken,room}) = 予定・修繕・原状回復・事務タスク・立会の画面から関連マニュアル(ボタンはカレンダー担当)。
 // ====================================================================
 const MAN_BUCKET = 'manuals';
 const MAN_REF_PREFIX = 'sb:manuals/';
@@ -36075,6 +36079,11 @@ const __man = { tree:null, trash:false, cur:null, mode:'view', q:'', results:nul
                 hl:'', filt:{ folder:'', user:'', days:'', sort:'', cat:'' }, filtOpen:false, nav:{ stack:[], i:-1 }, navLock:false };
 const MAN_FONT_KEY = 'bc_manual_font';   // 文字の大きさ s/m/l(この端末)
 const MAN_MAX_KEY = 'bc_manual_max';     // ⛶ 画面いっぱい(この端末)
+const MAN_SEEN_KEY = 'bc_manual_seen';    // 新着: 前回マニュアルを開いた時刻(ISO・この端末)
+const MAN_STALE_DAYS = 365, MAN_THIN_CHARS = 200;   // 見直し: 1年以上 更新も見直しも無い / 本文が200字未満(見直した印が無いもの)
+// 予定の種類 → 関連マニュアルに出すカテゴリ(名前で引く・カテゴリの名前を変えたらここも)
+const MAN_KIND_CATS = { taikyo:['立会テクニック','山一必須知識'], repair:['水回り工事マニュアル','施工スタッフマニュアル'], resto:['特殊見積','山一必須知識'],
+  task:['事務スタッフマニュアル'], '現調':['山一必須知識','立会テクニック'], '工事':['施工スタッフマニュアル','水回り工事マニュアル'] };
 const MAN_THUMB_KEY = 'bc_manual_thumbs'; // サムネの縮小版の署名URL(1日・合計100KBまで・共通の頭は省く)。同じURLを使い回してブラウザの控えを効かせる
 
 function manExtOf_(name){ const m = /\.([A-Za-z0-9]{1,8})(?:$|\?)/.exec(String(name||'')); return m ? m[1].toLowerCase() : ''; }
@@ -36192,6 +36201,9 @@ function manPageCardHtml_(p, byId, opt){
   const cr = manCreatedOf_(p);
   if(cr.at && !opt.compact) pills.push(`<span class="man-chip man-cr" title="作成 ${esc(manFmtDate_(cr.at))}">📝 作成 ${esc(manYmd_(cr.at))}${cr.by?' '+esc(cr.by):''}</span>`);
   if(when) pills.push(`<span class="man-chip man-up" title="更新 ${esc(manFmtDate_(when))}">🔄 更新 ${esc(manAgo_(when))}${who?' '+esc(who):''}</span>`);
+  if(!opt.compact){ const tp = manTreePage_(p);
+    if(manIsStale_(tp)) pills.push('<span class="man-pill" style="background:#fef3c7;color:#b45309" title="1年以上 更新も見直しもされていません">⚠ 見直し</span>');
+    else if(manIsThin_(tp)) pills.push('<span class="man-pill" style="background:#f1f5f9;color:#475569" title="本文が短いページです">✍ 説明が少ない</span>'); }
   if(p.att_n) pills.push(`<span class="man-chip">📎 ${p.att_n}</span>`);
   if(p.reacts) pills.push(`<span class="man-chip">👍 ${p.reacts}</span>`);
   if(p.viewers) pills.push(`<span class="man-chip">👀 ${p.viewers}人</span>`);
@@ -36217,6 +36229,21 @@ function manCreatedOf_(p){
   return { at: x.created_at || '', by: x.created_by || '' };
 }
 function manYmd_(iso){ const d = new Date(iso||''); return isNaN(d) ? '' : `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`; }
+// ---- 見直し(v859): 1年以上 更新も見直しも無い・本文が短い(見直した印が無い) ----
+function manTreePage_(p){
+  if(!p) return {};
+  if(p.chars !== undefined) return p;
+  return (typeof __man !== 'undefined' && __man.tree && (__man.tree.pages||[]).find(x => x.id === p.id)) || p;
+}
+function manLastTouch_(p){ const a = Date.parse((p && p.updated_at) || ''), b = Date.parse((p && p.reviewed_at) || ''); return Math.max(isNaN(a) ? 0 : a, isNaN(b) ? 0 : b); }
+function manIsStale_(p, now){ const t = manLastTouch_(p); return !!t && ((now || Date.now()) - t) > MAN_STALE_DAYS * 86400000; }
+function manIsThin_(p){ return !!p && typeof p.chars === 'number' && p.chars < MAN_THIN_CHARS && !p.reviewed_at; }
+function manStaleList_(tree, now){
+  const ps = ((tree && tree.pages) || []).filter(p => !p.is_deleted && p.id !== 'mp_notice');
+  const old = ps.filter(p => manIsStale_(p, now)).sort((a,b) => manLastTouch_(a) - manLastTouch_(b));
+  const thin = ps.filter(p => !manIsStale_(p, now) && manIsThin_(p)).sort((a,b) => (a.chars||0) - (b.chars||0));
+  return { old, thin, n: old.length + thin.length };
+}
 // サムネの元(manual_tree の thumb=本文の最初の画像)。トップの新着などは目次の同じページから引く
 function manThumbOf_(p){
   if(!p) return '';
@@ -36439,6 +36466,7 @@ function manEnsureModal_(){
   #manualModal .man-pc-name{font-weight:700;font-size:14px;color:#0f172a;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.4;margin-bottom:5px}
   #manualModal .man-pc.compact .man-pc-name{-webkit-line-clamp:1;font-size:13px;margin-bottom:3px}
   #manualModal .man-pc-row{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+  #manualModal .man-stale{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:8px 10px;margin:4px 0 10px;font-size:12.5px;color:#92400e;line-height:1.6}
   #manualModal .man-chip.man-cr{background:#ecfdf5;color:#047857}
   #manualModal .man-chip.man-up{background:#eff6ff;color:#1d4ed8}
   #manualModal .man-pc.has-th{display:flex;gap:10px;align-items:flex-start}
@@ -36662,7 +36690,8 @@ async function manOpen_(){
   }
   manLoadLibs_().catch(()=>{});
   await manLoadTree_();
-  if(!__man.cur && __man.mode !== 'edit' && __man.mode !== 'folder' && __man.mode !== 'cat'){ manRenderHome_(); manShowMain_(true); }
+  { const ch = await manCheckNew_(); if(ch && ch.at) manSeenSet_(ch.at); manDot_(false); }   // 開いたら新着は見たことにする(一覧は __man.changes に残る)
+  if(!__man.cur && !['edit','folder','cat','stale','rel'].includes(__man.mode)){ manRenderHome_(); manShowMain_(true); }
 }
 async function manLoadTree_(){
   manStatus_('読み込み中…');
@@ -36757,7 +36786,7 @@ async function manLoadHome_(){
   let h;
   try{ [h] = await Promise.all([manRpc_('manual_home', { p_limit: 30 }), manLoadLibs_().catch(()=>{})]); }
   catch(e){ manRenderHomeOld_(); return; }
-  if(__man.cur || __man.mode === 'edit' || __man.mode === 'folder' || __man.mode === 'cat') return;   // 読み込み中に別のページ・フォルダ・カテゴリを開いた
+  if(__man.cur || ['edit','folder','cat','stale','rel'].includes(__man.mode)) return;   // 読み込み中に別のページ・フォルダ・カテゴリなどを開いた
   const ACT = { import:['NotePMから','#e0e7ff','#3730a3'], create:['🆕 新規','#dcfce7','#15803d'], edit:['更新','#fef3c7','#b45309'], restore:['復元','#fce7f3','#9d174d'] };
   const byId = manBuildTree_(__man.tree || { folders:[], pages:[] }).byId;
   const actPill = a => { const x = ACT[a]; return x ? `<span class="man-pill" style="background:${x[1]};color:${x[2]}">${x[0]}</span>` : ''; };
@@ -36770,6 +36799,13 @@ async function manLoadHome_(){
   const popular = (h.popular||[]).map((x,i) => manPageCardHtml_({ ...x, viewers:x.viewers }, byId, { rank:i+1, compact:true })).join('');
   const mine = manRecentLoad_().map(x => { const tp = (__man.tree && (__man.tree.pages||[]).find(q => q.id === x.id)) || x; return manPageCardHtml_(tp, byId, { compact:true }); }).join('');
   const nt = h.notice;
+  const chg = (__man.changes && (__man.changes.pages||[]).length) ? `<div class="man-sec" style="margin-top:0"><span class="gh-tag" style="background:#ef4444">🔔 前回から変わったページ</span><span class="gh-count">${__man.changes.n}件</span></div>
+        <div class="man-cards" style="margin-bottom:12px">${__man.changes.pages.map(x => manPageCardHtml_(withCats(x), byId, { compact:true,
+          badge: x.is_new ? '<span class="man-pill" style="background:#dcfce7;color:#15803d">🆕 新規</span>' : '<span class="man-pill" style="background:#fee2e2;color:#b91c1c">更新</span>' })).join('')}</div>` : '';
+  const stl = manStaleList_(__man.tree);
+  const staleHtml = stl.n ? `<div class="man-sec"><span class="gh-tag" style="background:#d97706">🧹 見直してほしいページ</span><span class="gh-count">${stl.n}件</span>
+        <button class="btn man-mini" id="man-h-stale" style="margin-left:auto">すべて見る ›</button></div>
+        <div class="man-cards one">${stl.old.slice(0, 4).map(p => manPageCardHtml_(p, byId, { compact:true, badge:'<span class="man-pill" style="background:#fef3c7;color:#b45309">⚠ 見直し</span>' })).join('')}</div>` : '';
   main.innerHTML = `
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
       <b style="font-size:17px">🏠 トップ</b>
@@ -36778,6 +36814,7 @@ async function manLoadHome_(){
     </div>
     <div class="man-home">
       <div style="min-width:0">
+        ${chg}
         <div class="man-hero" style="border-left-color:#f59e0b">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><b style="font-size:15px">📢 お知らせ</b>
             ${nt?`<span class="man-chip">🕘 ${escapeHtml(manAgo_(nt.updated_at))} ${escapeHtml(nt.updated_by||'')}</span><a href="#" id="man-h-nedit" class="btn man-mini" style="margin-left:auto;text-decoration:none">✏️ 直す</a>`:''}</div>
@@ -36792,6 +36829,7 @@ async function manLoadHome_(){
         <div class="man-sec"><span class="gh-tag" style="background:#f59e0b">⭐ よく見られている</span><span class="gh-count">30日</span></div>
         <div class="man-cards one">${popular || '<span style="color:var(--muted);font-size:12px">見られた記録がたまると出ます</span>'}</div>
         ${mine ? `<div class="man-sec"><span class="gh-tag" style="background:#64748b">🕘 自分が最近開いた</span></div><div class="man-cards one">${mine}</div>` : ''}
+        ${staleHtml}
         <div class="man-sec"><span class="gh-tag" style="background:#0f766e">📚 ノート</span></div>
         <div class="man-cards one">${manBuildTree_(__man.tree || { folders:[], pages:[] }).roots.map(f => manFolderCardHtml_(f, byId)).join('')}</div>
       </div>
@@ -36800,6 +36838,7 @@ async function manLoadHome_(){
   const nc = main.querySelector('#man-h-newcat'); if(nc) nc.onclick = async () => { const id = await manCategoryNew_(); if(id) manRenderCategory_(id); };
   const q = s => main.querySelector(s);
   if(q('#man-h-tree')) q('#man-h-tree').onclick = () => manShowMain_(false);
+  if(q('#man-h-stale')) q('#man-h-stale').onclick = () => manRenderStale_();
   if(q('#man-h-nedit')) q('#man-h-nedit').onclick = e => { e.preventDefault(); manOpenPage_('mp_notice'); };
   q('#man-h-new').onclick = () => manNewFromHome_();
   const nb = q('#man-h-notice'); if(nb) manWireBody_(nb);
@@ -36833,6 +36872,117 @@ async function manSearch_(q){
   if(f.cat && __man.tree){ const ok = new Set(manCatIndex_(__man.tree).pagesOf(f.cat).map(p => p.id)); rs = (rs||[]).filter(r => ok.has(r.id)); }
   __man.results = rs; manRenderList_();
 }
+async function manMarkReviewed_(){
+  const p = __man.cur; if(!p) return;
+  let r; try{ r = await manRpc_('manual_mark_reviewed', { p_operation_id: manOpId_(), p_page_id: p.id, p_editor: manEditor_() }); }
+  catch(e){ alert('できませんでした: ' + (e.message||e)); return; }
+  if(!r || r.result !== 'applied'){ alert(r && r.result === 'not_found' ? 'このページは見つかりません' : manSaveErrorText_(r)); return; }
+  const tp = __man.tree && (__man.tree.pages||[]).find(x => x.id === p.id);
+  if(tp){ tp.reviewed_at = r.reviewed_at; tp.reviewed_by = r.reviewed_by; }
+  manStatus_('✓ 見直した印を付けました'); manRenderPage_();
+}
+// 🧹 見直してほしいページの画面
+function manRenderStale_(){
+  const main = document.getElementById('man-main'); if(!main || !__man.tree) return;
+  if(__man.mode === 'edit' && !confirm('編集中です。下書きを残して移動しますか？')) return;
+  __man.mode = 'stale'; __man.cur = null; __man.folderView = '';
+  manNavRecord_('stale', '');
+  const byId = manBuildTree_(__man.tree).byId, ci = manCatIndex_(__man.tree);
+  const st = manStaleList_(__man.tree);
+  const cards = arr => arr.map(p => manPageCardHtml_(p, byId, { catById: ci.byId })).join('');
+  main.innerHTML = `
+    <div class="man-hero" style="border-left-color:#f59e0b">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px"><a href="#" data-home="1">🏠</a> › 🧹 見直し</div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:19px">🧹 見直してほしいページ</b><span class="man-pill" style="background:#fef3c7;color:#b45309">${st.n}ページ</span></div>
+      <div style="font-size:12px;color:#475569;margin-top:6px;line-height:1.7">開いて、今の内容で正しければ「✓ 見直した」、直す所があれば ✏️編集 を押してください。どちらでもこの一覧から消えます。</div>
+    </div>
+    <div class="man-sec"><span class="gh-tag" style="background:#d97706">⚠ 1年以上 見直されていない</span><span class="gh-count">${st.old.length}件・古い順</span></div>
+    <div class="man-cards">${cards(st.old) || '<span style="color:var(--muted);font-size:12px">ありません</span>'}</div>
+    <div class="man-sec"><span class="gh-tag" style="background:#64748b">✍ 説明が少ない(本文${MAN_THIN_CHARS}字未満)</span><span class="gh-count">${st.thin.length}件</span></div>
+    <div class="man-cards">${cards(st.thin) || '<span style="color:var(--muted);font-size:12px">ありません</span>'}</div>`;
+  manWireCards_(main); manAddFooter_(main);
+  const hm = main.querySelector('[data-home]'); if(hm) hm.onclick = e => { e.preventDefault(); __man.mode = 'view'; __man.cur = null; manRenderHome_(); };
+  main.scrollTop = 0; manShowMain_(true);
+}
+// ---- 新着の知らせ(v859): 📖に赤い点・トップに「前回から変わったページ」 ----
+function manSeenGet_(){ try{ return localStorage.getItem(MAN_SEEN_KEY) || ''; }catch(_){ return ''; } }
+function manSeenSet_(at){
+  const t = Date.parse(at || ''); if(isNaN(t)) return;
+  const cur = Date.parse(manSeenGet_()); if(!isNaN(cur) && cur >= t) return;   // 戻さない
+  try{ localStorage.setItem(MAN_SEEN_KEY, new Date(t).toISOString()); }catch(_){}
+}
+function manDot_(on, n){
+  const b = document.querySelector('#manualBtn'); if(!b) return;   // ⚠ getElementById('manualBtn') と書くとテストの切り出しがずれる
+  let d = b.querySelector('.man-dot');
+  if(on && !d){ d = document.createElement('span'); d.className = 'man-dot'; b.appendChild(d); }
+  else if(!on && d) d.remove();
+  if(d && on) d.title = `前回から ${n||''}ページ更新されています`;
+}
+async function manCheckNew_(){
+  const s = (typeof sbSession_ === 'function') ? sbSession_() : null; if(!s || !s.access_token) return null;
+  __man.changesAt = Date.now();
+  const seen = manSeenGet_();
+  if(!seen){ manSeenSet_(new Date().toISOString()); return null; }   // 初めての端末: 今までの全部を新着にしない
+  let r; try{ r = await manRpc_('manual_changes', { p_since: seen }); }catch(_){ return null; }
+  if(!r || typeof r !== 'object') return null;
+  __man.changes = r;
+  manDot_(r.n > 0, r.n);
+  return r;
+}
+// ---- 予定などから関連マニュアル(v859): manOpenRelated_({ kind, title, bukken, room }) ----
+//   kind: 'taikyo' 立会 / 'repair' 修繕 / 'resto' 原状回復 / 'task' 事務タスク / 予定のカテゴリ名(現調・工事…)
+function manRelCats_(kind, ci){
+  const names = MAN_KIND_CATS[kind] || [];
+  const all = []; ci.byId.forEach(c => all.push(c));
+  return names.map(n => all.find(c => c.name === n)).filter(Boolean);
+}
+function manRelQuery_(ctx){
+  const b = String(ctx.bukken || '').replace(/[\s　]+/g, ' ').trim();
+  if(b.length >= 2) return b.slice(0, 40);
+  const t = String(ctx.title || '').replace(/[【】\[\]（）()「」]/g, ' ').replace(/[\s　]+/g, ' ').trim();
+  return t.length >= 2 ? t.slice(0, 30) : '';
+}
+async function manOpenRelated_(ctx){
+  ctx = ctx || {};
+  const ov0 = document.getElementById('manualModal');
+  if(__man.mode === 'edit' && ov0 && ov0.classList.contains('show') && !confirm('編集中です。下書きを残して関連マニュアルを開きますか？')) return;
+  __man.mode = 'rel'; __man.cur = null; __man.folderView = '';
+  await manOpen_();
+  const main = document.getElementById('man-main'); if(!main || !__man.tree) return;   // 未ログインは manOpen_ が案内を出している
+  manNavRecord_('rel', ctx);
+  manShowMain_(true);
+  const byId = manBuildTree_(__man.tree).byId, ci = manCatIndex_(__man.tree);
+  const cats = manRelCats_(ctx.kind, ci);
+  const seen = new Set();
+  const fromCat = [];
+  cats.forEach(c => ci.pagesOf(c.id).forEach(p => { if(!seen.has(p.id)){ seen.add(p.id); fromCat.push(p); } }));
+  fromCat.sort((a,b) => String(b.updated_at||'').localeCompare(String(a.updated_at||'')));
+  const q = manRelQuery_(ctx);
+  const esc = escapeHtml;
+  const head = `<div class="man-hero" style="border-left-color:#7c3aed">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px"><a href="#" data-home="1">🏠</a> › 📖 関連マニュアル</div>
+      <b style="font-size:19px">📖 関連マニュアル</b>
+      <div class="man-pc-row" style="margin-top:6px">${[ctx.kind && `種類: ${({ taikyo:'立会', repair:'修繕', resto:'原状回復', task:'事務タスク' })[ctx.kind] || ctx.kind}`, ctx.bukken && `🏢 ${ctx.bukken}`, ctx.room && `${ctx.room}号室`, ctx.title && `📝 ${String(ctx.title).slice(0,40)}`].filter(Boolean).map(x => `<span class="man-chip">${esc(x)}</span>`).join('')}</div></div>`;
+  main.innerHTML = head + '<div style="padding:20px;color:var(--muted)">さがしています…</div>';
+  let hits = [];
+  if(q){ try{ hits = await manRpc_('manual_search2', { p_q: q, p_folder_id: null, p_user: null, p_since: null, p_sort: null }) || []; }catch(_){ hits = []; } }
+  if(__man.mode !== 'rel') return;   // さがしている間に別の画面へ
+  const room = String(ctx.room || '').trim();
+  if(room) hits.sort((a,b) => (String(b.title).includes(room) ? 1 : 0) - (String(a.title).includes(room) ? 1 : 0));
+  hits = hits.slice(0, 12);
+  const card = p => manPageCardHtml_(manTreePage_(p).id ? { ...manTreePage_(p), ...p } : p, byId, { catById: ci.byId });
+  main.innerHTML = head + `
+    ${q ? `<div class="man-sec"><span class="gh-tag" style="background:#0891b2">🏢 「${esc(q)}」で見つかったページ</span><span class="gh-count">${hits.length}件</span></div>
+    <div class="man-cards">${hits.map(card).join('') || '<span style="color:var(--muted);font-size:12px">見つかりませんでした</span>'}</div>` : ''}
+    ${cats.map(c => { const ps = ci.pagesOf(c.id).slice().sort((a,b) => String(b.updated_at||'').localeCompare(String(a.updated_at||''))).slice(0, 12);
+      return `<div class="man-sec"><span class="gh-tag" style="background:${c.color}">🏷 ${esc(c.name)}</span><span class="gh-count">${ci.countOf(c.id)}件</span>
+        <a href="#" data-copen="${esc(c.id)}" style="margin-left:auto;font-size:12px">すべて見る ›</a></div>
+        <div class="man-cards">${ps.map(card).join('')}</div>`; }).join('')}
+    ${!q && !cats.length ? '<div style="padding:16px;color:var(--muted)">この予定に結びついたマニュアルはまだありません。左の検索でさがしてください。</div>' : ''}`;
+  manWireCards_(main); manAddFooter_(main);
+  const hm = main.querySelector('[data-home]'); if(hm) hm.onclick = e => { e.preventDefault(); __man.mode = 'view'; __man.cur = null; manRenderHome_(); };
+  main.scrollTop = 0;
+}
 // ---- 戻る/進む ----
 function manNavRecord_(t, id){
   if(__man.navLock) return;
@@ -36855,6 +37005,8 @@ async function manNavGo_(d){
     if(st.t === 'page') await manOpenPage_(st.id);
     else if(st.t === 'folder') manRenderFolder_(st.id);
     else if(st.t === 'cat') manRenderCategory_(st.id);
+    else if(st.t === 'stale') manRenderStale_();
+    else if(st.t === 'rel') await manOpenRelated_(st.id);
     else { __man.mode = 'view'; __man.folderView = ''; __man.cur = null; manRenderList_(); await manLoadHome_(); manShowMain_(true); }
   } finally { __man.navLock = false; manNavButtons_(); }
 }
@@ -37042,7 +37194,14 @@ async function manRenderPage_(){
       ${atts.length?`<span class="man-chip">📎 ${atts.length}</span>`:''}
       ${p.is_deleted?'<span class="man-pill" style="background:#fee2e2;color:#b91c1c">ゴミ箱</span>':''}
       ${manCatChipsHtml_((((__man.tree&&__man.tree.pages)||[]).find(x=>x.id===p.id)||{}).cats, manCatIndex_(__man.tree||{}).byId)}
+      ${(() => { const tp = manTreePage_({ id:p.id }); return tp.reviewed_at ? `<span class="man-chip" style="background:#f0fdf4;color:#15803d" title="${escapeHtml(manFmtDate_(tp.reviewed_at))}">✓ 見直し ${escapeHtml(manYmd_(tp.reviewed_at))}${tp.reviewed_by?' '+escapeHtml(tp.reviewed_by):''}</span>` : ''; })()}
     </div>
+    ${(() => { if(p.is_deleted || p.id === 'mp_notice') return '';
+      const tp = { ...manTreePage_({ id:p.id }), updated_at:p.updated_at, chars:(p.body||'').length };
+      const old = manIsStale_(tp), thin = !old && manIsThin_(tp); if(!old && !thin) return '';
+      return `<div class="man-stale man-noprint">⚠ <b>${old ? '1年以上 見直されていません' : '本文の説明が少ないページです'}</b>
+        <span>${old ? `(最後の更新 ${escapeHtml(manYmd_(new Date(manLastTouch_(tp)).toISOString()))})今の内容で正しければ「✓ 見直した」、直す所があれば ✏️編集 を押してください。` : 'ひと言説明を足すと、検索で見つかりやすくなります。このままでよければ「✓ 見直した」を押してください。'}</span>
+        <button class="btn man-mini" id="man-reviewed" style="background:#16a34a;color:#fff;margin-left:auto">✓ 見直した</button></div>`; })()}
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       ${p.is_deleted ? `<button class="btn man-mini" id="man-restore" style="background:#16a34a;color:#fff">↺ ゴミ箱から戻す</button>`
         : `<button class="btn man-mini" id="man-edit" style="background:var(--accent);color:#fff">✏️ 編集</button>`}
@@ -37071,6 +37230,7 @@ async function manRenderPage_(){
   if(q('#man-del')) q('#man-del').onclick = () => manTrash_(false);
   if(q('#man-restore')) q('#man-restore').onclick = () => manTrash_(true);
   if(q('#man-favbtn')) q('#man-favbtn').onclick = () => manToggleFav_();
+  if(q('#man-reviewed')) q('#man-reviewed').onclick = () => manMarkReviewed_();
   q('#man-link').onclick = () => manCopyLink_();
   q('#man-print').onclick = () => manPrint_();
   manWireCards_(q('.man-hero')); manAddFooter_(main);
@@ -37108,7 +37268,7 @@ function manFooterHtml_(){
       <div class="stat"><span>📄 ${live.length}ページ</span><span>📚 ${roots.length}ノート</span>${cats.length?`<span>🏷 ${(tree.categories||[]).length}カテゴリ</span>`:''}${last?`<span>🕘 最終更新 ${escapeHtml(manAgo_(last))}</span>`:''}</div></div>
     <div><h4>ノート</h4>${roots.map(f => `<a href="#" data-fopen="${escapeHtml(f.id)}">📚 ${escapeHtml(f.name)}</a>`).join('')}</div>
     <div><h4>カテゴリ</h4>${cats.slice(0,8).map(c => `<a href="#" data-copen="${escapeHtml(c.id)}"><span style="color:${c.color}">●</span> ${escapeHtml(c.name)}</a>`).join('') || '<span style="color:#64748b">まだありません</span>'}</div>
-    <div><h4>便利</h4><a href="#" data-fact="home">🏠 トップ</a><a href="#" data-fact="new">＋ 新しいページ</a><a href="#" data-fact="trash">🗑 ゴミ箱</a><a href="#" data-fact="top">⬆ ページの先頭へ</a></div>
+    <div><h4>便利</h4><a href="#" data-fact="home">🏠 トップ</a><a href="#" data-fact="new">＋ 新しいページ</a><a href="#" data-fact="trash">🗑 ゴミ箱</a><a href="#" data-fact="stale">🧹 見直してほしいページ</a><a href="#" data-fact="top">⬆ ページの先頭へ</a></div>
   </div><div class="bar"><span>© BUILD CLUSTER 社内マニュアル</span><span>NotePMから2026年10月に引っ越し</span><a href="#" data-fact="top" style="margin-left:auto;color:#fbbf24">⬆ 先頭へ</a></div></footer>`;
 }
 function manAddFooter_(main){
@@ -37121,6 +37281,7 @@ function manAddFooter_(main){
     if(k === 'top') manScrollTop_();
     else if(k === 'home') document.getElementById('man-home').click();
     else if(k === 'trash') document.getElementById('man-trash-toggle').click();
+    else if(k === 'stale') manRenderStale_();
     else if(k === 'new'){ manScrollTop_(); manNewFromHome_(); } });
   manOnScroll_();
 }
@@ -37432,6 +37593,15 @@ function manFolderMenu_(fid){
   }
 }
 { const __mb = document.getElementById('manualBtn'); if(__mb) __mb.onclick = () => { try{ manOpen_(); }catch(e){ console.warn('[manual]', e); } }; }
+// 📖の新着の赤い点(v859・カレンダー担当と確認済み: #manualBtn は固定のHTML・visibilitychange は新しく1つ足す)
+{ const __ds = document.createElement('style');
+  __ds.textContent = '#manualBtn{position:relative}#manualBtn .man-dot{position:absolute;top:3px;right:3px;width:9px;height:9px;border-radius:50%;background:#ef4444;box-shadow:0 0 0 2px #fff;pointer-events:none}';
+  document.head.appendChild(__ds);
+  setTimeout(() => { const go = () => manCheckNew_().catch(() => {});   // 最初の描画の後・手が空いた時に(見積担当の助言)
+    if(window.requestIdleCallback) window.requestIdleCallback(go, { timeout: 5000 }); else go(); }, 8000);
+  document.addEventListener('visibilitychange', () => {
+    if(document.visibilityState === 'visible' && Date.now() - (__man.changesAt || 0) > 30*60*1000) manCheckNew_().catch(() => {});
+  }); }
 // 🔗 リンク(…/#manual=<id>)で開かれた時: hash を読んだらすぐ消す(アプリは location.reload() を何か所も使うので、残すと毎回📖が開く)。
 //   ⚠版のゲート(verGate)で読み込み直された場合は hash が消えて開かない(端末の版が古い時だけ・カレンダー担当と確認済み)
 { const __mid = manIdFromHash_(location.hash);
