@@ -3018,7 +3018,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.848</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.849</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -12748,15 +12748,9 @@ function showTaikyoStaffPicker(el, ev){
     const d = ev._taikyoOrigDate || ev.date || (pop.querySelector('.tk-dt-date')||{}).value || "";
     const t = String(ev._taikyoOrigTime || "").trim();
     if(!d){ alert('元の立会日付が空です'); return; }
-    // 🔄 v1.30.848(山田バグ報告10/28: 太子堂East707 が 10/29 12:30→10:30 の時刻だけ変更で、同じ日にグレー跡が残り予定が2つに見えた):
-    //   同じ日の時刻変更は跡を作らない(予定のほうの v1.30.679 と同じ決まり)。日にちが変わる時だけ残す。
-    //   ⚠先に🔄を押してから日付を変える順番もある=まだ何も変えていない(日付も時刻も元のまま)なら止めない。
-    const __curD = (pop.querySelector('.tk-dt-date')||{}).value || ev.date || "";
-    const __curT = String((pop.querySelector('.tk-dt-time')||{}).value || "").trim();
-    if(__curD && __curD === d && t && __curT && __curT !== t){ alert('同じ日の時刻変更なので、変更跡は残しません。\n（日にちを変えた時だけ、元の日に跡を残せます）'); return; }
     const lbl = (`${ev._bukken||''} ${ev._room||''}`).trim() || (ev.title||'').split(/\r?\n/)[0].replace(/^立会\s*/,'');
     if(!confirm(`元の立会 ${d}${t?(" "+t):""} に「日時変更」跡(グレー)を残しますか？\n（新しい日時は上の「日時」で変更すると立会本体が移動します）`)) return;
-    createDotakyanGhost_(`立会 ${lbl}`, d, t);
+    createDotakyanGhost_(`立会 ${lbl}`, d, t, '', { ghostOf: 'taikyo:' + (ev._taikyoRawId || '') });
     __tkDota.textContent = '✓ 日時変更跡を残しました'; __tkDota.disabled = true;
   }; }
   // ⏰ リマインド(立会・v1.30.377)。3日前/前日は立会日基準。担当=ev.staff。保存キー=tv:<cid>
@@ -13173,7 +13167,7 @@ function showEventStaffPicker(el, ev){
         const __ntLbl = nt==='__allday__' ? '終日' : nt==='__am__' ? 'AM中' : nt==='__pm__' ? 'PM中'
           : nt==='__free__' ? '時間未定' : (nt || '時間未定');
         if(confirm(`「${__lbl}」\n\n${__odLbl}${__oldTime?(" "+__oldTime):""}  →  ${__ndLbl} ${__ntLbl} に動かします。\n\n元の ${__odLbl} にグレーの「変更前」も残しますか？\n(日にちが変わったことが全員に見えます)\n\n［OK］残す ／ ［キャンセル］残さない`)){
-          createDotakyanGhost_(__lbl, __oldDate, __oldTime);
+          createDotakyanGhost_(__lbl, __oldDate, __oldTime, '', { ghostOf: 'ev:' + real.id });
           __evDotaDone = true;
         }
       }
@@ -13224,7 +13218,7 @@ function showEventStaffPicker(el, ev){
     const label = String(real.title||'(無題)').split(/\r?\n/)[0].slice(0,40);
     if(!confirm(`「${label}」\n\n${d}${t?(" "+t):""} にグレーの「変更前」を残します。\n\nこの後、上の日付を新しい日に変えて「この日時に動かす」を押してください。`)) return;
     // 担当は跡に載せない(グレー=流れた予定の意匠を修繕と揃える)
-    createDotakyanGhost_(label, d, t);
+    createDotakyanGhost_(label, d, t, '', { ghostOf: 'ev:' + (real.id || '') });
     __evDotaDone = true;   // この後「変更」を押しても二重に跡を作らない(v1.30.679)
     __evDota.textContent = '✓ 日時変更跡を残しました'; __evDota.disabled = true;
   };
@@ -19475,6 +19469,10 @@ function renderCalendar(){
       const __jizenKojiHtml = __jizenKoji
         ? `<span class="chip-link-info" style="display:block;font-size:10px;font-weight:500;line-height:13px;opacity:.9;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🔧${escapeHtml(__jizenKoji)}</span>`
         : "";
+      const __ghostTo = (typeof ghostMovedTo_==='function') ? ghostMovedTo_(ev) : '';
+      const __ghostToHtml = __ghostTo
+        ? `<span class="chip-link-info" style="display:block;font-size:10px;font-weight:800;line-height:13px;margin-top:1px;color:#1d4ed8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(__ghostTo)}</span>`
+        : "";
       if(isMonth){
         // 改行ありなら全行表示(multi-line)、なければ1行省略(single-line)
         const isMulti = lineCount > 1;
@@ -19498,7 +19496,7 @@ function renderCalendar(){
           : `<span class="chip-time">${isFree ? "終日" : ev.start}</span>`;
         // 参加者バッジ/見積行は title 外(チップ直下)に独立行として配置。工事ボリュームは号室の隣(__volBadge)。
         // ※複数行タイトル時は staffBadges を __titleInner 内に入れ込み済みなので外側では出さない(v1.30.170)
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${__skipBadge}${isMulti ? '' : staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${__remindBadge}${houjinBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${__alertHtml}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${__skipBadge}${isMulti ? '' : staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${__remindBadge}${houjinBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__ghostToHtml}${__estRowHtml}${__alertHtml}`;
         // 担当色がある(1名でも)ならチップ全面を着色(v1.30.124: 単独担当で半分しか色が付かない問題)。色無し+複数バッジは薄グレー地
         if(__willCard){ el.classList.add('chip-has-staffs'); el.style.setProperty('--card-bg', chipBg); }
         if(__jizenSkip) el.classList.add('chip-skip-visit');
@@ -19516,7 +19514,7 @@ function renderCalendar(){
               ? `<span class="ct-text" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${compactTaskHtml}</span>`
               : `<span style="display:inline-flex;min-width:0;flex:0 1 auto;align-items:baseline"><span class="ct-text" style="min-width:0;${__wrapName ? 'white-space:normal;display:-webkit-box;-webkit-line-clamp:'+__nameLines+';-webkit-box-orient:vertical;overflow:hidden;word-break:break-word' : 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap'}">${escapeHtml(__nameMain)}</span>${__roomTail ? `<span class="ct-room" style="flex-shrink:0;font-weight:600">${escapeHtml(__roomTail)}</span>` : ""}</span>`);
         const timeBox = isJizen ? "" : (isAnytime ? "" : `<span class="chip-time">終日</span>`);   // 事前は時間バッジ無し(v1.30.327・山田)
-        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${__skipBadge}${isMulti ? '' : staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${__remindBadge}${houjinBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__estRowHtml}${__alertHtml}`;
+        el.innerHTML = `<span class="${titleClass}" style="background:${chipBg};color:${chipFg}" title="${escapeHtml(badgeTooltip)}">${impIcons}${catPrefix}${__titleInner}${__volBadge}${__skipBadge}${isMulti ? '' : staffBadges}${commuteIcon}${memoIcon}${progIcon}${commentBadge}${__remindBadge}${houjinBadge}${shiryoBadge}${taikyoCmtBadge}</span>${timeBox}${__linkInfoHtml}${__jizenKojiHtml}${__ghostToHtml}${__estRowHtml}${__alertHtml}`;
         // 担当色がある(1名でも)ならチップ全面を着色(v1.30.124: 単独担当で半分しか色が付かない問題)。色無し+複数バッジは薄グレー地
         if(__willCard){ el.classList.add('chip-has-staffs'); el.style.setProperty('--card-bg', chipBg); }
         if(__jizenSkip) el.classList.add('chip-skip-visit');
@@ -19534,7 +19532,7 @@ function renderCalendar(){
           : `${(typeof isJizenEvent_==='function' && isJizenEvent_(ev))
                 ? (commuteInline ? `<div class="time">${commuteInline}</div>` : '')   /* 📌事前は時刻を出さない(v1.30.327・山田)・直帰等があれば残す */
                 : `<div class="time">${window.innerWidth<=700 ? ev.start : `${ev.start}〜${ev.end}`}${commuteInline}</div>`}
-             <div class="title">${inlineCatPrefix}${titleHtmlMulti}${progIcon}${__progStaffBadge}${houjinBadge}${shiryoBadge}${taikyoCmtBadge}${__linkInfoHtml}${__jizenKojiHtml}</div>
+             <div class="title">${inlineCatPrefix}${titleHtmlMulti}${progIcon}${__progStaffBadge}${houjinBadge}${shiryoBadge}${taikyoCmtBadge}${__linkInfoHtml}${__jizenKojiHtml}${__ghostToHtml}</div>
              ${showStaff ? (multi ? participantsHtml : (ev.staff ? `<div class="staff">${staffShortLabel}</div>`:"")) : ""}`;
         el.title = fullTooltip;
       }
@@ -20921,6 +20919,32 @@ function __quickPopKey(e){
 //   本体(立会/修繕)は別途新しい日付へ変更する運用。マーカーは「🚫ドタキャン 物件名」グレーチップ。
 //   🔍 v1.30.566(鈴木報告): 理由が「施工日決定」の時だけ跡をグレーにしない。現調は実際に行った予定で
 //     キャンセルではないため、グレー化すると「流れた」ように見える。opts={keepColor,titlePrefix,color}。
+// 🔄 v1.30.849(山田バグ報告10/28「このカードに10/29 10時半に変更みたいな表示がほしい」):
+//   日時変更跡のカードに「→ 移動先の日時」を出す。跡を作った後で日時を変えても、いまの日時を毎回引く。
+//   ghostOf(849以降の跡)で元の予定を引く。849より前の跡は立会だけ「物件名+号室+元の日付」で探す。
+function ghostMovedTo_(ev){
+  if(!ev || !/^🔄日時変更/.test(String(ev.title||''))) return '';
+  const norm = x => String(x||'').replace(/[\s　]/g,'').toLowerCase();
+  let tgt = null;
+  try{
+    const g = String(ev.ghostOf||'');
+    if(g.indexOf('ev:')===0) tgt = (state.events||[]).find(x=>x && x.id===g.slice(3)) || null;
+    else {
+      const tv = (typeof buildTaikyoVirtuals_==='function') ? (buildTaikyoVirtuals_()||[]) : [];
+      if(g.indexOf('taikyo:')===0) tgt = tv.find(v=>v && v._taikyoRawId===g.slice(7)) || null;
+      else if(/^🔄日時変更\s*立会/.test(String(ev.title||''))){
+        const nt = norm(ev.title);
+        tgt = tv.find(v=>v && v._bukken && (v._taikyoOrigDate||v.date)===ev.date && nt.indexOf(norm(v._bukken+(v._room||'')))>=0) || null;
+      }
+    }
+  }catch(_){ tgt = null; }
+  if(!tgt || !tgt.date) return '';
+  const tTime = (tgt.timeMode==='timed' && tgt.start) ? tgt.start : '';
+  const gTime = (ev.timeMode==='timed' && ev.start) ? ev.start : '';
+  if(tgt.date===ev.date && tTime===gTime) return '';   // まだ動かしていない
+  const d = parseDate(tgt.date); const dl = (d && !isNaN(d)) ? `${d.getMonth()+1}/${d.getDate()}` : tgt.date;
+  return `→ ${dl} ${tTime || '時間未定'} に変更`;
+}
 function createDotakyanGhost_(label, date, time, reason, opts){
   if(!date){ alert('元の日付が取得できませんでした'); return null; }
   const m = String(time||"").match(/^(\d{1,2})[:：](\d{2})/);
@@ -20941,6 +20965,8 @@ function createDotakyanGhost_(label, date, time, reason, opts){
       ? `現調(実施済み)\n施工日が決まったため対応予定日を移動\n現調: ${date}${time?(" "+time):""}`
       : `日時変更(元の予定)\n元の予定: ${date}${time?(" "+time):""}${reason?`\n理由: ${reason}`:""}`,
     importance:[], updatedAt:new Date().toISOString(),
+    // 🔗 v1.30.849: 移動先を跡に表示するための元の予定(taikyo:<立会id> / ev:<予定id>)
+    ...((opts && opts.ghostOf) ? { ghostOf: opts.ghostOf } : {}),
   };
   if(typeof pushHistory==='function') pushHistory();
   state.events.push(ev);
@@ -24900,7 +24926,8 @@ function normalizeCloudEvent_(x){
     createdBy: x.createdBy || '',
     createdAt: x.createdAt || '',
     updatedAt: x.updatedAt || '',
-    ...(x.importedFrom ? { importedFrom: x.importedFrom } : {}),   // 🗂 v1.30.835 旧スプシ取込の印を落とさない(落ちると事前除外・端末に置かない判定が効かない)
+    ...(x.importedFrom ? { importedFrom: x.importedFrom } : {}),
+    ...(x.ghostOf ? { ghostOf: x.ghostOf } : {}),   // 🔗 v1.30.849 日時変更跡の元の予定(移動先の表示用)   // 🗂 v1.30.835 旧スプシ取込の印を落とさない(落ちると事前除外・端末に置かない判定が効かない)
   };
 }
 function normalizeCloudProperty_(x){
@@ -24941,7 +24968,8 @@ function denormalizeEventForCloud_(ev){
     createdBy: ev.createdBy || getMyself() || '',
     createdAt: ev.createdAt || new Date().toISOString(),
     updatedAt: ev.updatedAt || new Date().toISOString(),
-    ...(ev.importedFrom ? { importedFrom: ev.importedFrom } : {}),   // 🗂 v1.30.835 編集しても取込の印を残す
+    ...(ev.importedFrom ? { importedFrom: ev.importedFrom } : {}),
+    ...(ev.ghostOf ? { ghostOf: ev.ghostOf } : {}),   // 🗂 v1.30.835 編集しても取込の印を残す
     updatedBy: getMyself() || '',   // 📜 v1.30.692: 最後にこの予定を保存した人(DB履歴の「誰が」。シートには列が無いので落ちる=無害)
   };
 }
