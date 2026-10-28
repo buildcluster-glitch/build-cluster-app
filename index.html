@@ -3018,7 +3018,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.849</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.850</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -19471,7 +19471,7 @@ function renderCalendar(){
         : "";
       const __ghostTo = (typeof ghostMovedTo_==='function') ? ghostMovedTo_(ev) : '';
       const __ghostToHtml = __ghostTo
-        ? `<span class="chip-link-info" style="display:block;font-size:10px;font-weight:800;line-height:13px;margin-top:1px;color:#1d4ed8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(__ghostTo)}</span>`
+        ? `<span class="chip-link-info" style="display:block;font-size:10px;font-weight:800;line-height:13px;margin-top:1px;color:#dc2626;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(__ghostTo)}</span>`
         : "";
       if(isMonth){
         // 改行ありなら全行表示(multi-line)、なければ1行省略(single-line)
@@ -20937,13 +20937,24 @@ function ghostMovedTo_(ev){
         tgt = tv.find(v=>v && v._bukken && (v._taikyoOrigDate||v.date)===ev.date && nt.indexOf(norm(v._bukken+(v._room||'')))>=0) || null;
       }
     }
+    // 🔧 v1.30.850(山田「修繕も」): 修繕のアポ(responseDate/responseTime)。850より前の跡は物件名+号室で探す
+    let rp = null;
+    if(g.indexOf('repair:')===0) rp = (state.repairs||[]).find(x=>x && x.id===g.slice(7)) || null;
+    else if(!g && !tgt && !/^🔄日時変更\s*立会/.test(String(ev.title||''))){
+      const nt = norm(ev.title);
+      rp = (state.repairs||[]).find(x=>x && x.name && x.responseDate && nt.indexOf(norm(x.name+(x.room||'')))>=0) || null;
+    }
+    if(rp){
+      const rt = String(rp.responseTime||'').trim(); const m = rt.match(/^(\d{1,2})[:：](\d{2})/);
+      tgt = { date: rp.responseDate || '', timeMode: m ? 'timed' : 'anytime', start: m ? `${String(m[1]).padStart(2,'0')}:${m[2]}` : '', _label: m ? '' : rt };
+    }
   }catch(_){ tgt = null; }
   if(!tgt || !tgt.date) return '';
   const tTime = (tgt.timeMode==='timed' && tgt.start) ? tgt.start : '';
   const gTime = (ev.timeMode==='timed' && ev.start) ? ev.start : '';
   if(tgt.date===ev.date && tTime===gTime) return '';   // まだ動かしていない
   const d = parseDate(tgt.date); const dl = (d && !isNaN(d)) ? `${d.getMonth()+1}/${d.getDate()}` : tgt.date;
-  return `→ ${dl} ${tTime || '時間未定'} に変更`;
+  return `→ ${dl} ${tTime || tgt._label || '時間未定'} に変更`;
 }
 function createDotakyanGhost_(label, date, time, reason, opts){
   if(!date){ alert('元の日付が取得できませんでした'); return null; }
@@ -21359,10 +21370,11 @@ function showRepairQuickPop(r, anchorEl){
       : `${d}${t?(" "+t):""} に「日時変更」跡(グレー)を残しますか？\nこの後、日付を新しい日に変えて「変更」を押してください。`;
     if(!confirm(__msg)) return;
     createDotakyanGhost_(`${r.name}${r.room?" "+r.room:""}`, d, t, reason, __isSeko ? {
+      ghostOf: 'repair:' + (r.id || ''),
       keepColor: true,
       titlePrefix: '🔍現調',
       color: (typeof repairChipColor_==='function') ? repairChipColor_(r.worker||"") : "",
-    } : null);
+    } : { ghostOf: 'repair:' + (r.id || '') });
     __dotaBtn.textContent = __isSeko ? '✓ 現調を残しました' : '✓ 日時変更跡を残しました'; __dotaBtn.disabled = true;
   }; }
   // ⏰ リマインド(修繕・v1.30.377)。3日前/前日はアポ日基準。担当=r.worker。
@@ -29052,10 +29064,11 @@ function repairDetailDotakyan_(){
     : `${d}${t?(" "+t):""} に「日時変更」跡(グレー)を残しますか？\nこの後、日付を新しい日に変えて「保存」を押してください。`;
   if(!confirm(__msg)) return;
   createDotakyanGhost_(`${r.name}${r.room?" "+r.room:""}`, d, t, reason, __isSeko ? {
+      ghostOf: 'repair:' + (r.id || ''),
     keepColor: true,
     titlePrefix: '🔍現調',
     color: (typeof repairChipColor_==='function') ? repairChipColor_(r.worker||"") : "",
-  } : null);
+  } : { ghostOf: 'repair:' + (r.id || '') });
   const btn = document.getElementById("rs-dotakyan");
   if(btn){ btn.textContent = __isSeko ? '✓ 現調を残しました' : '✓ 日時変更跡を残しました'; btn.disabled = true; }
 }
