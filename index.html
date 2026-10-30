@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.870</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.871</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -36911,7 +36911,7 @@ function manEnsureModal_(){
   #manualModal .man-react button{border:1px solid var(--border);background:#fff;border-radius:999px;padding:3px 10px;font-size:15px;cursor:pointer}
   #manualModal .man-react button.on{background:#dbeafe;border-color:#60a5fa}
   #manualModal .man-react button b{font-size:12px;margin-left:3px}
-  #manualModal .man-tools{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px}
+  #manualModal .man-tools{display:flex;flex-wrap:wrap;gap:4px;margin:0 -18px 4px;padding:6px 18px;position:sticky;top:-12px;z-index:5;background:rgba(248,250,252,.96);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-bottom:1px solid #e2e8f0}   /* v871: 書き進めても付いてくる */
   #manualModal .man-tools button,#manualModal .man-tools label{font-size:12px;padding:3px 8px;border:1px solid var(--border);background:#f8fafc;border-radius:6px;cursor:pointer}
   #manualModal mark.man-hl{background:#fde047;padding:0 1px}
   #manualModal .man-filt{display:grid;grid-template-columns:auto 1fr;gap:4px 6px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--border);font-size:12px;background:#f8fafc}
@@ -36928,6 +36928,7 @@ function manEnsureModal_(){
     #manualModal .man-cards{grid-template-columns:minmax(0,1fr)}
     #manualModal .man-paper{padding:10px 12px}
     #manualModal .man-stick .in{left:-12px;right:-12px;padding:7px 12px}
+    #manualModal .man-tools{margin:0 -12px 4px;padding:6px 12px;top:-10px}
     #manualModal .man-foot{margin:28px -12px -40px}
     #manualModal .man-foot .cols{grid-template-columns:minmax(0,1fr) minmax(0,1fr);padding:18px 16px 12px}
     #manualModal .man-foot .cols>div:first-child{grid-column:1 / -1}
