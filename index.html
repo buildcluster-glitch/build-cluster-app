@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.874</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.875</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -36324,6 +36324,7 @@ window.__invAddStockFromMaterial_ = (entries)=>{
 //     (見たままで直した時だけ Turndown で戻す)。戻すと書式が少し変わるページは、見たままに入った時に ⚠ で知らせる。
 //   v1.30.872(山田「コントロールzとかY」「見出は4種類 マーカー 囲い枠(色付) 引用とか」): ↶↷とCtrl+Z/Y(カレンダーの undo に渡さない)・
 //     見出し1〜4・下線・取消線・文字色・マーカー・大きさ・字下げ・囲み枠(:::note info/warn/alert/ok・表示も manNoteBoxes_)・コード・折りたたみ・📄ページへのリンク・書式を消す。
+//   v1.30.875(山田「スクロールしてると見出しのどのへんみてるから追従するように」): 上の帯に「› 今の見出し」(押すと目次)・📑目次にも今の所に色。
 // ====================================================================
 const MAN_BUCKET = 'manuals';
 const MAN_REF_PREFIX = 'sb:manuals/';
@@ -36912,6 +36913,15 @@ function manEnsureModal_(){
   #manualModal .man-stick .in{position:absolute;left:-18px;right:-18px;top:0;display:flex;align-items:center;gap:8px;padding:7px 18px;background:rgba(255,255,255,.96);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-bottom:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(15,23,42,.08);transform:translateY(-120%);transition:transform .2s;pointer-events:none}
   #manualModal .man-stick.show .in{transform:none;pointer-events:auto}
   #manualModal .man-stick .dot{width:10px;height:10px;border-radius:3px;flex:none}
+  #manualModal .man-sec-btn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:700;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:2px 8px;text-align:left;cursor:pointer}
+  #manualModal .man-stick .in.has-sec .tt{flex:0 1 auto;max-width:38%;font-size:12px;color:#475569}
+  #manualModal .man-stick-toc{display:none;position:absolute;top:100%;left:18px;width:min(420px,calc(100% - 36px));max-height:60vh;overflow:auto;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(15,23,42,.18);padding:6px 8px;font-size:13px}
+  #manualModal .man-stick-toc.open{display:block}
+  #manualModal .man-stick-toc a{display:block;padding:3px 6px;color:#1e40af;text-decoration:none;border-radius:4px}
+  #manualModal .man-stick-toc a.l3{padding-left:20px;font-size:12px}
+  #manualModal .man-stick-toc a.l1{font-weight:700}
+  #manualModal .man-stick-toc a.on,#manualModal .man-toc a.on{background:#dbeafe;font-weight:700}
+  #manualModal #man-body h1,#manualModal #man-body h2,#manualModal #man-body h3{scroll-margin-top:52px}
   #manualModal .man-stick .tt{flex:1;min-width:0;font-weight:800;font-size:14px;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #manualModal .man-fab{position:absolute;right:20px;bottom:20px;z-index:7;height:48px;min-width:48px;padding:0;border-radius:999px;border:none;background:#1e3a8a;color:#fff;box-shadow:0 0 0 2px #fff,0 4px 14px rgba(30,58,138,.4);cursor:pointer;display:flex;align-items:center;opacity:0;transform:translateY(16px) scale(.85);pointer-events:none;transition:opacity .2s,transform .2s,background .15s,box-shadow .15s}
   #manualModal .man-fab.show{opacity:1;transform:none;pointer-events:auto}
@@ -36980,6 +36990,8 @@ function manEnsureModal_(){
     #manualModal .man-cards{grid-template-columns:minmax(0,1fr)}
     #manualModal .man-paper{padding:10px 12px}
     #manualModal .man-stick .in{left:-12px;right:-12px;padding:7px 12px}
+    #manualModal .man-stick .in.has-sec .tt{display:none}
+    #manualModal .man-stick-toc{left:12px;width:calc(100% - 24px)}
     #manualModal .man-tools{margin:0 -12px 4px;padding:6px 12px;top:-10px}
     #manualModal .man-foot{margin:28px -12px -40px}
     #manualModal .man-foot .cols{grid-template-columns:minmax(0,1fr) minmax(0,1fr);padding:18px 16px 12px}
@@ -37654,6 +37666,8 @@ async function manRenderPage_(){
   main.innerHTML = `
     <div class="man-stick man-noprint" id="man-stick"><div class="in"><span class="dot" style="background:${p.is_deleted?'#dc2626':__color}"></span>
       <span class="tt">${escapeHtml(p.title)}</span>
+      <button class="man-sec-btn" id="man-stick-sec" style="display:none" title="今読んでいる見出し(押すと目次)"></button>
+      <div class="man-stick-toc" id="man-stick-toc"></div>
       ${p.is_deleted ? '' : '<button class="btn man-mini" data-stk="edit">✏️ 編集</button>'}
       <button class="btn man-mini" data-stk="link" title="このページのリンクをコピー">🔗</button>
       <button class="btn man-mini" data-stk="top" title="ページの先頭へ">⬆</button></div></div>
@@ -37729,6 +37743,22 @@ function manOnScroll_(){
   const arc = document.getElementById('man-fab-arc'); if(arc) arc.setAttribute('stroke-dashoffset', (131.95 * (1 - pct)).toFixed(2));
   const stk = main.querySelector('#man-stick'), hero = main.querySelector('.man-hero');
   if(stk && hero) stk.classList.toggle('show', hero.getBoundingClientRect().bottom < main.getBoundingClientRect().top + 8);
+  if(typeof manSpy_ === 'function') manSpy_(main);
+}
+// 今どの見出しを読んでいるか(v875): 帯の下あたりより上にある いちばん後ろの見出し。変わった時だけ書き換える
+function manSpy_(main){
+  const sec = main.querySelector('#man-stick-sec'); if(!sec) return;
+  const hs = (__man.heads || []).filter(h => h.el && h.el.isConnected);
+  const top = main.getBoundingClientRect().top + 70;
+  let cur = -1;
+  for(let k = 0; k < hs.length; k++){ if(hs[k].el.getBoundingClientRect().top <= top) cur = k; else break; }
+  if(cur === __man.secCur) return;
+  __man.secCur = cur;
+  const box = sec.closest('.in');
+  if(cur < 0){ sec.style.display = 'none'; if(box) box.classList.remove('has-sec'); }
+  else { sec.style.display = ''; sec.textContent = '› ' + hs[cur].text; if(box) box.classList.add('has-sec'); }
+  const on = cur >= 0 ? String(hs[cur].i) : '';
+  main.querySelectorAll('[data-toc],[data-stoc]').forEach(a => a.classList.toggle('on', (a.dataset.toc || a.dataset.stoc) === on));
 }
 function manScrollTop_(){ const main = document.getElementById('man-main'); if(main) main.scrollTo({ top:0, behavior:'smooth' }); }
 // フッター(トップ・フォルダ・カテゴリ・ページの一番下): ノート・カテゴリ・便利の案内
@@ -37766,6 +37796,13 @@ function manRenderToc_(main){
   const body = main.querySelector('#man-body'), host = main.querySelector('#man-toc-host'); if(!body || !host) return;
   const hs = [...body.querySelectorAll('h1,h2,h3')];
   const toc = manTocOf_(hs.map(h => ({ tag:h.tagName, text:h.textContent })));
+  __man.heads = toc.map(x => ({ el: hs[x.i], text: x.text, i: x.i })); __man.secCur = -2;   // 今の見出し(v875)
+  const sec = main.querySelector('#man-stick-sec'), dd = main.querySelector('#man-stick-toc');
+  if(sec && dd){
+    dd.innerHTML = toc.map(x => `<a href="#" class="l${x.level}" data-stoc="${x.i}">${escapeHtml(x.text)}</a>`).join('');
+    sec.onclick = e => { e.preventDefault(); dd.classList.toggle('open'); };
+    dd.querySelectorAll('[data-stoc]').forEach(a => a.onclick = e => { e.preventDefault(); dd.classList.remove('open'); const h = hs[+a.dataset.stoc]; if(h) h.scrollIntoView({ behavior:'smooth', block:'start' }); });
+  }
   if(toc.length < 3){ host.innerHTML = ''; return; }
   host.innerHTML = `<details class="man-toc man-noprint"${window.innerWidth > 760 ? ' open' : ''}><summary>📑 目次(${toc.length})</summary>
     ${toc.map(x => `<a href="#" class="l${x.level}" data-toc="${x.i}">${escapeHtml(x.text)}</a>`).join('')}</details>`;
