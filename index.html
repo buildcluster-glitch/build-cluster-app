@@ -2773,6 +2773,13 @@
   #inventoryView .inv-st-diffbadge.minus{background:#fee2e2;color:#991b1b}
   #inventoryView .inv-st-diffbadge.plus{background:#dbeafe;color:#1e3a8a}
   #inventoryView .inv-st-reason{margin:0 14px 8px;padding:0 6px}
+  /* 在庫不足の印(v1.30.863・山田): 赤=要注文(押すと発注画面) / 青=発注中(届けば足りる) */
+  #inventoryView .inv-st-row .st-alert:empty{display:none}
+  #inventoryView .inv-st-row .st-alert{margin-top:4px}
+  #inventoryView .inv-st-row .st-alert.order{color:var(--inv-danger)}
+  #inventoryView .inv-st-row .st-alert.order button{border:1.5px solid var(--inv-danger);background:#fef2f2;color:var(--inv-danger);
+    border-radius:6px;font-weight:800;font-size:12px;padding:3px 8px;cursor:pointer;line-height:1.2}
+  #inventoryView .inv-st-row .st-alert.ordered{color:#1d4ed8;font-size:12px;font-weight:700}
   #inventoryView .inv-st-reason select{width:100%;padding:8px 10px;border:1px solid #fbbf24;border-radius:8px;
     background:#fffbeb;font-size:13px;outline:none;color:var(--inv-ink)}
   #inventoryView .inv-st-loc-header{margin:12px 14px 6px;padding:10px 12px;border-radius:10px;font-size:13px;font-weight:800;
@@ -3018,7 +3025,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.862</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.863</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -33604,6 +33611,24 @@ function renderOrders(){
 }
 
 // ---------- render: stocktake ----------
+// 棚卸の行の在庫不足の印(v1.30.863・山田「棚卸した人がその場で注文」)。判定は一覧/詳細と同じ effectiveStock<minStock。
+//   実数を入力済みならその数で見る。発注中の分が届けば足りる品目は青の「発注中」(山田「青で出そう」)
+function stStockAlert_(item, real){
+  if(!(item.minStock>0)) return null;
+  const base = (real===null || real===undefined) ? (item.stock||0) : real;
+  const onOrd = onOrderQty(item.id);
+  const eff = effectiveStock(Object.assign({}, item, {stock: base}));
+  if(eff < item.minStock) return {kind:'order', shortage: item.minStock - eff, onOrd};
+  if(onOrd>0 && base < item.minStock) return {kind:'ordered', onOrd};
+  return null;
+}
+function stStockAlertHtml_(item, real){
+  const a = stStockAlert_(item, real);
+  if(!a) return '';
+  if(a.kind==='order') return `<button type="button" data-stkord="${item.id}" title="最低 ${item.minStock}・不足 ${a.shortage}個${a.onOrd?`(発注中 ${a.onOrd}を含めても)`:''}">⚠ 要注文 不足${a.shortage}</button>`;
+  return `📦 発注中 ${a.onOrd}個`;
+}
+function stStockAlertCls_(item, real){ const a = stStockAlert_(item, real); return a ? a.kind : ''; }
 function renderStocktake(){
   const locFilter = state.ui.stocktakeLocFilter;
   // location chips
@@ -33659,6 +33684,7 @@ function renderStocktake(){
           <div class="info">
             <div class="nm">${esc(i.name)}</div>
             <div class="sub">${esc(i.sku)} · ${esc(i.category)}</div>
+            <div class="st-alert ${stStockAlertCls_(i, real)}">${stStockAlertHtml_(i, real)}</div>
           </div>
           <div class="syss">記録<br><b>${i.stock}</b></div>
           <input type="number" inputmode="numeric" min="0" placeholder="実数" value="${hasVal?v:''}" data-stk="${i.id}">
@@ -33702,6 +33728,9 @@ function updateStRow(inp){
   if(!row) return;
   row.classList.toggle('diff', d!==null && d!==0);
   row.classList.toggle('done', hasVal && d===0);
+  // 在庫不足の印(v1.30.863): 数えた実数で出し直す
+  const al = row.querySelector('.st-alert');
+  if(al){ al.className = 'st-alert ' + stStockAlertCls_(item, real); al.innerHTML = stStockAlertHtml_(item, real); }
   // 差分バッジ
   let badge = row.querySelector('.inv-st-diffbadge');
   if(d===null || d===0){ if(badge) badge.remove(); }
@@ -35840,6 +35869,19 @@ function bindEvents(){
   };
   // 「OK」= 在庫数をそのまま実数に入れるワンタップ(v1.30.321木村)
   $('#inv-st-rows').onclick = e=>{
+    // ⚠ 要注文 = その場で発注画面へ。数量は不足数を入れておく(v1.30.863・山田)
+    const ord = e.target.closest('[data-stkord]');
+    if(ord){
+      const id = ord.dataset.stkord;
+      const item = state.items.find(i=>i.id===id);
+      if(!item) return;
+      const v = state.ui.stocktakeInputs[id];
+      const real = (v!==undefined && v!=='' && !isNaN(Number(v))) ? Number(v) : null;
+      const a = stStockAlert_(item, real);
+      openOrder(id, null);
+      if(a && a.kind==='order') $('#inv-ord-qty').value = a.shortage;
+      return;
+    }
     const ok = e.target.closest('[data-stkok]');
     if(!ok) return;
     const id = ok.dataset.stkok;
