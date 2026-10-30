@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.879</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.880</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -20559,6 +20559,7 @@ function buildTipChat_(tip, headHtml, api){
   //   仕掛けた場合に備え、再描画直後にタイマーを解除(自分の再描画で自分が消えない)。
   //   rerenderは吹き出し内のクリックからしか起きないため、正規のmouseleave由来hideを誤殺しない。
   cancelHideChipTip();
+  try{ if(typeof manTipBukken_==='function') manTipBukken_(tip); }catch(_){}   // 🏢 題名の物件 → マニュアルの物件のページ(v880)
   tip.querySelectorAll('[data-tr]').forEach(b=>b.onclick=()=>{ api.openIdx.v=null; api.onToggle(b.dataset.cid, b.dataset.tr, rerender); });
   tip.querySelectorAll('[data-ra]').forEach(b=>b.onclick=()=>{ api.openIdx.v=(api.openIdx.v===b.dataset.ra)?null:b.dataset.ra; rerender(); });
   tip.querySelectorAll('[data-rae]').forEach(b=>b.onclick=()=>{ api.openIdx.v=null; api.onAddReact(b.dataset.rae, b.dataset.em, rerender); });
@@ -37811,6 +37812,42 @@ function manBkSearchInto_(host, q){
   host.prepend(box);
   box.querySelectorAll('[data-bkhit]').forEach(el => el.onclick = () => manRenderBukken_(el.dataset.bkhit));
   const mo = box.querySelector('[data-bkmore]'); if(mo) mo.onclick = () => { (__man.bkFilt || (__man.bkFilt = { q:'', grp:'', type:'', sort:'' })).q = q; manRenderBukkenList_(); };
+}
+// 🏢 予定・立会・修繕の吹き出し(v880): 題名(.tt-title)に物件台帳の名前があれば、見出しの下にボタン。
+//   名前は4文字以上・いちばん長く当たるもの(「〇〇Ⅱ」と「〇〇」なら Ⅱ)。台帳がまだ無ければ1回だけ読み、吹き出しが同じならその場で足す
+//   照合は NFKC・空白なし・小文字・ローマ数字(Ⅰ〜Ⅹ)を数字に そろえてから(全角半角・「Ⅱ」と「2」で外れない)。
+//   3文字以下(オーブ・M21・Rue)は 材料名や英字に紛れて誤って当たるので吹き出しでは使わない(物件一覧からは開ける)
+const MAN_BK_ROMAN = { 'Ⅰ':'1','Ⅱ':'2','Ⅲ':'3','Ⅳ':'4','Ⅴ':'5','Ⅵ':'6','Ⅶ':'7','Ⅷ':'8','Ⅸ':'9','Ⅹ':'10','ⅰ':'1','ⅱ':'2','ⅲ':'3','ⅳ':'4','ⅴ':'5' };
+function manBkKey_(v){   // 英字で打った II・III・IV も(英字の単語の中でなければ)数字に。空白を消す前に見る
+  return manBkNorm_(String(v || '').replace(/[Ⅰ-Ⅹⅰ-ⅴ]/g, c => MAN_BK_ROMAN[c] || c).normalize('NFKC').toLowerCase()
+    .replace(/(^|[^a-z])(iii|ii|iv)(?![a-z])/g, (m, a, r) => a + ({ iii:'3', ii:'2', iv:'4' })[r])); }
+function manBkMatch_(title){
+  const rows = (__man.bk && __man.bk.rows) || [];
+  if(!rows.length) return null;
+  if(!__man.bkIdx || __man.bkIdx.src !== rows){
+    __man.bkIdx = { src: rows, list: rows.map(b => ({ b, k: manBkKey_(b.name) })).filter(x => x.k.length >= 4).sort((a, b) => b.k.length - a.k.length) };
+  }
+  const t = manBkKey_(title); if(!t) return null;
+  const hit = __man.bkIdx.list.find(x => t.includes(x.k));
+  return hit ? hit.b : null;
+}
+function manTipBukken_(tip){
+  const te = tip && tip.querySelector('.tt-title'); if(!te) return;
+  const title = te.textContent || '';
+  if(!__man.bk){
+    if(Date.now() - (__man.bkTipTry || 0) < MAN_BK_TTL) return;   // 読めなかった時に 吹き出しのたびに読みに行かない
+    __man.bkTipTry = Date.now();
+    // 読み終わった時に 吹き出しが閉じている・別の予定に替わっている なら何もしない(カレンダー担当①)
+    manBkLoad_().then(() => { const t2 = tip.querySelector('.tt-title'); if(t2 && t2.textContent === title && tip.classList.contains('is-show') && !tip.querySelector('.tt-bk-btn')) manTipBukken_(tip); }).catch(() => {});
+    return;
+  }
+  if(Date.now() - __man.bk.at >= MAN_BK_TTL) manBkLoad_().catch(() => {});   // 古ければ裏で読み直す(今回は手元ので出す)
+  const b = manBkMatch_(title); if(!b || tip.querySelector('.tt-bk-btn')) return;
+  const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'tt-bk-btn';
+  btn.textContent = '🏢 ' + b.name + ' の物件情報・マニュアル ›';
+  btn.style.cssText = 'display:block;margin:4px 0 2px;background:transparent;color:#67e8f9;border:1px solid #0891b2;border-radius:6px;font-size:11.5px;font-weight:700;padding:4px 9px;cursor:pointer;text-align:left;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+  btn.onclick = e => { e.stopPropagation(); try{ if(typeof hideChipTip === 'function') hideChipTip(true); }catch(_){} manRenderBukken_(b.name); };
+  te.after(btn);
 }
 // 関連マニュアル(予定から)に「🏢 物件の情報」(台帳に載っている物件だけ)
 async function manBkLinkInto_(hero, name){
