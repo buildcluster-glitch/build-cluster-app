@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.864</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.865</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -33690,14 +33690,14 @@ function invRecordPriceChange_(item, prevPrice){
   queueOp('appendLog', log);
   return log;
 }
-// PWA(ホーム画面から起動)の中で開きっぱなしにならないよう、購入リンクは window.open で外へ。
-//   capture で先に拾い、カードを押した扱い(詳細を開く)にしない
+// 購入リンクは <a target="_blank" rel="noopener"> の既定の動きで外のタブへ(PWAでもアプリの外で開く)。
+//   capture で先に拾い、カードを押した扱い(詳細を開く)にしないだけ。preventDefault はしない
+//   ⚠v1.30.865: window.open(…,'noopener') は開けても null を返す仕様=「開けなかった」と誤判定して
+//   アプリ自身まで発注先へ移っていた(棚卸の入力が消える)。window.open と location.assign は使わない
 document.addEventListener('click', e=>{
   const a = e.target.closest && e.target.closest('a[data-invbuy]');
   if(!a) return;
-  e.preventDefault(); e.stopPropagation();
-  const w = window.open(a.href, '_blank', 'noopener,noreferrer');
-  if(!w && !window.matchMedia('(display-mode: standalone)').matches) location.assign(a.href);
+  e.stopPropagation();
 }, true);
 
 // ---------- render: stocktake ----------
