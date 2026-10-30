@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.873</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.874</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -32602,14 +32602,14 @@ document.addEventListener("keydown", e=>{
   if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="z" && !e.shiftKey){
     // モーダル内のテキスト編集中は通常のundoを優先
     const tag = (e.target.tagName||"").toLowerCase();
-    if(tag==="input" || tag==="textarea") return;
+    if(tag==="input" || tag==="textarea" || tag==="select" || e.target.isContentEditable) return;   // ✍ v1.30.874: 見たまま編集(contenteditable)の中で予定が戻らないように
     e.preventDefault();
     undo();
   }
   // ↷ Ctrl/Cmd+Shift+Z または Ctrl+Y で Redo(南部要望「進むボタンも欲しい」v1.30.354)
   if((e.ctrlKey||e.metaKey) && ((e.key.toLowerCase()==="z" && e.shiftKey) || e.key.toLowerCase()==="y")){
     const tag = (e.target.tagName||"").toLowerCase();
-    if(tag==="input" || tag==="textarea") return;
+    if(tag==="input" || tag==="textarea" || tag==="select" || e.target.isContentEditable) return;   // v1.30.874
     e.preventDefault();
     redo();
   }
