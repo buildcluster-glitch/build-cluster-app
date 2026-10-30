@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.868</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.869</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -36318,6 +36318,10 @@ window.__invAddStockFromMaterial_ = (entries)=>{
 //   v1.30.866(山田「お知らせも新着更新があるからいらないかな 代わりに」→ 案1): トップの📢お知らせ欄を外し「📅 今日の予定から」。
 //     自分(👤)の今日の予定・立会・修繕ごとに合うページを3つまで(端末の予定だけ読む・削除済みと他人の予定は出さない)。お知らせのページ自体は残る。
 //     v1.30.867: 今日の日付は fmtDate で(todayISO は別のスクリプトの中にあり呼べず、866では何も出なかった)。
+//   v1.30.869(山田「まうすの進む戻るボタンでも」「投稿画面コード編集じゃなくてリッチ編集みたいにする切り替えも」):
+//     🖱マウスの戻る/進むボタン(button 3/4)で ‹ › と同じ。ブラウザの戻るは止める。
+//     編集に「✍ 見たまま」「</> 記号」(この端末で覚える・bc_manual_editmode・はじめは見たまま)。本文はマークダウンのまま保存
+//     (見たままで直した時だけ Turndown で戻す)。戻すと書式が少し変わるページは、見たままに入った時に ⚠ で知らせる。
 // ====================================================================
 const MAN_BUCKET = 'manuals';
 const MAN_REF_PREFIX = 'sb:manuals/';
@@ -36337,6 +36341,7 @@ const __man = { tree:null, trash:false, cur:null, mode:'view', q:'', results:nul
                 hl:'', filt:{ folder:'', user:'', days:'', sort:'', cat:'' }, filtOpen:false, nav:{ stack:[], i:-1 }, navLock:false };
 const MAN_FONT_KEY = 'bc_manual_font';   // 文字の大きさ s/m/l(この端末)
 const MAN_MAX_KEY = 'bc_manual_max';     // ⛶ 画面いっぱい(この端末)
+const MAN_EDITMODE_KEY = 'bc_manual_editmode';   // 編集の形 rich=✍見たまま / md=</>記号(この端末・はじめは見たまま)
 const MAN_SEEN_KEY = 'bc_manual_seen';    // 新着: 前回マニュアルを開いた時刻(ISO・この端末)
 const MAN_STALE_DAYS = 365, MAN_THIN_CHARS = 200;   // 見直し: 1年以上 更新も見直しも無い / 本文が200字未満(見直した印が無いもの)
 // 予定の種類 → 関連マニュアルに出すカテゴリ(名前で引く・カテゴリの名前を変えたらここも)
@@ -36625,6 +36630,73 @@ function manWrapText_(value, start, end, kind){
   const nv = v.slice(0, s0) + ins + v.slice(e0);
   return { value:nv, start:s0 + ins.length, end:s0 + ins.length };
 }
+// ---- ✍ 見たまま編集(v869): 見たままの画面(HTML)を、今までの本文の書き方(マークダウン)に戻す ----
+//   部品は Turndown(cdnjs・見たまま編集を開いた時だけ読む)。写真は <img src="sb:…" width> の形のまま・赤字や文字の大きさの <span style> もそのまま。
+//   表は「1行目が見出しで結合セルが無い」ものだけ | 表 | にし、それ以外は HTML のまま残す(崩さない)
+const MAN_TD_URL = 'https://cdnjs.cloudflare.com/ajax/libs/turndown/7.1.2/turndown.min.js';
+function manLoadTurndown_(){
+  if(window.TurndownService) return Promise.resolve();
+  if(__man.tdLib) return __man.tdLib;
+  __man.tdLib = new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = MAN_TD_URL; sc.async = true; sc.crossOrigin = 'anonymous';
+    sc.onload = ok; sc.onerror = () => { __man.tdLib = null; ng(new Error('見たまま編集の部品が読めません')); }; document.head.appendChild(sc); });
+  return __man.tdLib;
+}
+// 見たままの画面の写し: 署名URLを元の sb: に戻し、画面用に足した印を外す
+function manRichClean_(root){
+  const c = root.cloneNode(true);
+  c.querySelectorAll('[data-mref]').forEach(el => { const r = el.getAttribute('data-mref');
+    if(el.nodeName === 'A') el.setAttribute('href', r); else el.setAttribute('src', r);
+    el.removeAttribute('data-mref'); if(el.nodeName === 'IMG'){ el.removeAttribute('style'); el.removeAttribute('loading'); } });
+  c.querySelectorAll('[data-rich-ui],script,style,iframe,object,embed,form,input,button,textarea,select,link,meta').forEach(el => el.remove());
+  c.querySelectorAll('*').forEach(el => [...el.attributes].forEach(a => { if(/^on/i.test(a.name) || /^\s*javascript:/i.test(a.value)) el.removeAttribute(a.name); }));   // 貼り付けなどで混ざった onclick 等は本文に入れない
+  return c;
+}
+function manTurndown_(){
+  if(__man.td) return __man.td;
+  const T = window.TurndownService; if(!T) return null;
+  const td = new T({ headingStyle:'atx', hr:'---', bulletListMarker:'-', codeBlockStyle:'fenced', emDelimiter:'*', strongDelimiter:'**', br:'' });
+  const attr = v => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  const esc0 = T.prototype.escape;   // URL・メールの中は逃がしの \ を付けない(付けるとリンクが壊れる)
+  td.escape = function(x){ return String(x).split(/((?:https?:\/\/|www\.)[^\s<>"]+|[\w.+-]+@[\w-]+(?:\.[\w-]+)+)/).map((y, i) => i % 2 ? y : esc0.call(this, y)).join(''); };
+  const PUN = /^[\p{P}\p{S}]|[\p{P}\p{S}]$/u;   // 端が記号(「。」など)だと ** が効かないので <strong> で書く
+  td.addRule('manStrong', { filter:['strong','b'], replacement: c => { const t = c.trim(); return !t ? c : PUN.test(t) ? `<strong>${c}</strong>` : `**${c}**`; } });
+  td.addRule('manEm', { filter:['em','i'], replacement: c => { const t = c.trim(); return !t ? c : PUN.test(t) ? `<em>${c}</em>` : `*${c}*`; } });
+  td.addRule('manImg', { filter:'img', replacement:(c, el) => { const src = el.getAttribute('src') || ''; if(!src) return '';
+    return `<img src="${attr(src)}"${['title','alt','width','height'].filter(k => el.getAttribute(k)).map(k => ` ${k}="${attr(el.getAttribute(k))}"`).join('')}>`; } });
+  td.addRule('manDel', { filter:['del','s','strike'], replacement: c => '~~' + c + '~~' });
+  td.addRule('manSpan', { filter: el => el.nodeName === 'SPAN' && !!(el.getAttribute('style') || '').trim(),
+    replacement:(c, el) => `<span style="${attr(el.getAttribute('style'))}">${c}</span>` });
+  td.keep(['u','mark','sub','sup','font','video','details','summary']);
+  const BLOCK = 'p,div,ul,ol,table,pre,h1,h2,h3,h4,h5,h6,blockquote,hr';
+  td.addRule('manTable', { filter:'table', replacement:(c, el) => {
+    const rows = [...el.rows]; const w = rows.length ? rows[0].cells.length : 0;
+    const head = rows.length && ((el.tHead && el.tHead.rows[0] === rows[0]) || [...rows[0].cells].every(x => x.nodeName === 'TH'));
+    const simple = head && w > 0 && rows.every(r => r.cells.length === w && [...r.cells].every(x => x.colSpan === 1 && x.rowSpan === 1 && !x.querySelector(BLOCK)))
+      && !el.querySelector('caption') && rows.slice(1).every(r => [...r.cells].every(x => x.nodeName === 'TD'));
+    if(!simple) return '\n\n' + el.outerHTML + '\n\n';
+    const cell = x => { const t = td.turndown(x.innerHTML).replace(/\n+/g, '<br>').replace(/\|/g, '\\|').trim(); return t || ' '; };
+    const line = r => '| ' + [...r.cells].map(cell).join(' | ') + ' |';
+    return '\n\n' + [line(rows[0]), '| ' + Array(w).fill('---').join(' | ') + ' |', ...rows.slice(1).map(line)].join('\n') + '\n\n';
+  } });
+  __man.td = td;
+  return td;
+}
+function manHtmlToMd_(root){
+  const td = manTurndown_(); if(!td) throw new Error('見たまま編集の部品が読めていません');
+  return td.turndown(manRichClean_(root)).replace(/\n{3,}/g, '\n\n').trim() + '\n';
+}
+// 見たままで直すと書式が変わる所があるか(入る時に1回): 文字・写真・リンク・太字・表の数を比べる。戻り=変わる物の名前
+function manRichCheck_(md){
+  const sig = html => { const d = document.createElement('div'); d.innerHTML = html;
+    d.querySelectorAll('span,h1,h2,h3,h4,h5,h6,code,pre,strong,em').forEach(e => { if(!e.textContent.replace(/[\s　]/g, '') && !e.querySelector('img')) e.remove(); });
+    return { '文字': d.textContent.replace(/\s+/g, ''), '写真': [...d.querySelectorAll('img')].map(i => i.getAttribute('src') + '|' + (i.getAttribute('width')||'')).join(','),
+      'リンク': [...d.querySelectorAll('a')].map(a => a.getAttribute('href')).join(','), '太字': d.querySelectorAll('strong').length, '表': d.querySelectorAll('td,th').length,
+      '見出し': d.querySelectorAll('h1,h2,h3,h4,h5,h6').length, '色や大きさ': d.querySelectorAll('span[style]').length };
+  };
+  try{ const h = manToHtml_(md || ''); const d = document.createElement('div'); d.innerHTML = h;
+    const a = sig(h), b = sig(manToHtml_(manHtmlToMd_(d))); return Object.keys(a).filter(k => a[k] !== b[k]); }
+  catch(_){ return ['?']; }
+}
 function manRpc_(fn, body){ return calRpcRaw_(fn, body||{}); }
 
 function manLoadLibs_(){
@@ -36740,6 +36812,15 @@ function manEnsureModal_(){
   #manualModal.man-max .man-main>*:not(.man-foot):not(.man-stick){max-width:1040px;margin-left:auto;margin-right:auto}
   #manualModal.man-max .man-cards{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
   #manualModal .man-head .btn.on{background:rgba(251,191,36,.3);border-color:#fbbf24}
+  #manualModal .man-rich{min-height:52vh;border:1px solid var(--border);border-radius:6px;padding:10px 14px;background:#fff;outline:none;overflow-wrap:anywhere}
+  #manualModal .man-rich:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(37,99,235,.15)}
+  #manualModal .man-rich img{max-width:100%;height:auto}
+  #manualModal .man-rich td,#manualModal .man-rich th{min-width:40px}
+  #manualModal .man-seg{display:inline-flex}
+  #manualModal .man-seg .btn{border-radius:0}
+  #manualModal .man-seg .btn:first-child{border-radius:6px 0 0 6px}
+  #manualModal .man-seg .btn:last-child{border-radius:0 6px 6px 0;margin-left:-1px}
+  #manualModal .man-seg .btn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
   #manualModal .man-td{padding:8px 10px;margin-bottom:8px;border-left:4px solid #0d9488}
   #manualModal .man-td-h{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px}
   #manualModal .man-td-time{font-weight:700;color:#0f766e;font-variant-numeric:tabular-nums;min-width:40px}
@@ -36862,8 +36943,8 @@ function manEnsureModal_(){
   ov.innerHTML = `
     <div class="modal">
       <div class="modal-header man-head" style="display:flex;align-items:center;gap:8px;padding:9px 14px">
-        <button class="btn man-mini man-navbtn" id="man-back-nav" title="戻る (Alt+←)" disabled>‹</button>
-        <button class="btn man-mini man-navbtn" id="man-fwd-nav" title="進む (Alt+→)" disabled>›</button>
+        <button class="btn man-mini man-navbtn" id="man-back-nav" title="戻る (Alt+← ・マウスの戻るボタン)" disabled>‹</button>
+        <button class="btn man-mini man-navbtn" id="man-fwd-nav" title="進む (Alt+→ ・マウスの進むボタン)" disabled>›</button>
         <div class="man-prog" id="man-prog"></div>
         <a href="#" class="man-brand" id="man-brand" title="マニュアルのトップへ"><span class="ic">📖</span><span><b>社内マニュアル</b><small>BUILD CLUSTER</small></span></a>
         <span id="man-status" style="font-weight:400;font-size:11px;color:var(--muted)"></span>
@@ -36916,6 +36997,10 @@ function manEnsureModal_(){
     if(!ov.classList.contains('show') || !e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement||{}).tagName||'')) return;
     if(e.key === 'ArrowLeft'){ e.preventDefault(); manNavGo_(-1); } else if(e.key === 'ArrowRight'){ e.preventDefault(); manNavGo_(1); }
   });
+  // 🖱 マウスの戻る(4番目)・進む(5番目)ボタン(v869): ‹ › と同じ。ブラウザの戻る/進むは止める
+  const mouseNav = e => { if(!ov.classList.contains('show') || (e.button !== 3 && e.button !== 4)) return;
+    e.preventDefault(); e.stopPropagation(); if(e.type === 'mouseup') manNavGo_(e.button === 3 ? -1 : 1); };
+  ov.addEventListener('mousedown', mouseNav); ov.addEventListener('mouseup', mouseNav);
   manApplyFont_();
   ov.querySelector('#man-home').onclick = () => { if(__man.mode === 'edit' && !confirm('編集中です。下書きを残してトップへ戻りますか？')) return; __man.mode = 'view'; __man.folderView = ''; __man.cur = null; manRenderList_(); manRenderHome_(); manShowMain_(true); };
   let qt = null;
@@ -37706,7 +37791,8 @@ function manStartEdit_(){
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
       <b>${p.isNew?'＋ 新しいページ':'✏️ 編集'}</b>
       ${useDraft?'<span style="font-size:11px;color:#d97706">✎ 書きかけの下書きから続けています</span>':''}
-      <span style="margin-left:auto;display:flex;gap:6px">
+      <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
+        <span class="man-seg"><button class="btn man-mini" id="man-m-rich" title="見たままの画面で直す(ワープロのように)">✍ 見たまま</button><button class="btn man-mini" id="man-m-md" title="記号(マークダウン)で直す">&lt;/&gt; 記号</button></span>
         <button class="btn man-mini" id="man-prev">👁 見た目</button>
         <button class="btn man-mini" id="man-cancel">やめる</button>
         <button class="btn man-mini" id="man-save" style="background:var(--accent);color:#fff;font-weight:700">保存</button>
@@ -37727,14 +37813,26 @@ function manStartEdit_(){
       <label title="カメラでその場で撮って入れる">📷 撮る<input type="file" id="man-cam" accept="image/*" capture="environment" style="display:none"></label>
     </div>
     <textarea class="man-body" id="man-text" placeholder="本文。上のボタンで太字・見出し・箇条書き・表が入れられます。写真は📷か、コピーした画像を貼り付け(Ctrl/⌘+V)でも入ります">${escapeHtml(d.body)}</textarea>
+    <div id="man-rich-note" class="man-stale" style="display:none"></div>
+    <div id="man-rich" class="markdown-body man-rich" contenteditable="true" spellcheck="false" style="display:none"></div>
     <div id="man-preview" class="markdown-body" style="display:none;border:1px solid var(--border);border-radius:6px;padding:10px;min-height:40vh"></div>
     <div id="man-atts" class="man-att"></div>
     <div style="margin-top:10px;font-size:12px"><b>🏷 カテゴリ</b> <span style="color:var(--muted)">(押して付け外し)</span>
       <div class="man-pc-row" id="man-catpick" style="margin-top:4px"></div></div>`;
   const q = s => main.querySelector(s);
-  const saveDraft = () => { try{ localStorage.setItem(MAN_DRAFT_PREFIX + p.id, JSON.stringify({ base:p.version, title:q('#man-title').value, body:q('#man-text').value, atts:d.atts, at:Date.now() })); }catch(_){} };
+  // ✍ 見たまま(v869): rich=今見たまま / dirty=見たままで直した(直した時だけマークダウンに戻す・直していなければ元の本文のまま)
+  const ed = { rich:false, dirty:false, range:null };
+  const ri = () => q('#man-rich'), ta = () => q('#man-text');
+  const syncRich = () => { if(ed.rich && ed.dirty){ ta().value = manHtmlToMd_(ri()); ed.dirty = false; } };
+  const richWire = () => { const refs = [];
+    ri().querySelectorAll('img').forEach(im => { const v = im.getAttribute('src'); if(manIsRef_(v)){ im.setAttribute('data-mref', v); im.removeAttribute('src'); refs.push(v); } });
+    if(refs.length) manSign_(refs).then(() => ri().querySelectorAll('img[data-mref]:not([src])').forEach(im => { const u = manSigned_(im.getAttribute('data-mref')); if(u) im.setAttribute('src', u); })).catch(() => {}); };
+  const richFocus = () => { const el = ri(); el.focus(); if(ed.range){ const sl = window.getSelection(); sl.removeAllRanges(); sl.addRange(ed.range); } };
+  const richCmd = (c, v) => { richFocus(); document.execCommand(c, false, v); ed.dirty = true; kick(); };
+  const insBody = md => { if(ed.rich){ richCmd('insertHTML', manToHtml_(md)); richWire(); } else manInsertAtCursor_(ta(), '\n' + md + '\n'); };
+  const saveDraft = () => { try{ syncRich(); }catch(_){} try{ localStorage.setItem(MAN_DRAFT_PREFIX + p.id, JSON.stringify({ base:p.version, title:q('#man-title').value, body:q('#man-text').value, atts:d.atts, at:Date.now() })); }catch(_){} };
   const renderAtts = () => { q('#man-atts').innerHTML = d.atts.map((a,i)=>`<span class="btn man-mini">📎 ${escapeHtml(String(a.name).slice(0,30))} <a href="#" data-ins="${i}" title="本文のカーソル位置に入れる">↳本文へ</a> <a href="#" data-rm="${i}" style="color:#dc2626" title="添付の一覧から外す(本文の中の記述はそのまま)">×</a></span>`).join('');
-    q('#man-atts').querySelectorAll('[data-ins]').forEach(x=>x.onclick=e=>{ e.preventDefault(); manInsertAtCursor_(q('#man-text'), '\n' + manAttachMarkdown_(d.atts[+x.dataset.ins]) + '\n'); saveDraft(); });
+    q('#man-atts').querySelectorAll('[data-ins]').forEach(x=>x.onclick=e=>{ e.preventDefault(); insBody(manAttachMarkdown_(d.atts[+x.dataset.ins])); saveDraft(); });
     q('#man-atts').querySelectorAll('[data-rm]').forEach(x=>x.onclick=e=>{ e.preventDefault(); d.atts.splice(+x.dataset.rm,1); renderAtts(); saveDraft(); }); };
   renderAtts();
   const tp0 = ((__man.tree && __man.tree.pages) || []).find(x => x.id === p.id);
@@ -37748,21 +37846,86 @@ function manStartEdit_(){
     q('#man-cpick-new').onclick = async () => { const id = await manCategoryNew_(); if(id){ selCats.add(id); renderCats(); } };
   };
   renderCats();
-  let dt = null; const kick = () => { clearTimeout(dt); dt = setTimeout(saveDraft, 600); };
+  let dt = null; function kick(){ clearTimeout(dt); dt = setTimeout(saveDraft, 600); }
   q('#man-title').oninput = kick; q('#man-text').oninput = kick;
+  ri().addEventListener('input', () => { ed.dirty = true; kick(); });
+  __man.richEd = ed;   // カーソルの位置を覚える(見張りは1つだけ・今の編集画面のものに書く)
+  if(!__man.selHook){ __man.selHook = true; document.addEventListener('selectionchange', () => { const E = __man.richEd, el = document.getElementById('man-rich'), sl = window.getSelection();
+    if(!E || !E.rich || !el || !sl || !sl.rangeCount) return; const r = sl.getRangeAt(0); if(el.contains(r.commonAncestorContainer)) E.range = r.cloneRange(); }); }
+  const noRich = (auto, msg) => { q('#man-m-rich').style.display = 'none'; q('#man-m-md').title = '見たまま編集の部品が読めないので、記号で直します(電波の良い所で開き直すと出ます)';
+    if(!auto) alert(msg + '\n記号の編集のまま続けます'); };
+  const setMode = async (rich, auto) => {
+    if(rich === ed.rich) return;
+    if(rich){
+      try{ await Promise.all([manLoadLibs_(), manLoadTurndown_()]); }catch(e){ noRich(auto, e.message||String(e)); return; }
+      if(!manTurndown_()){ noRich(auto, '見たまま編集の部品が読めません'); return; }
+      if(__man.mode !== 'edit' || !ri() || !document.body.contains(ri())) return;   // 読み込みの間に編集をやめた
+      const pv = q('#man-preview'); if(pv.style.display !== 'none') q('#man-prev').click();
+      ri().innerHTML = manToHtml_(ta().value); richWire(); ed.range = null;
+      const ch = manRichCheck_(ta().value), nt = q('#man-rich-note');
+      nt.innerHTML = ch.length ? `⚠ <span>このページは見たままで直すと、<b>${escapeHtml(ch.join('・'))}</b> が少し変わることがあります(写真や文字は消えません)。気になる時は「&lt;/&gt; 記号」で直してください。</span>` : '';
+      nt.style.display = ch.length ? '' : 'none';
+      ed.rich = true; ed.dirty = false;
+    } else {
+      try{ syncRich(); }catch(e){ alert('見たままの内容を戻せませんでした: ' + (e.message||e)); return; }
+      ed.rich = false; q('#man-rich-note').style.display = 'none';
+    }
+    ri().style.display = rich ? '' : 'none'; ta().style.display = rich ? 'none' : '';
+    q('#man-prev').style.display = rich ? 'none' : '';
+    q('#man-m-rich').classList.toggle('on', rich); q('#man-m-md').classList.toggle('on', !rich);
+    try{ localStorage.setItem(MAN_EDITMODE_KEY, rich ? 'rich' : 'md'); }catch(_){}
+    if(rich) ri().focus();
+  };
+  q('#man-m-rich').onclick = () => setMode(true); q('#man-m-md').onclick = () => setMode(false);
+  q('#man-m-md').classList.add('on');
+  { let m = 'rich'; try{ m = localStorage.getItem(MAN_EDITMODE_KEY) || 'rich'; }catch(_){} if(m === 'rich') setMode(true, true); }
+  ri().addEventListener('drop', e => {   // 持ち込み(ドラッグ): 写真は上げる・文字は文字だけで入れる(そのままのHTMLは入れない)
+    const dt2 = e.dataTransfer; if(!dt2) return; e.preventDefault();
+    const fs = [...(dt2.files || [])]; if(fs.length){ upFiles(fs); return; }
+    const t = dt2.getData('text/plain'); if(t) richCmd('insertText', t);
+  });
+  ri().addEventListener('paste', e => {
+    const cd = e.clipboardData; if(!cd) return;
+    const files = [...(cd.items || [])].filter(it => it.kind === 'file' && /^image\//.test(it.type));
+    e.preventDefault();
+    if(files.length){ upFiles(files.map((it, i) => { const f = it.getAsFile(); const ext = (f.type.split('/')[1] || 'png').replace('jpeg','jpg');
+      return new File([f], `貼り付け_${Date.now()}_${i}.${ext}`, { type: f.type }); })); return; }
+    const html = cd.getData('text/html');   // 他の画面からの貼り付けは 形だけ(太字・見出し・箇条書き・表・リンク)にして入れる
+    if(html && window.DOMPurify) richCmd('insertHTML', window.DOMPurify.sanitize(html, { ALLOWED_TAGS:['p','br','b','strong','i','em','u','s','del','a','ul','ol','li','h1','h2','h3','h4','blockquote','table','thead','tbody','tr','th','td','pre','code','hr'],
+      ALLOWED_ATTR:['href'], ALLOWED_URI_REGEXP: MAN_URI_RE }));
+    else richCmd('insertText', cd.getData('text/plain') || '');
+  });
   q('#man-prev').onclick = () => {
     const pv = q('#man-preview'), ta = q('#man-text'); const on = pv.style.display === 'none';
     if(on){ pv.innerHTML = manToHtml_(ta.value); manWireBody_(pv); }
     pv.style.display = on ? '' : 'none'; ta.style.display = on ? 'none' : ''; q('#man-prev').textContent = on ? '✏️ 書く' : '👁 見た目';
   };
   q('#man-cancel').onclick = () => {
+    try{ syncRich(); }catch(_){}
     if((q('#man-title').value !== p.title || q('#man-text').value !== p.body) && !confirm('直した内容を捨ててやめますか？(下書きも消します)')) return;
     try{ localStorage.removeItem(MAN_DRAFT_PREFIX + p.id); }catch(_){}
     __man.mode = 'view';
     if(p.isNew){ __man.cur = null; manRenderHome_(); manShowMain_(false); } else manRenderPage_();
   };
+  const RICH_TOOL = {   // 見たままの時のボタン
+    bold: () => richCmd('bold'),
+    red: () => { document.execCommand('styleWithCSS', false, true); richCmd('foreColor', '#dc2626'); document.execCommand('styleWithCSS', false, false); },
+    h2: () => richCmd('formatBlock', (document.queryCommandValue('formatBlock') || '').toLowerCase() === 'h2' ? '<p>' : '<h2>'),
+    h3: () => richCmd('formatBlock', (document.queryCommandValue('formatBlock') || '').toLowerCase() === 'h3' ? '<p>' : '<h3>'),
+    ul: () => richCmd('insertUnorderedList'), ol: () => richCmd('insertOrderedList'),
+    check: () => richCmd('insertText', '☐ '),
+    quote: () => richCmd('formatBlock', '<blockquote>'),
+    table: () => richCmd('insertHTML', '<table><thead><tr><th>項目</th><th>内容</th><th>備考</th></tr></thead><tbody><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr></tbody></table><p><br></p>'),
+    link: () => { const sel = ed.range && !ed.range.collapsed; const u = (prompt('リンク先(https://… )', 'https://') || '').trim();
+      if(!/^(https?:\/\/|#manual:|mailto:)/i.test(u)) return;
+      if(sel) richCmd('createLink', u); else richCmd('insertHTML', `<a href="${escapeHtml(u)}">${escapeHtml(u)}</a>`); },
+    hr: () => richCmd('insertHorizontalRule'),
+  };
+  q('#man-tools').querySelectorAll('[data-tool]').forEach(b => b.addEventListener('mousedown', e => { if(ed.rich) e.preventDefault(); }));   // 押してもカーソルを失わない
   q('#man-tools').querySelectorAll('[data-tool]').forEach(b => b.onclick = e => {
-    e.preventDefault(); const ta = q('#man-text');
+    e.preventDefault();
+    if(ed.rich){ const f = RICH_TOOL[b.dataset.tool]; if(f) f(); return; }
+    const ta = q('#man-text');
     const r = manWrapText_(ta.value, ta.selectionStart, ta.selectionEnd, b.dataset.tool);
     ta.value = r.value; ta.focus(); ta.selectionStart = r.start; ta.selectionEnd = r.end; saveDraft();
   });
@@ -37772,7 +37935,7 @@ function manStartEdit_(){
       try{
         const att = await manUpload_(f);
         d.atts.push(att); renderAtts();
-        manInsertAtCursor_(q('#man-text'), '\n' + manAttachMarkdown_(att) + '\n'); saveDraft();
+        insBody(manAttachMarkdown_(att)); saveDraft();
         q('#man-up').textContent = `✓ ${f.name || '画像'}`;
       }catch(err){ q('#man-up').textContent = ''; alert(`${f.name || '画像'} を上げられませんでした: ${err.message||err}`); }
     }
@@ -37792,7 +37955,7 @@ function manStartEdit_(){
       try{
         const att = await manUpload_(f);
         d.atts.push(att); renderAtts();
-        manInsertAtCursor_(q('#man-text'), '\n' + manAttachMarkdown_(att) + '\n'); saveDraft();
+        insBody(manAttachMarkdown_(att)); saveDraft();
         q('#man-up').textContent = `✓ ${f.name}`;
       }catch(err){ q('#man-up').textContent = ''; alert(`${f.name} を上げられませんでした: ${err.message||err}`); }
     }
@@ -37801,6 +37964,7 @@ function manStartEdit_(){
     if(__man.busy) return;
     const title = q('#man-title').value.trim();
     if(!title){ alert('題名を入れてください'); return; }
+    try{ syncRich(); }catch(e){ alert('見たままの内容を本文に戻せませんでした: ' + (e.message||e) + '\n「</> 記号」に切り替えてから保存してください'); return; }
     __man.busy = true; q('#man-save').disabled = true; q('#man-save').textContent = '保存中…';
     let r;
     try{
