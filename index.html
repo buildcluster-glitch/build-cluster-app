@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.871</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.872</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -36322,6 +36322,8 @@ window.__invAddStockFromMaterial_ = (entries)=>{
 //     🖱マウスの戻る/進むボタン(button 3/4)で ‹ › と同じ。ブラウザの戻るは止める。
 //     編集に「✍ 見たまま」「</> 記号」(この端末で覚える・bc_manual_editmode・はじめは見たまま)。本文はマークダウンのまま保存
 //     (見たままで直した時だけ Turndown で戻す)。戻すと書式が少し変わるページは、見たままに入った時に ⚠ で知らせる。
+//   v1.30.872(山田「コントロールzとかY」「見出は4種類 マーカー 囲い枠(色付) 引用とか」): ↶↷とCtrl+Z/Y(カレンダーの undo に渡さない)・
+//     見出し1〜4・下線・取消線・文字色・マーカー・大きさ・字下げ・囲み枠(:::note info/warn/alert/ok・表示も manNoteBoxes_)・コード・折りたたみ・📄ページへのリンク・書式を消す。
 // ====================================================================
 const MAN_BUCKET = 'manuals';
 const MAN_REF_PREFIX = 'sb:manuals/';
@@ -36604,20 +36606,38 @@ function manSinceDate_(days, now){
 // 編集ボタン: 選んだ文字を前後で囲む / 行の頭に記号を付ける。戻り={value, start, end}
 function manWrapText_(value, start, end, kind){
   const v = String(value||''); const sel = v.slice(start, end);
+  const ci = String(kind).indexOf(':'), k0 = ci < 0 ? kind : String(kind).slice(0, ci), arg0 = ci < 0 ? '' : String(kind).slice(ci + 1);
+  const arg = /^[#\w%.]+$/.test(arg0) ? arg0 : '';   // 色や大きさは ボタンの値だけ(#2563eb・120% など)
   const lineStart = v.lastIndexOf('\n', start - 1) + 1;
   const pre = (t) => { const lines = (sel || '').split('\n'); return lines.map((l,i) => t(i) + l).join('\n'); };
   let ins, s0 = start, e0 = end;
-  switch(kind){
+  switch(k0){
     case 'bold':  ins = '**' + (sel || '太字') + '**'; break;
     case 'red':   ins = '<span style="color:#dc2626">' + (sel || '赤字') + '</span>'; break;
-    case 'h2': case 'h3': {
-      const mark = kind === 'h2' ? '## ' : '### ';
+    case 'h1': case 'h2': case 'h3': case 'h4': case 'p': {
+      const mark = ({ h1:'# ', h2:'## ', h3:'### ', h4:'#### ', p:'' })[k0];
       const lineEnd = v.indexOf('\n', start); const le = lineEnd < 0 ? v.length : lineEnd;
       const line = v.slice(lineStart, le).replace(/^#{1,6}\s*/, '');
-      const nv = v.slice(0, lineStart) + mark + (line || '見出し') + v.slice(le);
-      const pos = lineStart + mark.length + (line || '見出し').length;
+      const txt = line || (k0 === 'p' ? '' : '見出し');
+      const nv = v.slice(0, lineStart) + mark + txt + v.slice(le);
+      const pos = lineStart + mark.length + txt.length;
       return { value:nv, start:pos, end:pos };
     }
+    case 'indent': case 'outdent': {   // 選んだ行の頭に空白2つ(箇条書きを1段下げる)/外す
+      const lastEnd = (end > start && v[end-1] === '\n') ? end - 1 : end;
+      const le0 = v.indexOf('\n', lastEnd); const le = le0 < 0 ? v.length : le0;
+      const blk = v.slice(lineStart, le).split('\n').map(l => k0 === 'indent' ? '  ' + l : l.replace(/^ {1,2}/, '')).join('\n');
+      return { value: v.slice(0, lineStart) + blk + v.slice(le), start: lineStart, end: lineStart + blk.length };
+    }
+    case 'underline': ins = '<u>' + (sel || '下線') + '</u>'; break;
+    case 'strike':    ins = '~~' + (sel || '取り消し') + '~~'; break;
+    case 'color':     if(!arg) return { value:v, start, end }; ins = `<span style="color:${arg}">` + (sel || '色の文字') + '</span>'; break;
+    case 'mark':      if(!arg) return { value:v, start, end }; ins = `<span style="background:${arg}">` + (sel || 'マーカー') + '</span>'; break;
+    case 'size':      if(!arg) return { value:v, start, end }; ins = `<span style="font-size:${arg}">` + (sel || '文字') + '</span>'; break;
+    case 'box':       ins = (start === lineStart ? '' : '\n') + `:::note ${['info','warn','alert','ok'].includes(arg) ? arg : 'info'}\n` + (sel || 'ここに書く') + '\n:::\n'; break;
+    case 'code':      ins = /\n/.test(sel) ? '\n```\n' + sel + '\n```\n' : '`' + (sel || 'コード') + '`'; break;
+    case 'details':   ins = '\n<details><summary>ここを押すと開く</summary>\n\n' + (sel || '中身') + '\n\n</details>\n'; break;
+    case 'clear':     ins = sel.replace(/<[^>]+>/g, '').replace(/\*\*|~~/g, ''); break;
     case 'ul':    ins = (start === lineStart ? '' : '\n') + pre(() => '- ') + (sel ? '' : '項目'); break;
     case 'ol':    ins = (start === lineStart ? '' : '\n') + pre(i => (i+1) + '. ') + (sel ? '' : '項目'); break;
     case 'check': ins = (start === lineStart ? '' : '\n') + pre(() => '- [ ] ') + (sel ? '' : 'やること'); break;
@@ -36648,6 +36668,7 @@ function manRichClean_(root){
     if(el.nodeName === 'A') el.setAttribute('href', r); else el.setAttribute('src', r);
     el.removeAttribute('data-mref'); if(el.nodeName === 'IMG'){ el.removeAttribute('style'); el.removeAttribute('loading'); } });
   c.querySelectorAll('[data-rich-ui],script,style,iframe,object,embed,form,input,button,textarea,select,link,meta').forEach(el => el.remove());
+  c.querySelectorAll('details[open]').forEach(el => el.removeAttribute('open'));   // 編集の間だけ開いていた折りたたみは閉じて残す
   c.querySelectorAll('*').forEach(el => [...el.attributes].forEach(a => { if(/^on/i.test(a.name) || /^\s*javascript:/i.test(a.value)) el.removeAttribute(a.name); }));   // 貼り付けなどで混ざった onclick 等は本文に入れない
   return c;
 }
@@ -36664,6 +36685,8 @@ function manTurndown_(){
   td.addRule('manImg', { filter:'img', replacement:(c, el) => { const src = el.getAttribute('src') || ''; if(!src) return '';
     return `<img src="${attr(src)}"${['title','alt','width','height'].filter(k => el.getAttribute(k)).map(k => ` ${k}="${attr(el.getAttribute(k))}"`).join('')}>`; } });
   td.addRule('manDel', { filter:['del','s','strike'], replacement: c => '~~' + c + '~~' });
+  td.addRule('manBox', { filter: el => el.nodeName === 'DIV' && /\bman-box-\w+/.test(el.className || ''),   // 囲み枠 → :::note 種類
+    replacement:(c, el) => `\n\n:::note ${(/\bman-box-(\w+)/.exec(el.className) || [])[1] || 'info'}\n${c.trim()}\n:::\n\n` });
   td.addRule('manSpan', { filter: el => el.nodeName === 'SPAN' && !!(el.getAttribute('style') || '').trim(),
     replacement:(c, el) => `<span style="${attr(el.getAttribute('style'))}">${c}</span>` });
   td.keep(['u','mark','sub','sup','font','video','details','summary']);
@@ -36691,7 +36714,7 @@ function manRichCheck_(md){
     d.querySelectorAll('span,h1,h2,h3,h4,h5,h6,code,pre,strong,em').forEach(e => { if(!e.textContent.replace(/[\s　]/g, '') && !e.querySelector('img')) e.remove(); });
     return { '文字': d.textContent.replace(/\s+/g, ''), '写真': [...d.querySelectorAll('img')].map(i => i.getAttribute('src') + '|' + (i.getAttribute('width')||'')).join(','),
       'リンク': [...d.querySelectorAll('a')].map(a => a.getAttribute('href')).join(','), '太字': d.querySelectorAll('strong').length, '表': d.querySelectorAll('td,th').length,
-      '見出し': d.querySelectorAll('h1,h2,h3,h4,h5,h6').length, '色や大きさ': d.querySelectorAll('span[style]').length };
+      '見出し': d.querySelectorAll('h1,h2,h3,h4,h5,h6').length, '色や大きさ': d.querySelectorAll('span[style]').length, '囲み枠': d.querySelectorAll('.man-box').length };
   };
   try{ const h = manToHtml_(md || ''); const d = document.createElement('div'); d.innerHTML = h;
     const a = sig(h), b = sig(manToHtml_(manHtmlToMd_(d))); return Object.keys(a).filter(k => a[k] !== b[k]); }
@@ -36708,10 +36731,27 @@ function manLoadLibs_(){
   }))).catch(e => { __man.libs = null; throw e; });
   return __man.libs;
 }
+// 囲み枠(v872): NotePM の書き方 :::note info|warn|alert(+ok) … ::: を <div class="man-box …"> に置き換えてから表示する。
+//   前後に空行を入れる(写真の <img> の行に続くと HTML の塊に飲まれて文字のまま出ていたため)。``` の中は触らない・閉じ忘れは最後で閉じる
+function manNoteBoxes_(md){
+  if(String(md).indexOf(':::') < 0) return md;
+  const out = []; let fence = false, open = 0;
+  String(md).split('\n').forEach(l => {
+    if(/^\s*(```|~~~)/.test(l)){ fence = !fence; out.push(l); return; }
+    if(!fence){
+      const m = /^[ \t]*:::note[ \t]*([a-z]*)/.exec(l);
+      if(m){ out.push('', `<div class="man-box man-box-${['info','warn','alert','ok'].includes(m[1]) ? m[1] : 'info'}">`, ''); open++; return; }
+      if(open && /^[ \t]*:::[ \t]*$/.test(l)){ out.push('', '</div>', ''); open--; return; }
+    }
+    out.push(l);
+  });
+  while(open-- > 0) out.push('', '</div>', '');
+  return out.join('\n');
+}
 function manToHtml_(md){
   const esc = (typeof escapeHtml==='function') ? escapeHtml : (x=>String(x));
   if(!window.marked || !window.DOMPurify) return `<pre style="white-space:pre-wrap">${esc(md||'')}</pre>`;
-  const raw = window.marked.parse(String(md||''), { gfm:true, breaks:true });
+  const raw = window.marked.parse(manNoteBoxes_(String(md||'')), { gfm:true, breaks:true });
   return window.DOMPurify.sanitize(raw, { ALLOWED_URI_REGEXP: MAN_URI_RE, ADD_ATTR:['target'], FORBID_TAGS:['style','form','input','button'] });
 }
 
@@ -36812,6 +36852,18 @@ function manEnsureModal_(){
   #manualModal.man-max .man-main>*:not(.man-foot):not(.man-stick){max-width:1040px;margin-left:auto;margin-right:auto}
   #manualModal.man-max .man-cards{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
   #manualModal .man-head .btn.on{background:rgba(251,191,36,.3);border-color:#fbbf24}
+  #manualModal .man-box{border:1px solid;border-left-width:5px;border-radius:8px;padding:6px 12px;margin:10px 0}
+  #manualModal .man-box>:first-child{margin-top:4px}
+  #manualModal .man-box>:last-child{margin-bottom:4px}
+  #manualModal .man-box-info{background:#eff6ff;border-color:#93c5fd;border-left-color:#3b82f6}
+  #manualModal .man-box-warn{background:#fffbeb;border-color:#fcd34d;border-left-color:#f59e0b}
+  #manualModal .man-box-alert{background:#fef2f2;border-color:#fca5a5;border-left-color:#ef4444}
+  #manualModal .man-box-ok{background:#f0fdf4;border-color:#86efac;border-left-color:#22c55e}
+  #manualModal .markdown-body details{border:1px solid #e2e8f0;border-radius:8px;padding:6px 12px;margin:8px 0;background:#fff}
+  #manualModal .markdown-body summary{cursor:pointer;font-weight:700}
+  #manualModal .markdown-body :not(pre)>code{background:#f1f5f9;padding:0 4px;border-radius:4px}
+  #manualModal .man-tools select{font-size:12px;padding:3px 4px;border:1px solid var(--border);border-radius:6px;background:#f8fafc;max-width:130px;cursor:pointer}
+  #manualModal .man-tsep{width:1px;align-self:stretch;background:#cbd5e1;margin:0 2px}
   #manualModal .man-rich{min-height:52vh;border:1px solid var(--border);border-radius:6px;padding:10px 14px;background:#fff;outline:none;overflow-wrap:anywhere}
   #manualModal .man-rich:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(37,99,235,.15)}
   #manualModal .man-rich img{max-width:100%;height:auto}
@@ -37002,6 +37054,16 @@ function manEnsureModal_(){
   const mouseNav = e => { if(!ov.classList.contains('show') || (e.button !== 3 && e.button !== 4)) return;
     e.preventDefault(); e.stopPropagation(); if(e.type === 'mouseup') manNavGo_(e.button === 3 ? -1 : 1); };
   ov.addEventListener('mousedown', mouseNav); ov.addEventListener('mouseup', mouseNav);
+  // ⌨ Ctrl/⌘+Z・Y(v872): マニュアルの中ではカレンダーの「元に戻す」(document の keydown)に渡さない=裏の予定を戻さない。
+  //   編集欄では文字の取り消し(そのまま)・やり直し(Ctrl+Y/⌘+Shift+Z)。それ以外の所では何もしない
+  ov.addEventListener('keydown', e => {
+    if(!ov.classList.contains('show') || !(e.ctrlKey || e.metaKey) || e.altKey) return;
+    const k = String(e.key || '').toLowerCase(); if(k !== 'z' && k !== 'y') return;
+    e.stopPropagation();
+    const t = e.target, inEdit = !!t && (t.isContentEditable || /^(TEXTAREA|INPUT)$/.test(t.tagName || ''));
+    if(!inEdit){ e.preventDefault(); return; }
+    if(k === 'y' || e.shiftKey){ e.preventDefault(); document.execCommand('redo'); }
+  });
   manApplyFont_();
   ov.querySelector('#man-home').onclick = () => { if(__man.mode === 'edit' && !confirm('編集中です。下書きを残してトップへ戻りますか？')) return; __man.mode = 'view'; __man.folderView = ''; __man.cur = null; manRenderList_(); manRenderHome_(); manShowMain_(true); };
   let qt = null;
@@ -37806,12 +37868,19 @@ function manStartEdit_(){
       <span id="man-up" style="color:var(--muted)"></span>
     </div>
     <div class="man-tools" id="man-tools">
-      <button data-tool="bold" title="太字"><b>B</b> 太字</button><button data-tool="red" title="赤い文字">🟥 赤字</button>
-      <button data-tool="h2" title="大見出し">見出し大</button><button data-tool="h3" title="小見出し">見出し小</button>
-      <button data-tool="ul" title="箇条書き">・箇条書き</button><button data-tool="ol" title="番号つき">1. 番号</button><button data-tool="check" title="チェックリスト">☑ チェック</button>
-      <button data-tool="quote" title="注意書き(引用)">❝ 注意書き</button><button data-tool="table" title="表を入れる">▦ 表</button>
-      <button data-tool="link" title="リンク">🔗 リンク</button><button data-tool="hr" title="区切り線">― 区切り</button>
+      <button data-tool="undo" title="元に戻す (Ctrl+Z)">↶</button><button data-tool="redo" title="やり直す (Ctrl+Y)">↷</button><span class="man-tsep"></span>
+      <select data-tool-sel title="見出し(4種類)"><option value="">見出し ▾</option><option value="h1">見出し1(いちばん大きい)</option><option value="h2">見出し2(大)</option><option value="h3">見出し3(中)</option><option value="h4">見出し4(小)</option><option value="p">ふつうの文に戻す</option></select>
+      <button data-tool="bold" title="太字 (Ctrl+B)"><b>B</b></button><button data-tool="underline" title="下線"><u>U</u></button><button data-tool="strike" title="取り消し線"><s>S</s></button><button data-tool="red" title="赤い文字">🟥 赤字</button>
+      <select data-tool-sel title="文字の色"><option value="">文字色 ▾</option><option value="color:#2563eb">🟦 青</option><option value="color:#16a34a">🟩 緑</option><option value="color:#ea580c">🟧 橙</option><option value="color:#7c3aed">🟪 紫</option><option value="color:#64748b">⬜ 灰</option></select>
+      <select data-tool-sel title="マーカー(文字の後ろに色を塗る)"><option value="">🖍 マーカー ▾</option><option value="mark:#fef08a">黄</option><option value="mark:#bbf7d0">緑</option><option value="mark:#fbcfe8">桃</option><option value="mark:#bfdbfe">青</option></select>
+      <select data-tool-sel title="文字の大きさ"><option value="">大きさ ▾</option><option value="size:80%">小さく</option><option value="size:120%">大きく</option><option value="size:150%">特大</option></select><span class="man-tsep"></span>
+      <button data-tool="ul" title="箇条書き">・箇条書き</button><button data-tool="ol" title="番号つき">1. 番号</button><button data-tool="check" title="チェックリスト">☑ チェック</button><button data-tool="indent" title="字下げ(箇条書きを1段下げる)">→ 下げる</button><button data-tool="outdent" title="字下げを戻す">← 戻す</button><span class="man-tsep"></span>
+      <button data-tool="quote" title="引用(注意書き)">❝ 引用</button>
+      <select data-tool-sel title="囲み枠(色付き)"><option value="">▣ 囲み枠 ▾</option><option value="box:info">ℹ️ 情報(青)</option><option value="box:warn">⚠️ 注意(黄)</option><option value="box:alert">⛔ 警告(赤)</option><option value="box:ok">✅ ポイント(緑)</option></select>
+      <button data-tool="code" title="コード・決まった文(そのまま写す文)">&lt;/&gt; コード</button><button data-tool="details" title="折りたたみ(押すと開く)">▸ 折りたたみ</button><span class="man-tsep"></span>
+      <button data-tool="table" title="表を入れる">▦ 表</button><button data-tool="link" title="リンク">🔗 リンク</button><button data-tool="pagelink" title="ほかのマニュアルのページへのリンク">📄 ページへ</button><button data-tool="hr" title="区切り線">― 区切り</button>
       <label title="カメラでその場で撮って入れる">📷 撮る<input type="file" id="man-cam" accept="image/*" capture="environment" style="display:none"></label>
+      <button data-tool="clear" title="選んだ所の太字・色などを消す">⌫ 書式を消す</button>
     </div>
     <textarea class="man-body" id="man-text" placeholder="本文。上のボタンで太字・見出し・箇条書き・表が入れられます。写真は📷か、コピーした画像を貼り付け(Ctrl/⌘+V)でも入ります">${escapeHtml(d.body)}</textarea>
     <div id="man-rich-note" class="man-stale" style="display:none"></div>
@@ -37864,6 +37933,7 @@ function manStartEdit_(){
       if(__man.mode !== 'edit' || !ri() || !document.body.contains(ri())) return;   // 読み込みの間に編集をやめた
       const pv = q('#man-preview'); if(pv.style.display !== 'none') q('#man-prev').click();
       ri().innerHTML = manToHtml_(ta().value); richWire(); ed.range = null;
+      ri().querySelectorAll('details').forEach(x => { x.open = true; });   // 中を直せるように(保存の時は閉じて残す)
       const ch = manRichCheck_(ta().value), nt = q('#man-rich-note');
       nt.innerHTML = ch.length ? `⚠ <span>このページは見たままで直すと、<b>${escapeHtml(ch.join('・'))}</b> が少し変わることがあります(写真や文字は消えません)。気になる時は「&lt;/&gt; 記号」で直してください。</span>` : '';
       nt.style.display = ch.length ? '' : 'none';
@@ -37922,15 +37992,47 @@ function manStartEdit_(){
       if(!/^(https?:\/\/|#manual:|mailto:)/i.test(u)) return;
       if(sel) richCmd('createLink', u); else richCmd('insertHTML', `<a href="${escapeHtml(u)}">${escapeHtml(u)}</a>`); },
     hr: () => richCmd('insertHorizontalRule'),
+    undo: () => { richFocus(); document.execCommand('undo'); ed.dirty = true; kick(); },
+    redo: () => { richFocus(); document.execCommand('redo'); ed.dirty = true; kick(); },
+    h1: () => fmt('h1'), h4: () => fmt('h4'), p: () => richCmd('formatBlock', '<p>'),
+    underline: () => richCmd('underline'), strike: () => richCmd('strikeThrough'),
+    color: c => css(() => richCmd('foreColor', c)),
+    mark: c => css(() => richCmd('hiliteColor', c)),
+    size: v => { const h = selHtml(); richCmd('insertHTML', `<span style="font-size:${v}">${h || '文字'}</span>`); },
+    indent: () => richCmd('indent'), outdent: () => richCmd('outdent'),
+    box: k => { const h = selHtml(); richCmd('insertHTML', `<div class="man-box man-box-${k}">${h ? (/<(p|div|ul|ol|h\d|table|blockquote|pre)\b/i.test(h) ? h : '<p>' + h + '</p>') : '<p>ここに書く</p>'}</div><p><br></p>`); },
+    code: () => { const t = selText(); if(/\n/.test(t)) richCmd('insertHTML', `<pre><code>${escapeHtml(t)}</code></pre><p><br></p>`); else richCmd('insertHTML', `<code>${escapeHtml(t || 'コード')}</code>&nbsp;`); },
+    details: () => { const h = selHtml(); richCmd('insertHTML', `<details open><summary>ここを押すと開く</summary>${h ? '<p>' + h + '</p>' : '<p>中身</p>'}</details><p><br></p>`); },
+    pagelink: () => { const t = selText(); const pg = manPickPage_(); if(!pg) return; richCmd('insertHTML', `<a href="#manual:${escapeHtml(pg.id)}">${escapeHtml(t || pg.title)}</a>`); },
+    clear: () => richCmd('removeFormat'),
+  };
+  function fmt(tag){ richCmd('formatBlock', (document.queryCommandValue('formatBlock') || '').toLowerCase() === tag ? '<p>' : '<' + tag + '>'); }
+  function css(f){ document.execCommand('styleWithCSS', false, true); f(); document.execCommand('styleWithCSS', false, false); }
+  function selText(){ return (ed.range && !ed.range.collapsed) ? ed.range.toString() : ''; }
+  function selHtml(){ if(!ed.range || ed.range.collapsed) return ''; const box = document.createElement('div'); box.appendChild(ed.range.cloneContents()); return box.innerHTML; }
+  // 記号の編集: 変わった所だけを insertText で入れ直す(Ctrl+Z で戻せる)。戻せない画面では値をそのまま入れる
+  const mdApply = (ta, r) => {
+    const a = ta.value, b = r.value; let i = 0, j = 0;
+    while(i < a.length && i < b.length && a[i] === b[i]) i++;
+    while(j < a.length - i && j < b.length - i && a[a.length-1-j] === b[b.length-1-j]) j++;
+    ta.focus(); ta.setSelectionRange(i, a.length - j);
+    let done = false; try{ done = document.execCommand('insertText', false, b.slice(i, b.length - j)); }catch(_){}
+    if(!done || ta.value !== b) ta.value = b;
+    ta.selectionStart = r.start; ta.selectionEnd = r.end;
+  };
+  const runTool = kind => {
+    const k = String(kind).split(':')[0], arg = String(kind).slice(k.length + 1);
+    if(ed.rich){ const f = RICH_TOOL[k]; if(f) f(arg); return; }
+    const ta = q('#man-text');
+    if(k === 'undo' || k === 'redo'){ ta.focus(); document.execCommand(k); return; }
+    if(k === 'pagelink'){ const s0 = ta.selectionStart, e0 = ta.selectionEnd, sel = ta.value.slice(s0, e0); const pg = manPickPage_(); if(!pg) return;
+      const ins = `[${(sel || pg.title).replace(/[\[\]]/g, '')}](#manual:${pg.id})`;
+      mdApply(ta, { value: ta.value.slice(0, s0) + ins + ta.value.slice(e0), start: s0 + ins.length, end: s0 + ins.length }); saveDraft(); return; }
+    mdApply(ta, manWrapText_(ta.value, ta.selectionStart, ta.selectionEnd, kind)); saveDraft();
   };
   q('#man-tools').querySelectorAll('[data-tool]').forEach(b => b.addEventListener('mousedown', e => { if(ed.rich) e.preventDefault(); }));   // 押してもカーソルを失わない
-  q('#man-tools').querySelectorAll('[data-tool]').forEach(b => b.onclick = e => {
-    e.preventDefault();
-    if(ed.rich){ const f = RICH_TOOL[b.dataset.tool]; if(f) f(); return; }
-    const ta = q('#man-text');
-    const r = manWrapText_(ta.value, ta.selectionStart, ta.selectionEnd, b.dataset.tool);
-    ta.value = r.value; ta.focus(); ta.selectionStart = r.start; ta.selectionEnd = r.end; saveDraft();
-  });
+  q('#man-tools').querySelectorAll('[data-tool]').forEach(b => b.onclick = e => { e.preventDefault(); runTool(b.dataset.tool); });
+  q('#man-tools').querySelectorAll('[data-tool-sel]').forEach(sl => sl.onchange = () => { const v = sl.value; sl.value = ''; if(v) runTool(v); });
   const upFiles = async files => {
     for(const f of files){
       q('#man-up').textContent = `⏫ ${f.name || '画像'} を上げています…`;
@@ -37993,6 +38095,16 @@ function manStartEdit_(){
     saveDraft();
     alert(manSaveErrorText_(r));
   };
+}
+// 📄 ページへのリンク(v872): 題名の一部で探して選ぶ
+function manPickPage_(){
+  const kw = (prompt('リンクするページの題名(一部でOK)') || '').trim(); if(!kw) return null;
+  const n = s => String(s || '').replace(/[\s　]+/g, '').toLowerCase();
+  const hits = (((__man.tree && __man.tree.pages) || []).filter(p => !p.is_deleted && n(p.title).includes(n(kw)))).slice(0, 15);
+  if(!hits.length){ alert('「' + kw + '」が題名にあるページは見つかりませんでした'); return null; }
+  if(hits.length === 1) return hits[0];
+  const k = parseInt(prompt(hits.map((p, i) => `${i + 1}: ${p.title}`).join('\n') + '\n\nどのページですか？番号を入れてください', '1'), 10);
+  return hits[k - 1] || null;
 }
 function manSaveErrorText_(r){
   const k = r && r.result;
