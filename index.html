@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.867</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.868</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4071,6 +4071,7 @@
           ONにすると staff/参加者 に自分が含まれる予定のみ表示。担当別ビューでも自分の列のみになります。
         </div>
       </fieldset>
+      <button type="button" class="btn" id="myself-announce-hist" onclick="openAnnounceHistory_()" style="width:100%;margin:4px 0 8px;font-size:13px">📜 過去の連絡を見る</button>
       <div style="font-size:11px;color:var(--muted);margin:8px 0">
         ここで設定した名前がタスクの「自分」判定にも使われます。<br>
         他人のタスクは✅完了ボタンが押せなくなります。
@@ -22899,6 +22900,7 @@ function openAnnounceCompose_(){
         <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px">
           <button type="button" id="ac-hist-head" style="width:100%;text-align:left;background:transparent;border:0;cursor:pointer;font-size:12px;font-weight:700;color:#475569;padding:2px 0"></button>
           <div id="ac-hist" style="display:none;margin-top:6px;max-height:240px;overflow:auto"></div>
+          <button type="button" class="btn" id="ac-hist-all" style="margin-top:6px;font-size:12px;padding:4px 12px">📜 過去の連絡(届いた分も)を見る</button>
         </div>
       </div>
       <div class="modal-footer">
@@ -22908,6 +22910,7 @@ function openAnnounceCompose_(){
     document.body.appendChild(ov);
     ov.onclick=e=>{ if(e.target===ov) ov.classList.remove('show'); };
     ov.querySelector('#ac-cancel').onclick=()=>ov.classList.remove('show');
+    ov.querySelector('#ac-hist-all').onclick=()=>openAnnounceHistory_();
   }
   const sel=new Set();
   const staffBox=ov.querySelector('#ac-staff');
@@ -22981,6 +22984,80 @@ function openAnnounceCompose_(){
   };
   ov.classList.add('show');
   setTimeout(()=>{ const ta=ov.querySelector('#ac-text'); if(ta) ta.focus(); }, 50);
+}
+// 📜 過去の連絡(v1.30.868・山田「過去の連絡みんな確認したあと遡って見れるようにして」)
+//   データは🗑後も deleted:true で残る(v585)ので、それをそのまま一覧に出す。
+//   見られるのは「自分宛に届いた連絡」と「自分が出した連絡」だけ(他人宛の個別連絡は出さない)。
+//   スマホは📢ボタンが非表示(v305)なので👤マイの画面からも開ける。
+function announceHistoryItems_(me, mode){
+  const all = ((typeof loadAnnounceMap_==='function' ? loadAnnounceMap_() : {}).items) || [];
+  return all.filter(it=>{
+    if(!it || !it.id) return false;
+    const mine = !!me && it.by === me;
+    const forMe = announceIsForMe_(it, me) && !mine;
+    if(mode === 'sent') return mine;
+    if(mode === 'recv') return forMe;
+    return mine || forMe;
+  }).sort((a,b)=> String(b.at||'').localeCompare(String(a.at||'')));
+}
+function openAnnounceHistory_(){
+  const me=(typeof getMyself==='function')?getMyself():"";
+  if(!me){ alert('先に「👤 自分」を設定してください(👤マイ)'); return; }
+  let ov=document.getElementById('announceHistModal');
+  if(!ov){
+    ov=document.createElement('div'); ov.className='modal-overlay'; ov.id='announceHistModal'; ov.style.zIndex='800';
+    ov.innerHTML=`<div class="modal" style="max-width:560px;width:94vw">
+      <div class="modal-header" style="background:#fef9c3;color:#78350f">📜 過去の連絡</div>
+      <div class="modal-body">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px" id="ah-tabs">
+          <button class="btn" data-ah-mode="all" style="font-size:12px;padding:4px 12px">すべて</button>
+          <button class="btn" data-ah-mode="recv" style="font-size:12px;padding:4px 12px">📥 届いた</button>
+          <button class="btn" data-ah-mode="sent" style="font-size:12px;padding:4px 12px">📤 出した</button>
+        </div>
+        <input id="ah-q" placeholder="🔎 本文・出した人で絞り込み" style="width:100%;box-sizing:border-box;padding:7px 9px;font-size:14px;border:1px solid var(--border-strong);border-radius:8px;margin-bottom:8px">
+        <div id="ah-list" style="max-height:60vh;overflow:auto"></div>
+      </div>
+      <div class="modal-footer"><button class="btn" id="ah-close">閉じる</button></div></div>`;
+    document.body.appendChild(ov);
+    ov.onclick=e=>{ if(e.target===ov) ov.classList.remove('show'); };
+    ov.querySelector('#ah-close').onclick=()=>ov.classList.remove('show');
+  }
+  let mode='all';
+  const disp=s=>(typeof getStaffDisplayName==='function')?getStaffDisplayName(s):s;
+  const render=()=>{
+    ov.querySelectorAll('[data-ah-mode]').forEach(b=> b.classList.toggle('primary', b.dataset.ahMode===mode));
+    const q=(ov.querySelector('#ah-q').value||'').trim().toLowerCase();
+    const items=announceHistoryItems_(me, mode).filter(it=> !q || String(it.text||'').toLowerCase().includes(q) || String(it.by||'').toLowerCase().includes(q) || String(disp(it.by||'')).toLowerCase().includes(q));
+    const box=ov.querySelector('#ah-list');
+    box.innerHTML = items.length ? items.map(it=>{
+      const d=new Date(it.at);
+      const ds=isNaN(d)?'':`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      const tg=announceTargets_(it);
+      const toLabel=(it.to && it.to.length) ? `🎯${it.to.map(disp).join('・')}` : '👥全員';
+      const ackN=((it.acked||[]).filter(s=> tg.includes(s))).length;
+      const mine=it.by===me;
+      const iAcked=(it.acked||[]).includes(me);
+      const state = it.deleted
+        ? `<span style="background:#e2e8f0;color:#64748b;font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px">済(消去)</span>`
+        : `<span style="background:#dcfce7;color:#166534;font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px">表示中</span>`;
+      const meTag = mine ? `<span style="color:#1d4ed8;font-weight:700">📤 自分が出した</span>`
+        : `<span>📥 ${escapeHtml(disp(it.by||'?'))}から</span>${iAcked?'':' <span style="color:#b91c1c;font-weight:700">未確認</span>'}`;
+      return `<div class="ah-item" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;margin-bottom:6px;background:#fff">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--muted)">
+          <span>${escapeHtml(ds)}</span>${state}${meTag}
+          <span style="margin-left:auto">${escapeHtml(toLabel)} ・ 確認 ${ackN}/${tg.length}</span>
+        </div>
+        <div style="font-size:14px;margin-top:4px;white-space:pre-wrap;word-break:break-word;color:#0f172a">${escapeHtml(it.text||'')}</div>
+      </div>`;
+    }).join('') : `<div style="font-size:12px;color:var(--muted);padding:8px">該当する連絡はありません</div>`;
+  };
+  ov.querySelectorAll('[data-ah-mode]').forEach(b=> b.onclick=()=>{ mode=b.dataset.ahMode; render(); });
+  ov.querySelector('#ah-q').value='';
+  ov.querySelector('#ah-q').oninput=render;
+  render();
+  ov.classList.add('show');
+  // 最新を取りに行って描き直す(端末の控えをまず出す=待たせない)
+  try{ if(typeof fetchAnnounce_==='function') Promise.resolve(fetchAnnounce_({silent:true})).then(()=>{ if(ov.classList.contains('show')) render(); }).catch(()=>{}); }catch(_){}
 }
 (function(){ const ab=document.getElementById("announceBtn"); if(!ab) return; ab.onclick = openAnnounceCompose_; })();
 document.getElementById("lv-save").onclick = ()=>{
