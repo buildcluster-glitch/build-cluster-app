@@ -3018,7 +3018,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.860</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.861</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -36088,6 +36088,8 @@ window.__invAddStockFromMaterial_ = (entries)=>{
 //     📖の赤い点=前回開いた後に他の人が更新したページがある(manual_changes・起動8秒後と画面に戻った時30分に1回・bc_manual_seen)。
 //     トップに「前回から変わったページ」。1年以上見直されていない/本文200字未満のページに札・トップと🧹の画面・✓見直した(manual_mark_reviewed)。
 //     manOpenRelated_({kind,title,bukken,room}) = 予定・修繕・原状回復・事務タスク・立会の画面から関連マニュアル(ボタンはカレンダー担当)。
+//   v1.30.861(山田「振り分けお願い」→ migration 098 で最上位を8ノート mf_n01〜08 に): ノートの色帯を新しいidに。
+//     098より前に開いた画面から保存して bad_folder(旧フォルダは消えた)の時は、目次を読み直してそのページの今の置き場で1回だけ保存し直す。
 // ====================================================================
 const MAN_BUCKET = 'manuals';
 const MAN_REF_PREFIX = 'sb:manuals/';
@@ -36209,7 +36211,8 @@ function manSiblings_(tree, page){
 function manLinkOf_(id, loc){ const l = loc || location; return l.origin + l.pathname + '#manual=' + encodeURIComponent(id); }
 function manIdFromHash_(hash){ const m = /^#manual=([A-Za-z0-9_-]{6,40})$/.exec(String(hash||'')); return m ? m[1] : ''; }
 // ノート(最上位フォルダ)ごとの色。知らないノートは灰色
-const MAN_NOTE_COLORS = { np_6b9a11badc:'#2563eb', np_d5e62ee53f:'#ec4899', np_478b1ce2a2:'#eab308', np_8d6e0133db:'#16a34a' };
+// ノートの色(098の8ノート): お知らせ・会議/会社のルール/事務・PC/元請け別(原状回復と同じピンク)/見積・発注/現場・施工/協力業者/広報・SNS・AI
+const MAN_NOTE_COLORS = { mf_n01:'#f97316', mf_n02:'#16a34a', mf_n03:'#64748b', mf_n04:'#ec4899', mf_n05:'#2563eb', mf_n06:'#eab308', mf_n07:'#0891b2', mf_n08:'#7c3aed' };
 function manNoteColor_(byId, folderId){
   let cur = byId && byId.get(folderId), n = 0;
   while(cur && cur.parent_id && n++ < 30) cur = byId.get(cur.parent_id);
@@ -37507,6 +37510,13 @@ function manStartEdit_(){
       r = await manRpc_('manual_save_page', { p_operation_id: manOpId_(), p_id: p.id, p_base_version: p.version||0, p_folder_id: q('#man-folder').value,
         p_title: title, p_body: q('#man-text').value, p_attachments: d.atts, p_editor: manEditor_() });
     }catch(e){ r = { result:'error', message: e.message||String(e) }; }
+    if(r && r.result === 'bad_folder' && q('#man-folder').value === p.folder_id){   // 098より前に開いた画面: 旧フォルダは消えた → 今の置き場で1回だけ
+      try{ await manLoadTree_(); const now = ((__man.tree && __man.tree.pages) || []).find(x => x.id === p.id);
+        const fid = now ? now.folder_id : '';
+        if(fid && fid !== p.folder_id) r = await manRpc_('manual_save_page', { p_operation_id: manOpId_(), p_id: p.id, p_base_version: p.version||0, p_folder_id: fid,
+          p_title: title, p_body: q('#man-text').value, p_attachments: d.atts, p_editor: manEditor_() }); }
+      catch(e){ r = { result:'error', message: e.message||String(e) }; }
+    }
     __man.busy = false; q('#man-save').disabled = false; q('#man-save').textContent = '保存';
     if(r && r.result === 'applied'){
       const changed = selCats.size !== origCats.size || [...selCats].some(x => !origCats.has(x));
