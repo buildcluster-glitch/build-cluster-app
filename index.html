@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.877</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.878</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -36975,6 +36975,27 @@ function manEnsureModal_(){
   #manualModal .man-sec{display:flex;align-items:center;gap:8px;margin:14px 0 6px;font-size:13px;font-weight:800;color:#334155}
   #manualModal .man-sec .gh-tag{padding:2px 9px;border-radius:6px;font-size:12px;color:#fff;font-weight:700}
   #manualModal .man-sec .gh-count{color:var(--muted);font-size:11px;font-weight:600}
+  #manualModal .man-bk-bar{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  #manualModal .man-bk-bar input{flex:1;min-width:180px;padding:6px 10px;font-size:14px;border:1px solid var(--border-strong);border-radius:8px}
+  #manualModal .man-bk-bar select{font-size:13px}
+  #manualModal .man-bk-grps{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  #manualModal .man-bk-grps a{font-size:12px;padding:2px 10px;border-radius:999px;background:#f1f5f9;color:#334155;text-decoration:none;font-weight:600}
+  #manualModal .man-bk-grps a.on{background:#0891b2;color:#fff}
+  #manualModal .man-bk-rows{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:6px}
+  #manualModal .man-bk-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:#fff;color:inherit;text-decoration:none;min-width:0}
+  #manualModal .man-bk-row:hover{border-color:#0891b2;background:#ecfeff}
+  #manualModal .man-bk-row .nm{font-weight:700;font-size:14px;color:#0f172a}
+  #manualModal .man-bk-row .ty{font-size:11px;color:#64748b}
+  #manualModal .man-bk-row .mk{margin-left:auto;font-size:12px}
+  #manualModal .man-bk-row .ad{flex-basis:100%;font-size:11px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #manualModal .man-bk-tbl{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--border);border-radius:8px;overflow:hidden;font-size:14px}
+  #manualModal .man-bk-tbl th{width:9em;text-align:left;vertical-align:top;background:#f8fafc;color:#475569;font-weight:600;padding:6px 10px;border-bottom:1px solid var(--border)}
+  #manualModal .man-bk-tbl td{padding:6px 10px;border-bottom:1px solid var(--border);word-break:break-word}
+  #manualModal .man-bk-imgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+  #manualModal .man-bk-imgs figure{margin:0;border:1px solid var(--border);border-radius:8px;background:#fff;padding:4px;text-align:center}
+  #manualModal .man-bk-imgs img{width:100%;height:160px;object-fit:contain;display:block;background:#f8fafc}
+  #manualModal .man-bk-imgs figcaption{font-size:12px;font-weight:700;color:#334155;padding-top:2px}
+  #manualModal .man-bk-hits{border-bottom:1px solid var(--border);margin-bottom:4px;padding-bottom:4px}
   #manualModal .man-hero{background:#fff;border:1px solid #d1d5db;border-left:6px solid #94a3b8;border-radius:10px;padding:12px 14px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:12px}
   #manualModal .man-paper{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
   #manualModal .man-cat{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;border:1px solid;cursor:pointer;white-space:nowrap}
@@ -37111,6 +37132,7 @@ function manEnsureModal_(){
           <button class="btn man-mini" id="man-max" title="画面いっぱいに広げる(目次を隠して本文を広く)・もう一度で戻す">⛶</button>
           <button class="btn man-mini" id="man-font" title="文字の大きさ(小・中・大)">Aa</button>
           <button class="btn man-mini" id="man-home" title="トップ(今日の予定から・新着・よく見られている)">🏠 トップ</button>
+          <button class="btn man-mini" id="man-bk" title="物件一覧(物件台帳から・キーボックス・間取り図など)">🏢 物件</button>
           <button class="btn man-mini" id="man-trash-toggle" title="ゴミ箱に入れたページを見る・戻す">🗑 ゴミ箱</button>
           <button class="btn man-mini" id="man-close">閉じる</button>
         </span>
@@ -37181,6 +37203,7 @@ function manEnsureModal_(){
     e.preventDefault(); document.execCommand((k === 'y' || e.shiftKey) ? 'redo' : 'undo');   // v873: 取り消しも自前(標準の取り消しが動かない画面がある)
   }, true);
   manApplyFont_();
+  ov.querySelector('#man-bk').onclick = () => manRenderBukkenList_();   // 🏢 物件一覧(v878)
   ov.querySelector('#man-home').onclick = () => { if(__man.mode === 'edit' && !confirm('編集中です。下書きを残してトップへ戻りますか？')) return; __man.mode = 'view'; __man.folderView = ''; __man.cur = null; manRenderList_(); manRenderHome_(); manShowMain_(true); };
   let qt = null;
   ov.querySelector('#man-q').oninput = e => { clearTimeout(qt); const q = e.target.value.trim(); qt = setTimeout(()=>manSearch_(q), 350);
@@ -37221,7 +37244,7 @@ async function manOpen_(){
   manLoadLibs_().catch(()=>{});
   await manLoadTree_();
   { const ch = await manCheckNew_(); if(ch && ch.at) manSeenSet_(ch.at); manDot_(false); }   // 開いたら新着は見たことにする(一覧は __man.changes に残る)
-  if(!__man.cur && !['edit','folder','cat','stale','rel'].includes(__man.mode)){ manRenderHome_(); manShowMain_(true); }
+  if(!__man.cur && !['edit','folder','cat','stale','rel','bk'].includes(__man.mode)){ manRenderHome_(); manShowMain_(true); }
 }
 async function manLoadTree_(){
   manStatus_('読み込み中…');
@@ -37272,6 +37295,7 @@ function manRenderList_(){
       `<div style="padding:10px 6px"><button class="btn man-mini" id="man-new-root">＋ 最上位にフォルダ</button></div>`;
     const nr = host.querySelector('#man-new-root'); if(nr) nr.onclick = () => manFolderNew_(null);
   }
+  if(__man.results && __man.q){ try{ manBkSearchInto_(host, __man.q); }catch(e){ console.warn('[man bk]', e); } }   // 🏢 物件も(v878)
   host.querySelectorAll('[data-pid]').forEach(el => el.onclick = () => { __man.hl = __man.results ? __man.q : ''; manOpenPage_(el.dataset.pid); });
   host.querySelectorAll('[data-fid]').forEach(el => el.onclick = e => {
     if(e.target.closest('[data-fmenu]')) return;
@@ -37316,7 +37340,7 @@ async function manLoadHome_(){
   let h;
   try{ [h] = await Promise.all([manRpc_('manual_home', { p_limit: 30 }), manLoadLibs_().catch(()=>{})]); }
   catch(e){ manRenderHomeOld_(); return; }
-  if(__man.cur || ['edit','folder','cat','stale','rel'].includes(__man.mode)) return;   // 読み込み中に別のページ・フォルダ・カテゴリなどを開いた
+  if(__man.cur || ['edit','folder','cat','stale','rel','bk'].includes(__man.mode)) return;   // 読み込み中に別のページ・フォルダ・カテゴリなどを開いた
   const ACT = { import:['NotePMから','#e0e7ff','#3730a3'], create:['🆕 新規','#dcfce7','#15803d'], edit:['更新','#fef3c7','#b45309'], restore:['復元','#fce7f3','#9d174d'] };
   const byId = manBuildTree_(__man.tree || { folders:[], pages:[] }).byId;
   const actPill = a => { const x = ACT[a]; return x ? `<span class="man-pill" style="background:${x[1]};color:${x[2]}">${x[0]}</span>` : ''; };
@@ -37340,6 +37364,7 @@ async function manLoadHome_(){
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
       <b style="font-size:17px">🏠 トップ</b>
       <button class="btn man-mini" id="man-h-tree" style="display:${window.innerWidth<=760?'':'none'}">📚 フォルダ一覧</button>
+      <button class="btn man-mini" id="man-h-bk" title="物件台帳から">🏢 物件一覧</button>
       <button class="btn man-mini" id="man-h-new" style="margin-left:auto;background:var(--accent);color:#fff;font-weight:700">＋ 新しいページ</button>
     </div>
     <div class="man-home">
@@ -37365,6 +37390,7 @@ async function manLoadHome_(){
   const q = s => main.querySelector(s);
   if(q('#man-h-tree')) q('#man-h-tree').onclick = () => manShowMain_(false);
   if(q('#man-h-stale')) q('#man-h-stale').onclick = () => manRenderStale_();
+  if(q('#man-h-bk')) q('#man-h-bk').onclick = () => manRenderBukkenList_();
   main.querySelectorAll('[data-today]').forEach(a => a.onclick = e => { e.preventDefault(); const c = (__man.todayCtx || [])[Number(a.dataset.today)]; if(c) manOpenRelated_(c); });
   q('#man-h-new').onclick = () => manNewFromHome_();
 }
@@ -37575,7 +37601,221 @@ async function manOpenRelated_(ctx){
     ${!q && !cats.length ? '<div style="padding:16px;color:var(--muted)">この予定に結びついたマニュアルはまだありません。左の検索でさがしてください。</div>' : ''}`;
   manWireCards_(main); manAddFooter_(main);
   const hm = main.querySelector('[data-home]'); if(hm) hm.onclick = e => { e.preventDefault(); __man.mode = 'view'; __man.cur = null; manRenderHome_(); };
+  if(ctx.bukken){ try{ manBkLinkInto_(main.querySelector('.man-hero'), ctx.bukken); }catch(_){} }   // 🏢 物件のページへ(v878)
   main.scrollTop = 0;
+}
+// ---- 🏢 物件一覧(v878) ----
+//   物件台帳(DB bukken・見積アプリが本体)を読むだけ。マニュアルのメモリに10分置く(state.bukken・localStorage には書かない)。
+//   DBが読めない時は カレンダーが持っている state.bukken を見る(無ければ理由を出す)
+const MAN_BK_TTL = 10 * 60 * 1000;
+const MAN_BK_EMPTY = /^[\s\-ー－―‐・]*$/;
+function manBkVal_(v){ if(v == null || v === false) return ''; const t = String(v).trim(); return MAN_BK_EMPTY.test(t) ? '' : t; }
+function manBkNorm_(v){ return String(v || '').normalize('NFKC').replace(/[\s　]/g, '').toLowerCase(); }
+async function manBkLoad_(force){
+  const c = __man.bk;
+  if(!force && c && c.rows.length && Date.now() - c.at < MAN_BK_TTL) return c;
+  if(!force && __man.bkLoading) return __man.bkLoading;
+  __man.bkLoading = (async () => {
+    let rows = null, src = '', why = '';
+    try{ const r = (typeof bukkenFetchFromDb_ === 'function') ? await bukkenFetchFromDb_() : { ok:false, reason:'no-fn' };
+         if(r.ok){ rows = r.rows; src = 'db'; } else why = r.reason || ''; }catch(e){ why = e.message || String(e); }
+    if(!rows && typeof state !== 'undefined' && Array.isArray(state.bukken) && state.bukken.length){ rows = state.bukken.slice(); src = 'cal'; }
+    if(!rows) throw new Error('物件台帳を読めませんでした(' + (why || '不明') + ')');
+    rows = rows.filter(b => b && manBkVal_(b.name) && !String(b.city || '').startsWith('※'));   // 「〇〇と同様。注意事項反映用」の登録行は一覧に出さない
+    __man.bk = { rows, at: Date.now(), src };
+    return __man.bk;
+  })();
+  try{ return await __man.bkLoading; } finally { __man.bkLoading = null; }
+}
+function manBkFind_(name){ const k = manBkNorm_(name); const rows = (__man.bk && __man.bk.rows) || [];
+  return rows.find(b => manBkNorm_(b.name) === k) || null; }
+function manBkMotoukeColor_(m){ try{ const c = (typeof contractorInfo === 'function') && contractorInfo(m); if(c && c.color) return c.color; }catch(_){} return '#64748b'; }
+function manBkPill_(m){ return m ? `<span class="man-pill" style="background:${manBkMotoukeColor_(m)};color:#fff">${escapeHtml(m)}</span>` : ''; }
+// 元請けの表記ゆれを まとめた名前(絞り込みのボタン用)
+function manBkGroup_(m){ const t = String(m || '');
+  if(/^山一/.test(t)) return t === '山一地所' ? '山一地所' : '山一';
+  if(/みどり/.test(t)) return 'みどり';
+  if(/田中|ハウビング|ハウジング/.test(t)) return 'HS田中';
+  if(/ジェイエイ|JA/i.test(t)) return 'JA';
+  return t ? 'その他' : '(なし)'; }
+// 一覧の絞り込み(名前・住所・地区・元請け・No。空白で区切るとすべてを含む)
+function manBkFilter_(rows, f){
+  f = f || {};
+  const ws = manBkNorm_(f.q || '') ? String(f.q).normalize('NFKC').toLowerCase().split(/[\s　]+/).filter(Boolean) : [];
+  let out = rows.filter(b => {
+    if(f.grp && manBkGroup_(b.motouke) !== f.grp) return false;
+    if(f.type && (manBkVal_(b.type) || '(なし)').replace('アパ―ト', 'アパート') !== f.type) return false;
+    if(!ws.length) return true;
+    const hay = manBkNorm_([b.no, b.name, b.address, b.city, b.area, b.motouke, b.type].join(' '));
+    return ws.every(w => hay.includes(manBkNorm_(w)));
+  });
+  const nm = (a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ja');
+  if(f.sort === 'area') out.sort((a, b) => (String(a.city || '') + String(a.area || '')).localeCompare(String(b.city || '') + String(b.area || ''), 'ja') || nm(a, b));
+  else if(f.sort === 'new') out.sort((a, b) => String(b.lastEditedAt || '').localeCompare(String(a.lastEditedAt || '')) || nm(a, b));
+  else out.sort(nm);
+  return out;
+}
+async function manRenderBukkenList_(){
+  const ov0 = document.getElementById('manualModal');
+  if(__man.mode === 'edit' && ov0 && ov0.classList.contains('show') && !confirm('編集中です。下書きを残して物件一覧を開きますか？')) return;
+  if(!ov0 || !ov0.classList.contains('show')) await manOpen_();
+  const main = document.getElementById('man-main'); if(!main) return;
+  __man.mode = 'bk'; __man.cur = null; __man.folderView = ''; __man.bkCur = '';
+  manNavRecord_('bk', ''); manShowMain_(true);
+  const f = __man.bkFilt || (__man.bkFilt = { q:'', grp:'', type:'', sort:'' });
+  main.innerHTML = '<div style="padding:30px;color:var(--muted)">物件台帳を読み込み中…</div>';
+  let c; try{ c = await manBkLoad_(); }
+  catch(e){ if(__man.mode !== 'bk' || __man.bkCur) return;
+    main.innerHTML = `<div style="padding:20px;color:#dc2626">${escapeHtml(e.message || String(e))}<br><button class="btn man-mini" id="man-bk-retry">もう一度</button></div>`;
+    main.querySelector('#man-bk-retry').onclick = () => { __man.bk = null; manRenderBukkenList_(); }; return; }
+  if(__man.mode !== 'bk' || __man.bkCur) return;   // 読み込み中に別の画面へ
+  const rows = c.rows;
+  const grps = {}; rows.forEach(b => { const g = manBkGroup_(b.motouke); grps[g] = (grps[g] || 0) + 1; });
+  const types = {}; rows.forEach(b => { const t = (manBkVal_(b.type) || '(なし)').replace('アパ―ト', 'アパート'); types[t] = (types[t] || 0) + 1; });
+  const esc = escapeHtml;
+  main.innerHTML = `
+    <div class="man-hero" style="border-left-color:#0891b2">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px"><a href="#" data-home="1">🏠</a> › 🏢 物件一覧</div>
+      <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap"><b style="font-size:19px">🏢 物件一覧</b>
+        <span style="font-size:12px;color:var(--muted)">物件台帳から ${rows.length}件${c.src === 'cal' ? '(カレンダーが持っている分)' : ''}・直すのは見積アプリの物件台帳で</span></div>
+      <div class="man-bk-bar">
+        <input id="man-bk-q" type="search" placeholder="物件名・住所・地区で絞り込み" value="${esc(f.q)}" autocomplete="off">
+        <select id="man-bk-type"><option value="">種別すべて</option>${Object.keys(types).sort((a,b)=>types[b]-types[a]).map(t => `<option value="${esc(t)}"${f.type===t?' selected':''}>${esc(t)} ${types[t]}</option>`).join('')}</select>
+        <select id="man-bk-sort"><option value="">名前の順</option><option value="area"${f.sort==='area'?' selected':''}>地区の順</option><option value="new"${f.sort==='new'?' selected':''}>最近直された順</option></select>
+      </div>
+      <div class="man-bk-grps"><a href="#" data-grp=""${!f.grp?' class="on"':''}>すべて ${rows.length}</a>${Object.keys(grps).sort((a,b)=>grps[b]-grps[a]).map(g => `<a href="#" data-grp="${esc(g)}"${f.grp===g?' class="on"':''}>${esc(g)} ${grps[g]}</a>`).join('')}</div>
+    </div>
+    <div id="man-bk-list"></div>`;
+  const draw = () => {
+    const list = manBkFilter_(rows, f);
+    const host = main.querySelector('#man-bk-list'); if(!host) return;
+    host.innerHTML = `<div style="font-size:11px;color:var(--muted);margin:0 2px 6px">${list.length}件</div>` + (list.length ? `<div class="man-bk-rows">${list.map(b => {
+        const marks = [manBkVal_(b.notes) && '<span title="注意事項あり" style="color:#dc2626">⚠</span>', manBkVal_(b.keyBox) && '<span title="キーボックス">🔑</span>',
+          (b.madoriImages || []).length && '<span title="間取り図">📐</span>'].filter(Boolean).join('');
+        return `<a href="#" class="man-bk-row" data-bk="${esc(b.name)}"><span class="nm">${esc(b.name)}</span>${manBkPill_(b.motouke)}
+          <span class="ty">${esc(manBkVal_(b.type))}</span><span class="mk">${marks}</span>
+          <span class="ad">${esc(manBkVal_(b.address) || [b.city, b.area].map(manBkVal_).filter(Boolean).join(' '))}</span></a>`; }).join('')}</div>`
+      : '<div style="padding:16px;color:var(--muted)">該当する物件はありません</div>');
+    host.querySelectorAll('[data-bk]').forEach(a => a.onclick = e => { e.preventDefault(); manRenderBukken_(a.dataset.bk); });
+  };
+  draw();
+  const qi = main.querySelector('#man-bk-q');
+  qi.oninput = () => { f.q = qi.value; draw(); };
+  main.querySelector('#man-bk-type').onchange = e => { f.type = e.target.value; draw(); };
+  main.querySelector('#man-bk-sort').onchange = e => { f.sort = e.target.value; draw(); };
+  main.querySelectorAll('[data-grp]').forEach(a => a.onclick = e => { e.preventDefault(); f.grp = a.dataset.grp;
+    main.querySelectorAll('[data-grp]').forEach(x => x.classList.toggle('on', x === a)); draw(); });
+  const hm = main.querySelector('[data-home]'); if(hm) hm.onclick = e => { e.preventDefault(); __man.mode = 'view'; __man.cur = null; manRenderHome_(); };
+  main.scrollTop = 0;
+  if(window.innerWidth > 760) qi.focus({ preventScroll:true });
+}
+// 間取り図などの写真(sb:photos/…)に署名する。マニュアルの署名の入れ物(__man.signed)を一緒に使う
+async function manBkSign_(refs){
+  const now = Date.now();
+  const need = [...new Set(refs.filter(r => typeof r === 'string' && /^sb:photos\//.test(r)))].filter(r => { const c = __man.signed.get(r); return !(c && c.exp > now); });
+  if(!need.length) return;
+  let s = sbSession_(); if(!s || !s.access_token) throw new Error('未ログイン');
+  for(let i = 0; i < 2; i++){
+    const res = await fetch(`${SB_AUTH.url}/storage/v1/object/sign/photos`, {
+      method:'POST', headers:{ apikey:SB_AUTH.key, Authorization:'Bearer '+s.access_token, 'Content-Type':'application/json' },
+      body: JSON.stringify({ expiresIn:3600, paths: need.map(r => r.slice('sb:photos/'.length)) }) });
+    if((res.status === 401 || res.status === 403) && i === 0){ try{ await sbRefresh_(); }catch(_){} s = sbSession_(); if(!s) throw new Error('未ログイン'); continue; }
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const arr = await res.json(); const exp = Date.now() + 55*60*1000;
+    (Array.isArray(arr) ? arr : []).forEach(x => { const u = x && (x.signedURL || x.signedUrl);
+      if(u && x.path) __man.signed.set('sb:photos/' + x.path, { url: /^https?:/.test(u) ? u : (SB_AUTH.url + '/storage/v1' + u), exp }); });
+    return;
+  }
+}
+// 物件のページの項目(上から順に。空・「ー」は出さない)
+const MAN_BK_SECS = [
+  ['🔑 入る時', [['keyBox','キーボックス'],['autoLock','オートロック'],['digiKey','デジタルキー'],['genkanKagi','玄関の鍵'],['genkanCode','玄関の番号'],['parking','駐車場'],['hasParking','駐車場の有無']]],
+  ['🛠 工事の情報', [['madori','間取り'],['loft','ロフト'],['accent','アクセントクロス'],['cf','CF'],['lastWork','前回の工事'],['checkDate','点検日'],['waterCheck','水道の確認'],['denkiApply','電気の申込'],['waterApply','水道の申込']]],
+];
+function manBkDetailHtml_(b){
+  const esc = escapeHtml, v = manBkVal_;
+  const nl = t => esc(t).replace(/\n/g, '<br>');
+  const addr = v(b.address);
+  const secs = MAN_BK_SECS.map(([h, fs]) => { const tr = fs.filter(([k]) => v(b[k])).map(([k, l]) => `<tr><th>${l}</th><td>${nl(v(b[k]))}</td></tr>`).join('');
+    return tr ? `<div class="man-sec"><span class="gh-tag" style="background:#0f766e">${h}</span></div><table class="man-bk-tbl">${tr}</table>` : ''; }).join('');
+  const imgs = (list, h) => { const xs = (Array.isArray(list) ? list : []).filter(x => x && x.driveId);
+    return xs.length ? `<div class="man-sec"><span class="gh-tag" style="background:#7c3aed">${h}</span><span class="gh-count">${xs.length}枚</span></div>
+      <div class="man-bk-imgs">${xs.map(x => `<figure><a href="#" data-bkimg="${esc(x.driveId)}"><img data-bkref="${esc(x.driveId)}" alt="${esc(x.label || '')}" loading="lazy"></a><figcaption>${esc(String(x.label || '').trim())}</figcaption></figure>`).join('')}</div>` : ''; };
+  return `
+    <div class="man-hero" style="border-left-color:#0891b2">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px"><a href="#" data-home="1">🏠</a> › <a href="#" data-bklist="1">🏢 物件一覧</a> › ${esc(b.name)}</div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:20px">🏢 ${esc(b.name)}</b>${manBkPill_(b.motouke)}
+        ${v(b.type) ? `<span class="man-chip">${esc(v(b.type))}</span>` : ''}${b.isOwnerProperty ? '<span class="man-chip">山一自社</span>' : ''}${v(b.no) ? `<span style="font-size:11px;color:var(--muted)">No.${esc(v(b.no))}</span>` : ''}</div>
+      ${addr ? `<div style="margin-top:6px;font-size:14px">📍 ${esc(addr)} <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}" target="_blank" rel="noopener" style="font-size:12px;margin-left:4px">🗺 地図</a></div>`
+             : `<div style="margin-top:6px;font-size:12px;color:var(--muted)">📍 住所は台帳に入っていません${[v(b.city), v(b.area)].filter(Boolean).length ? '(' + esc([v(b.city), v(b.area)].filter(Boolean).join(' ')) + ')' : ''}</div>`}
+      ${b.lastEditedAt ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">台帳を最後に直した人: ${esc(b.lastEditor || '')} ${esc(typeof manAgo_ === 'function' ? manAgo_(b.lastEditedAt) : '')}・直すのは見積アプリの物件台帳で</div>` : ''}
+    </div>
+    ${v(b.notes) ? `<div class="man-box man-box-alert"><b>⚠ 注意事項</b><br>${nl(v(b.notes))}</div>` : ''}
+    ${v(b.memo) ? `<div class="man-box man-box-info"><b>📝 備考</b><br>${nl(v(b.memo))}</div>` : ''}
+    ${secs}
+    ${imgs(b.madoriImages, '📐 間取り図')}
+    ${imgs(b.memoImages, '📷 写真')}
+    <div id="man-bk-rel"></div>`;
+}
+async function manRenderBukken_(name){
+  const ov0 = document.getElementById('manualModal');
+  if(__man.mode === 'edit' && ov0 && ov0.classList.contains('show') && !confirm('編集中です。下書きを残して物件のページを開きますか？')) return;
+  if(!ov0 || !ov0.classList.contains('show')) await manOpen_();
+  const main = document.getElementById('man-main'); if(!main) return;
+  __man.mode = 'bk'; __man.cur = null; __man.folderView = ''; __man.bkCur = String(name || '');
+  manNavRecord_('bk', __man.bkCur); manShowMain_(true);
+  main.innerHTML = '<div style="padding:30px;color:var(--muted)">物件台帳を読み込み中…</div>';
+  try{ await manBkLoad_(); }catch(e){ if(__man.bkCur === name) main.innerHTML = `<div style="padding:20px;color:#dc2626">${escapeHtml(e.message || String(e))}</div>`; return; }
+  if(__man.mode !== 'bk' || __man.bkCur !== String(name || '')) return;
+  const b = manBkFind_(name);
+  if(!b){ main.innerHTML = `<div style="padding:20px">「${escapeHtml(name)}」は物件台帳に見つかりません。<a href="#" data-bklist="1">🏢 物件一覧へ</a></div>`;
+    main.querySelector('[data-bklist]').onclick = e => { e.preventDefault(); manRenderBukkenList_(); }; return; }
+  main.innerHTML = manBkDetailHtml_(b);
+  const hm = main.querySelector('[data-home]'); if(hm) hm.onclick = e => { e.preventDefault(); __man.mode = 'view'; __man.cur = null; manRenderHome_(); };
+  main.querySelectorAll('[data-bklist]').forEach(a => a.onclick = e => { e.preventDefault(); manRenderBukkenList_(); });
+  main.scrollTop = 0;
+  // 写真: 署名して出す。押すと大きく(別の画面)
+  const refs = [...main.querySelectorAll('[data-bkref]')].map(x => x.dataset.bkref);
+  //   署名の期限切れ(開きっぱなし)で読めない時は 1回だけ取り直す・それでもだめなら「開き直してください」(カレンダー担当)
+  main.querySelectorAll('[data-bkref]').forEach(im => im.onerror = async () => { if(!im.src) return; const r = im.dataset.bkref;
+    if(im.dataset.retry){ im.removeAttribute('src'); im.alt = '(写真を出せませんでした。物件のページを開き直してください)'; return; }
+    im.dataset.retry = '1'; __man.signed.delete(r);
+    try{ await manBkSign_([r]); const u = manSigned_(r); if(u) im.src = u; else im.onerror(); }catch(_){ im.onerror(); } });
+  if(refs.length){ manBkSign_(refs).then(() => { main.querySelectorAll('[data-bkref]').forEach(im => { const u = manSigned_(im.dataset.bkref); if(u) im.src = u; else im.alt = '(写真を出せませんでした)'; }); })
+    .catch(e => console.warn('[man bk img]', e));
+    main.querySelectorAll('[data-bkimg]').forEach(a => a.onclick = async e => { e.preventDefault(); const r = a.dataset.bkimg; const w = window.open('', '_blank');
+      try{ await manBkSign_([r]); const u = manSigned_(r); if(w && u) w.location.href = u; else if(w) w.close(); }catch(_){ if(w) w.close(); } }); }
+  // 関連マニュアル: 題名・本文に物件名が出てくるページ
+  const host = main.querySelector('#man-bk-rel');
+  let hits = []; try{ hits = await manRpc_('manual_search2', { p_q: b.name, p_folder_id: null, p_user: null, p_since: null, p_sort: null }) || []; }catch(_){ hits = []; }
+  if(__man.mode !== 'bk' || __man.bkCur !== String(name || '') || !host.isConnected) return;
+  const byId = manBuildTree_(__man.tree || { folders:[], pages:[] }).byId, ci = manCatIndex_(__man.tree || {});
+  host.innerHTML = `<div class="man-sec"><span class="gh-tag" style="background:#2563eb">📖 この物件が出てくるマニュアル</span><span class="gh-count">${hits.length}件</span></div>
+    <div class="man-cards">${hits.slice(0, 12).map(p => manPageCardHtml_(manTreePage_(p).id ? { ...manTreePage_(p), ...p } : p, byId, { catById: ci.byId })).join('') || '<span style="color:var(--muted);font-size:12px">まだありません</span>'}</div>`;
+  manWireCards_(host);
+}
+// 上の検索欄: 物件名・住所に当たる物件を結果の上に(最大5件)。台帳がまだ無ければ読んでから出し直す
+function manBkSearchInto_(host, q){
+  if(!__man.bk){ if(!__man.bkLoading) manBkLoad_().then(() => { if(__man.results && __man.q === q) manRenderList_(); }).catch(() => {}); return; }
+  const hits = manBkFilter_(__man.bk.rows, { q }); if(!hits.length) return;
+  const box = document.createElement('div'); box.className = 'man-bk-hits';
+  box.innerHTML = `<div style="font-size:11px;color:var(--muted);padding:4px 6px">🏢 物件 ${hits.length}件</div>` +
+    hits.slice(0, 5).map(b => `<div class="man-row" data-bkhit="${escapeHtml(b.name)}" style="flex-direction:column;align-items:flex-start"><div>🏢 ${escapeHtml(b.name)} ${manBkPill_(b.motouke)}</div>
+      <div style="font-size:10px;color:var(--muted);font-weight:400">${escapeHtml(manBkVal_(b.address))}</div></div>`).join('') +
+    (hits.length > 5 ? `<div class="man-row" data-bkmore="1" style="font-size:12px;color:#0891b2">🏢 物件をすべて見る(${hits.length}件) ›</div>` : '');
+  host.prepend(box);
+  box.querySelectorAll('[data-bkhit]').forEach(el => el.onclick = () => manRenderBukken_(el.dataset.bkhit));
+  const mo = box.querySelector('[data-bkmore]'); if(mo) mo.onclick = () => { (__man.bkFilt || (__man.bkFilt = { q:'', grp:'', type:'', sort:'' })).q = q; manRenderBukkenList_(); };
+}
+// 関連マニュアル(予定から)に「🏢 物件の情報」(台帳に載っている物件だけ)
+async function manBkLinkInto_(hero, name){
+  if(!hero) return;
+  try{ await manBkLoad_(); }catch(_){ return; }
+  const b = manBkFind_(name); if(!b || !hero.isConnected) return;
+  const a = document.createElement('a'); a.href = '#'; a.textContent = '🏢 ' + b.name + ' の物件情報(キーボックス・間取り図など) ›';
+  a.style.cssText = 'display:inline-block;margin-top:6px;font-size:13px;font-weight:700';
+  a.onclick = e => { e.preventDefault(); manRenderBukken_(b.name); };
+  hero.appendChild(a);
 }
 // ---- 戻る/進む ----
 function manNavRecord_(t, id){
@@ -37601,6 +37841,7 @@ async function manNavGo_(d){
     else if(st.t === 'cat') manRenderCategory_(st.id);
     else if(st.t === 'stale') manRenderStale_();
     else if(st.t === 'rel') await manOpenRelated_(st.id);
+    else if(st.t === 'bk') await (st.id ? manRenderBukken_(st.id) : manRenderBukkenList_());
     else { __man.mode = 'view'; __man.folderView = ''; __man.cur = null; manRenderList_(); await manLoadHome_(); manShowMain_(true); }
   } finally { __man.navLock = false; manNavButtons_(); }
 }
