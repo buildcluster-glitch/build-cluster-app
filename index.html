@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.876</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.877</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -36325,6 +36325,7 @@ window.__invAddStockFromMaterial_ = (entries)=>{
 //   v1.30.872(山田「コントロールzとかY」「見出は4種類 マーカー 囲い枠(色付) 引用とか」): ↶↷とCtrl+Z/Y(カレンダーの undo に渡さない)・
 //     見出し1〜4・下線・取消線・文字色・マーカー・大きさ・字下げ・囲み枠(:::note info/warn/alert/ok・表示も manNoteBoxes_)・コード・折りたたみ・📄ページへのリンク・書式を消す。
 //   v1.30.875(山田「スクロールしてると見出しのどのへんみてるから追従するように」): 上の帯に「› 今の見出し」(押すと目次)・📑目次にも今の所に色。
+//   v1.30.877(山田「検索 一番目立つ箇所に常に」「PDFの常時プレビュー」): 検索欄はヘッダーの真ん中(/キー)・PDFは本文の中に中身を並べる(pdf.js)。
 // ====================================================================
 const MAN_BUCKET = 'manuals';
 const MAN_REF_PREFIX = 'sb:manuals/';
@@ -36806,6 +36807,82 @@ async function manWireBody_(host){
   }
 }
 
+// ---- 📄 PDFのプレビュー(v877): pdf.js で1ページずつ画像にして本文の中に並べる ----
+const MAN_PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+const MAN_PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const MAN_PDF_MAX_PAGES = 50, MAN_PDF_AUTO_MB = 15;   // 50ページまで並べる・15MBを超えるものは押した時だけ
+function manLoadPdfJs_(){
+  if(window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  if(__man.pdfLib) return __man.pdfLib;
+  __man.pdfLib = new Promise((ok, ng) => { const sc = document.createElement('script'); sc.src = MAN_PDFJS; sc.async = true; sc.crossOrigin = 'anonymous';
+    sc.onload = () => { try{ window.pdfjsLib.GlobalWorkerOptions.workerSrc = MAN_PDFJS_WORKER; ok(window.pdfjsLib); }catch(e){ __man.pdfLib = null; ng(e); } };
+    sc.onerror = () => { __man.pdfLib = null; ng(new Error('PDFの部品が読めません')); }; document.head.appendChild(sc); });
+  return __man.pdfLib;
+}
+function manWhenVisible_(el, fn, margin){
+  if(!('IntersectionObserver' in window)){ fn(); return; }
+  const io = new IntersectionObserver(es => { if(es.some(x => x.isIntersecting)){ io.disconnect(); fn(); } }, { root: document.getElementById('man-main'), rootMargin: (margin || 400) + 'px' });
+  io.observe(el);
+}
+function manPdfBox_(ref, name, size){
+  const esc = escapeHtml, box = document.createElement('div');
+  box.className = 'man-pdf man-noprint'; box.dataset.pdf = ref;
+  const big = size > MAN_PDF_AUTO_MB * 1048576;
+  box.innerHTML = `<div class="man-pdf-h"><span>📄</span><b>${esc(String(name || 'PDF').slice(0, 60))}</b><span class="man-pdf-n"></span><a href="#" class="btn man-mini" data-pdfopen title="PDFを別の画面で開く(保存・印刷もここから)">↗ 開く</a></div>
+    <div class="man-pdf-v">${big ? `<button class="btn man-mini" data-pdfgo>大きいPDF(${(size / 1048576).toFixed(1)}MB)です。押すと中身を表示</button>` : '<div class="man-pdf-wait">PDFを読み込み中…</div>'}</div>`;
+  box.querySelector('[data-pdfopen]').onclick = async e => { e.preventDefault(); const w = window.open('', '_blank');
+    try{ await manSign_([ref]); const u = manSigned_(ref); if(w) w.location.href = u; else location.href = u; }
+    catch(err){ if(w) w.close(); alert('PDFを開けませんでした: ' + (err.message || err)); } };
+  if(big) box.querySelector('[data-pdfgo]').onclick = () => manRenderPdf_(box, ref);
+  else manWhenVisible_(box, () => manRenderPdf_(box, ref), 300);
+  return box;
+}
+async function manRenderPdf_(box, ref){
+  if(box.dataset.done) return; box.dataset.done = '1';
+  const v = box.querySelector('.man-pdf-v'); v.innerHTML = '<div class="man-pdf-wait">PDFを読み込み中…</div>';
+  try{
+    const lib = await manLoadPdfJs_(); await manSign_([ref]); const url = manSigned_(ref); if(!url) throw new Error('ログインが要ります');
+    const doc = await lib.getDocument({ url }).promise;
+    if(!box.isConnected){ doc.destroy(); return; }
+    const n = doc.numPages, max = Math.min(n, MAN_PDF_MAX_PAGES);
+    box.querySelector('.man-pdf-n').textContent = `${n}ページ`;
+    const first = await doc.getPage(1), vp1 = first.getViewport({ scale: 1 });
+    v.innerHTML = '';
+    for(let k = 1; k <= max; k++){   // 置き場だけ先に(縦横比は1ページ目)。見えたら描く
+      const ph = document.createElement('div'); ph.className = 'man-pdf-pg'; ph.style.aspectRatio = `${vp1.width} / ${vp1.height}`; ph.textContent = k + ' / ' + n;
+      v.appendChild(ph);
+      manWhenVisible_(ph, async () => {
+        try{
+          const pg = await doc.getPage(k), vp0 = pg.getViewport({ scale: 1 });
+          const W = Math.max(240, Math.min(ph.clientWidth || 700, 1000)), dpr = Math.min(window.devicePixelRatio || 1, 2);
+          const vp = pg.getViewport({ scale: (W / vp0.width) * dpr });
+          const cv = document.createElement('canvas'); cv.width = Math.floor(vp.width); cv.height = Math.floor(vp.height);
+          await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+          const img = document.createElement('img'); img.alt = `${k}ページ目`; img.loading = 'lazy';
+          await new Promise(res => cv.toBlob(b => { if(b){ img.src = URL.createObjectURL(b); } else img.src = cv.toDataURL('image/jpeg', .85); res(); }, 'image/jpeg', .85));
+          ph.textContent = ''; ph.style.aspectRatio = `${vp0.width} / ${vp0.height}`; ph.appendChild(img); pg.cleanup();
+        }catch(_){ ph.textContent = k + 'ページ目を描けませんでした'; }
+      }, 600);
+    }
+    if(n > max){ const more = document.createElement('div'); more.className = 'man-pdf-wait'; more.textContent = `残り ${n - max}ページは「↗ 開く」で見てください`; v.appendChild(more); }
+  }catch(e){ v.innerHTML = `<div class="man-pdf-wait">プレビューを出せませんでした(${escapeHtml(String(e && e.message || e))})。「↗ 開く」で見てください</div>`; }
+}
+// 本文の PDF リンクのすぐ下・添付だけの PDF は添付の欄の下にプレビュー(同じPDFは1回だけ)
+function manAddPdfPreviews_(host, atts){
+  const seen = new Set(), sizeOf = {};
+  (atts || []).forEach(a => { if(a && a.ref) sizeOf[a.ref] = a.size || 0; });
+  host.querySelectorAll('a[data-mref]').forEach(a => {
+    const r = a.getAttribute('data-mref'); if(manExtOf_(r) !== 'pdf' || a.closest('.man-att') || seen.has(r)) return;
+    seen.add(r); const box = manPdfBox_(r, (a.textContent || '').replace(/^📎\s*/, '') || r.split('/').pop(), sizeOf[r] || 0);
+    const blk = a.closest('p,li,td,th,blockquote,.man-box') || a; blk.after(box);
+  });
+  const att = host.querySelector('.man-att');
+  if(att) [...att.querySelectorAll('a[data-mref]')].reverse().forEach(a => {
+    const r = a.getAttribute('data-mref'); if(manExtOf_(r) !== 'pdf' || seen.has(r)) return;
+    seen.add(r); att.after(manPdfBox_(r, a.getAttribute('title') || r.split('/').pop(), sizeOf[r] || 0));
+  });
+}
+
 // ---- 画面 ----
 function manEnsureModal_(){
   if(document.getElementById('manualModal')) return;
@@ -36853,6 +36930,19 @@ function manEnsureModal_(){
   #manualModal.man-max .man-main>*:not(.man-foot):not(.man-stick){max-width:1040px;margin-left:auto;margin-right:auto}
   #manualModal.man-max .man-cards{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
   #manualModal .man-head .btn.on{background:rgba(251,191,36,.3);border-color:#fbbf24}
+  #manualModal .man-qwrap{flex:1 1 260px;max-width:560px;margin:0 8px;position:relative;min-width:0}
+  #manualModal .man-qwrap::before{content:'🔍';position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;pointer-events:none}
+  #manualModal #man-q{width:100%;box-sizing:border-box;padding:8px 14px 8px 36px;border-radius:999px;border:2px solid rgba(255,255,255,.6);background:#fff;color:#0f172a;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+  #manualModal #man-q:focus{outline:none;border-color:#fbbf24;box-shadow:0 0 0 3px rgba(251,191,36,.4)}
+  #manualModal.man-max.man-searching .man-side{display:flex}
+  #manualModal .man-pdf{border:1px solid #cbd5e1;border-radius:10px;margin:10px 0;background:#f1f5f9;overflow:hidden}
+  #manualModal .man-pdf-h{display:flex;align-items:center;gap:6px;padding:6px 10px;background:#fff;border-bottom:1px solid #e2e8f0;font-size:13px}
+  #manualModal .man-pdf-h b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #manualModal .man-pdf-n{font-size:11px;color:var(--muted);white-space:nowrap}
+  #manualModal .man-pdf-v{padding:8px;display:flex;flex-direction:column;gap:8px;align-items:center}
+  #manualModal .man-pdf-pg{width:100%;max-width:1000px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.18);display:grid;place-items:center;color:#94a3b8;font-size:12px}
+  #manualModal .man-pdf-pg img{width:100%;height:auto;display:block}
+  #manualModal .man-pdf-wait{font-size:12px;color:var(--muted);padding:10px}
   #manualModal .man-box{border:1px solid;border-left-width:5px;border-radius:8px;padding:6px 12px;margin:10px 0}
   #manualModal .man-box>:first-child{margin-top:4px}
   #manualModal .man-box>:last-child{margin-bottom:4px}
@@ -36992,6 +37082,8 @@ function manEnsureModal_(){
     #manualModal .man-paper{padding:10px 12px}
     #manualModal .man-stick .in{left:-12px;right:-12px;padding:7px 12px}
     #manualModal .man-stick .in.has-sec .tt{display:none}
+    #manualModal .man-head{flex-wrap:wrap}
+    #manualModal .man-qwrap{order:20;flex-basis:100%;max-width:none;margin:6px 0 0}
     #manualModal .man-stick-toc{left:12px;width:calc(100% - 24px)}
     #manualModal .man-tools{margin:0 -12px 4px;padding:6px 12px;top:-10px}
     #manualModal .man-foot{margin:28px -12px -40px}
@@ -37013,6 +37105,7 @@ function manEnsureModal_(){
         <button class="btn man-mini man-navbtn" id="man-fwd-nav" title="進む (Alt+→ ・マウスの進むボタン)" disabled>›</button>
         <div class="man-prog" id="man-prog"></div>
         <a href="#" class="man-brand" id="man-brand" title="マニュアルのトップへ"><span class="ic">📖</span><span><b>社内マニュアル</b><small>BUILD CLUSTER</small></span></a>
+        <div class="man-qwrap"><input id="man-q" type="search" placeholder="題名・本文・添付名で検索(/ キー)" autocomplete="off" enterkeyhint="search"></div>
         <span id="man-status" style="font-weight:400;font-size:11px;color:var(--muted)"></span>
         <span style="margin-left:auto;display:flex;gap:6px">
           <button class="btn man-mini" id="man-max" title="画面いっぱいに広げる(目次を隠して本文を広く)・もう一度で戻す">⛶</button>
@@ -37025,7 +37118,7 @@ function manEnsureModal_(){
       <div class="man-wrap" id="man-wrap">
         <div class="man-side">
           <div style="padding:8px;display:flex;gap:6px;border-bottom:1px solid var(--border)">
-            <input id="man-q" type="search" placeholder="🔍 題名・本文・添付名で検索" style="flex:1;min-width:0;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+            <span style="flex:1;font-size:12px;color:var(--muted);align-self:center">🔍 検索は上の欄から</span>
             <button class="btn man-mini" id="man-filt-toggle" title="フォルダ・直した人・期間で絞り込む">絞込▾</button>
             <button class="btn man-mini" id="man-new-page" title="選んでいるフォルダに新しいページを作る">＋ページ</button>
           </div>
@@ -37069,18 +37162,30 @@ function manEnsureModal_(){
   ov.addEventListener('mousedown', mouseNav); ov.addEventListener('mouseup', mouseNav);
   // ⌨ Ctrl/⌘+Z・Y(v872): マニュアルの中ではカレンダーの「元に戻す」(document の keydown)に渡さない=裏の予定を戻さない。
   //   編集欄では文字の取り消し(Ctrl/⌘+Z)・やり直し(Ctrl+Y/⌘+Shift+Z)を execCommand で(v873)。それ以外の所では何もしない
-  ov.addEventListener('keydown', e => {
-    if(!ov.classList.contains('show') || !(e.ctrlKey || e.metaKey) || e.altKey) return;
+  // 「/」で検索欄へ(v877・カレンダーの予定検索は開かない)。何も選んでいない時(target=body)にも効くよう document の capture で
+  // マニュアルがいちばん上の時だけ(上に予定などの画面が重なっている時・別の画面に入力している時は手を出さない・カレンダー担当)
+  const manTop = e => { if(!ov.classList.contains('show')) return false;
+    const t = e.target; if(t && t !== document.body && t !== document.documentElement && !ov.contains(t)) return false;
+    return ![...document.querySelectorAll('.modal-overlay.show,[role="dialog"]')].some(x => x !== ov && !ov.contains(x) && (ov.compareDocumentPosition(x) & Node.DOCUMENT_POSITION_FOLLOWING)); };
+  document.addEventListener('keydown', e => {
+    if(e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey || e.isComposing || !manTop(e)) return;
+    const t = e.target; if(t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || '') || t.isContentEditable)) return;
+    e.preventDefault(); e.stopPropagation(); const qi = ov.querySelector('#man-q'); if(qi){ qi.focus(); qi.select(); }
+  }, true);
+  document.addEventListener('keydown', e => {   // v877: ov の上でなく document の capture(何も選んでいない時も 裏の予定を戻さない)
+    if(!(e.ctrlKey || e.metaKey) || e.altKey || !manTop(e)) return;
     const k = String(e.key || '').toLowerCase(); if(k !== 'z' && k !== 'y') return;
     e.stopPropagation();
     const t = e.target, inEdit = !!t && (t.isContentEditable || /^(TEXTAREA|INPUT)$/.test(t.tagName || ''));
     if(!inEdit){ e.preventDefault(); return; }
     e.preventDefault(); document.execCommand((k === 'y' || e.shiftKey) ? 'redo' : 'undo');   // v873: 取り消しも自前(標準の取り消しが動かない画面がある)
-  });
+  }, true);
   manApplyFont_();
   ov.querySelector('#man-home').onclick = () => { if(__man.mode === 'edit' && !confirm('編集中です。下書きを残してトップへ戻りますか？')) return; __man.mode = 'view'; __man.folderView = ''; __man.cur = null; manRenderList_(); manRenderHome_(); manShowMain_(true); };
   let qt = null;
-  ov.querySelector('#man-q').oninput = e => { clearTimeout(qt); const q = e.target.value.trim(); qt = setTimeout(()=>manSearch_(q), 350); };
+  ov.querySelector('#man-q').oninput = e => { clearTimeout(qt); const q = e.target.value.trim(); qt = setTimeout(()=>manSearch_(q), 350);
+    ov.classList.toggle('man-searching', !!q);   // ⛶の時も結果の一覧を出す(v877)
+    if(q && window.innerWidth <= 760) manShowMain_(false); };   // スマホは結果の一覧へ
   ov.querySelector('#man-filt-toggle').onclick = () => { __man.filtOpen = !__man.filtOpen; ov.querySelector('#man-filt').style.display = __man.filtOpen ? '' : 'none'; if(__man.filtOpen) manFillFilters_(); };
   const refilt = () => { __man.filt = { folder: ov.querySelector('#man-f-folder').value, user: ov.querySelector('#man-f-user').value.trim(),
                                          days: ov.querySelector('#man-f-days').value, sort: ov.querySelector('#man-f-sort').value, cat: ov.querySelector('#man-f-cat').value };
@@ -37728,6 +37833,7 @@ async function manRenderPage_(){
   main.querySelectorAll('[data-stk]').forEach(b => b.onclick = () => { const k = b.dataset.stk;
     if(k === 'edit') manStartEdit_(); else if(k === 'link') manCopyLink_(); else manScrollTop_(); });
   manWireBody_(main);
+  try{ manAddPdfPreviews_(main, atts); }catch(e){ console.warn('[man pdf]', e); }   // v877
   manRenderToc_(main);
   manRenderPrevNext_(p);
   if(!p.is_deleted) manLoadRelated_(p.id);
