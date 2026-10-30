@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.882</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.883</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -14729,7 +14729,11 @@ function showTaskChecklistPopup(el, ev, opts){
   else document.body.appendChild(pop);
   // 💬 事務タスクポップを開いたら業務連絡の最新を取得(全員共有・他PCの書込みを即反映)v1.30.203
   if(cur && cur.category==='事務' && typeof fetchJimuMessages_==='function') fetchJimuMessages_({silent:true}).catch(()=>{});
-  if(cur && cur.category==='事務' && typeof fetchJimuTaskComments_==='function') fetchJimuTaskComments_({silent:true}).catch(()=>{});   // 💬タスクコメントも最新化 v1.30.286
+  // 💬 v1.30.883: 取れたら開いている一覧も描き直す(従来は state だけ更新され、画面は開き直すまで古いまま=「コメントが無い」ように見えた)。
+  //   入力中(この窓の中の入力欄にカーソル)なら描き直さない=打ちかけの文字を消さない。
+  if(cur && cur.category==='事務' && typeof fetchJimuTaskComments_==='function') fetchJimuTaskComments_({silent:true}).then(()=>{
+    try{ const ae=document.activeElement; if(pop.isConnected && !(ae && pop.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))) renderInner(); }catch(_){}
+  }).catch(()=>{});   // 💬タスクコメントも最新化 v1.30.286
   if(!inlineHost) requestAnimationFrame(()=>{
     const rc = pop.getBoundingClientRect();
     const vw = window.innerWidth, vh = window.innerHeight, mg=8;
@@ -24843,6 +24847,10 @@ async function cloudSyncPull({ replace=false, signal=null, prefetched=null, forc
     const __wf = eventsWindowFrom_();
     const __newEv = (data.events || []).map(normalizeCloudEvent_); const __ids = new Set(__newEv.map(e=>e.id));
     state.events = __newEv.concat((state.events||[]).filter(e=> e && e.id && !__ids.has(e.id) && String(e.date||'') < __wf));
+    // 💬 v1.30.883: 全置換でも、共有mapの業務連絡・タスクコメント・リマインドを付け直す(付け直さないと次の取得まで消えて見える)
+    try{ if(typeof applyJimuMessagesToState_==='function') applyJimuMessagesToState_(); }catch(_){}
+    try{ if(typeof applyJimuTaskCommentsToState_==='function') applyJimuTaskCommentsToState_(); }catch(_){}
+    try{ if(typeof applyRemindersToState_==='function') applyRemindersToState_(); }catch(_){}
     if(typeof __evSnapRefresh_==='function') __evSnapRefresh_();   // 📜 v1.30.692
     state.cloudProperties = (data.properties || []).map(normalizeCloudProperty_);
     state.cloudLogs = (data.logs || []).map(normalizeCloudLog_);
@@ -24875,6 +24883,11 @@ async function cloudSyncPull({ replace=false, signal=null, prefetched=null, forc
     if(typeof migrateJimuTaskIds_==='function') migrateJimuTaskIds_();   // 🆔 未移行端末(旧版)から来たタスク行にも決定的IDを付与=マージ整合(v1.30.329)
     if(typeof applyJimuMessagesToState_==='function') applyJimuMessagesToState_();  // 💬 業務連絡(共有map)を事務イベントに反映=event-syncの空messagesで消えないように(v1.30.203)
     if(typeof applyRemindersToState_==='function') applyRemindersToState_();  // ⏰ リマインド(共有map)をイベントに再付与=同期で差し替わっても消えない(v1.30.374)
+    // 💬 v1.30.883(山田「タスクにつけたコメントがきえてる」10/31): **タスクコメントも再付与**。
+    //   サーバー/DBの予定には taskComments が無い(event-syncはネストを保存しない・v286)ので、
+    //   上の cloudMergeById_ で事務の予定が差し替わるたびに ev.taskComments が消え、次の5分ごとの取得まで空に見えていた。
+    //   共有map(jimu_task_comments)にはコメントが残っていた(10/31 実測: 山田のNSビル3件ほか)=表示だけが消えていた。
+    if(typeof applyJimuTaskCommentsToState_==='function') applyJimuTaskCommentsToState_();
     if(!state.cloudProperties) state.cloudProperties = [];
     cloudMergeById_(state.cloudProperties,   (data.properties||[]).map(normalizeCloudProperty_), pendingPropertyIds);
     if(!state.cloudLogs) state.cloudLogs = [];
