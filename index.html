@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.866</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.867</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -36240,6 +36240,7 @@ window.__invAddStockFromMaterial_ = (entries)=>{
 //     098より前に開いた画面から保存して bad_folder(旧フォルダは消えた)の時は、目次を読み直してそのページの今の置き場で1回だけ保存し直す。
 //   v1.30.866(山田「お知らせも新着更新があるからいらないかな 代わりに」→ 案1): トップの📢お知らせ欄を外し「📅 今日の予定から」。
 //     自分(👤)の今日の予定・立会・修繕ごとに合うページを3つまで(端末の予定だけ読む・削除済みと他人の予定は出さない)。お知らせのページ自体は残る。
+//     v1.30.867: 今日の日付は fmtDate で(todayISO は別のスクリプトの中にあり呼べず、866では何も出なかった)。
 // ====================================================================
 const MAN_BUCKET = 'manuals';
 const MAN_REF_PREFIX = 'sb:manuals/';
@@ -37128,7 +37129,8 @@ function manRelQuery_(ctx){
 function manTodayItems_(){
   const me = (typeof getMyself === 'function') ? getMyself() : '';
   if(!me) return { me:'', items:[] };
-  const d = (typeof todayISO === 'function') ? todayISO() : '';
+  const now = new Date(), d = (typeof fmtDate === 'function') ? fmtDate(now)   // ⚠todayISO は別のスクリプトの中で呼べない(v867)
+    : `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
   const norm = x => (typeof normalizeStaffName === 'function') ? normalizeStaffName(x) : String(x||'').replace(/[\s　]/g, '');
   const meN = norm(me);
   const isMe = list => list.some(x => x === me || norm(x) === meN);
