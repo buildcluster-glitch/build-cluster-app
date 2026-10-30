@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.872</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.873</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -37055,14 +37055,14 @@ function manEnsureModal_(){
     e.preventDefault(); e.stopPropagation(); if(e.type === 'mouseup') manNavGo_(e.button === 3 ? -1 : 1); };
   ov.addEventListener('mousedown', mouseNav); ov.addEventListener('mouseup', mouseNav);
   // ⌨ Ctrl/⌘+Z・Y(v872): マニュアルの中ではカレンダーの「元に戻す」(document の keydown)に渡さない=裏の予定を戻さない。
-  //   編集欄では文字の取り消し(そのまま)・やり直し(Ctrl+Y/⌘+Shift+Z)。それ以外の所では何もしない
+  //   編集欄では文字の取り消し(Ctrl/⌘+Z)・やり直し(Ctrl+Y/⌘+Shift+Z)を execCommand で(v873)。それ以外の所では何もしない
   ov.addEventListener('keydown', e => {
     if(!ov.classList.contains('show') || !(e.ctrlKey || e.metaKey) || e.altKey) return;
     const k = String(e.key || '').toLowerCase(); if(k !== 'z' && k !== 'y') return;
     e.stopPropagation();
     const t = e.target, inEdit = !!t && (t.isContentEditable || /^(TEXTAREA|INPUT)$/.test(t.tagName || ''));
     if(!inEdit){ e.preventDefault(); return; }
-    if(k === 'y' || e.shiftKey){ e.preventDefault(); document.execCommand('redo'); }
+    e.preventDefault(); document.execCommand((k === 'y' || e.shiftKey) ? 'redo' : 'undo');   // v873: 取り消しも自前(標準の取り消しが動かない画面がある)
   });
   manApplyFont_();
   ov.querySelector('#man-home').onclick = () => { if(__man.mode === 'edit' && !confirm('編集中です。下書きを残してトップへ戻りますか？')) return; __man.mode = 'view'; __man.folderView = ''; __man.cur = null; manRenderList_(); manRenderHome_(); manShowMain_(true); };
