@@ -2780,6 +2780,19 @@
   #inventoryView .inv-st-row .st-alert.order button{border:1.5px solid var(--inv-danger);background:#fef2f2;color:var(--inv-danger);
     border-radius:6px;font-weight:800;font-size:12px;padding:3px 8px;cursor:pointer;line-height:1.2}
   #inventoryView .inv-st-row .st-alert.ordered{color:#1d4ed8;font-size:12px;font-weight:700}
+  /* 🛒 購入リンク・価格の推移(v1.30.864) */
+  #inventoryView a.inv-buy{display:inline-block;margin-left:6px;padding:2px 8px;border:1.5px solid #f59e0b;border-radius:6px;
+    background:#fffbeb;color:#b45309;font-size:12px;font-weight:800;text-decoration:none;line-height:1.3;white-space:nowrap;vertical-align:middle}
+  #inventoryView .inv-st-row .sub a.inv-buy{padding:0 6px;font-size:11px}
+  #inventoryView .inv-pdelta{font-size:12px;font-weight:700;margin-left:6px;white-space:nowrap}
+  #inventoryView .inv-pdelta.up{color:var(--inv-danger)}
+  #inventoryView .inv-pdelta.down{color:#15803d}
+  #inventoryView .inv-pdelta.flat{color:var(--inv-mute)}
+  #inventoryView .inv-phist{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:8px 12px;margin-bottom:12px;font-size:13px}
+  #inventoryView .inv-phist .head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+  #inventoryView .inv-phist .inv-pspark{color:#2563eb;max-width:100%}
+  #inventoryView .inv-phist .r{display:grid;grid-template-columns:90px 1fr auto;gap:8px;padding:3px 0;border-top:1px dashed #f1f5f9}
+  #inventoryView .inv-phist .r .by{color:var(--inv-mute);font-size:12px}
   #inventoryView .inv-st-reason select{width:100%;padding:8px 10px;border:1px solid #fbbf24;border-radius:8px;
     background:#fffbeb;font-size:13px;outline:none;color:var(--inv-ink)}
   #inventoryView .inv-st-loc-header{margin:12px 14px 6px;padding:10px 12px;border-radius:10px;font-size:13px;font-weight:800;
@@ -3025,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.863</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.864</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -3605,6 +3618,7 @@
         <button class="act-edit" data-act="edit">編集</button>
       </div>
       <div id="inv-d-orders"></div>
+      <div id="inv-d-price"></div>
       <div class="inv-section-title">履歴（直近50件）</div>
       <div class="inv-logs" id="inv-d-logs"></div>
     </div>
@@ -33521,6 +33535,7 @@ function renderItemList(){
           <div class="meta">
             ${i.supplier?`<span>注文先:<b>${esc(i.supplier)}</b></span>`:''}
             ${i.price?`<span>¥<b>${Number(i.price).toLocaleString()}</b></span>`:''}
+            ${invBuyLinkHtml_(i)}
           </div>
         </div>
         <div class="stockcol">
@@ -33610,6 +33625,81 @@ function renderOrders(){
   }).join('');
 }
 
+// ---------- 🛒 購入リンク・価格の記録(v1.30.864・山田10/30「URLがあれば購入リンク・価格と推移の記録」) ----------
+//   購入=発注先URL(item.supplierUrl)を新しいタブで。http/https 以外は出さない(javascript: 等を弾く)
+//   価格の履歴=在庫の記録(logs)の type='audit'・note「価格記録…」・qty=価格(円)。
+//   ⚠DBの品目表は欄が固定なので配列は持たせない。audit は delta=0 で在庫数を動かさない(GASも行を足すだけ)
+const INV_PRICE_NOTE = '価格記録';
+function invBuyUrl_(item){
+  const u = String((item && item.supplierUrl) || '').trim();
+  return /^https?:\/\//i.test(u) ? u : '';
+}
+function invBuyLinkHtml_(item, label){
+  const u = invBuyUrl_(item);
+  if(!u) return '';
+  return `<a class="inv-buy" href="${esc(u)}" target="_blank" rel="noopener noreferrer" data-invbuy="1" title="発注先のページを新しいタブで開く">${label||'🛒 購入'}</a>`;
+}
+// → [{date, price, by}] 古い順。記録が無ければ品目の今の価格を1点だけ
+function invPriceHistory_(item){
+  if(!item) return [];
+  const h = (state.logs||[])
+    .filter(l=>l.itemId===item.id && l.type==='audit' && String(l.note||'').startsWith(INV_PRICE_NOTE) && Number(l.qty)>0)
+    .map(l=>({ date:(l.datetime||'').slice(0,10), price:Number(l.qty), by:l.member||'', at:l.datetime||'' }))
+    .sort((a,b)=>a.at.localeCompare(b.at))
+    .map(({date,price,by})=>({date,price,by}));
+  if(!h.length && Number(item.price)>0) h.push({ date:item.priceDate||'', price:Number(item.price), by:'' });
+  return h;
+}
+// 前回比 ↑↓(直前の記録と比べる)
+function invPriceDeltaHtml_(hist){
+  if(!hist || hist.length<2) return '';
+  const a = hist[hist.length-2].price, b = hist[hist.length-1].price;
+  if(a===b) return `<span class="inv-pdelta flat">→ 前回と同じ</span>`;
+  const d = b - a, pct = a ? Math.round(d/a*1000)/10 : 0;
+  return `<span class="inv-pdelta ${d>0?'up':'down'}">${d>0?'↑':'↓'} ¥${Math.abs(d).toLocaleString()} (${d>0?'+':''}${pct}%)</span>`;
+}
+// 小さな折れ線(2点以上)
+function invPriceSparkSvg_(hist){
+  if(!hist || hist.length<2) return '';
+  const W=160, H=36, P=3, ps=hist.map(h=>h.price), mn=Math.min(...ps), mx=Math.max(...ps), rg=(mx-mn)||1;
+  const pts = ps.map((v,k)=>`${(P+k*(W-2*P)/(ps.length-1)).toFixed(1)},${(H-P-(v-mn)/rg*(H-2*P)).toFixed(1)}`);
+  const last = pts[pts.length-1].split(',');
+  return `<svg class="inv-pspark" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-label="価格の推移"><polyline points="${pts.join(' ')}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="${last[0]}" cy="${last[1]}" r="3" fill="currentColor"/></svg>`;
+}
+function invPriceHistoryHtml_(item){
+  const hist = invPriceHistory_(item);
+  if(!hist.length) return '';
+  const rows = hist.slice().reverse().slice(0,20).map(h=>
+    `<div class="r"><span>${h.date?esc(fmtD(h.date)):'-'}</span><b>¥${h.price.toLocaleString()}</b><span class="by">${esc(h.by||'')}</span></div>`).join('');
+  return `<div class="inv-section-title">価格の推移（${hist.length}件）</div>
+    <div class="inv-phist">
+      <div class="head">${invPriceSparkSvg_(hist)}${invPriceDeltaHtml_(hist)}</div>
+      ${rows}
+    </div>`;
+}
+// 品目の保存で価格が変わったら1件記録する。戻り=記録したlog(なければnull)
+function invRecordPriceChange_(item, prevPrice){
+  const np = Number(item && item.price);
+  if(!item || !(np>0)) return null;
+  const op = Number(prevPrice);
+  if(op>0 && op===np) return null;
+  const log = { id: uid(), type:'audit', itemId: item.id, qty: Math.round(np),
+    member: state.currentUser || '', datetime: new Date().toISOString(),
+    note: `${INV_PRICE_NOTE} ¥${Math.round(np).toLocaleString()}` + (op>0 ? `(前回 ¥${op.toLocaleString()})` : '') };
+  state.logs.push(log);
+  queueOp('appendLog', log);
+  return log;
+}
+// PWA(ホーム画面から起動)の中で開きっぱなしにならないよう、購入リンクは window.open で外へ。
+//   capture で先に拾い、カードを押した扱い(詳細を開く)にしない
+document.addEventListener('click', e=>{
+  const a = e.target.closest && e.target.closest('a[data-invbuy]');
+  if(!a) return;
+  e.preventDefault(); e.stopPropagation();
+  const w = window.open(a.href, '_blank', 'noopener,noreferrer');
+  if(!w && !window.matchMedia('(display-mode: standalone)').matches) location.assign(a.href);
+}, true);
+
 // ---------- render: stocktake ----------
 // 棚卸の行の在庫不足の印(v1.30.863・山田「棚卸した人がその場で注文」)。判定は一覧/詳細と同じ effectiveStock<minStock。
 //   実数を入力済みならその数で見る。発注中の分が届けば足りる品目は青の「発注中」(山田「青で出そう」)
@@ -33625,7 +33715,8 @@ function stStockAlert_(item, real){
 function stStockAlertHtml_(item, real){
   const a = stStockAlert_(item, real);
   if(!a) return '';
-  if(a.kind==='order') return `<button type="button" data-stkord="${item.id}" title="最低 ${item.minStock}・不足 ${a.shortage}個${a.onOrd?`(発注中 ${a.onOrd}を含めても)`:''}">⚠ 要注文 不足${a.shortage}</button>`;
+  // 🛒 v1.30.864: 要注文の横から購入ページへ(button の中に入れない=押しても発注画面は開かない)
+  if(a.kind==='order') return `<button type="button" data-stkord="${item.id}" title="最低 ${item.minStock}・不足 ${a.shortage}個${a.onOrd?`(発注中 ${a.onOrd}を含めても)`:''}">⚠ 要注文 不足${a.shortage}</button>${invBuyLinkHtml_(item, '🛒 購入')}`;
   return `📦 発注中 ${a.onOrd}個`;
 }
 function stStockAlertCls_(item, real){ const a = stStockAlert_(item, real); return a ? a.kind : ''; }
@@ -33683,7 +33774,7 @@ function renderStocktake(){
         <div class="inv-st-row ${cls}" data-id="${i.id}">
           <div class="info">
             <div class="nm">${esc(i.name)}</div>
-            <div class="sub">${esc(i.sku)} · ${esc(i.category)}</div>
+            <div class="sub">${esc(i.sku)} · ${esc(i.category)}<span class="st-buy">${stStockAlertCls_(i, real)==='order'?'':invBuyLinkHtml_(i, '🛒')}</span></div>
             <div class="st-alert ${stStockAlertCls_(i, real)}">${stStockAlertHtml_(i, real)}</div>
           </div>
           <div class="syss">記録<br><b>${i.stock}</b></div>
@@ -33731,6 +33822,8 @@ function updateStRow(inp){
   // 在庫不足の印(v1.30.863): 数えた実数で出し直す
   const al = row.querySelector('.st-alert');
   if(al){ al.className = 'st-alert ' + stStockAlertCls_(item, real); al.innerHTML = stStockAlertHtml_(item, real); }
+  const sb = row.querySelector('.st-buy');   // 🛒 v1.30.864: 要注文の時は印の横に出すので行の🛒は隠す
+  if(sb) sb.innerHTML = stStockAlertCls_(item, real)==='order' ? '' : invBuyLinkHtml_(item, '🛒');
   // 差分バッジ
   let badge = row.querySelector('.inv-st-diffbadge');
   if(d===null || d===0){ if(badge) badge.remove(); }
@@ -33836,8 +33929,8 @@ function renderDetail(){
   const locCls = LOC_CLASS[i.location]||'warehouse';
   const supplierLine =
     esc(i.supplier||'-') +
-    (i.supplierUrl ? ` <a href="${esc(i.supplierUrl)}" target="_blank" rel="noopener" style="margin-left:6px;font-size:12px;text-decoration:none">🛒 開く</a>` : '') +
-    (i.price ? ` <span style="margin-left:10px;color:var(--mute);font-size:12px">価格 <b style="color:var(--ink)">¥${Number(i.price).toLocaleString()}</b>${i.priceDate?` (${fmtD(i.priceDate)}時点)`:''}</span>` : '');
+    (invBuyUrl_(i) ? ' ' + invBuyLinkHtml_(i) : '') +
+    (i.price ? ` <span style="margin-left:10px;color:var(--mute);font-size:12px">価格 <b style="color:var(--ink)">¥${Number(i.price).toLocaleString()}</b>${i.priceDate?` (${fmtD(i.priceDate)}時点)`:''} ${invPriceDeltaHtml_(invPriceHistory_(i))}</span>` : '');
   $('#inv-d-hero').innerHTML = `
     <h2>${esc(i.name)}</h2>
     <div class="sub"><span class="inv-cat-tag ${catCls}">${esc(i.category)}</span> ${i.location?`<span class="inv-loc-tag ${locCls}">${LOC_ICON[i.location]||'🏠'}${esc(i.location)}</span>`:''} &nbsp; ${esc(i.sku)}${i.maker?' · '+esc(i.maker):''}</div>
@@ -33906,6 +33999,9 @@ function renderDetail(){
       ? `<div class="inv-section-title">発注中（${myOrders.length}件）</div>${ordersHtml}`
       : '';
   }
+
+  const __ph = $('#inv-d-price');
+  if(__ph) __ph.innerHTML = invPriceHistoryHtml_(i);   // 🛒 v1.30.864 価格の推移
 
   const myLogs = state.logs.filter(l=>l.itemId===i.id)
     .sort((a,b)=>(b.datetime||'').localeCompare(a.datetime||''))
@@ -35450,7 +35546,13 @@ function submitItem(){
 
   let saved;
   const isNew = !editingItemId;
-  let __prevStock = null;
+  let __prevStock = null, __prevPrice = null, __prevPriceDate = '';
+  if(editingItemId){
+    const i = state.items.find(x=>x.id===editingItemId);
+    __prevPrice = i.price; __prevPriceDate = i.priceDate || '';
+  }
+  // 🛒 v1.30.864: 価格が変わって確認日を手で変えていなければ、確認日=今日
+  if(data.price>0 && Number(__prevPrice)!==data.price && data.priceDate===__prevPriceDate) data.priceDate = todayISO();
   if(editingItemId){
     const i = state.items.find(x=>x.id===editingItemId);
     __prevStock = Number(i.stock)||0;
@@ -35473,6 +35575,7 @@ function submitItem(){
   // 📦 v1.30.792: 既存品目の在庫数をこの画面で変えたら、棚卸1件として記録も残す
   //   (今までは記録なしで数だけ変わっていた。DBの zaiko_upsert_item は在庫数を無視するので、これが無いとDBでは数が動かない)
   if(!isNew) invStockEditAsCount_(saved, __prevStock, '品目編集で在庫数を変更');
+  invRecordPriceChange_(saved, __prevPrice);   // 🛒 v1.30.864 価格の履歴
 
   save();
   closeSheet('sheet-item');
