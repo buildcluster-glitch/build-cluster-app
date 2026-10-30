@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.880</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.881</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -37660,6 +37660,16 @@ function manBkFilter_(rows, f){
   else out.sort(nm);
   return out;
 }
+// 🔄 物件台帳を今すぐ読み直して、今の画面(一覧 か 物件のページ)を描き直す(v881)。履歴は同じ所なので増えない
+function manBkAgo_(at){ const m = Math.floor((Date.now() - (at || 0)) / 60000); return m < 1 ? 'さっき' : m + '分前'; }
+async function manBkReload_(btn){
+  const cur = __man.bkCur;
+  if(btn){ btn.disabled = true; btn.textContent = '🔄 読み直し中…'; }
+  try{ await manBkLoad_(true); }
+  catch(e){ if(btn){ btn.disabled = false; btn.textContent = '🔄 読み直す'; } alert(e.message || String(e)); return; }
+  if(__man.mode !== 'bk' || __man.bkCur !== cur) return;   // 読み直している間に別の画面へ
+  if(cur) await manRenderBukken_(cur); else await manRenderBukkenList_();
+}
 async function manRenderBukkenList_(){
   const ov0 = document.getElementById('manualModal');
   if(__man.mode === 'edit' && ov0 && ov0.classList.contains('show') && !confirm('編集中です。下書きを残して物件一覧を開きますか？')) return;
@@ -37683,11 +37693,12 @@ async function manRenderBukkenList_(){
     <div class="man-hero" style="border-left-color:#0891b2">
       <div style="font-size:11px;color:var(--muted);margin-bottom:4px"><a href="#" data-home="1">🏠</a> › 🏢 物件一覧</div>
       <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap"><b style="font-size:19px">🏢 物件一覧</b>
-        <span style="font-size:12px;color:var(--muted)">物件台帳から ${rows.length}件${c.src === 'cal' ? '(カレンダーが持っている分)' : ''}・直すのは見積アプリの物件台帳で</span></div>
+        <span style="font-size:12px;color:var(--muted)">物件台帳から ${rows.length}件${c.src === 'cal' ? '(カレンダーが持っている分)' : ''}・${manBkAgo_(c.at)}に読んだ・直すのは見積アプリの物件台帳で</span></div>
       <div class="man-bk-bar">
         <input id="man-bk-q" type="search" placeholder="物件名・住所・地区で絞り込み" value="${esc(f.q)}" autocomplete="off">
         <select id="man-bk-type"><option value="">種別すべて</option>${Object.keys(types).sort((a,b)=>types[b]-types[a]).map(t => `<option value="${esc(t)}"${f.type===t?' selected':''}>${esc(t)} ${types[t]}</option>`).join('')}</select>
         <select id="man-bk-sort"><option value="">名前の順</option><option value="area"${f.sort==='area'?' selected':''}>地区の順</option><option value="new"${f.sort==='new'?' selected':''}>最近直された順</option></select>
+        <button class="btn man-mini" data-bkreload="1" title="物件台帳を今すぐ読み直す(ふだんは10分ごと)">🔄 読み直す</button>
       </div>
       <div class="man-bk-grps"><a href="#" data-grp=""${!f.grp?' class="on"':''}>すべて ${rows.length}</a>${Object.keys(grps).sort((a,b)=>grps[b]-grps[a]).map(g => `<a href="#" data-grp="${esc(g)}"${f.grp===g?' class="on"':''}>${esc(g)} ${grps[g]}</a>`).join('')}</div>
     </div>
@@ -37712,6 +37723,7 @@ async function manRenderBukkenList_(){
   main.querySelectorAll('[data-grp]').forEach(a => a.onclick = e => { e.preventDefault(); f.grp = a.dataset.grp;
     main.querySelectorAll('[data-grp]').forEach(x => x.classList.toggle('on', x === a)); draw(); });
   const hm = main.querySelector('[data-home]'); if(hm) hm.onclick = e => { e.preventDefault(); __man.mode = 'view'; __man.cur = null; manRenderHome_(); };
+  main.querySelectorAll('[data-bkreload]').forEach(x => x.onclick = () => manBkReload_(x));
   main.scrollTop = 0;
   if(window.innerWidth > 760) qi.focus({ preventScroll:true });
 }
@@ -37755,6 +37767,7 @@ function manBkDetailHtml_(b){
       ${addr ? `<div style="margin-top:6px;font-size:14px">📍 ${esc(addr)} <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}" target="_blank" rel="noopener" style="font-size:12px;margin-left:4px">🗺 地図</a></div>`
              : `<div style="margin-top:6px;font-size:12px;color:var(--muted)">📍 住所は台帳に入っていません${[v(b.city), v(b.area)].filter(Boolean).length ? '(' + esc([v(b.city), v(b.area)].filter(Boolean).join(' ')) + ')' : ''}</div>`}
       ${b.lastEditedAt ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">台帳を最後に直した人: ${esc(b.lastEditor || '')} ${esc(typeof manAgo_ === 'function' ? manAgo_(b.lastEditedAt) : '')}・直すのは見積アプリの物件台帳で</div>` : ''}
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">${__man.bk ? manBkAgo_(__man.bk.at) + 'に読んだ台帳です' : ''} <button class="btn man-mini" data-bkreload="1" title="物件台帳を今すぐ読み直す(ふだんは10分ごと)">🔄 読み直す</button></div>
     </div>
     ${v(b.notes) ? `<div class="man-box man-box-alert"><b>⚠ 注意事項</b><br>${nl(v(b.notes))}</div>` : ''}
     ${v(b.memo) ? `<div class="man-box man-box-info"><b>📝 備考</b><br>${nl(v(b.memo))}</div>` : ''}
@@ -37779,6 +37792,7 @@ async function manRenderBukken_(name){
   main.innerHTML = manBkDetailHtml_(b);
   const hm = main.querySelector('[data-home]'); if(hm) hm.onclick = e => { e.preventDefault(); __man.mode = 'view'; __man.cur = null; manRenderHome_(); };
   main.querySelectorAll('[data-bklist]').forEach(a => a.onclick = e => { e.preventDefault(); manRenderBukkenList_(); });
+  main.querySelectorAll('[data-bkreload]').forEach(x => x.onclick = () => manBkReload_(x));
   main.scrollTop = 0;
   // 写真: 署名して出す。押すと大きく(別の画面)
   const refs = [...main.querySelectorAll('[data-bkref]')].map(x => x.dataset.bkref);
