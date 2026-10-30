@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.865</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.866</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -36238,6 +36238,8 @@ window.__invAddStockFromMaterial_ = (entries)=>{
 //     manOpenRelated_({kind,title,bukken,room}) = 予定・修繕・原状回復・事務タスク・立会の画面から関連マニュアル(ボタンはカレンダー担当)。
 //   v1.30.861(山田「振り分けお願い」→ migration 098 で最上位を8ノート mf_n01〜08 に): ノートの色帯を新しいidに。
 //     098より前に開いた画面から保存して bad_folder(旧フォルダは消えた)の時は、目次を読み直してそのページの今の置き場で1回だけ保存し直す。
+//   v1.30.866(山田「お知らせも新着更新があるからいらないかな 代わりに」→ 案1): トップの📢お知らせ欄を外し「📅 今日の予定から」。
+//     自分(👤)の今日の予定・立会・修繕ごとに合うページを3つまで(端末の予定だけ読む・削除済みと他人の予定は出さない)。お知らせのページ自体は残る。
 // ====================================================================
 const MAN_BUCKET = 'manuals';
 const MAN_REF_PREFIX = 'sb:manuals/';
@@ -36660,6 +36662,11 @@ function manEnsureModal_(){
   #manualModal.man-max .man-main>*:not(.man-foot):not(.man-stick){max-width:1040px;margin-left:auto;margin-right:auto}
   #manualModal.man-max .man-cards{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
   #manualModal .man-head .btn.on{background:rgba(251,191,36,.3);border-color:#fbbf24}
+  #manualModal .man-td{padding:8px 10px;margin-bottom:8px;border-left:4px solid #0d9488}
+  #manualModal .man-td-h{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+  #manualModal .man-td-time{font-weight:700;color:#0f766e;font-variant-numeric:tabular-nums;min-width:40px}
+  #manualModal .man-td-t{font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+  #manualModal .man-td-empty{padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--muted)}
   #manualModal .man-pc-sub{font-size:11px;color:var(--muted);margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #manualModal .man-pill{padding:1px 8px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap}
   #manualModal .man-chip{font-size:11px;color:#475569;font-weight:600;background:#f1f5f9;padding:1px 7px;border-radius:6px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
@@ -36785,7 +36792,7 @@ function manEnsureModal_(){
         <span style="margin-left:auto;display:flex;gap:6px">
           <button class="btn man-mini" id="man-max" title="画面いっぱいに広げる(目次を隠して本文を広く)・もう一度で戻す">⛶</button>
           <button class="btn man-mini" id="man-font" title="文字の大きさ(小・中・大)">Aa</button>
-          <button class="btn man-mini" id="man-home" title="トップ(お知らせ・新着・よく見られている)">🏠 トップ</button>
+          <button class="btn man-mini" id="man-home" title="トップ(今日の予定から・新着・よく見られている)">🏠 トップ</button>
           <button class="btn man-mini" id="man-trash-toggle" title="ゴミ箱に入れたページを見る・戻す">🗑 ゴミ箱</button>
           <button class="btn man-mini" id="man-close">閉じる</button>
         </span>
@@ -36977,7 +36984,7 @@ async function manLoadHome_(){
       ${c.children.map(k => `${manCatChipsHtml_([k.id], ci.byId, true)}<span style="font-size:10px;color:var(--muted)">${ci.countOf(k.id)}</span>`).join(' ')}</div>`).join('');
   const popular = (h.popular||[]).map((x,i) => manPageCardHtml_({ ...x, viewers:x.viewers }, byId, { rank:i+1, compact:true })).join('');
   const mine = manRecentLoad_().map(x => { const tp = (__man.tree && (__man.tree.pages||[]).find(q => q.id === x.id)) || x; return manPageCardHtml_(tp, byId, { compact:true }); }).join('');
-  const nt = h.notice;
+  let today = ''; try{ today = manTodayHtml_(__man.tree || {}, byId, ci); }catch(e){ console.warn('[man today]', e); }   // ここで失敗してもトップは出す
   const chg = (__man.changes && (__man.changes.pages||[]).length) ? `<div class="man-sec" style="margin-top:0"><span class="gh-tag" style="background:#ef4444">🔔 前回から変わったページ</span><span class="gh-count">${__man.changes.n}件</span></div>
         <div class="man-cards" style="margin-bottom:12px">${__man.changes.pages.map(x => manPageCardHtml_(withCats(x), byId, { compact:true,
           badge: x.is_new ? '<span class="man-pill" style="background:#dcfce7;color:#15803d">🆕 新規</span>' : '<span class="man-pill" style="background:#fee2e2;color:#b91c1c">更新</span>' })).join('')}</div>` : '';
@@ -36993,12 +37000,8 @@ async function manLoadHome_(){
     </div>
     <div class="man-home">
       <div style="min-width:0">
+        ${today}
         ${chg}
-        <div class="man-hero" style="border-left-color:#f59e0b">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><b style="font-size:15px">📢 お知らせ</b>
-            ${nt?`<span class="man-chip">🕘 ${escapeHtml(manAgo_(nt.updated_at))} ${escapeHtml(nt.updated_by||'')}</span><a href="#" id="man-h-nedit" class="btn man-mini" style="margin-left:auto;text-decoration:none">✏️ 直す</a>`:''}</div>
-          <div class="man-notice markdown-body" id="man-h-notice">${nt ? manToHtml_(nt.body) : '<span style="color:var(--muted)">お知らせはまだありません</span>'}</div>
-        </div>
         <div class="man-sec"><span class="gh-tag" style="background:#2563eb">🆕 新着・更新</span><span class="gh-count">${(h.recent||[]).length}件</span></div>
         <div class="man-cards">${recent || '<span style="color:var(--muted);font-size:12px">まだありません</span>'}</div>
       </div>
@@ -37018,9 +37021,8 @@ async function manLoadHome_(){
   const q = s => main.querySelector(s);
   if(q('#man-h-tree')) q('#man-h-tree').onclick = () => manShowMain_(false);
   if(q('#man-h-stale')) q('#man-h-stale').onclick = () => manRenderStale_();
-  if(q('#man-h-nedit')) q('#man-h-nedit').onclick = e => { e.preventDefault(); manOpenPage_('mp_notice'); };
+  main.querySelectorAll('[data-today]').forEach(a => a.onclick = e => { e.preventDefault(); const c = (__man.todayCtx || [])[Number(a.dataset.today)]; if(c) manOpenRelated_(c); });
   q('#man-h-new').onclick = () => manNewFromHome_();
-  const nb = q('#man-h-notice'); if(nb) manWireBody_(nb);
 }
 // トップの「＋ 新しいページ」: フォルダを選んでから書き始める
 function manNewFromHome_(){
@@ -37120,6 +37122,74 @@ function manRelQuery_(ctx){
   if(b.length >= 2) return b.slice(0, 40);
   const t = String(ctx.title || '').replace(/[【】\[\]（）()「」]/g, ' ').replace(/[\s　]+/g, ' ').trim();
   return t.length >= 2 ? t.slice(0, 30) : '';
+}
+// ---- 🏠トップ「📅 今日の予定から」(v866): 自分の今日の予定・立会・修繕 → 合うページ ----
+//   読むのは端末に今ある予定だけ(待たない・アーカイブは読まない)。削除の印があるもの・他の人の予定は出さない
+function manTodayItems_(){
+  const me = (typeof getMyself === 'function') ? getMyself() : '';
+  if(!me) return { me:'', items:[] };
+  const d = (typeof todayISO === 'function') ? todayISO() : '';
+  const norm = x => (typeof normalizeStaffName === 'function') ? normalizeStaffName(x) : String(x||'').replace(/[\s　]/g, '');
+  const meN = norm(me);
+  const isMe = list => list.some(x => x === me || norm(x) === meN);
+  const split = x => (typeof parseWorkers_ === 'function') ? parseWorkers_(x||'') : String(x||'').split(/[,、\/／]/).map(y => y.trim()).filter(Boolean);
+  const dead = x => !x || x.is_deleted || x.deleted || x._deleted;
+  const hm = t => { const m = /^(\d{1,2}):(\d{2})/.exec(String(t||'')); return m ? m[1].padStart(2,'0') + ':' + m[2] : ''; };
+  const items = [];
+  let evs = [], tks = [], rps = [];
+  try{ evs = (typeof state !== 'undefined' && state.events) || []; }catch(_){}
+  try{ if(typeof buildTaikyoVirtuals_ === 'function') tks = buildTaikyoVirtuals_() || []; }catch(_){}
+  try{ rps = (typeof state !== 'undefined' && state.repairs) || []; }catch(_){}
+  evs.concat(tks).forEach(ev => {
+    if(dead(ev) || ev.date !== d) return;
+    try{ if(typeof isCompletedJizenEvent_ === 'function' && isCompletedJizenEvent_(ev)) return;
+      if(typeof isAutoJizenEvent_ === 'function' && isAutoJizenEvent_(ev)) return; }catch(_){}
+    if(!isMe(split(ev.staff).concat(Array.isArray(ev.participants) ? ev.participants : []))) return;
+    const cat = String(ev.category || '');
+    const kind = (/^立会/.test(cat) || String(ev.id||'').indexOf('_taikyo_') === 0) ? 'taikyo' : (cat === '事務' ? 'task' : cat);
+    items.push({ key:'e:'+ev.id, time: (ev.allday || ev.timeMode === 'anytime') ? '' : hm(ev.start), label: cat || '予定', title: ev.title || '',
+      ctx:{ kind, title: ev.title || '', bukken: ev._bukken || '', room: ev._room || '' } });
+  });
+  rps.forEach(r => {
+    if(dead(r) || r.responseDate !== d) return;
+    const people = split(r.worker); if(r.contactPerson) people.push(String(r.contactPerson).trim());
+    if(!isMe(people)) return;
+    items.push({ key:'r:'+r.id, time: hm(r.responseTime), label:'修繕', title: [r.name, r.room].filter(Boolean).join(' '),
+      ctx:{ kind:'repair', bukken: r.name || '', room: r.room || '', title: r.requestDesc || '' } });
+  });
+  items.sort((a,b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
+  return { me, items };
+}
+// 予定1つに合うページ(サーバーに聞かない): 物件名が題名にあるページ(号室も合うものを先)→ 種類のカテゴリの新しい順
+function manTodayPages_(ctx, tree, ci, n){
+  const ps = ((tree && tree.pages) || []).filter(p => !p.is_deleted && p.id !== 'mp_notice');
+  const out = [], seen = new Set();
+  const add = p => { if(p && !p.is_deleted && p.id !== 'mp_notice' && !seen.has(p.id) && out.length < n){ seen.add(p.id); out.push(p); } };
+  const sq = x => String(x||'').replace(/[\s　]+/g, '');
+  const b = sq(ctx.bukken), room = String(ctx.room || '').trim();
+  if(b.length >= 2){
+    const hit = ps.filter(p => sq(p.title).includes(b));
+    const rm = p => (room && String(p.title||'').includes(room)) ? 1 : 0;
+    hit.sort((x,y) => rm(y) - rm(x)).forEach(add);
+  }
+  manRelCats_(ctx.kind, ci).forEach(c => ci.pagesOf(c.id).slice().sort((x,y) => String(y.updated_at||'').localeCompare(String(x.updated_at||''))).forEach(add));
+  return out;
+}
+function manTodayHtml_(tree, byId, ci){
+  const t = manTodayItems_(), esc = escapeHtml;
+  const head = `<div class="man-sec" style="margin-top:0"><span class="gh-tag" style="background:#0d9488">📅 今日の予定から</span>${t.items.length ? `<span class="gh-count">${t.items.length}件</span>` : ''}</div>`;
+  __man.todayCtx = [];
+  if(!t.me) return head + '<div class="man-card man-td-empty">カレンダーの 👤 で自分を選ぶと、今日の予定に合うマニュアルがここに出ます</div>';
+  if(!t.items.length) return head + `<div class="man-card man-td-empty">今日の ${esc(t.me)} さんの予定はありません</div>`;
+  const shown = t.items.slice(0, 6);
+  __man.todayCtx = shown.map(x => x.ctx);
+  return head + `<div class="man-today">${shown.map((x, k) => { const ps = manTodayPages_(x.ctx, tree, ci, 3);
+    return `<div class="man-card man-td">
+        <div class="man-td-h"><span class="man-td-time">${esc(x.time || '—')}</span><span class="man-chip">${esc(x.label)}</span><b class="man-td-t">${esc(String(x.title).slice(0, 40))}</b>
+          <a href="#" class="btn man-mini" data-today="${k}" style="margin-left:auto;text-decoration:none">📖 関連をすべて ›</a></div>
+        ${ps.length ? `<div class="man-cards one">${ps.map(p => manPageCardHtml_(p, byId, { compact:true })).join('')}</div>`
+          : '<div style="font-size:12px;color:var(--muted)">結びついたページはまだありません。「関連をすべて」で題名からもさがせます</div>'}
+      </div>`; }).join('')}${t.items.length > 6 ? `<div style="font-size:12px;color:var(--muted);margin:2px 0 8px">ほか ${t.items.length - 6}件(カレンダーで予定を開き📖からどうぞ)</div>` : ''}</div>`;
 }
 async function manOpenRelated_(ctx){
   ctx = ctx || {};
