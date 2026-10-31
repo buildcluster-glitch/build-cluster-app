@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.891</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.892</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -11170,6 +11170,12 @@ function ensureAlcModal_(){
   bk.querySelector('#alc-cars').onclick=alcEditCars_;
   return bk;
 }
+// 🔒 v1.30.892(山田10/31決定・クラ助経由): 他人の写真・体調・酒気・メモは山田・まどかだけが見る。
+//   役割(jimu)では絞れない(佳織さんも jimu)ので、ログイン中のアカウントで判定。未ログインは見せない側。
+const ALC_FULL_VIEW_EMAILS = ['yamada@build-cluster.co.jp','madoka@build-cluster.co.jp'];
+function alcCanSeeAll_(){
+  try{ const s=(typeof sbSession_==='function')?sbSession_():null; const em=String((s&&s.email)||'').trim().toLowerCase(); return !!em && ALC_FULL_VIEW_EMAILS.includes(em); }catch(_){ return false; }
+}
 function alcRenderModal_(){
   const bk=document.getElementById('alcModal'); if(!bk) return;
   // 📅 開始前は「いつから始まるか」を出す(練習で押すのはOK)
@@ -11318,9 +11324,14 @@ function alcRenderModal_(){
   // 今日の一覧
   const list=bk.querySelector('#alc-list');
   const map=alcLoad_(alcMonthKey_());
+  const __alcAll=alcCanSeeAll_(); const __alcMe=(typeof getMyself==='function')?getMyself():'';
+  const __alcHm=e=>(d=>isNaN(d)?'':`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`)(new Date(e.at));
+  const csvBtn=bk.querySelector('#alc-csv'); if(csvBtn) csvBtn.style.display=__alcAll?'':'none';
   const rows=ALC_DRIVERS.map(st=>{
     const am=map[alcId_(today,st,'am')], pm=map[alcId_(today,st,'pm')];
-    const cell=e=>e?`${e.result==='detected'?'<span style="color:#b91c1c;font-weight:800" title="酒気あり(検知器で数値)">⚠':e.health==='bad'?'<span style="color:#c2410c;font-weight:800" title="体調不良">🤒':(e.detectedAt?'<span style="color:#166534;font-weight:700" title="一度「数値あり」が記録され、その後に訂正されています">✅<span style="color:#b91c1c">⚠訂正</span>':'<span style="color:#166534;font-weight:700">✅')}${(d=>isNaN(d)?'':`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`)(new Date(e.at))}</span>${e.memo?` <span title="${escapeHtml(e.memo)}">📝</span>`:''}${e.photo===ALC_PHOTO_PENDING?' <span title="写真は撮影済み・送信待ち(自動で送ります)" style="color:#b45309">📷⏳</span>':(e.photo && !/^(sb:|https?:)/.test(e.photo))?` <span title="クラ助で受けた写真(Dropbox): ${escapeHtml(e.photo)}" style="color:#475569">📷<span style="font-size:9px">Dropbox</span></span>`:e.photo?` <a href="${escapeHtml(e.photo)}" target="_blank" title="検知器の写真を開く" style="text-decoration:none">📷</a>`:''}`:'<span style="color:#94a3b8">—</span>';
+    // 🔒 他人の行(山田・まどか以外が見るとき)=済んだかと時刻だけ。✅は出さない(🤒を「OK」と見せない)
+    const masked=e=>e?`<span style="color:#475569;font-weight:700" title="記録済み(内容は山田さん・まどかさんだけが見られます)">●済 ${__alcHm(e)}</span>`:'<span style="color:#94a3b8">—</span>';
+    const cell=(!__alcAll && st!==__alcMe) ? masked : e=>e?`${e.result==='detected'?'<span style="color:#b91c1c;font-weight:800" title="酒気あり(検知器で数値)">⚠':e.health==='bad'?'<span style="color:#c2410c;font-weight:800" title="体調不良">🤒':(e.detectedAt?'<span style="color:#166534;font-weight:700" title="一度「数値あり」が記録され、その後に訂正されています">✅<span style="color:#b91c1c">⚠訂正</span>':'<span style="color:#166534;font-weight:700">✅')}${(d=>isNaN(d)?'':`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`)(new Date(e.at))}</span>${e.memo?` <span title="${escapeHtml(e.memo)}">📝</span>`:''}${e.photo===ALC_PHOTO_PENDING?' <span title="写真は撮影済み・送信待ち(自動で送ります)" style="color:#b45309">📷⏳</span>':(e.photo && !/^(sb:|https?:)/.test(e.photo))?` <span title="クラ助で受けた写真(Dropbox): ${escapeHtml(e.photo)}" style="color:#475569">📷<span style="font-size:9px">Dropbox</span></span>`:e.photo?` <a href="${escapeHtml(e.photo)}" target="_blank" title="検知器の写真を開く" style="text-decoration:none">📷</a>`:''}`:'<span style="color:#94a3b8">—</span>';
     const need=alcNeedsCheck_(st);
     return `<div style="display:flex;gap:8px;align-items:center;padding:4px 6px;border-bottom:1px solid var(--border);font-size:12px">
       <span style="min-width:5.5em;font-weight:600">${need?'🚗?':''}${escapeHtml(st)}</span>
@@ -11337,6 +11348,7 @@ function openAlcModal_(){
   alcFetch_({silent:true}).then(()=>alcRenderModal_()).catch(()=>{});
 }
 function alcExportCsv_(){
+  if(!alcCanSeeAll_()){ alert('月次CSVは山田さん・まどかさんだけが出せます(写真・体調の列があるため)'); return; }
   const now=new Date();
   const ym=prompt('CSVを出す月(YYYY-MM):', `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`);
   if(!ym||!/^\d{4}-\d{2}$/.test(ym.trim())) return;
