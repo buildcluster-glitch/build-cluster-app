@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.889</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.890</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -37993,7 +37993,7 @@ async function manViewWho_(pid){
   if(c && Date.now() - c.at < MAN_RWHO_TTL) return c.p;
   const md = d => { const m = /^\d{4}-(\d{2})-(\d{2})/.exec(d || ''); return m ? (+m[1]) + '/' + (+m[2]) : ''; };
   const pr = manRpc_('manual_page_views', { p_page_id: pid }).then(r => ((r && r.people) || [])
-    .map(x => `${x.name} ${x.n}回${x.last ? '(' + md(x.last) + ')' : ''}`).join('\n'));
+    .map(x => `${x.name}${x.last ? '(' + md(x.last) + ')' : ''}`).join('\n'));
   __man.vwho.set(pid, { at: Date.now(), p: pr });
   pr.catch(() => __man.vwho.delete(pid));
   return pr;
@@ -38217,7 +38217,7 @@ async function manLoadPageViews_(pageId){
   let r; try{ r = await manRpc_('manual_page_views', { p_page_id: pageId }); }catch(_){ return; }
   const el = document.getElementById('man-pv'); if(!el || !__man.cur || __man.cur.id !== pageId || !r || !r.views) return;
   const md = d => { const m = /^\d{4}-(\d{2})-(\d{2})/.exec(d || ''); return m ? (+m[1]) + '/' + (+m[2]) : ''; };
-  const lines = (r.people || []).map(x => `${x.name} ${x.n}回${x.last ? '(' + md(x.last) + ')' : ''}`);
+  const lines = (r.people || []).map(x => `${x.name}${x.last ? '(' + md(x.last) + ')' : ''}`);
   el.textContent = `👀 閲覧 ${r.views}回・${r.viewers}人`;
   el.title = lines.join('\n');
   el.style.display = '';
