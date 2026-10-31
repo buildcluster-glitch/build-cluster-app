@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.885</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.886</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -37064,6 +37064,8 @@ function manEnsureModal_(){
   #manualModal .man-fab svg{position:absolute;inset:0;transform:rotate(-90deg)}
   #manualModal .man-fab .lb{max-width:0;overflow:hidden;white-space:nowrap;font-size:13px;font-weight:700;transition:max-width .25s,padding .25s}
   #manualModal .man-fab:hover .lb,#manualModal .man-fab:focus-visible .lb{max-width:140px;padding-right:16px}
+  #manualModal .man-fab-home{right:78px;width:48px;justify-content:center;font-size:20px}
+  #manualModal .man-fab-home.show + .man-fab .lb{max-width:0 !important;padding-right:0 !important}
   #manualModal .man-foot{margin:34px -18px -40px;background:#0f172a;color:#cbd5e1;font-size:12px}
   #manualModal .man-foot .cols{display:grid;grid-template-columns:minmax(0,1.3fr) repeat(3,minmax(0,1fr));gap:18px;padding:22px 24px 16px}
   #manualModal .man-foot h4{margin:0 0 8px;font-size:11px;letter-spacing:.14em;color:#94a3b8;font-weight:800}
@@ -37136,6 +37138,7 @@ function manEnsureModal_(){
     #manualModal .man-foot .bar{padding:10px 16px}
     #manualModal .man-wrap:not(.show-main) .man-fab{display:none}
     #manualModal .man-fab{right:14px;bottom:calc(14px + env(safe-area-inset-bottom))}
+    #manualModal .man-fab-home{right:72px}
     #manualModal .man-brand small{display:none}
     #manualModal #man-max{display:none}
     #manualModal .man-pc-th{width:72px;height:56px}
@@ -37179,6 +37182,7 @@ function manEnsureModal_(){
           <div class="man-list" id="man-list"></div>
         </div>
         <div class="man-main" id="man-main"></div>
+        <button class="man-fab man-fab-home" id="man-fab-home" title="トップへ" aria-label="トップへ">🏠</button>
         <button class="man-fab" id="man-fab" title="ページの先頭へ" aria-label="ページの先頭へ"><span class="ring"><svg viewBox="0 0 48 48" width="48" height="48"><circle cx="24" cy="24" r="21" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="3"/><circle id="man-fab-arc" cx="24" cy="24" r="21" fill="none" stroke="#fbbf24" stroke-width="3" stroke-linecap="round" stroke-dasharray="131.95" stroke-dashoffset="131.95"/></svg>⬆</span><span class="lb">ページの先頭へ</span></button>
       </div>
     </div>`;
@@ -37190,6 +37194,7 @@ function manEnsureModal_(){
   manApplyMax_();
   ov.querySelector('#man-brand').onclick = e => { e.preventDefault(); ov.querySelector('#man-home').click(); };
   ov.querySelector('#man-fab').onclick = () => manScrollTop_();
+  ov.querySelector('#man-fab-home').onclick = () => ov.querySelector('#man-home').click();   // 🏠 上の帯のトップと同じ(v886)
   ov.querySelector('#man-main').addEventListener('scroll', manOnScroll_, { passive:true });
   ov.querySelector('#man-trash-toggle').onclick = () => { __man.trash = !__man.trash; __man.q=''; ov.querySelector('#man-q').value=''; __man.results=null; manLoadTree_(); };
   ov.querySelector('#man-back-nav').onclick = () => manNavGo_(-1);
@@ -37904,6 +37909,8 @@ function manNavButtons_(){
   const b = document.getElementById('man-back-nav'), f = document.getElementById('man-fwd-nav');
   if(b) b.disabled = !(__man.nav.i > 0);
   if(f) f.disabled = !(__man.nav.i < __man.nav.stack.length - 1);
+  const h = document.getElementById('man-fab-home'), st = __man.nav.stack[__man.nav.i];
+  if(h) h.classList.toggle('show', !!st && st.t !== 'home');   // 🏠 はトップ以外で(v886)
 }
 async function manNavGo_(d){
   const n = __man.nav, j = n.i + d;
