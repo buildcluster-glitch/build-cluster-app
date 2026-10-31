@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.884</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.885</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -36495,7 +36495,7 @@ function manPageCardHtml_(p, byId, opt){
     if(manIsStale_(tp)) pills.push('<span class="man-pill" style="background:#fef3c7;color:#b45309" title="1年以上 更新も見直しもされていません">⚠ 見直し</span>');
     else if(manIsThin_(tp)) pills.push('<span class="man-pill" style="background:#f1f5f9;color:#475569" title="本文が短いページです">✍ 説明が少ない</span>'); }
   if(p.att_n) pills.push(`<span class="man-chip">📎 ${p.att_n}</span>`);
-  if(p.reacts) pills.push(`<span class="man-chip">👍 ${p.reacts}</span>`);
+  if(p.reacts) pills.push(`<span class="man-chip" data-rpid="${esc(p.id)}" title="リアクション ${p.reacts}">👍 ${p.reacts}</span>`);
   if(p.viewers) pills.push(`<span class="man-chip">👀 ${p.viewers}人</span>`);
   if(opt.meta) pills.push(`<span class="man-chip">${opt.meta}</span>`);
   const catChips = opt.catById ? manCatChipsHtml_(p.cats, opt.catById, true) : '';
@@ -37960,6 +37960,21 @@ function manWireCards_(root){
   root.querySelectorAll('.man-pc[data-fopen],a[data-fopen]').forEach(el => el.onclick = e => { e.preventDefault(); manRenderFolder_(el.dataset.fopen); });
   root.querySelectorAll('[data-copen]').forEach(el => el.onclick = e => { e.preventDefault(); e.stopPropagation(); manRenderCategory_(el.dataset.copen); });
   manLoadThumbs_(root);
+  manLoadReactWho_(root);
+}
+// 👍 を押した人(v885): 「👍 山田・佳織 ／ 🙏 安齋」を title に。読めなければ件数のまま
+const MAN_RWHO_TTL = 2 * 60 * 1000;
+async function manReactWho_(pid){
+  const c = (__man.rwho || (__man.rwho = new Map())).get(pid);
+  if(c && Date.now() - c.at < MAN_RWHO_TTL) return c.p;
+  const pr = manRpc_('manual_reactions', { p_page_id: pid }).then(list => (Array.isArray(list) ? list : [])
+    .filter(x => x && x.n).map(x => `${x.emoji} ${(x.names || []).filter(Boolean).join('・')}`).join(' ／ '));
+  __man.rwho.set(pid, { at: Date.now(), p: pr });
+  pr.catch(() => __man.rwho.delete(pid));
+  return pr;
+}
+function manLoadReactWho_(root){
+  root.querySelectorAll('[data-rpid]').forEach(el => manReactWho_(el.dataset.rpid).then(t => { if(t) el.title = t; }).catch(() => {}));
 }
 async function manCatSave_(id, base, parent, name, color){
   let r; try{ r = await manRpc_('manual_save_category', { p_operation_id: manOpId_(), p_id: id, p_base_version: base, p_parent_id: parent, p_name: name, p_color: color, p_editor: manEditor_() }); }
