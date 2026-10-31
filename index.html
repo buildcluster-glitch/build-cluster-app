@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.892</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.893</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -11159,6 +11159,7 @@ function ensureAlcModal_(){
     <div style="margin-top:14px;display:flex;align-items:center;gap:8px">
       <b style="font-size:13px">📋 今日のみんなの記録</b>
       <button id="alc-csv" class="btn" style="margin-left:auto;font-size:11px;padding:3px 10px" title="月次の記録をCSVで保存(点検・提出用)">📥 月次CSV</button>
+      <button id="alc-pdf" class="btn" style="font-size:11px;padding:3px 10px;display:none" title="クラ助が毎月作る記録のPDF(表・写真つき)を開く(山田さん・まどかさんだけ)">📄 月次PDF</button>
       <button id="alc-cars" class="btn" style="font-size:11px;padding:3px 10px" title="いつも乗る車を割り当て(登録番号つき・山田さん向け)">🚙車両</button>
     </div>
     <div id="alc-list" style="margin-top:6px"></div>
@@ -11167,6 +11168,7 @@ function ensureAlcModal_(){
   bk.onclick=e=>{ if(e.target===bk) bk.classList.remove('show'); };
   bk.querySelector('#alc-close').onclick=()=>bk.classList.remove('show');
   bk.querySelector('#alc-csv').onclick=alcExportCsv_;
+  bk.querySelector('#alc-pdf').onclick=alcOpenPdfList_;
   bk.querySelector('#alc-cars').onclick=alcEditCars_;
   return bk;
 }
@@ -11327,6 +11329,7 @@ function alcRenderModal_(){
   const __alcAll=alcCanSeeAll_(); const __alcMe=(typeof getMyself==='function')?getMyself():'';
   const __alcHm=e=>(d=>isNaN(d)?'':`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`)(new Date(e.at));
   const csvBtn=bk.querySelector('#alc-csv'); if(csvBtn) csvBtn.style.display=__alcAll?'':'none';
+  const pdfBtn=bk.querySelector('#alc-pdf'); if(pdfBtn) pdfBtn.style.display=__alcAll?'':'none';
   const rows=ALC_DRIVERS.map(st=>{
     const am=map[alcId_(today,st,'am')], pm=map[alcId_(today,st,'pm')];
     // 🔒 他人の行(山田・まどか以外が見るとき)=済んだかと時刻だけ。✅は出さない(🤒を「OK」と見せない)
@@ -11379,6 +11382,62 @@ function alcExportCsv_(){
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`アルコールチェック記録_${ym.trim()}.csv`; a.click();
     setTimeout(()=>URL.revokeObjectURL(a.href), 3000);
   })();
+}
+// 📄 v1.30.893(山田10/31・クラ助経由): クラ助が作る月次PDFを台帳DBの非公開バケット records から開く。
+//   置き場 alcohol/<YYYY>/<YYYY-MM>_table.pdf(表)・<YYYY-MM>_photos.pdf(写真つき)。読めるのは山田・まどか・クラ助だけ(バケット側の権限)。
+const ALC_PDF_BUCKET = 'records';
+async function alcSbStorage_(path, body){
+  let sess=sbSession_(); if(!sess||!sess.access_token) throw new Error('ログインしていません');
+  for(let k=0;k<2;k++){
+    const res=await fetch(`${SB_AUTH.url}/storage/v1/${path}`,{method:'POST',headers:{apikey:SB_AUTH.key,Authorization:'Bearer '+sess.access_token,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if((res.status===401||res.status===403) && k===0){ try{ await sbRefresh_(); }catch(_){} sess=sbSession_()||sess; continue; }
+    if(!res.ok){ const t=await res.text().catch(()=> ''); const e=new Error('HTTP '+res.status+' '+t.slice(0,120)); e.status=res.status; throw e; }
+    return await res.json();
+  }
+}
+async function alcListPdfs_(){
+  const y=new Date().getFullYear(); const out={};   // { 'YYYY-MM': {table:path, photos:path} }
+  for(const yy of [y, y-1]){
+    let items=[];
+    try{ items=await alcSbStorage_(`object/list/${ALC_PDF_BUCKET}`,{prefix:`alcohol/${yy}/`,limit:200,sortBy:{column:'name',order:'desc'}}); }
+    catch(e){ if(e.status===400||e.status===404) continue; throw e; }   // 年のフォルダが無い/バケット未作成
+    (Array.isArray(items)?items:[]).forEach(it=>{
+      const m=/^(\d{4}-\d{2})_(table|photos)\.pdf$/.exec(String(it&&it.name||'')); if(!m) return;
+      (out[m[1]]=out[m[1]]||{})[m[2]]=`alcohol/${yy}/${it.name}`;
+    });
+  }
+  return out;
+}
+async function alcOpenPdf_(path){
+  const w=window.open('about:blank','_blank');   // 先に窓を開く(待ったあとの window.open はスマホで止められる)
+  try{
+    const j=await alcSbStorage_(`object/sign/${ALC_PDF_BUCKET}/${path.split('/').map(encodeURIComponent).join('/')}`,{expiresIn:600});
+    const u=j&&(j.signedURL||j.signedUrl); if(!u) throw new Error('URLを作れませんでした');
+    const url=/^https?:/.test(u)?u:(SB_AUTH.url+'/storage/v1'+u);
+    if(w) w.location.href=url; else location.href=url;
+  }catch(e){ try{ if(w) w.close(); }catch(_){} alert('PDFを開けませんでした: '+e.message); }
+}
+function alcOpenPdfList_(){
+  if(!alcCanSeeAll_()){ alert('月次PDFは山田さん・まどかさんだけが開けます'); return; }
+  let ov=document.getElementById('alcPdfModal'); if(ov) ov.remove();
+  ov=document.createElement('div'); ov.className='modal-overlay show'; ov.id='alcPdfModal'; ov.style.zIndex='800';
+  ov.innerHTML=`<div class="modal" style="max-width:420px;width:94vw;max-height:80vh;overflow:auto;padding:14px 16px">
+    <div style="display:flex;align-items:center;gap:8px"><b style="font-size:14px">📄 アルコールチェック 月次PDF</b><button class="btn" id="alc-pdf-close" style="margin-left:auto;font-size:12px;padding:4px 12px">閉じる</button></div>
+    <div style="font-size:11px;color:var(--muted);margin-top:4px">クラ助が毎月はじめに前の月の分を作ります。開けるのは山田さん・まどかさんだけです。</div>
+    <div id="alc-pdf-list" style="margin-top:10px;font-size:12px;color:var(--muted)">読み込み中…</div></div>`;
+  document.body.appendChild(ov);
+  ov.onclick=e=>{ if(e.target===ov) ov.remove(); };
+  ov.querySelector('#alc-pdf-close').onclick=()=>ov.remove();
+  const host=ov.querySelector('#alc-pdf-list');
+  alcListPdfs_().then(map=>{
+    const months=Object.keys(map).sort().reverse();
+    if(!months.length){ host.textContent='まだPDFはありません(置き場ができて、クラ助が作るとここに出ます)'; return; }
+    host.innerHTML=months.map(mk=>{ const r=map[mk]; const [yy,mm]=mk.split('-');
+      return `<div style="display:flex;align-items:center;gap:6px;padding:5px 2px;border-bottom:1px solid var(--border)"><span style="min-width:6.5em;font-weight:600;color:var(--text)">${yy}年${parseInt(mm,10)}月</span>
+        ${r.table?`<button class="btn" data-alc-pdf="${escapeHtml(r.table)}" style="font-size:11px;padding:3px 10px">📋 表</button>`:''}
+        ${r.photos?`<button class="btn" data-alc-pdf="${escapeHtml(r.photos)}" style="font-size:11px;padding:3px 10px">📷 写真つき</button>`:''}</div>`; }).join('');
+    host.querySelectorAll('[data-alc-pdf]').forEach(b=>{ b.onclick=()=>alcOpenPdf_(b.dataset.alcPdf); });
+  }).catch(e=>{ host.textContent='一覧を読めませんでした: '+e.message; });
 }
 function alcEditCars_(){
   // 🚙 v1.30.608: 手入力プロンプト→**プルダウン割当**に。車両マスタ(保険証券由来)から選ぶだけ。
