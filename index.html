@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.887</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.888</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -36496,7 +36496,9 @@ function manPageCardHtml_(p, byId, opt){
     else if(manIsThin_(tp)) pills.push('<span class="man-pill" style="background:#f1f5f9;color:#475569" title="本文が短いページです">✍ 説明が少ない</span>'); }
   if(p.att_n) pills.push(`<span class="man-chip">📎 ${p.att_n}</span>`);
   if(p.reacts) pills.push(`<span class="man-chip" data-rpid="${esc(p.id)}" title="リアクション ${p.reacts}">👍 ${p.reacts}</span>`);
-  if(p.viewers) pills.push(`<span class="man-chip">👀 ${p.viewers}人</span>`);
+  const vs = __man.vsum && __man.vsum.map && __man.vsum.map[p.id];   // 👀 閲覧の回数・人数(v888・migration 100)
+  if(vs) pills.push(`<span class="man-chip" data-vpid="${esc(p.id)}" title="閲覧 ${vs[0]}回・${vs[1]}人">👀 ${vs[0]}回・${vs[1]}人</span>`);
+  else if(p.viewers) pills.push(`<span class="man-chip">👀 ${p.viewers}人</span>`);
   if(opt.meta) pills.push(`<span class="man-chip">${opt.meta}</span>`);
   const catChips = opt.catById ? manCatChipsHtml_(p.cats, opt.catById, true) : '';
   const thumb = manThumbOf_(p);
@@ -37369,7 +37371,7 @@ async function manLoadHome_(){
   manNavRecord_('home', '');
   main.innerHTML = '<div style="padding:30px;color:var(--muted)">トップを読み込み中…</div>';
   let h;
-  try{ [h] = await Promise.all([manRpc_('manual_home', { p_limit: 30 }), manLoadLibs_().catch(()=>{})]); }
+  try{ [h] = await Promise.all([manRpc_('manual_home', { p_limit: 30 }), manLoadLibs_().catch(()=>{}), manLoadVsum_().catch(()=>{})]); }
   catch(e){ manRenderHomeOld_(); return; }
   if(__man.cur || ['edit','folder','cat','stale','rel','bk'].includes(__man.mode)) return;   // 読み込み中に別のページ・フォルダ・カテゴリなどを開いた
   const ACT = { import:['NotePMから','#e0e7ff','#3730a3'], create:['🆕 新規','#dcfce7','#15803d'], edit:['更新','#fef3c7','#b45309'], restore:['復元','#fce7f3','#9d174d'] };
@@ -37968,6 +37970,25 @@ function manWireCards_(root){
   root.querySelectorAll('[data-copen]').forEach(el => el.onclick = e => { e.preventDefault(); e.stopPropagation(); manRenderCategory_(el.dataset.copen); });
   manLoadThumbs_(root);
   manLoadReactWho_(root);
+  root.querySelectorAll('[data-vpid]').forEach(el => el.onmouseenter = () => manViewWho_(el.dataset.vpid).then(t => { if(t) el.title = t; }).catch(() => {}));
+}
+// 👀 閲覧のまとめ(v888): {map:{page_id:[回数,人数]}, at}。2分は使い回す
+async function manLoadVsum_(){
+  const c = __man.vsum; if(c && Date.now() - c.at < MAN_RWHO_TTL) return c;
+  const map = await manRpc_('manual_views_summary', {});
+  __man.vsum = { map: (map && typeof map === 'object') ? map : {}, at: Date.now() };
+  return __man.vsum;
+}
+// 👀 に乗せた時の名前(099): 「山田 裕貴 14回(10/31)」の並び
+async function manViewWho_(pid){
+  const c = (__man.vwho || (__man.vwho = new Map())).get(pid);
+  if(c && Date.now() - c.at < MAN_RWHO_TTL) return c.p;
+  const md = d => { const m = /^\d{4}-(\d{2})-(\d{2})/.exec(d || ''); return m ? (+m[1]) + '/' + (+m[2]) : ''; };
+  const pr = manRpc_('manual_page_views', { p_page_id: pid }).then(r => ((r && r.people) || [])
+    .map(x => `${x.name} ${x.n}回${x.last ? '(' + md(x.last) + ')' : ''}`).join('\n'));
+  __man.vwho.set(pid, { at: Date.now(), p: pr });
+  pr.catch(() => __man.vwho.delete(pid));
+  return pr;
 }
 // 👍 を押した人(v885): 「👍 山田・佳織 ／ 🙏 安齋」を title に。読めなければ件数のまま
 const MAN_RWHO_TTL = 2 * 60 * 1000;
