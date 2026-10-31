@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.888</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.889</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -37835,12 +37835,20 @@ async function manRenderBukken_(name){
       try{ await manBkSign_([r]); const u = manSigned_(r); if(w && u) w.location.href = u; else if(w) w.close(); }catch(_){ if(w) w.close(); } }); }
   // 関連マニュアル: 題名・本文に物件名が出てくるページ
   const host = main.querySelector('#man-bk-rel');
-  let hits = []; try{ hits = await manRpc_('manual_search2', { p_q: b.name, p_folder_id: null, p_user: null, p_since: null, p_sort: null }) || []; }catch(_){ hits = []; }
+  const srch = q => manRpc_('manual_search2', { p_q: q, p_folder_id: null, p_user: null, p_since: null, p_sort: null }).then(r => r || []).catch(() => []);
+  const base = manBkBaseName_(b.name);   // 棟の名前を外した建物名でも(v889)
+  const [h1, h2] = await Promise.all([srch(b.name), base ? srch(base) : Promise.resolve([])]);
+  const seen = new Set(h1.map(x => x.id)); const hits = h1.concat(h2.filter(x => !seen.has(x.id)));
   if(__man.mode !== 'bk' || __man.bkCur !== String(name || '') || !host.isConnected) return;
   const byId = manBuildTree_(__man.tree || { folders:[], pages:[] }).byId, ci = manCatIndex_(__man.tree || {});
   host.innerHTML = `<div class="man-sec"><span class="gh-tag" style="background:#2563eb">📖 この物件が出てくるマニュアル</span><span class="gh-count">${hits.length}件</span></div>
     <div class="man-cards">${hits.slice(0, 12).map(p => manPageCardHtml_(manTreePage_(p).id ? { ...manTreePage_(p), ...p } : p, byId, { catById: ci.byId })).join('') || '<span style="color:var(--muted);font-size:12px">まだありません</span>'}</div>`;
   manWireCards_(host);
+}
+// 「ディークレスト太子堂駅前 East」→「ディークレスト太子堂駅前」(v889)。外せない・短くなりすぎる(4文字未満)なら ''
+function manBkBaseName_(name){
+  const m = /^(.*?\S)[\s　]+(east|west|north|south|[a-zａ-ｚ]|[0-9０-９]+|[Ⅰ-Ⅹ]+|i{1,3}|iv|[^\s　]{1,4}棟|[^\s　]{1,4}号館)$/i.exec(String(name || '').trim());
+  return m && manBkNorm_(m[1]).length >= 4 ? m[1] : '';
 }
 // 上の検索欄: 物件名・住所に当たる物件を結果の上に(最大5件)。台帳がまだ無ければ読んでから出し直す
 function manBkSearchInto_(host, q){
