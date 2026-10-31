@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.883</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.884</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -9926,15 +9926,23 @@ function mergeTcMaps_(a, b){
   });
   return out;
 }
-// 共有map(staff→taskKey→[]) を state.events(事務).taskComments に反映
+// 💬 コメントを共有mapで持つ予定 = 事務の予定、または担当者付きのタスクの箱(種類が空欄でも)。
+//   ⚠ v1.30.884(山田「コメントが消えてる」再報告): 山田のタスクの箱は10月中旬から種類が空欄(事務でない)。
+//      書き込みは担当者があれば共有mapへ行くのに、画面への反映が事務だけ→同期のたびに消えて戻らなかった。
+function isTcTarget_(e){
+  if(!e || !e.staff) return false;
+  if(e.category==='事務') return true;
+  return String(e.title||'').indexOf('\n')>=0 && typeof getTaskInfo_==='function' && !!getTaskInfo_(e);
+}
+// 共有map(staff→taskKey→[]) を state.events(事務・タスクの箱).taskComments に反映
 function applyJimuTaskCommentsToState_(){
   const m=loadJimuTcMap_();
   const migrated=!!localStorage.getItem(JIMU_TC_MIGRATED_KEY);
   (state.events||[]).forEach(e=>{
-    if(e && e.category==='事務' && e.staff){
+    if(isTcTarget_(e)){
       const byKey=m[e.staff];
       if(byKey && typeof byKey==='object') e.taskComments = tcByKeyCopy_(byKey);
-      else if(migrated) e.taskComments = {};   // 移行後は空=本当に無し。未移行ならローカルを温存
+      else if(migrated && e.category==='事務') e.taskComments = {};   // 移行後は空=本当に無し。未移行・事務以外はローカルを温存
     }
   });
 }
@@ -9942,7 +9950,7 @@ function applyJimuTaskCommentsToState_(){
 function captureLocalJimuTaskComments_(){
   const map=loadJimuTcMap_(); let changed=false;
   (state.events||[]).forEach(e=>{
-    if(e && e.category==='事務' && e.staff && e.taskComments && typeof e.taskComments==='object'){
+    if(isTcTarget_(e) && e.taskComments && typeof e.taskComments==='object'){
       const cur=(map[e.staff]&&typeof map[e.staff]==='object')?map[e.staff]:{};
       Object.keys(e.taskComments).forEach(k=>{
         const src=Array.isArray(e.taskComments[k])?e.taskComments[k]:[]; if(!src.length) return;
@@ -14731,7 +14739,7 @@ function showTaskChecklistPopup(el, ev, opts){
   if(cur && cur.category==='事務' && typeof fetchJimuMessages_==='function') fetchJimuMessages_({silent:true}).catch(()=>{});
   // 💬 v1.30.883: 取れたら開いている一覧も描き直す(従来は state だけ更新され、画面は開き直すまで古いまま=「コメントが無い」ように見えた)。
   //   入力中(この窓の中の入力欄にカーソル)なら描き直さない=打ちかけの文字を消さない。
-  if(cur && cur.category==='事務' && typeof fetchJimuTaskComments_==='function') fetchJimuTaskComments_({silent:true}).then(()=>{
+  if(cur && isTcTarget_(cur) && typeof fetchJimuTaskComments_==='function') fetchJimuTaskComments_({silent:true}).then(()=>{
     try{ const ae=document.activeElement; if(pop.isConnected && !(ae && pop.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))) renderInner(); }catch(_){}
   }).catch(()=>{});   // 💬タスクコメントも最新化 v1.30.286
   if(!inlineHost) requestAnimationFrame(()=>{
