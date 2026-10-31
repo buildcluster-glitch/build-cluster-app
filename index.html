@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.886</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.887</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -38096,7 +38096,7 @@ async function manOpenPage_(id, opt){
   __man.cur = p; __man.folderId = p.folder_id;
   manNavRecord_('page', p.id);
   try{ localStorage.setItem(MAN_LAST_KEY, p.id); }catch(_){}
-  if(!p.is_deleted){ manRecentSave_(p.id, p.title); manRpc_('manual_view', { p_page_id: p.id }).catch(()=>{}); }
+  if(!p.is_deleted){ manRecentSave_(p.id, p.title); __man.viewP = manRpc_('manual_view', { p_page_id: p.id }).catch(()=>{}); }
   manRevealFolder_(p.folder_id); manRenderList_();
   await manRenderPage_();
   if(opt.quiet) manShowMain_(true);
@@ -38128,6 +38128,7 @@ async function manRenderPage_(){
       <span class="man-chip man-up" title="${escapeHtml(manFmtDate_(p.updated_at))}">🔄 更新 ${escapeHtml(manYmd_(p.updated_at))}${p.updated_by?' '+escapeHtml(p.updated_by):''}（${escapeHtml(manAgo_(p.updated_at))}）</span>
       <span class="man-chip">版 ${p.version}</span>
       ${atts.length?`<span class="man-chip">📎 ${atts.length}</span>`:''}
+      <span class="man-chip" id="man-pv" style="display:none;cursor:pointer"></span>
       ${p.is_deleted?'<span class="man-pill" style="background:#fee2e2;color:#b91c1c">ゴミ箱</span>':''}
       ${manCatChipsHtml_((((__man.tree&&__man.tree.pages)||[]).find(x=>x.id===p.id)||{}).cats, manCatIndex_(__man.tree||{}).byId)}
       ${(() => { const tp = manTreePage_({ id:p.id }); return tp.reviewed_at ? `<span class="man-chip" style="background:#f0fdf4;color:#15803d" title="${escapeHtml(manFmtDate_(tp.reviewed_at))}">✓ 見直し ${escapeHtml(manYmd_(tp.reviewed_at))}${tp.reviewed_by?' '+escapeHtml(tp.reviewed_by):''}</span>` : ''; })()}
@@ -38179,6 +38180,22 @@ async function manRenderPage_(){
   if(!p.is_deleted) manLoadRelated_(p.id);
   if(__man.hl) manHighlight_(q('#man-body'), __man.hl);
   if(!p.is_deleted) manLoadReactions_(p.id);
+  if(!p.is_deleted) manLoadPageViews_(p.id);
+}
+// 👀 閲覧数と閲覧者(v887・migration 099)。最後に見た日の新しい順
+async function manLoadPageViews_(pageId){
+  try{ await __man.viewP; }catch(_){}
+  let r; try{ r = await manRpc_('manual_page_views', { p_page_id: pageId }); }catch(_){ return; }
+  const el = document.getElementById('man-pv'); if(!el || !__man.cur || __man.cur.id !== pageId || !r || !r.views) return;
+  const md = d => { const m = /^\d{4}-(\d{2})-(\d{2})/.exec(d || ''); return m ? (+m[1]) + '/' + (+m[2]) : ''; };
+  const lines = (r.people || []).map(x => `${x.name} ${x.n}回${x.last ? '(' + md(x.last) + ')' : ''}`);
+  el.textContent = `👀 閲覧 ${r.views}回・${r.viewers}人`;
+  el.title = lines.join('\n');
+  el.style.display = '';
+  el.onclick = () => { let w = document.getElementById('man-pv-who');
+    if(w){ w.remove(); return; }
+    w = document.createElement('div'); w.id = 'man-pv-who'; w.style.cssText = 'font-size:11px;color:var(--muted);margin:-4px 0 8px;line-height:1.6';
+    w.textContent = '👀 ' + lines.join('・'); el.parentNode.after(w); };
 }
 // スクロールの見張り(1本): ヘッダー下の読んだ割合の線・右下の⬆と輪・ページの題名の帯
 function manOnScroll_(){
