@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.894</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.895</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -37942,7 +37942,8 @@ async function manRenderBukken_(name){
     if(im.dataset.retry){ im.removeAttribute('src'); im.alt = '(写真を出せませんでした。物件のページを開き直してください)'; return; }
     im.dataset.retry = '1'; __man.signed.delete(r);
     try{ await manBkSign_([r]); const u = manSigned_(r); if(u) im.src = u; else im.onerror(); }catch(_){ im.onerror(); } });
-  if(refs.length){ manBkSign_(refs).then(() => { main.querySelectorAll('[data-bkref]').forEach(im => { const u = manSigned_(im.dataset.bkref); if(u) im.src = u; else im.alt = '(写真を出せませんでした)'; }); })
+  if(refs.length){ manBkSign_(refs).then(() => { main.querySelectorAll('[data-bkref]').forEach(im => { const u = manSigned_(im.dataset.bkref); if(u) im.src = u;
+      else im.alt = String(im.dataset.bkref).startsWith('sb:') ? '(写真を出せませんでした)' : '(まだGoogleドライブにある古い写真のため、ここでは出せません。見積アプリの物件台帳で見てください)'; }); })
     .catch(e => console.warn('[man bk img]', e));
     main.querySelectorAll('[data-bkimg]').forEach(a => a.onclick = async e => { e.preventDefault(); const r = a.dataset.bkimg; const w = window.open('', '_blank');
       try{ await manBkSign_([r]); const u = manSigned_(r); if(w && u) w.location.href = u; else if(w) w.close(); }catch(_){ if(w) w.close(); } }); }
