@@ -3069,7 +3069,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.903</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.904</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24575,14 +24575,38 @@ function kqYen_(n){ return (n==null||n==='') ? '' : '¥'+Number(n).toLocaleStrin
 
 // 🤖 第2段(v1.30.900): 台帳DBの Edge Function koji-ask(AIが言い換え・除外語・見立てを作る)。
 //   置かれていない/鍵が無い/AIが失敗(code=ai)/上限(limit) → null を返し、呼び出し側が辞書で引き直す。
-async function kqAsk_(question, history){
+// 🐱 v1.30.904: 2回目=見立てだけ作り直す(koji-ask v4 の mode:'summarize')。手元の修繕・原状回復・立会・予定・マニュアルの要点(extra)も材料にする。
+//   v4 が置かれる前(1回目で summary が返る)は呼ばない。失敗したら見立てなしで行だけ見せる。
+async function kqSummarize_(question, terms, extra){
   let s = sbSession_(); if(!s || !s.access_token) return null;
   for(let t=0; t<2; t++){
     let res;
     try{
       res = await fetch(`${SB_AUTH.url}/functions/v1/koji-ask`, { method:'POST',
         headers:{ 'apikey':SB_AUTH.key, 'Authorization':'Bearer '+s.access_token, 'Content-Type':'application/json' },
-        body: JSON.stringify({ question, history:(history||[]).slice(-3) }) });
+        body: JSON.stringify({ question, mode:'summarize', terms, extra }) });
+    }catch(_){ return null; }
+    if(res.status===401 && t===0){ try{ await sbRefresh_(); }catch(_){} s = sbSession_(); if(!s || !s.access_token) return null; continue; }
+    let j = null; try{ j = await res.json(); }catch(_){}
+    return (j && j.ok && j.mode==='summarize') ? j : null;
+  }
+  return null;
+}
+function kqExtra_(){
+  const ex = {};
+  const by = {}; (__kq.localAll||[]).forEach(it=>{ (by[it.kind] = by[it.kind] || []).push(it); });
+  ['原状回復','修繕','立会','予定'].forEach(k=>{ const a = by[k]||[]; if(a.length) ex[k] = { count:a.length, top:a.slice(0,5).map(it=>({ date:String(it.date||'').slice(0,10), bukken:it.title||'', room:'', memo:String(it.sub||'').slice(0,60) })) }; });
+  const m = __kq.man||[]; if(m.length) ex['マニュアル'] = { count:m.length, top:m.slice(0,5).map(p=>({ title:p.title||'', memo:String(p.snippet||'').replace(/<[^>]*>/g,'').slice(0,60) })) };
+  return ex;
+}
+async function kqAsk_(question, history, more){
+  let s = sbSession_(); if(!s || !s.access_token) return null;
+  for(let t=0; t<2; t++){
+    let res;
+    try{
+      res = await fetch(`${SB_AUTH.url}/functions/v1/koji-ask`, { method:'POST',
+        headers:{ 'apikey':SB_AUTH.key, 'Authorization':'Bearer '+s.access_token, 'Content-Type':'application/json' },
+        body: JSON.stringify(Object.assign({ question, history:(history||[]).slice(-3) }, more||{})) });
     }catch(_){ __kq.aiNote = 'AIにつながりませんでした(通信)→辞書で探しました'; return null; }
     if(res.status===401 && t===0){ try{ await sbRefresh_(); }catch(_){} s = sbSession_(); if(!s || !s.access_token) return null; continue; }
     let j = null; try{ j = await res.json(); }catch(_){}
@@ -24601,12 +24625,25 @@ async function kqRun_(q){
   kqRender_();
   if(!words.length){ __kq.busy=false; kqRender_(); return; }
   const exUser0 = kqSplit_((document.getElementById('kq-ex')||{}).value||'');
-  const ai = await kqAsk_(exUser0.length ? q+'(除外: '+exUser0.join('・')+')' : q, []);
+  const q2 = exUser0.length ? q+'(除外: '+exUser0.join('・')+')' : q;
+  const ai = await kqAsk_(q2, [], { summary:false });
   if(ai){
     __kq.ai = ai; __kq.rows = ai.rows; __kq.capped = false;
     __kq.used = [{ w:'AI', v:(ai.keywords||[]).concat(ai.synonyms||[]) }]; __kq.ex = ai.exclude||[];
-    kqSideSearch_((Array.isArray(ai.must) && ai.must.length) ? ai.must : [(ai.keywords||[]).concat(ai.synonyms||[])]);
-    __kq.busy = false; kqRender_(); return;
+    const manP = kqSideSearch_((Array.isArray(ai.must) && ai.must.length) ? ai.must : [(ai.keywords||[]).concat(ai.synonyms||[])]);
+    const v4 = (ai.summary === null);   // v4=見立てを後回しにした印。旧版は1回目で summary(文字列)が返る
+    __kq.sumPending = v4;
+    __kq.busy = false; kqRender_();
+    if(v4){
+      const run = __kq.run;
+      await Promise.race([manP, new Promise(r=>setTimeout(r, 4000))]);
+      if(__kq.run !== run) return;
+      const terms = { keywords:ai.keywords||[], synonyms:ai.synonyms||[], exclude:ai.exclude||[], must:ai.must||[], motouke:ai.motouke||null, since:ai.since||null };
+      const sm = await kqSummarize_(q2, terms, kqExtra_());
+      if(__kq.run !== run) return;
+      __kq.ai.summary = (sm && sm.summary) || ''; __kq.sumPending = false; kqRender_();
+    }
+    return;
   }
   try{
     const exUser = kqSplit_((document.getElementById('kq-ex')||{}).value||'');
@@ -24716,8 +24753,8 @@ async function kqSideSearch_(groups){
   __kq.groups = groups; __kq.man = null;
   try{ __kq.localAll = kqLocalMatch_(groups, []); }catch(_){ __kq.localAll = []; }
   const terms = ((groups||[])[0]||[]).slice(0,4);
-  if(!terms.length || typeof manRpc_!=='function'){ __kq.man = []; return; }
-  Promise.all(terms.map(t=>manRpc_('manual_search2', { p_q:t, p_folder_id:null, p_user:null, p_since:null, p_sort:null }).then(r=>r||[]).catch(()=>[])))
+  if(!terms.length || typeof manRpc_!=='function'){ __kq.man = []; return Promise.resolve(); }
+  return Promise.all(terms.map(t=>manRpc_('manual_search2', { p_q:t, p_folder_id:null, p_user:null, p_since:null, p_sort:null }).then(r=>r||[]).catch(()=>[])))
     .then(lists=>{
       if(__kq.run !== run) return;
       const seen = new Set(), out = [];
@@ -24760,7 +24797,7 @@ function kqRender_(){
   const chain = [__kq.q].concat(__kq.refine.map(f=>f.w)).map(escapeHtml).join(' → ');
   const how = (__kq.ai || __kq.refine.some(f=>f.kw)) ? '🤖 AIで言い換え' : '📖 辞書で言い換え';
   const used = (__kq.used||[]).map(u=>escapeHtml(u.w)+'('+u.v.length+'語)').join('・');
-  let h = (lastSum ? `<div class="kq-say"><span class="kq-cat-s">🐱</span><div>${escapeHtml(lastSum)}</div></div>` : '')
+  let h = (lastSum ? `<div class="kq-say"><span class="kq-cat-s">🐱</span><div>${escapeHtml(lastSum)}</div></div>` : (__kq.sumPending && !__kq.refine.length ? '<div class="kq-say"><span class="kq-cat-s">🐱</span><div style="color:#92400e">まとめてるにゃ…</div></div>' : ''))
     + (__kq.aiNote ? `<div class="kq-spec" style="padding:4px 10px">⚠ ${escapeHtml(__kq.aiNote)}</div>` : '')
     + `<div class="kq-sum">「${chain}」 ${how}${(!__kq.refine.length && __kq.ai && __kq.ai.sites_before)?' ・条件で絞る前は'+__kq.ai.sites_before+'現場':''}<div class="kq-spec">言い換え: ${used}${__kq.ex&&__kq.ex.length?' ／除外: '+escapeHtml(__kq.ex.join('・')):''}${__kq.capped?' ／⚠1語で200件を超えたので古い分が切れています。言葉を足してください':''}</div></div>`;
   const openers = []; const items = (arr,n)=>arr.slice(0,n).map(it=>{ openers.push(it.open); return kqItemHtml_(it, openers.length-1); }).join('');
