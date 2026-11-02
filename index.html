@@ -3082,7 +3082,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.909</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.910</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24590,6 +24590,7 @@ function kqGroup_(rows){
     if(r.supplier) g.gyosha.add(r.supplier);
     if(!g.lines.some(l=>l.item===r.item && l.spec===r.spec && l.kingaku===r.kingaku)) g.lines.push(r);
     if(r.folder && !g.folders.some(f=>f.path===r.folder)) g.folders.push({ path:r.folder, src:r.src });
+    if(r.pdf_path && !(g.pdfs = g.pdfs || []).some(f=>f.path===r.pdf_path)) g.pdfs.push({ path:r.pdf_path, src:r.src, kind:r.kind });   // 📄 v1.30.910
   });
   return Array.from(m.values()).sort((a,b)=> (b.date||String(b.year)).localeCompare(a.date||String(a.year)));
 }
@@ -24846,7 +24847,17 @@ function kqDbxUrl_(f){
   if(f.src==='jisseki') rel = String(f.path||'');
   else { const m = String(f.path||'').match(/共有フォルダ Dropbox[\\\/](.+)$/) || String(f.path||'').match(/Dropbox[^\\\/]*[\\\/](.+)$/); rel = m ? m[1] : ''; }
   rel = rel.replace(/^[\\\/]+/,''); if(!rel) return '';
+  // 👥 スタッフのChromeは共用アカウント(株式会社ビルドクラスタ)。山田さんの垢から見たパスを共用垢の場所に読み替える(台帳DBセッション調べ 11/2)
+  rel = rel.replace(/\\/g,'/')
+    .replace(/^Yamada Hiroki\/ビルドクラスタ\/業者請求書\//, '株式会社ビルドクラスタ/業者請求書/')
+    .replace(/^Yamada Hiroki\/ビルドクラスタ\/ビルドクラスタ自社工事\//, '株式会社ビルドクラスタ/自社工事/');
   return 'https://www.dropbox.com/home/' + rel.split(/[\\\/]+/).filter(Boolean).map(encodeURIComponent).join('/');
+}
+// 📄 PDF を Dropbox の Web で開く(v1.30.910・山田「見積もりpdfのリンクもあるといいかも」): フォルダのURL + ?preview=ファイル名
+function kqDbxFileUrl_(f){
+  const p = String(f.path||'').replace(/\\/g,'/'); const i = p.lastIndexOf('/'); if(i<0) return '';
+  const dir = kqDbxUrl_({ src:f.src, path:p.slice(0,i) }); if(!dir) return '';
+  return dir + '?preview=' + encodeURIComponent(p.slice(i+1));
 }
 // 👍👎(v1.30.909・1): koji-ask が返す log_id に評価を書く(koji_ask_feedback)。log_id が来ない版ではボタンを出さない
 function kqLogId_(){
@@ -24873,8 +24884,9 @@ function kqGroupHtml_(g){
   const kinds = Array.from(g.kinds).map(k=>kqBadge_(g.cost?'請求':k)).join('');
   const lines = g.lines.slice(0,8).map(l=>`<div class="kq-line">${l.refineHit?'<b class="kq-tag">＋'+escapeHtml(l.refineHit)+'</b> ':''}${l.line_room?'<span class="kq-room">'+escapeHtml(l.line_room)+'</span>':''}${escapeHtml(l.item||'')}${l.spec?' <span class="kq-spec">'+escapeHtml(l.spec)+'</span>':''} <span class="kq-yen">${l.qty?escapeHtml(String(l.qty))+'×':''}${kqYen_(l.tanka)}${l.kingaku?' = '+kqYen_(l.kingaku):''}${l.order_price?' / 発注'+kqYen_(l.order_price):''}</span></div>`).join('') + (g.lines.length>8?`<div class="kq-line kq-spec">ほか${g.lines.length-8}行</div>`:'');
   const fol = g.folders.slice(0,2).map(f=>{ const u = kqDbxUrl_(f); return `<button class="kq-fol" data-path="${escapeHtml(kqFolderFull_(f))}" title="押すと場所をコピーします\n${escapeHtml(kqFolderFull_(f))}">📁 ${escapeHtml(kqFolderName_(f))}</button>${u?`<a class="kq-fol" href="${escapeHtml(u)}" target="_blank" rel="noopener" title="DropboxのWebでこのフォルダを開く">🌐 開く</a>`:''}`; }).join('');
+  const pdf = (g.pdfs||[]).slice(0,3).map(f=>{ const u = kqDbxFileUrl_(f); return u ? `<a class="kq-fol" href="${escapeHtml(u)}" target="_blank" rel="noopener" title="${escapeHtml(f.path)}">📄 ${escapeHtml(f.kind==='発注'?'発注書':f.kind==='請求'?'請求書':'見積')}PDF</a>` : ''; }).join('');
   const who = [Array.from(g.motos).join('・'), g.gyosha.size?'業者 '+Array.from(g.gyosha).slice(0,3).join('・'):'', g.creators.size?'作成 '+Array.from(g.creators).join('・'):''].filter(Boolean).join(' / ');
-  return `<div class="kq-g"><div class="kq-h">${kinds}<span class="kq-d">${escapeHtml((g.date||String(g.year||'')).slice(0,10))}</span> <b>${escapeHtml(g.bukken||'(物件名なし)')}</b> ${escapeHtml(g.room||'')}</div>${who?'<div class="kq-meta">'+escapeHtml(who)+'</div>':''}${lines}${fol?'<div>'+fol+'</div>':''}</div>`;
+  return `<div class="kq-g"><div class="kq-h">${kinds}<span class="kq-d">${escapeHtml((g.date||String(g.year||'')).slice(0,10))}</span> <b>${escapeHtml(g.bukken||'(物件名なし)')}</b> ${escapeHtml(g.room||'')}</div>${who?'<div class="kq-meta">'+escapeHtml(who)+'</div>':''}${lines}${(fol||pdf)?'<div>'+pdf+fol+'</div>':''}</div>`;
 }
 function kqItemHtml_(it, i){
   return `<div class="kq-g kq-click" data-oi="${i}">${kqBadge_(it.kind)}<span class="kq-d">${escapeHtml(String(it.date||'').slice(0,10))}</span> <b>${escapeHtml(it.title||'')}</b>${it.sub?'<div class="kq-meta">'+escapeHtml(it.sub)+'</div>':''}</div>`;
