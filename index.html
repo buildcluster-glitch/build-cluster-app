@@ -3083,7 +3083,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.914</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.915</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -26001,6 +26001,7 @@ async function calServerDoc_(id){
   return { doc: doc || null, version: rows[0].version, deleted: !!rows[0].is_deleted };
 }
 const CAL_STALE_MARGIN_MS = 10*60*1000;
+const CAL_GAS_HOLD_MS = 6*60*60*1000;   // v1.30.915: DBが読めない時、これより古い変更はGASで送らない
 function calStaleDecide_(op, sv){
   if(!sv || !sv.doc || sv.deleted) return 'send';
   // 変更をした時刻=積んだ時刻(ts)を優先(updatedAt を付け直さない編集経路があっても誤って止めない)。端末の時計のずれを見て10分の余裕
@@ -26142,9 +26143,28 @@ async function cloudSyncPush(){
   //   実害(2026-09-24 18:19 木村さん「↓二人必要」): 削除の印は立ったのに、**削除の操作がDBにもGASにも届かず**、
   //   DBでは生きたまま残った(削除の直前の保存だけが届いていた)。
   //   ⇒ 送る分は「いまの箱」から取り、送り終わったら**送ったもの自体を名指しで**外す(数では切らない)。
-  const sendSnap = (state.cloudPending || []).slice();
+  const __allSnap = (state.cloudPending || []).slice();
+  if(!__allSnap.length) return { pushed: 0 };
+  // 🛡 v1.30.915(山田「GASの穴も塞いで」): GAS経路にも「古い変更でDBの新しい中身を上書きしない」を入れる(DB直の calStaleDecide_ と同じ)。
+  //   DBが読めればDB直と同じ判定(合わせる/送らない)。DBが読めない時は、積んでから6時間を超えた変更はGASで送らず残す
+  //   (閉じていた端末の古い変更が素通りしないように。次にDBへ届く時にDB直の判定を通って送られる)。削除と↩復活は今までどおり。
+  const sendSnap = [], __drop = new Set(); let __held = 0;
+  for(const op of __allSnap){
+    if(!op || op.action === 'deleteEvent' || op.restore || !(op.data && op.data.id)){ sendSnap.push(op); continue; }
+    let sv, readOk = false;
+    try{ sv = await calServerDoc_(String(op.data.id)); readOk = true; }catch(_){}
+    if(readOk){
+      if(calStaleDecide_(op, sv) === 'skip'){ __drop.add(op); console.warn('[cloud] DBの方が新しいので古い変更は送りません(GAS経路):', op.data.id, op.ts); continue; }
+      sendSnap.push(op); continue;
+    }
+    const age = Date.now() - Date.parse(op.ts || '');
+    if(isFinite(age) && age > CAL_GAS_HOLD_MS){ __held++; continue; }
+    sendSnap.push(op);
+  }
+  if(__drop.size){ state.cloudPending = (state.cloudPending || []).filter(op=>!__drop.has(op)); updateCloudSyncBadge(); saveState(); }
+  if(__held) console.warn(`[cloud] DBが読めないので、6時間より前の変更${__held}件はGASで送らずに残しました`);
   const opCount = sendSnap.length;
-  if(!opCount) return { pushed: 0 };
+  if(!opCount) return { pushed: 0, held: __held, superseded: __drop.size };
   const ops = sendSnap.map(p=>({ action: p.action, data: p.data }));
   // 📦 withPull(v1.30.529): 書き込みの応答に「取得結果」も同梱してもらう。
   //   GASは1回呼ぶだけで2〜3秒の固定オーバーヘッドがあるので、
