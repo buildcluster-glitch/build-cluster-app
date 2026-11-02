@@ -3052,7 +3052,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.901</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.902</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24531,7 +24531,7 @@ function kqLineHas_(r, variants){
   const t = kqNorm_([r.line_room, r.item, r.spec, r.koji].join(' '));
   return variants.some(v=>t.indexOf(kqNorm_(v))>=0);
 }
-function kqGroupKey_(r){ return [kqNorm_(r.bukken), kqNorm_(r.room), r.year||''].join('|'); }
+function kqGroupKey_(r){ return [kqNorm_(r.bukken), kqNorm_(r.room).replace(/号室$/,''), r.year||''].join('|'); }   // 「101」と「101号室」は同じ部屋(v1.30.902・koji-ask v2 とそろえる)
 function kqGroup_(rows){
   const m = new Map();
   rows.forEach(r=>{
@@ -24653,7 +24653,7 @@ function kqRender_(){
   const used = (__kq.used||[]).map(u=>escapeHtml(u.w)+'('+u.v.length+'語)').join('・');
   const lastSum = (__kq.refine.length ? __kq.refine[__kq.refine.length-1].summary : (__kq.ai && __kq.ai.summary)) || '';
   const how = (__kq.ai || __kq.refine.some(f=>f.kw)) ? '🤖 AIで言い換え' : '📖 辞書で言い換え';
-  let h = (lastSum ? `<div class="kq-sum" style="background:#eef2ff;margin-bottom:6px">🤖 ${escapeHtml(lastSum)}</div>` : '') + (__kq.aiNote ? `<div class="kq-spec" style="padding:4px 10px">⚠ ${escapeHtml(__kq.aiNote)}</div>` : '') + `<div class="kq-sum">${how}「${chain}」 現場 <b>${v.special.length}</b>件${v.teiban.length?' ＋定番の行だけ '+v.teiban.length+'件':''}${v.cost.length?' ／業者請求 '+v.cost.length+'件':''}<div class="kq-spec">言い換え: ${used}${__kq.ex&&__kq.ex.length?' ／除外: '+escapeHtml(__kq.ex.join('・')):''}${__kq.capped?' ／⚠1語で200件を超えたので古い分が切れています。言葉を足してください':''}</div></div>`;
+  let h = (lastSum ? `<div class="kq-sum" style="background:#eef2ff;margin-bottom:6px">🤖 ${escapeHtml(lastSum)}</div>` : '') + (__kq.aiNote ? `<div class="kq-spec" style="padding:4px 10px">⚠ ${escapeHtml(__kq.aiNote)}</div>` : '') + `<div class="kq-sum">${how}「${chain}」 現場 <b>${v.special.length}</b>件${(!__kq.refine.length && __kq.ai && __kq.ai.sites_before)?' <span class="kq-spec">(条件で絞る前は'+__kq.ai.sites_before+'現場)</span>':''}${v.teiban.length?' ＋定番の行だけ '+v.teiban.length+'件':''}${v.cost.length?' ／業者請求 '+v.cost.length+'件':''}<div class="kq-spec">言い換え: ${used}${__kq.ex&&__kq.ex.length?' ／除外: '+escapeHtml(__kq.ex.join('・')):''}${__kq.capped?' ／⚠1語で200件を超えたので古い分が切れています。言葉を足してください':''}</div></div>`;
   h += v.special.map(kqGroupHtml_).join('') || '<div class="sch-empty">定番の行以外は見つかりませんでした</div>';
   if(v.teiban.length){
     h += `<div class="kq-sec">定番の行だけの現場 ${v.teiban.length}件 <span class="kq-spec">(${v.teibanItems.slice(0,4).map(t=>escapeHtml(t.name)+' '+t.n+'件').join('・')})</span> <button class="kq-fol" id="kq-teiban">${__kq.showTeiban?'畳む':'見る'}</button></div>`;
