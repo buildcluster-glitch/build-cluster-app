@@ -3074,7 +3074,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.906</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.907</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24640,8 +24640,13 @@ async function kqAsk_(question, history, more){
 let __kqCtx = null;
 function kqCtxRow_(r){
   const c = __kq.ctx; if(!c) return true;
-  const a = kqNorm_(r.bukken), b = kqNorm_(c.bukken);
-  return !!(a && b && (a.indexOf(b)>=0 || b.indexOf(a)>=0));
+  if(__kq.ai && __kq.ai.bukken) return true;   // koji-ask v5 以降=サーバが物件で絞って返す(記号ゆれも吸収済み)ので任せる
+  // 記号(- ・ . かっこ)もそろえ、空白で区切った部分を全部含めば同じ物件(v1.30.907・台帳DB 109 と同じ考え)
+  const n = t=>kqNorm_(t).replace(/[-‐－ー・.．()（）\[\]【】「」]/g,'');
+  const a = n(r.bukken); if(!a) return false;
+  const parts = String(c.bukken||'').normalize('NFKC').split(/[\s　]+/).map(n).filter(Boolean);
+  const whole = n(c.bukken);
+  return parts.every(p=>a.indexOf(p)>=0) || (whole && whole.indexOf(a)>=0);
 }
 async function kqRun_(q){
   const ctx = __kqCtx;
