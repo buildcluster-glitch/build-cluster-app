@@ -3082,7 +3082,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.910</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.911</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -27246,6 +27246,21 @@ async function fetchEventsFromDb_({signal, from: __wFrom, to: __wTo}={}){
   }
   // ②総件数一致を最終判定(206で黙って切り詰められた=過去2回の消失事故と同じ絵、を必ず検知)
   if(total != null && all.length !== total) return { ok:false, reason:'count-mismatch', got:all.length, total, ms:Date.now()-t0 };
+  // 📋 v1.30.911(最上「記入していたタスクがすべて消えた」11/2): タスクの箱(事務)は6〜7月の日付のまま使い続けている。
+  //   窓(直近2か月)だけ読むと、月が替わって窓から外れた箱が端末に来ない→「みんなのタスク」が全員0/0。
+  //   いつもの読み込み(窓の指定なし)のときは、窓より前の「事務」も必ず読む(設計どおり事務タスクは常駐)。失敗したら全体を失敗扱い(箱を欠いた形で置き換えない)。
+  if(!__wFrom){
+    const jb = `${SB_AUTH.url}/rest/v1/calendar_events?select=doc&is_deleted=eq.false&doc->>category=eq.${encodeURIComponent('事務')}&doc->>date=lt.${__from}&order=id.asc&limit=2000`;
+    let jr;
+    try{ jr = await fetch(jb, { headers: hdr(s.access_token), cache:'no-store', signal }); }
+    catch(e){ return { ok:false, reason:(e && e.name==='AbortError') ? 'abort' : 'network', detail:'jimu-old', ms:Date.now()-t0 }; }
+    if(!jr.ok && jr.status!==206) return { ok:false, reason:'http', status:jr.status, detail:'jimu-old', ms:Date.now()-t0 };
+    let jrows; try{ jrows = await jr.json(); }catch(_){ return { ok:false, reason:'shape', detail:'jimu-old', ms:Date.now()-t0 }; }
+    if(!Array.isArray(jrows)) return { ok:false, reason:'shape', detail:'jimu-old', ms:Date.now()-t0 };
+    const have = new Set(all.map(e=>e.id));
+    for(const r of jrows){ const d = __parseJsonSafe_(r && r.doc); if(d && d.id && !have.has(d.id)){ all.push(d); have.add(d.id); } }
+    return { ok:true, events: all, total: all.length, ms:Date.now()-t0, jimuOld: jrows.length };
+  }
   return { ok:true, events: all, total: (total!=null?total:all.length), ms:Date.now()-t0 };
 }
 function __setEventsReadStat_(o){ __eventsReadStat = Object.assign({ at:new Date().toISOString() }, o); try{ noteDbRead_('予定', o); }catch(_){} try{ console.log(`[events-read] ${o.src} ${o.n}件${o.total!=null&&o.total!==o.n?`(総${o.total})`:''} ${o.ms}ms${o.fallback?` ⚠${o.fallback}`:''}${o.note?` ${o.note}`:''}`); }catch(_){} }
