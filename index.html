@@ -1315,6 +1315,10 @@
   .kq-say{display:flex;gap:8px;align-items:flex-start;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:8px 10px;margin:4px 0 8px;font-size:13px;color:#1f2937;line-height:1.6}
   .kq-cat-s{width:28px;height:28px;border-radius:50%;flex:0 0 auto}
   img.kq-cat{border-radius:50%;object-fit:cover}
+  .kq-ctx{margin:8px 16px 0;padding:6px 10px;background:#ecfeff;border:1px solid #a5f3fc;border-radius:8px;font-size:13px;color:#0e7490}
+  .kq-ctx button{border:0;background:transparent;color:#64748b;font-size:11px;cursor:pointer;text-decoration:underline}
+  .kq-ctxbtn{padding:5px 10px;border:1px solid #fcd34d;background:#fffbeb;color:#92400e;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:4px;vertical-align:middle}
+  .kq-ctxbtn img{border-radius:50%}
   .kq-sec2{padding:8px 10px;font-size:12.5px;color:#475569}
   .kq-more{display:block;width:100%;border:0;background:transparent;color:#2563eb;font-size:12px;padding:6px;cursor:pointer;text-align:center}
   /* ジャンプ先の列をフラッシュ */
@@ -3070,7 +3074,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.905</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.906</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -3153,6 +3157,7 @@
 <div class="modal-overlay" id="kojiAskModal">
   <div class="modal modal-search modal-kq">
     <div class="kq-head"><img class="kq-cat" src="./kurasuke.png" width="30" height="30" alt="クラ助"><b>クラ助に聞く</b><span class="kq-spec">見積・発注・業者請求・修繕・原状回復・立会・予定・マニュアルから探すにゃ</span></div>
+    <div class="kq-ctx" id="kq-ctx" style="display:none"></div>
     <div class="sch-search-box">
       <input id="kq-input" type="text" placeholder="クラ助に聞くにゃ(例: 便器脱着を伴うトイレ床は？)" autocomplete="off" spellcheck="false">
       <button class="sch-close-btn" id="kq-go" style="background:var(--accent);color:#fff">探す</button>
@@ -3272,7 +3277,7 @@
   <div class="modal" style="max-width:680px;width:96vw">
     <div class="modal-header" id="rs-title">修繕案件</div>
     <div class="modal-body" style="max-height:75vh;overflow-y:auto">
-      <div style="text-align:right;margin-bottom:4px"><button type="button" id="rs-relman" style="padding:5px 10px;border:1px solid #c4b5fd;background:#f5f3ff;color:#6d28d9;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer" title="この修繕に関係する社内マニュアル(水回り工事など＋物件名で検索)">📖 関連マニュアル</button></div>
+      <div style="text-align:right;margin-bottom:4px"><button type="button" id="rs-relman" style="padding:5px 10px;border:1px solid #c4b5fd;background:#f5f3ff;color:#6d28d9;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer" title="この修繕に関係する社内マニュアル(水回り工事など＋物件名で検索)">📖 関連マニュアル</button> <button type="button" id="rs-kura" class="kq-ctxbtn" title="この物件で過去にやった工事・修繕・立会をクラ助に聞く"><img src="./kurasuke.png" width="16" height="16" alt="">過去の工事</button></div>
       <div class="field-row">
         <div class="field"><label>物件名</label><input id="rs-name" readonly></div>
         <div class="field" style="max-width:120px"><label>号室</label><input id="rs-room" readonly></div>
@@ -3377,6 +3382,7 @@
       <button class="nav-btn" id="rdAddExtraBtn" style="display:none" title="追加工事を台帳に登録">＋ 追加工事</button>
       <button class="nav-btn" id="rdHatchushoBtn" style="display:none" title="発注書">📄 発注書</button>
       <button class="nav-btn" id="rdRelManBtn" title="この物件に関係する社内マニュアル(特殊見積など＋物件名で検索)">📖</button>
+      <button class="nav-btn icon-only" id="rdKuraBtn" title="この物件で過去にやった工事・修繕・立会をクラ助に聞く"><img class="kq-cat" src="./kurasuke.png" width="20" height="20" alt="クラ助"></button>
       <!-- 完了ボタンは下部の大きな緑ボタンに移動 (v1.8.5) -->
     </div>
     <div class="rd-sub" id="rdSub"></div>
@@ -4178,7 +4184,7 @@
   <div class="modal">
     <div class="modal-header" id="eventModalTitle">予定を追加</div>
     <div class="modal-body">
-      <div style="text-align:right;margin-bottom:4px"><button type="button" id="ev-relman" style="padding:5px 10px;border:1px solid #c4b5fd;background:#f5f3ff;color:#6d28d9;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer" title="この予定のカテゴリ・題名に関係する社内マニュアル">📖 関連マニュアル</button></div>
+      <div style="text-align:right;margin-bottom:4px"><button type="button" id="ev-relman" style="padding:5px 10px;border:1px solid #c4b5fd;background:#f5f3ff;color:#6d28d9;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer" title="この予定のカテゴリ・題名に関係する社内マニュアル">📖 関連マニュアル</button> <button type="button" id="ev-kura" class="kq-ctxbtn" title="この物件で過去にやった工事・修繕・立会をクラ助に聞く"><img src="./kurasuke.png" width="16" height="16" alt="">過去の工事</button></div>
       <div class="field">
         <label>🔧 最終確認工事から選択 <span style="font-weight:400;color:var(--muted);font-size:11px">(事前補修などの予定をワンタップ作成)</span></label>
         <select id="ev-from-check"><option value="">― 選択するとタイトル/元請けを自動入力 ―</option></select>
@@ -12853,7 +12859,7 @@ function showTaikyoStaffPicker(el, ev){
       <button class="tk-dt-dotakyan" style="margin-top:6px;padding:5px 10px;border:1px solid #cbd5e1;background:#f1f5f9;color:#475569;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">🔄 日時変更(この日に変更跡を残す)</button>
       <div class="tk-dt-hint" style="font-size:10px;color:var(--muted);margin-top:4px"></div>
     </div>
-    <div style="margin-top:6px;text-align:right"><button class="tk-relman" style="padding:5px 10px;border:1px solid #c4b5fd;background:#f5f3ff;color:#6d28d9;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer" title="立会テクニック・山一必須知識＋物件名で社内マニュアルを検索">📖 関連マニュアル</button></div>
+    <div style="margin-top:6px;text-align:right"><button class="tk-relman" style="padding:5px 10px;border:1px solid #c4b5fd;background:#f5f3ff;color:#6d28d9;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer" title="立会テクニック・山一必須知識＋物件名で社内マニュアルを検索">📖 関連マニュアル</button> <button type="button" data-kura="1" class="kq-ctxbtn" title="この物件で過去にやった工事・修繕・立会をクラ助に聞く"><img src="./kurasuke.png" width="16" height="16" alt="">過去の工事</button></div>
     <div class="qp-sec">
       <div class="qp-label">⏰ リマインド <span style="font-weight:400;color:#94a3b8;font-size:10px">(この日から担当の⏰に出す)</span></div>
       <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
@@ -12948,6 +12954,7 @@ function showTaikyoStaffPicker(el, ev){
   //   新しい日時は上の「日時」変更で立会本体が移動。ドタキャン跡は取消された元の枠に残る。
   // 📖 関連マニュアル(v1.30.860)。ポップ(z9999)の下にマニュアルが隠れないよう先に閉じる
   { const __rm = pop.querySelector('.tk-relman'); if(__rm) __rm.onclick = ()=>{ pop.remove(); openRelatedManual_({ kind:'taikyo', title: ev.title||'', bukken: ev._bukken||'', room: ev._room||'' }); }; }
+  { const __kb = pop.querySelector('[data-kura]'); if(__kb) __kb.onclick = ()=>{ pop.remove(); openKojiAsk_('', { bukken: ev._bukken||'', room: ev._room||'' }); }; }   // 🐱 v1.30.906
   const __tkDota = pop.querySelector('.tk-dt-dotakyan');
   if(__tkDota){ __tkDota.onclick = ()=>{
     const d = ev._taikyoOrigDate || ev.date || (pop.querySelector('.tk-dt-date')||{}).value || "";
@@ -22606,6 +22613,14 @@ function wireRelatedManualBtns_(){
     const p = (state.restorations||[]).find(x=>x.id===restoDetailId) || {};
     openRelatedManual_({ kind:'resto', bukken: p.name||'', room: p.room||'', title: p.kojiName||'' });
   });
+  // 🐱 この物件の過去をクラ助に聞く(v1.30.906・山田「過去この物件でこの工事なにやったっけ？」)
+  on('rs-kura', ()=> openKojiAsk_('', { bukken: v('rs-name'), room: v('rs-room') }));
+  on('rdKuraBtn', ()=>{ const p = (state.restorations||[]).find(x=>x.id===restoDetailId) || {}; openKojiAsk_('', { bukken: p.name||'', room: p.room||'' }); });
+  on('ev-kura', ()=>{
+    const t = v('ev-title').split(/\r?\n/)[0];
+    const g = (typeof manRelGuess_==='function') ? manRelGuess_(t) : null;
+    if(g && g.bukken) openKojiAsk_('', { bukken: g.bukken, room: g.room||'' }); else openKojiAsk_(t);
+  });
 }
 function openEventModal(ev, defaults){
   editingEventId = ev ? ev.id : null;
@@ -24620,18 +24635,32 @@ async function kqAsk_(question, history, more){
   }
   return null;
 }
+// 🏢 物件を決めて聞く(v1.30.906): 物件ページ・修繕/原状回復/立会/予定から開くと __kqCtx={bukken,room}。
+//   見積の行は物件名で絞り、手元の記録も物件名の組を足して絞る。質問が空なら「この物件で過去にやった工事は？」。
+let __kqCtx = null;
+function kqCtxRow_(r){
+  const c = __kq.ctx; if(!c) return true;
+  const a = kqNorm_(r.bukken), b = kqNorm_(c.bukken);
+  return !!(a && b && (a.indexOf(b)>=0 || b.indexOf(a)>=0));
+}
 async function kqRun_(q){
+  const ctx = __kqCtx;
   const words = kqSplit_(q);
-  __kq = { q, words, rows:[], refine:[], showTeiban:false, busy:true, capped:false, ai:null, aiNote:'', tab:'all', run:__kq.run||0, groups:[], localAll:[], man:[] };
+  __kq = { q: q || (ctx ? '過去にやった工事' : ''), words: words.length ? words : (ctx ? [ctx.bukken] : []), rows:[], refine:[], showTeiban:false, busy:true, capped:false, ai:null, aiNote:'', tab:'all', run:__kq.run||0, groups:[], localAll:[], man:[], ctx };
   kqRender_();
-  if(!words.length){ __kq.busy=false; kqRender_(); return; }
+  if(!__kq.words.length){ __kq.busy=false; kqRender_(); return; }
+  const ctxGroup = ctx ? [[ctx.bukken]] : [];
   const exUser0 = kqSplit_((document.getElementById('kq-ex')||{}).value||'');
-  const q2 = exUser0.length ? q+'(除外: '+exUser0.join('・')+')' : q;
-  const ai = await kqAsk_(q2, [], { summary:false });
+  const qBase = ctx ? `${ctx.bukken}${ctx.room?' '+ctx.room:''}で、${q||'過去にやった工事は？'}` : q;
+  const q2 = exUser0.length ? qBase+'(除外: '+exUser0.join('・')+')' : qBase;
+  const ai = await kqAsk_(q2, [], ctx ? { summary:false, bukken:ctx.bukken, room:ctx.room||null } : { summary:false });
   if(ai){
-    __kq.ai = ai; __kq.rows = ai.rows; __kq.capped = false;
+    __kq.ai = ai; __kq.rows = (ai.rows||[]).filter(kqCtxRow_); __kq.capped = false;
     __kq.used = [{ w:'AI', v:(ai.keywords||[]).concat(ai.synonyms||[]) }]; __kq.ex = ai.exclude||[];
-    const manP = kqSideSearch_((Array.isArray(ai.must) && ai.must.length) ? ai.must : [(ai.keywords||[]).concat(ai.synonyms||[])]);
+    const aiGroups = (Array.isArray(ai.must) && ai.must.length) ? ai.must : [(ai.keywords||[]).concat(ai.synonyms||[])];
+    // 物件だけの質問(語が物件名だけ)なら手元は物件名だけで絞る
+    const onlyBk = ctx && !q;
+    const manP = kqSideSearch_(onlyBk ? ctxGroup : aiGroups.filter(g=>g && g.length).concat(ctxGroup));
     const v4 = (ai.summary === null);   // v4=見立てを後回しにした印。旧版は1回目で summary(文字列)が返る
     __kq.sumPending = v4;
     __kq.busy = false; kqRender_();
@@ -24639,7 +24668,7 @@ async function kqRun_(q){
       const run = __kq.run;
       await Promise.race([manP, new Promise(r=>setTimeout(r, 4000))]);
       if(__kq.run !== run) return;
-      const terms = { keywords:ai.keywords||[], synonyms:ai.synonyms||[], exclude:ai.exclude||[], must:ai.must||[], motouke:ai.motouke||null, since:ai.since||null };
+      const terms = { keywords:ai.keywords||[], synonyms:ai.synonyms||[], exclude:ai.exclude||[], must:ai.must||[], motouke:ai.motouke||null, since:ai.since||null, bukken:(ai.bukken||(ctx&&ctx.bukken)||null), room:(ai.room||(ctx&&ctx.room)||null) };
       const sm = await kqSummarize_(q2, terms, kqExtra_());
       if(__kq.run !== run) return;
       __kq.ai.summary = (sm && sm.summary) || ''; __kq.sumPending = false; kqRender_();
@@ -24647,16 +24676,21 @@ async function kqRun_(q){
     return;
   }
   try{
-    const exUser = kqSplit_((document.getElementById('kq-ex')||{}).value||'');
-    const vs = words.map(w=>kqVariants_(w));
-    // 一番長い語(=いちばん絞れる語)で引き、残りの語は行の中身(品名・仕様・工事名)で絞る
-    let mi = 0; words.forEach((w,i)=>{ if(kqNorm_(w).length > kqNorm_(words[mi]).length) mi = i; });
-    const ex = exUser.concat(vs[mi].ex);
-    const res = await kqFetch_(vs[mi].v, ex);
-    __kq.rows = res.rows.filter(r=>vs.every((x,i)=>i===mi || kqLineHas_(r, x.v)));
-    __kq.capped = res.capped;
-    __kq.used = vs.map((x,i)=>({ w:words[i], v:x.v })); __kq.ex = ex;
-    kqSideSearch_(vs.map(x=>x.v));
+    if(ctx && !words.length){   // 辞書のときは物件名では見積を引けない(品名・仕様だけを見る)→手元の記録とマニュアルだけ
+      __kq.used = [{ w:ctx.bukken, v:[ctx.bukken] }]; __kq.ex = [];
+      kqSideSearch_(ctxGroup);
+    } else {
+      const exUser = exUser0;
+      const vs = words.map(w=>kqVariants_(w));
+      // 一番長い語(=いちばん絞れる語)で引き、残りの語は行の中身(品名・仕様・工事名)で絞る
+      let mi = 0; words.forEach((w,i)=>{ if(kqNorm_(w).length > kqNorm_(words[mi]).length) mi = i; });
+      const ex = exUser.concat(vs[mi].ex);
+      const res = await kqFetch_(vs[mi].v, ex);
+      __kq.rows = res.rows.filter(r=>vs.every((x,i)=>i===mi || kqLineHas_(r, x.v))).filter(kqCtxRow_);
+      __kq.capped = res.capped;
+      __kq.used = vs.map((x,i)=>({ w:words[i], v:x.v })); __kq.ex = ex;
+      kqSideSearch_(vs.map(x=>x.v).concat(ctxGroup));
+    }
   }catch(e){
     __kq.err = (e && e.evKind==='no-session') ? 'ログインしていないので探せません(右上の🔐からログインしてください)' : ('探せませんでした: '+((e&&e.message)||e));
   }
@@ -24664,7 +24698,7 @@ async function kqRun_(q){
 }
 // 続けて絞る: 「この中で○○を伴うのは？」= ○○の行がある現場(物件+号室+年)だけ残し、その行も足して見せる
 async function kqRefine_(w){
-  w = String(w||'').trim(); if(!w || !__kq.rows.length) return;
+  w = String(w||'').trim(); if(!w || (!__kq.rows.length && !(__kq.localAll||[]).length)) return;
   __kq.busy = true; kqRender_();
   const hist = [{ question:__kq.q, keywords:(__kq.ai && __kq.ai.keywords) || (__kq.used||[]).map(u=>u.w) }]
     .concat(__kq.refine.map(f=>({ question:f.w, keywords:f.kw||[f.w] })));
@@ -24828,12 +24862,25 @@ function kqRender_(){
 }
 
 
-function openKojiAsk_(initial){
+function kqCtxRender_(){
+  const el = document.getElementById('kq-ctx'); if(!el) return;
+  const c = __kqCtx;
+  el.style.display = c ? '' : 'none';
+  el.innerHTML = c ? `🏢 <b>${escapeHtml(c.bukken)}</b> ${escapeHtml(c.room||'')} の過去から探すにゃ <button type="button" id="kq-ctx-x">✕ 物件の指定を外す</button>` : '';
+  const x = document.getElementById('kq-ctx-x'); if(x) x.onclick = ()=>{ __kqCtx = null; kqCtxRender_(); const i=document.getElementById('kq-input'); if(i && i.value.trim()) kqRun_(i.value); else { __kq = { q:'', words:[], rows:[], refine:[], run:__kq.run||0 }; kqRender_(); } };
+  const inp = document.getElementById('kq-input');
+  if(inp) inp.placeholder = c ? 'この物件で何を探すにゃ？(例: トイレ / 便器脱着・空のまま「探す」で全部)' : 'クラ助に聞くにゃ(例: 便器脱着を伴うトイレ床は？)';
+}
+function openKojiAsk_(initial, ctx){
   const ov = document.getElementById('kojiAskModal'); if(!ov) return;
   if(typeof closeScheduleSearch==='function') closeScheduleSearch();
   ov.classList.add('show');
   const inp = document.getElementById('kq-input');
-  if(initial && inp && !__kq.words.length){ inp.value = initial; }
+  const c = (ctx && String(ctx.bukken||'').trim()) ? { bukken:String(ctx.bukken).trim(), room:String(ctx.room||'').trim() } : null;
+  __kqCtx = c;   // ヘッダーなど物件なしで開いたら、前の物件指定は外す
+  kqCtxRender_();
+  if(c){ if(inp) inp.value = ''; kqRun_(''); }
+  else if(initial && inp && !__kq.words.length){ inp.value = initial; }
   kqRender_();
   setTimeout(()=>{ try{ inp && inp.focus(); }catch(_){} }, 50);
 }
@@ -38394,6 +38441,10 @@ async function manRenderBukken_(name){
   if(!b){ main.innerHTML = `<div style="padding:20px">「${escapeHtml(name)}」は物件台帳に見つかりません。<a href="#" data-bklist="1">🏢 物件一覧へ</a></div>`;
     main.querySelector('[data-bklist]').onclick = e => { e.preventDefault(); manRenderBukkenList_(); }; return; }
   main.innerHTML = manBkDetailHtml_(b);
+  if(typeof openKojiAsk_==='function'){   // 🐱 この物件の過去をクラ助に聞く(v1.30.906)
+    main.insertAdjacentHTML('afterbegin', '<div style="text-align:right;padding:6px 8px 0"><button type="button" data-kura="1" class="kq-ctxbtn" title="この物件で過去にやった工事・修繕・立会をクラ助に聞く"><img src="./kurasuke.png" width="16" height="16" alt="">過去の工事</button></div>');
+    const kb = main.querySelector('[data-kura]'); if(kb) kb.onclick = () => openKojiAsk_('', { bukken: String(name||''), room: '' });
+  }
   const hm = main.querySelector('[data-home]'); if(hm) hm.onclick = e => { e.preventDefault(); __man.mode = 'view'; __man.cur = null; manRenderHome_(); };
   main.querySelectorAll('[data-bklist]').forEach(a => a.onclick = e => { e.preventDefault(); manRenderBukkenList_(); });
   main.querySelectorAll('[data-bkreload]').forEach(x => x.onclick = () => manBkReload_(x));
