@@ -3083,7 +3083,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.912</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.913</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -25970,6 +25970,41 @@ const CAL_RESULT_OK   = ['applied','delete_applied','already_processed'];
 const CAL_RESULT_DONE = ['deleted','forbidden','not_found','rejected_virtual'];   // 確定的に終わり(やり直さない)
 
 // 未送信キューをDBへ直接送る。戻り: { ok:true, pushed } か { ok:false, reason }(=GAS経路へ落とす)
+// 🛡 v1.30.913(11/2 大村さんの箱が10/26の中身に戻った事故): 送る直前にDBの今の中身を読む。
+//   これまでは base_version を「送る直前のDBの版」で取っていたので、何日も前に積んだ変更でも照合を素通りして上書きできた
+//   (閉じていた端末が11:15に開かれ、10/26の未送信分8件を一気に送った)。
+//   その変更をした時刻(op.data.updatedAt・無ければ積んだ時刻 ts)より後にDBが直されていたら:
+//     事務タスクの箱 → DBの中身を土台に行を合わせる(mergeJimuTitle_・完了などの進んだ印を残す)。合わせても変わらなければ送らない
+//     それ以外の予定 → 送らない(新しいDBを残す)
+//   戻り: 'send'(そのまま) / 'merged'(op.data を合わせた中身に差し替え) / 'skip'(送らない)
+async function calServerDoc_(id){
+  let s = sbSession_(); if(!s || !s.access_token) throw Object.assign(new Error('未ログイン'), { evKind:'no-session' });
+  let res;
+  try{ res = await fetch(`${SB_AUTH.url}/rest/v1/calendar_events?select=doc,version,is_deleted&id=eq.${encodeURIComponent(id)}&limit=1`, { headers:{ 'apikey':SB_AUTH.key, 'Authorization':'Bearer '+s.access_token, 'Accept':'application/json' }, cache:'no-store' }); }
+  catch(e){ throw Object.assign(new Error((e&&e.message)||'通信できません'), { evKind:'network' }); }
+  if(res.status===401 || res.status===403) throw Object.assign(new Error('auth'), { evKind:'auth' });
+  if(!res.ok) throw Object.assign(new Error('HTTP '+res.status), { evKind:'http' });
+  const rows = await res.json().catch(()=>null);
+  if(!Array.isArray(rows) || !rows.length) return null;
+  const doc = (typeof __parseJsonSafe_==='function') ? __parseJsonSafe_(rows[0].doc) : rows[0].doc;
+  return { doc: doc || null, version: rows[0].version, deleted: !!rows[0].is_deleted };
+}
+const CAL_STALE_MARGIN_MS = 10*60*1000;
+function calStaleDecide_(op, sv){
+  if(!sv || !sv.doc || sv.deleted) return 'send';
+  // 変更をした時刻=積んだ時刻(ts)を優先(updatedAt を付け直さない編集経路があっても誤って止めない)。端末の時計のずれを見て10分の余裕
+  const sT = Date.parse(sv.doc.updatedAt || ''), oT = Date.parse(op.ts || (op.data && op.data.updatedAt) || '');
+  if(!isFinite(sT) || !isFinite(oT) || sT <= oT + CAL_STALE_MARGIN_MS) return 'send';
+  const d = op.data || {};
+  const isJimu = (d.category==='事務' || sv.doc.category==='事務') && (String(d.title||'').indexOf('\n')>=0 || String(sv.doc.title||'').indexOf('\n')>=0);
+  if(isJimu && typeof mergeJimuTitle_==='function'){
+    const merged = mergeJimuTitle_(sv.doc.title, d.title, sv.doc.staff || d.staff);
+    if(merged === String(sv.doc.title||'')) return 'skip';
+    op.data = Object.assign({}, sv.doc, { title: merged, updatedAt: new Date().toISOString() });
+    return 'merged';
+  }
+  return 'skip';
+}
 async function pushEventsToDb_(){
   const snapshot = (state.cloudPending||[]).slice();
   if(!snapshot.length) return { ok:true, pushed:0 };
@@ -25990,6 +26025,15 @@ async function pushEventsToDb_(){
     if(!op.opId) op.opId = newCloudOpId_();               // 念のため(復元漏れ対策)
     const id = String((op.data && op.data.id) || '');
     if(!id){ done.add(op); console.warn('[events-write] idが無いopを捨てました:', JSON.stringify(op).slice(0,300)); continue; }
+    // 🛡 v1.30.913: 古い中身で上書きしない(上の calStaleDecide_)
+    if(op.action !== 'deleteEvent' && !op.restore){
+      let sv = null;
+      try{ sv = await calServerDoc_(id); }
+      catch(e){ return { ok:false, reason:(e && e.evKind)||'error', message:(e&&e.message)||'', pushed:flush_() }; }
+      const dec = calStaleDecide_(op, sv);
+      if(dec === 'skip'){ done.add(op); pulled = true; console.warn('[events-write] DBの方が新しいので古い変更は送りません:', id, op.ts); continue; }
+      if(dec === 'merged'){ pulled = true; console.warn('[events-write] DBの方が新しいので行を合わせて送ります:', id, op.ts); }
+    }
     let tries = 0, result = '';
     for(;;){
       let base = null;
