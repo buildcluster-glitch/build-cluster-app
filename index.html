@@ -1299,6 +1299,23 @@
   .kq-sum{padding:8px 10px;font-size:13px;background:#f8fafc;border-radius:8px}
   .kq-sec{padding:10px;font-size:13px;font-weight:700;color:#334155;background:#f1f5f9;margin-top:8px}
   .kq-note{font-size:11px;color:#94a3b8;padding:10px}
+  .kq-head{display:flex;align-items:center;gap:8px;padding:12px 16px 0;flex-wrap:wrap}
+  .kq-head b{font-size:16px;color:#0f172a}
+  .kq-open .kq-cat{vertical-align:middle}
+  #kurasukeBtn .kq-cat{display:block}
+  .kq-tabs{display:flex;gap:6px;overflow-x:auto;padding:8px 12px;border-bottom:1px solid var(--border);-webkit-overflow-scrolling:touch}
+  .kq-tab{flex:0 0 auto;border:1px solid var(--border);background:#fff;color:#334155;border-radius:999px;font-size:12px;padding:4px 10px;cursor:pointer;white-space:nowrap}
+  .kq-tab span{color:#94a3b8;font-weight:700;margin-left:2px}
+  .kq-tab.on{background:#0f172a;color:#fff;border-color:#0f172a}
+  .kq-tab.on span{color:#fbbf24}
+  .kq-b{display:inline-block;color:#fff;font-size:10px;font-weight:700;border-radius:6px;padding:1px 6px;margin-right:5px;white-space:nowrap;vertical-align:1px}
+  .kq-click{cursor:pointer}
+  .kq-click:hover{background:#f8fafc}
+  .kq-room{display:inline-block;font-size:10.5px;color:#475569;background:#f1f5f9;border-radius:4px;padding:0 4px;margin-right:4px}
+  .kq-say{display:flex;gap:8px;align-items:flex-start;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:8px 10px;margin:4px 0 8px;font-size:13px;color:#1f2937;line-height:1.6}
+  .kq-cat-s{font-size:20px;line-height:1}
+  .kq-sec2{padding:8px 10px;font-size:12.5px;color:#475569}
+  .kq-more{display:block;width:100%;border:0;background:transparent;color:#2563eb;font-size:12px;padding:6px;cursor:pointer;text-align:center}
   /* ジャンプ先の列をフラッシュ */
   .col-flash{animation:colFlash 1.5s ease}
   @keyframes colFlash{0%,100%{background:transparent}15%,30%{background:rgba(245,158,11,.30)}}
@@ -3052,7 +3069,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.902</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.903</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -3063,6 +3080,7 @@
   <button class="nav-btn" id="authLoginBtn" style="display:none;background:#fef3c7;border-color:#f59e0b;color:#92400e;font-weight:700" title="新システムの準備：一度ログインしてください（アプリの動きは今までと同じです）">🔐 ログイン</button>
   <button class="nav-btn" id="cloudSyncBtn" title="☁ 全同期 — クラウド(予定/休暇) + Drive(最終確認・立会・事前など) をまとめて今すぐ同期。設定は⚙"><span id="cloudSyncIcon">☁</span><span id="cloudSyncBadge" class="hidden"></span></button>
   <button class="nav-btn icon-only" id="searchBtn" title="🔍 予定・立会・修繕・最終確認・休暇を横断検索 (/)">🔍</button>
+  <button class="nav-btn icon-only" id="kurasukeBtn" title="🐱 クラ助に聞く — 過去の見積・修繕・原状回復・立会・マニュアルから探す"><svg class="kq-cat" viewBox="0 0 32 32" width="22" height="22" aria-hidden="true"><path d="M5 12 L7 3 L13 9 Q16 8 19 9 L25 3 L27 12 Q29 16 27 21 Q24 28 16 28 Q8 28 5 21 Q3 16 5 12Z" fill="#fbbf24" stroke="#92400e" stroke-width="1.3"/><circle cx="11.5" cy="16" r="1.8" fill="#1f2937"/><circle cx="20.5" cy="16" r="1.8" fill="#1f2937"/><path d="M14.5 20 L16 21.3 L17.5 20" fill="none" stroke="#92400e" stroke-width="1.2" stroke-linecap="round"/><path d="M2.5 18 L9 19 M2.5 21.5 L9 20.5 M29.5 18 L23 19 M29.5 21.5 L23 20.5" stroke="#92400e" stroke-width="0.9" stroke-linecap="round"/></svg></button>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3126,24 +3144,26 @@
       <button class="sch-close-btn" id="sch-close">閉じる</button>
     </div>
     <div class="sch-results" id="sch-results"></div>
-    <button class="kq-open" id="kojiAskOpen" type="button">🗂 過去の見積・発注・業者請求から工事を探す(便器脱着・ラミネート天井 など)</button>
+    <button class="kq-open" id="kojiAskOpen" type="button"><svg class="kq-cat" viewBox="0 0 32 32" width="22" height="22" aria-hidden="true"><path d="M5 12 L7 3 L13 9 Q16 8 19 9 L25 3 L27 12 Q29 16 27 21 Q24 28 16 28 Q8 28 5 21 Q3 16 5 12Z" fill="#fbbf24" stroke="#92400e" stroke-width="1.3"/><circle cx="11.5" cy="16" r="1.8" fill="#1f2937"/><circle cx="20.5" cy="16" r="1.8" fill="#1f2937"/><path d="M14.5 20 L16 21.3 L17.5 20" fill="none" stroke="#92400e" stroke-width="1.2" stroke-linecap="round"/><path d="M2.5 18 L9 19 M2.5 21.5 L9 20.5 M29.5 18 L23 19 M29.5 21.5 L23 20.5" stroke="#92400e" stroke-width="0.9" stroke-linecap="round"/></svg> クラ助に聞く(過去の見積・修繕・原状回復・立会・マニュアルから探す)</button>
   </div>
 </div>
 
 <!-- 🗂 過去の見積を探す(v1.30.899): 台帳DBの koji_search。第2段で AI(koji-ask)が言い換えを作る -->
 <div class="modal-overlay" id="kojiAskModal">
   <div class="modal modal-search modal-kq">
+    <div class="kq-head"><svg class="kq-cat" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true"><path d="M5 12 L7 3 L13 9 Q16 8 19 9 L25 3 L27 12 Q29 16 27 21 Q24 28 16 28 Q8 28 5 21 Q3 16 5 12Z" fill="#fbbf24" stroke="#92400e" stroke-width="1.3"/><circle cx="11.5" cy="16" r="1.8" fill="#1f2937"/><circle cx="20.5" cy="16" r="1.8" fill="#1f2937"/><path d="M14.5 20 L16 21.3 L17.5 20" fill="none" stroke="#92400e" stroke-width="1.2" stroke-linecap="round"/><path d="M2.5 18 L9 19 M2.5 21.5 L9 20.5 M29.5 18 L23 19 M29.5 21.5 L23 20.5" stroke="#92400e" stroke-width="0.9" stroke-linecap="round"/></svg><b>クラ助に聞く</b><span class="kq-spec">見積・発注・業者請求・修繕・原状回復・立会・予定・マニュアルから探すにゃ</span></div>
     <div class="sch-search-box">
-      <input id="kq-input" type="text" placeholder="🗂 工事の言葉や質問(例: トイレ床 / ラミネート天井の直近は？)" autocomplete="off" spellcheck="false">
+      <input id="kq-input" type="text" placeholder="クラ助に聞くにゃ(例: 便器脱着を伴うトイレ床は？)" autocomplete="off" spellcheck="false">
       <button class="sch-close-btn" id="kq-go" style="background:var(--accent);color:#fff">探す</button>
       <button class="sch-close-btn" id="kq-close">閉じる</button>
     </div>
     <div class="sch-search-box" style="padding-top:0;border-bottom:0">
       <input id="kq-ex" type="text" placeholder="外す言葉(任意・例: 水栓 パッキン)" autocomplete="off" spellcheck="false" style="font-size:13px;padding:6px 10px">
     </div>
+    <div class="kq-tabs" id="kq-tabs"></div>
     <div class="sch-results" id="kq-results"></div>
     <div class="sch-search-box" id="kq-refine-row" style="display:none;border-top:1px solid var(--border);border-bottom:0">
-      <input id="kq-refine" type="text" placeholder="続けて絞る: この中で○○を伴うのは？(例: 便器脱着)" autocomplete="off" spellcheck="false" style="font-size:14px">
+      <input id="kq-refine" type="text" placeholder="続けて聞くにゃ: この中で○○を伴うのは？(例: 便器脱着)" autocomplete="off" spellcheck="false" style="font-size:14px">
       <button class="sch-close-btn" id="kq-refine-go">絞る</button>
     </div>
   </div>
@@ -24577,7 +24597,7 @@ async function kqAsk_(question, history){
 }
 async function kqRun_(q){
   const words = kqSplit_(q);
-  __kq = { q, words, rows:[], refine:[], showTeiban:false, busy:true, capped:false, ai:null, aiNote:'' };
+  __kq = { q, words, rows:[], refine:[], showTeiban:false, busy:true, capped:false, ai:null, aiNote:'', tab:'all', run:__kq.run||0, groups:[], localAll:[], man:[] };
   kqRender_();
   if(!words.length){ __kq.busy=false; kqRender_(); return; }
   const exUser0 = kqSplit_((document.getElementById('kq-ex')||{}).value||'');
@@ -24585,6 +24605,7 @@ async function kqRun_(q){
   if(ai){
     __kq.ai = ai; __kq.rows = ai.rows; __kq.capped = false;
     __kq.used = [{ w:'AI', v:(ai.keywords||[]).concat(ai.synonyms||[]) }]; __kq.ex = ai.exclude||[];
+    kqSideSearch_((Array.isArray(ai.must) && ai.must.length) ? ai.must : [(ai.keywords||[]).concat(ai.synonyms||[])]);
     __kq.busy = false; kqRender_(); return;
   }
   try{
@@ -24597,6 +24618,7 @@ async function kqRun_(q){
     __kq.rows = res.rows.filter(r=>vs.every((x,i)=>i===mi || kqLineHas_(r, x.v)));
     __kq.capped = res.capped;
     __kq.used = vs.map((x,i)=>({ w:words[i], v:x.v })); __kq.ex = ex;
+    kqSideSearch_(vs.map(x=>x.v));
   }catch(e){
     __kq.err = (e && e.evKind==='no-session') ? 'ログインしていないので探せません(右上の🔐からログインしてください)' : ('探せませんでした: '+((e&&e.message)||e));
   }
@@ -24638,34 +24660,136 @@ function kqView_(){
   const names = new Map(); sale.forEach(g=>g.lines.forEach(l=>{ const k=kqNorm_(l.item); if(!names.has(k)) names.set(k,l.item); }));
   return { special, teiban, cost, teibanItems:teibanItems.map(([k,n])=>({ name:names.get(k)||k, n })) };
 }
+// 🐱 v1.30.903(山田「クラ助アイコンに」「立会・修繕・工事履歴・マニュアルも」「バッジで見やすく」):
+//   見積(koji_search/AI)に加えて、手元の修繕・原状回復・立会・予定と、マニュアル(manual_search2)も同じ語で探して並べる。
+//   語の組(groups)=AIの must(全部の組を満たす)、無ければ AIの語+言い換え1組、辞書なら語ごとの言い換えの組。
+const KQ_KIND = { 見積:['💴','#2563eb'], 発注:['📦','#7c3aed'], 台帳:['📒','#0284c7'], 請求:['🧾','#b45309'], 修繕:['🔧','#dc2626'], 原状回復:['🏠','#16a34a'], 立会:['🚪','#ea580c'], 予定:['🗓','#64748b'], マニュアル:['📖','#0f766e'] };
+const KQ_TABS = [['all','すべて'],['koji','💴 見積・工事'],['原状回復','🏠 原状回復'],['修繕','🔧 修繕'],['立会','🚪 立会'],['予定','🗓 予定'],['マニュアル','📖 マニュアル'],['請求','🧾 業者請求']];
+function kqBadge_(k){ const x = KQ_KIND[k] || ['', '#94a3b8']; return `<span class="kq-b" style="background:${x[1]}">${x[0]} ${escapeHtml(k)}</span>`; }
+function kqLocalPool_(){
+  const out = [], N = kqNorm_;
+  const nd = d=>{ d = String(d||''); try{ if(d && !/^\d{4}-\d{2}-\d{2}/.test(d) && typeof normalizeDate==='function') d = normalizeDate(d) || d; }catch(_){} return d; };
+  (state.repairs||[]).forEach(r=>{
+    if(!r) return;
+    out.push({ kind:'修繕', date:nd(r.responseDate||r.responseDateRaw||r.receivedDate), title:`${r.name||''} ${r.room||''}`.trim(),
+      sub:[r.contractor, r.worker||r.contactPerson, String(r.requestDesc||'').slice(0,60)].filter(Boolean).join(' / '),
+      hay:N([r.name,r.room,r.contractor,r.worker,r.contactPerson,r.requestDesc,r.requestDescFull,r.memo,r.workDesc].join(' ')),
+      open:()=>{ if(typeof openRepairSheet==='function') openRepairSheet(r.id); } });
+  });
+  (state.restorations||[]).forEach(p=>{
+    if(!p || p._repairResto) return;
+    const tasks = (p.tasks||[]).map(t=>t?[t.title,t.name,t.item,t.memo].join(' '):'').join(' ');
+    out.push({ kind:'原状回復', date:nd(p.completeDate||p.finalDate||p.checkDate), title:`${p.name||''} ${p.room||''}`.trim(),
+      sub:[p.client, p.memo && String(p.memo).slice(0,60)].filter(Boolean).join(' / '),
+      hay:N([p.name,p.room,p.client,p.memo,tasks].join(' ')),
+      open:()=>{ if(typeof openRestoDialog==='function') openRestoDialog(p.id); } });
+  });
+  try{
+    ((typeof buildTaikyoVirtuals_==='function') ? buildTaikyoVirtuals_() : []).forEach(v=>{
+      if(!v || !v.date) return;
+      out.push({ kind:'立会', date:v.date, title:(v.title || `${v._bukken||''} ${v._room||''}`).trim(), sub:[v.staff].filter(Boolean).join(' / '),
+        hay:N([v.title,v._bukken,v._room,v.staff,v.memo].join(' ')), open:()=>kqJumpDate_(v.date) });
+    });
+  }catch(_){}
+  (state.events||[]).forEach(ev=>{
+    if(!ev || !ev.date) return;
+    const t = String(ev.title||'');
+    out.push({ kind:(String(ev.category||'').indexOf('立会')>=0)?'立会':'予定', date:ev.date, title:(t.split(/\r?\n/)[0]||'(無題)').trim(),
+      sub:[ev.staff, ev.category].filter(Boolean).join(' / '), hay:N([t, ev.memo, ev.staff, ev.category].join(' ')), open:()=>kqJumpDate_(ev.date) });
+  });
+  return out;
+}
+function kqJumpDate_(date){
+  const ov = document.getElementById('kojiAskModal'); if(ov) ov.classList.remove('show');
+  __schResults = [{ date }]; if(typeof jumpToScheduleItem_==='function') jumpToScheduleItem_(0);
+}
+function kqLocalMatch_(groups, refine){
+  const gs = (groups||[]).map(g=>(g||[]).map(kqNorm_).filter(Boolean)).filter(g=>g.length);
+  if(!gs.length) return [];
+  const rs = (refine||[]).map(f=>(f.v||[]).map(kqNorm_).filter(Boolean)).filter(g=>g.length);
+  const hit = kqLocalPool_().filter(it=>gs.concat(rs).every(g=>g.some(t=>it.hay.indexOf(t)>=0)));
+  hit.sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  return hit;
+}
+async function kqSideSearch_(groups){
+  const run = (__kq.run = (__kq.run||0) + 1);
+  __kq.groups = groups; __kq.man = null;
+  try{ __kq.localAll = kqLocalMatch_(groups, []); }catch(_){ __kq.localAll = []; }
+  const terms = ((groups||[])[0]||[]).slice(0,4);
+  if(!terms.length || typeof manRpc_!=='function'){ __kq.man = []; return; }
+  Promise.all(terms.map(t=>manRpc_('manual_search2', { p_q:t, p_folder_id:null, p_user:null, p_since:null, p_sort:null }).then(r=>r||[]).catch(()=>[])))
+    .then(lists=>{
+      if(__kq.run !== run) return;
+      const seen = new Set(), out = [];
+      lists.forEach(l=>l.forEach(p=>{ if(p && !seen.has(p.id)){ seen.add(p.id); out.push(p); } }));
+      __kq.man = out.slice(0,30); kqRender_();
+    });
+}
+function kqLocalView_(){
+  const refined = __kq.refine.length ? kqLocalMatch_(__kq.groups, __kq.refine) : (__kq.localAll||[]);
+  const by = {}; refined.forEach(it=>{ (by[it.kind] = by[it.kind] || []).push(it); });
+  return by;
+}
 function kqGroupHtml_(g){
-  const lines = g.lines.slice(0,8).map(l=>`<div class="kq-line">${l.refineHit?'<b class="kq-tag">＋'+escapeHtml(l.refineHit)+'</b> ':''}${l.line_room?'<span class="kq-spec">['+escapeHtml(l.line_room)+']</span> ':''}${escapeHtml(l.item||'')}${l.spec?' <span class="kq-spec">'+escapeHtml(l.spec)+'</span>':''} <span class="kq-yen">${l.qty?escapeHtml(String(l.qty))+'×':''}${kqYen_(l.tanka)}${l.kingaku?' = '+kqYen_(l.kingaku):''}${l.order_price?' / 発注'+kqYen_(l.order_price):''}</span></div>`).join('') + (g.lines.length>8?`<div class="kq-line kq-spec">ほか${g.lines.length-8}行</div>`:'');
+  const kinds = Array.from(g.kinds).map(k=>kqBadge_(g.cost?'請求':k)).join('');
+  const lines = g.lines.slice(0,8).map(l=>`<div class="kq-line">${l.refineHit?'<b class="kq-tag">＋'+escapeHtml(l.refineHit)+'</b> ':''}${l.line_room?'<span class="kq-room">'+escapeHtml(l.line_room)+'</span>':''}${escapeHtml(l.item||'')}${l.spec?' <span class="kq-spec">'+escapeHtml(l.spec)+'</span>':''} <span class="kq-yen">${l.qty?escapeHtml(String(l.qty))+'×':''}${kqYen_(l.tanka)}${l.kingaku?' = '+kqYen_(l.kingaku):''}${l.order_price?' / 発注'+kqYen_(l.order_price):''}</span></div>`).join('') + (g.lines.length>8?`<div class="kq-line kq-spec">ほか${g.lines.length-8}行</div>`:'');
   const fol = g.folders.slice(0,2).map(f=>`<button class="kq-fol" data-path="${escapeHtml(kqFolderFull_(f))}" title="押すと場所をコピーします\n${escapeHtml(kqFolderFull_(f))}">📁 ${escapeHtml(kqFolderName_(f))}</button>`).join('');
-  return `<div class="kq-g"><div class="kq-h"><span class="kq-d">${escapeHtml((g.date||String(g.year||'')).slice(0,10))}</span> <b>${escapeHtml(g.bukken||'(物件名なし)')}</b> ${escapeHtml(g.room||'')} <span class="kq-meta">${escapeHtml(Array.from(g.motos).join('・'))}${g.gyosha.size?' / 業者 '+escapeHtml(Array.from(g.gyosha).slice(0,3).join('・')):''}${g.creators.size?' / 作成 '+escapeHtml(Array.from(g.creators).join('・')):''} ・${escapeHtml(Array.from(g.kinds).join('・'))}</span></div>${lines}${fol?'<div>'+fol+'</div>':''}</div>`;
+  const who = [Array.from(g.motos).join('・'), g.gyosha.size?'業者 '+Array.from(g.gyosha).slice(0,3).join('・'):'', g.creators.size?'作成 '+Array.from(g.creators).join('・'):''].filter(Boolean).join(' / ');
+  return `<div class="kq-g"><div class="kq-h">${kinds}<span class="kq-d">${escapeHtml((g.date||String(g.year||'')).slice(0,10))}</span> <b>${escapeHtml(g.bukken||'(物件名なし)')}</b> ${escapeHtml(g.room||'')}</div>${who?'<div class="kq-meta">'+escapeHtml(who)+'</div>':''}${lines}${fol?'<div>'+fol+'</div>':''}</div>`;
+}
+function kqItemHtml_(it, i){
+  return `<div class="kq-g kq-click" data-oi="${i}">${kqBadge_(it.kind)}<span class="kq-d">${escapeHtml(String(it.date||'').slice(0,10))}</span> <b>${escapeHtml(it.title||'')}</b>${it.sub?'<div class="kq-meta">'+escapeHtml(it.sub)+'</div>':''}</div>`;
+}
+function kqManHtml_(p){
+  const sn = String(p.snippet||'').replace(/<[^>]*>/g,'').slice(0,90);
+  return `<div class="kq-g kq-click" data-man="${escapeHtml(String(p.id))}">${kqBadge_('マニュアル')}<b>${escapeHtml(p.title||'')}</b>${sn?'<div class="kq-meta">'+escapeHtml(sn)+'</div>':''}</div>`;
 }
 function kqRender_(){
   const box = document.getElementById('kq-results'); if(!box) return;
-  if(__kq.busy){ box.innerHTML = '<div class="sch-empty">探しています…</div>'; return; }
+  const tabsEl = document.getElementById('kq-tabs');
+  if(__kq.busy){ box.innerHTML = '<div class="sch-empty">🐱 探してるにゃ…</div>'; if(tabsEl) tabsEl.innerHTML=''; return; }
   if(__kq.err){ box.innerHTML = `<div class="sch-empty">⚠ ${escapeHtml(__kq.err)}</div>`; __kq.err=''; return; }
-  if(!__kq.words.length){ box.innerHTML = `<div class="sch-empty">工事の言葉を入れて「探す」を押してください<br>例: <b>トイレ床</b> → 続けて <b>便器脱着</b> / <b>ラミネート天井</b><br><span style="font-size:11px">${escapeHtml(KQ_SINCE_NOTE)}</span></div>`; return; }
-  const v = kqView_();
-  const chain = [__kq.q].concat(__kq.refine.map(f=>f.w)).map(escapeHtml).join(' → ');
-  const used = (__kq.used||[]).map(u=>escapeHtml(u.w)+'('+u.v.length+'語)').join('・');
+  if(!__kq.words.length){ if(tabsEl) tabsEl.innerHTML=''; box.innerHTML = `<div class="sch-empty">🐱 何を探すにゃ？<br>例: <b>便器脱着を伴うトイレ床は？</b> / <b>ラミネート天井の直近は？</b><br>見積・発注・業者請求・修繕・原状回復・立会・予定・マニュアルから探すにゃ<br><span style="font-size:11px">${escapeHtml(KQ_SINCE_NOTE)}</span></div>`; return; }
+  const v = kqView_(), loc = kqLocalView_(), man = __kq.man;
+  const cnt = { all:0, koji:v.special.length + v.teiban.length, 請求:v.cost.length, マニュアル:(man||[]).length };
+  ['原状回復','修繕','立会','予定'].forEach(k=>cnt[k] = (loc[k]||[]).length);
+  cnt.all = Object.keys(cnt).reduce((s,k)=>k==='all'?s:s+cnt[k],0);
+  const tab = __kq.tab || 'all';
+  if(tabsEl) tabsEl.innerHTML = KQ_TABS.filter(([k])=>k==='all' || cnt[k] || (k==='マニュアル' && man===null)).map(([k,l])=>`<button class="kq-tab${k===tab?' on':''}" data-tab="${k}">${l} <span>${k==='マニュアル'&&man===null?'…':cnt[k]}</span></button>`).join('');
   const lastSum = (__kq.refine.length ? __kq.refine[__kq.refine.length-1].summary : (__kq.ai && __kq.ai.summary)) || '';
+  const chain = [__kq.q].concat(__kq.refine.map(f=>f.w)).map(escapeHtml).join(' → ');
   const how = (__kq.ai || __kq.refine.some(f=>f.kw)) ? '🤖 AIで言い換え' : '📖 辞書で言い換え';
-  let h = (lastSum ? `<div class="kq-sum" style="background:#eef2ff;margin-bottom:6px">🤖 ${escapeHtml(lastSum)}</div>` : '') + (__kq.aiNote ? `<div class="kq-spec" style="padding:4px 10px">⚠ ${escapeHtml(__kq.aiNote)}</div>` : '') + `<div class="kq-sum">${how}「${chain}」 現場 <b>${v.special.length}</b>件${(!__kq.refine.length && __kq.ai && __kq.ai.sites_before)?' <span class="kq-spec">(条件で絞る前は'+__kq.ai.sites_before+'現場)</span>':''}${v.teiban.length?' ＋定番の行だけ '+v.teiban.length+'件':''}${v.cost.length?' ／業者請求 '+v.cost.length+'件':''}<div class="kq-spec">言い換え: ${used}${__kq.ex&&__kq.ex.length?' ／除外: '+escapeHtml(__kq.ex.join('・')):''}${__kq.capped?' ／⚠1語で200件を超えたので古い分が切れています。言葉を足してください':''}</div></div>`;
-  h += v.special.map(kqGroupHtml_).join('') || '<div class="sch-empty">定番の行以外は見つかりませんでした</div>';
-  if(v.teiban.length){
-    h += `<div class="kq-sec">定番の行だけの現場 ${v.teiban.length}件 <span class="kq-spec">(${v.teibanItems.slice(0,4).map(t=>escapeHtml(t.name)+' '+t.n+'件').join('・')})</span> <button class="kq-fol" id="kq-teiban">${__kq.showTeiban?'畳む':'見る'}</button></div>`;
-    if(__kq.showTeiban) h += v.teiban.map(kqGroupHtml_).join('');
-  }
-  if(v.cost.length) h += `<div class="kq-sec">業者からの請求(原価・売値の相場とは別)</div>` + v.cost.map(kqGroupHtml_).join('');
-  h += `<div class="kq-note">${escapeHtml(KQ_SINCE_NOTE)}</div>`;
+  const used = (__kq.used||[]).map(u=>escapeHtml(u.w)+'('+u.v.length+'語)').join('・');
+  let h = (lastSum ? `<div class="kq-say"><span class="kq-cat-s">🐱</span><div>${escapeHtml(lastSum)}</div></div>` : '')
+    + (__kq.aiNote ? `<div class="kq-spec" style="padding:4px 10px">⚠ ${escapeHtml(__kq.aiNote)}</div>` : '')
+    + `<div class="kq-sum">「${chain}」 ${how}${(!__kq.refine.length && __kq.ai && __kq.ai.sites_before)?' ・条件で絞る前は'+__kq.ai.sites_before+'現場':''}<div class="kq-spec">言い換え: ${used}${__kq.ex&&__kq.ex.length?' ／除外: '+escapeHtml(__kq.ex.join('・')):''}${__kq.capped?' ／⚠1語で200件を超えたので古い分が切れています。言葉を足してください':''}</div></div>`;
+  const openers = []; const items = (arr,n)=>arr.slice(0,n).map(it=>{ openers.push(it.open); return kqItemHtml_(it, openers.length-1); }).join('');
+  const more = (k,n)=> n>0 ? `<button class="kq-more" data-tab="${k}">もっと見る(あと${n}件)</button>` : '';
+  const sec = (k,title,body)=> body ? `<div class="kq-sec">${title}</div>${body}` : '';
+  const kojiBody = (lim)=> v.special.slice(0,lim).map(kqGroupHtml_).join('') + (v.teiban.length ? `<div class="kq-sec2">定番の行だけの現場 ${v.teiban.length}件 <span class="kq-spec">(${v.teibanItems.slice(0,4).map(t=>escapeHtml(t.name)+' '+t.n+'件').join('・')})</span> <button class="kq-fol" id="kq-teiban">${__kq.showTeiban?'畳む':'見る'}</button></div>` + (__kq.showTeiban ? v.teiban.map(kqGroupHtml_).join('') : '') : '');
+  if(tab==='all'){
+    if(v.special.length || v.teiban.length) h += sec('koji','💴 見積・工事', kojiBody(6) + more('koji', v.special.length-6));
+    ['原状回復','修繕','立会','予定'].forEach(k=>{ const a = loc[k]||[]; if(a.length) h += sec(k, KQ_TABS.find(t=>t[0]===k)[1], items(a,4) + more(k, a.length-4)); });
+    if(man && man.length) h += sec('マニュアル','📖 マニュアル', man.slice(0,4).map(kqManHtml_).join('') + more('マニュアル', man.length-4));
+    if(v.cost.length) h += sec('請求','🧾 業者からの請求(原価・売値の相場とは別)', v.cost.slice(0,4).map(kqGroupHtml_).join('') + more('請求', v.cost.length-4));
+    if(!cnt.all && man!==null) h += '<div class="sch-empty">🐱 見つからなかったにゃ。言葉を変えてみてにゃ</div>';
+  } else if(tab==='koji') h += kojiBody(200) || '<div class="sch-empty">なかったにゃ</div>';
+  else if(tab==='請求') h += v.cost.map(kqGroupHtml_).join('');
+  else if(tab==='マニュアル') h += man===null ? '<div class="sch-empty">マニュアルを探してるにゃ…</div>' : (man.map(kqManHtml_).join('') || '<div class="sch-empty">なかったにゃ</div>');
+  else h += items(loc[tab]||[], 200) || '<div class="sch-empty">なかったにゃ</div>';
+  h += `<div class="kq-note">${escapeHtml(KQ_SINCE_NOTE)} 修繕・原状回復・立会・予定はこの端末にある分から探しています。</div>`;
   box.innerHTML = h;
   const tb = document.getElementById('kq-teiban'); if(tb) tb.onclick = ()=>{ __kq.showTeiban=!__kq.showTeiban; kqRender_(); };
-  box.querySelectorAll('.kq-fol[data-path]').forEach(b=>b.onclick=()=>{ const p=b.getAttribute('data-path'); try{ navigator.clipboard.writeText(p); }catch(_){} if(typeof showAutoSyncToast==='function') showAutoSyncToast('📁 フォルダの場所をコピーしました'); });
-  const rf = document.getElementById('kq-refine-row'); if(rf) rf.style.display = __kq.rows.length ? '' : 'none';
+  const setTab = k=>{ __kq.tab = k; kqRender_(); box.scrollTop = 0; };
+  if(tabsEl) tabsEl.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>setTab(b.getAttribute('data-tab')));
+  box.querySelectorAll('.kq-more[data-tab]').forEach(b=>b.onclick=()=>setTab(b.getAttribute('data-tab')));
+  box.querySelectorAll('.kq-fol[data-path]').forEach(b=>b.onclick=()=>{ const p=b.getAttribute('data-path'); try{ navigator.clipboard.writeText(p); }catch(_){} if(typeof showAutoSyncToast==='function') showAutoSyncToast('📁 フォルダの場所をコピーしたにゃ'); });
+  box.querySelectorAll('[data-oi]').forEach(b=>b.onclick=()=>{ const f = openers[+b.getAttribute('data-oi')]; if(f){ const ov=document.getElementById('kojiAskModal'); if(ov) ov.classList.remove('show'); try{ f(); }catch(_){} } });
+  box.querySelectorAll('[data-man]').forEach(b=>b.onclick=async()=>{ const ov=document.getElementById('kojiAskModal'); if(ov) ov.classList.remove('show'); try{ await manOpen_(); await manOpenPage_(b.getAttribute('data-man')); }catch(_){} });
+  const rf = document.getElementById('kq-refine-row'); if(rf) rf.style.display = cnt.all ? '' : 'none';
 }
+
+
 function openKojiAsk_(initial){
   const ov = document.getElementById('kojiAskModal'); if(!ov) return;
   if(typeof closeScheduleSearch==='function') closeScheduleSearch();
@@ -24685,6 +24809,7 @@ function openKojiAsk_(initial){
   const i2=document.getElementById('kq-refine'); if(i2) i2.onkeydown=e=>{ if(e.key==='Enter' && !e.isComposing) rf(); };
   const c=document.getElementById('kq-close'); if(c) c.onclick=()=>ov.classList.remove('show');
   const o=document.getElementById('kojiAskOpen'); if(o) o.onclick=()=>openKojiAsk_((document.getElementById('sch-input')||{}).value||'');
+  const kb=document.getElementById('kurasukeBtn'); if(kb) kb.onclick=()=>openKojiAsk_('');
 }
 {
   const sb = document.getElementById("searchBtn");
