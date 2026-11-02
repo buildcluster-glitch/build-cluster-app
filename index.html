@@ -1323,6 +1323,10 @@
   .kq-sug{text-align:left;border:1px solid var(--border);background:#fff;border-radius:10px;padding:8px 10px;font-size:13px;color:#0f172a;cursor:pointer}
   .kq-sug:hover{background:#fffbeb;border-color:#fcd34d}
   .kq-sug .kq-spec{display:block;margin-top:2px}
+  .kq-tk{display:inline-block;margin-right:10px;white-space:nowrap}
+  .kq-fb{margin-top:6px;font-size:12px;color:#92400e}
+  .kq-fb button{border:1px solid #fcd34d;background:#fff;border-radius:6px;padding:1px 8px;margin-left:4px;cursor:pointer;font-size:13px}
+  a.kq-fol{text-decoration:none;color:#0369a1;display:inline-block}
   .kq-sec2{padding:8px 10px;font-size:12.5px;color:#475569}
   .kq-more{display:block;width:100%;border:0;background:transparent;color:#2563eb;font-size:12px;padding:6px;cursor:pointer;text-align:center}
   /* ジャンプ先の列をフラッシュ */
@@ -3078,7 +3082,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.908</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.909</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24680,7 +24684,7 @@ async function kqRun_(q){
       const terms = { keywords:ai.keywords||[], synonyms:ai.synonyms||[], exclude:ai.exclude||[], must:ai.must||[], motouke:ai.motouke||null, since:ai.since||null, bukken:(ai.bukken||(ctx&&ctx.bukken)||null), room:(ai.room||(ctx&&ctx.room)||null) };
       const sm = await kqSummarize_(q2, terms, kqExtra_());
       if(__kq.run !== run) return;
-      __kq.ai.summary = (sm && sm.summary) || ''; __kq.sumPending = false; kqRender_();
+      __kq.ai.summary = (sm && sm.summary) || ''; __kq.sumLogId = (sm && sm.log_id) || null; __kq.sumPending = false; kqRender_();
     }
     return;
   }
@@ -24713,7 +24717,7 @@ async function kqRefine_(w){
     .concat(__kq.refine.map(f=>({ question:f.w, keywords:f.kw||[f.w] })));
   const ai = await kqAsk_(w, hist);
   if(ai && ai.follow!=='narrow'){ __kq.busy=false; const i=document.getElementById('kq-input'); if(i) i.value=w; return kqRun_(w); }   // AIが「別の質問」と判断→新しく探す
-  if(ai){ __kq.refine.push({ w, kw:ai.keywords||[], v:(ai.keywords||[]).concat(ai.synonyms||[]), rows:ai.rows, summary:ai.summary||'' }); __kq.busy=false; kqRender_(); return; }
+  if(ai){ __kq.refine.push({ w, kw:ai.keywords||[], v:(ai.keywords||[]).concat(ai.synonyms||[]), rows:ai.rows, summary:ai.summary||'', logId:ai.log_id||null }); __kq.busy=false; kqRender_(); return; }
   try{
     const x = kqVariants_(w);
     const res = await kqFetch_(x.v, x.ex);
@@ -24744,8 +24748,8 @@ function kqView_(){
 // 🐱 v1.30.903(山田「クラ助アイコンに」「立会・修繕・工事履歴・マニュアルも」「バッジで見やすく」):
 //   見積(koji_search/AI)に加えて、手元の修繕・原状回復・立会・予定と、マニュアル(manual_search2)も同じ語で探して並べる。
 //   語の組(groups)=AIの must(全部の組を満たす)、無ければ AIの語+言い換え1組、辞書なら語ごとの言い換えの組。
-const KQ_KIND = { 見積:['💴','#2563eb'], 発注:['📦','#7c3aed'], 台帳:['📒','#0284c7'], 請求:['🧾','#b45309'], 修繕:['🔧','#dc2626'], 原状回復:['🏠','#16a34a'], 立会:['🚪','#ea580c'], 予定:['🗓','#64748b'], マニュアル:['📖','#0f766e'] };
-const KQ_TABS = [['all','すべて'],['koji','💴 見積・工事'],['原状回復','🏠 原状回復'],['修繕','🔧 修繕'],['立会','🚪 立会'],['予定','🗓 予定'],['マニュアル','📖 マニュアル'],['請求','🧾 業者請求']];
+const KQ_KIND = { 見積:['💴','#2563eb'], 発注:['📦','#7c3aed'], 台帳:['📒','#0284c7'], 請求:['🧾','#b45309'], 修繕:['🔧','#dc2626'], 原状回復:['🏠','#16a34a'], 立会:['🚪','#ea580c'], 予定:['🗓','#64748b'], マニュアル:['📖','#0f766e'], 相場:['💹','#0d9488'] };
+const KQ_TABS = [['all','すべて'],['koji','💴 見積・工事'],['相場','💹 相場'],['原状回復','🏠 原状回復'],['修繕','🔧 修繕'],['立会','🚪 立会'],['予定','🗓 予定'],['マニュアル','📖 マニュアル'],['請求','🧾 業者請求']];
 function kqBadge_(k){ const x = KQ_KIND[k] || ['', '#94a3b8']; return `<span class="kq-b" style="background:${x[1]}">${x[0]} ${escapeHtml(k)}</span>`; }
 function kqLocalPool_(){
   const out = [], N = kqNorm_;
@@ -24796,6 +24800,7 @@ async function kqSideSearch_(groups){
   const run = (__kq.run = (__kq.run||0) + 1);
   __kq.groups = groups; __kq.man = null;
   try{ __kq.localAll = kqLocalMatch_(groups, []); }catch(_){ __kq.localAll = []; }
+  kqTankaFetch_(groups, run);
   const terms = ((groups||[])[0]||[]).slice(0,4);
   if(!terms.length || typeof manRpc_!=='function'){ __kq.man = []; return Promise.resolve(); }
   return Promise.all(terms.map(t=>manRpc_('manual_search2', { p_q:t, p_folder_id:null, p_user:null, p_since:null, p_sort:null }).then(r=>r||[]).catch(()=>[])))
@@ -24806,6 +24811,59 @@ async function kqSideSearch_(groups){
       __kq.man = out.slice(0,30); kqRender_();
     });
 }
+// 💴 相場(v1.30.909・山田「123やろう」の3): tanka_lookup(年=0の全期間)を品名ごとに 売値(元請け別)/発注(業者別) の中央値で並べる。
+//   物件だけの質問(語が物件名だけ)では引かない。
+function kqTankaFetch_(groups, run){
+  __kq.tanka = [];
+  const g0 = ((groups||[])[0]||[]).filter(Boolean);
+  if(!g0.length || typeof calRpcRaw_!=='function') return;
+  if(__kq.ctx && (groups||[]).length===1 && kqNorm_(g0[0])===kqNorm_(__kq.ctx.bukken)) return;
+  __kq.tanka = null;
+  calRpcRaw_('tanka_lookup', { keywords:g0.slice(0,8), kind:null }).then(r=>{
+    if(__kq.run !== run) return; __kq.tanka = Array.isArray(r) ? r : []; kqRender_();
+  }).catch(()=>{ if(__kq.run !== run) return; __kq.tanka = []; kqRender_(); });
+}
+function kqTankaView_(){
+  const m = new Map();
+  (__kq.tanka||[]).forEach(r=>{
+    if(!r || Number(r.year)!==0 || !r.median) return;
+    const k = kqNorm_(r.item); let o = m.get(k);
+    if(!o){ o = { item:r.item, unit:r.unit||'', ju:[], ha:[], n:0 }; m.set(k,o); }
+    (r.kind==='hacchu' ? o.ha : o.ju).push(r); o.n += Number(r.n)||0;
+  });
+  const top = a=>a.sort((x,y)=>(y.n||0)-(x.n||0)).slice(0,3);
+  return Array.from(m.values()).sort((a,b)=>b.n-a.n).slice(0,12).map(o=>Object.assign(o,{ ju:top(o.ju), ha:top(o.ha) }));
+}
+function kqTankaHtml_(o){
+  const one = (r,who)=>`<span class="kq-tk">${escapeHtml(who||'全体')} <b>${kqYen_(r.median)}</b><span class="kq-spec">(${r.n}件${r.lo&&r.hi&&r.lo!==r.hi?'・'+kqYen_(r.lo)+'〜'+kqYen_(r.hi):''})</span></span>`;
+  return `<div class="kq-g">${kqBadge_('相場')}<b>${escapeHtml(o.item)}</b>${o.unit?' <span class="kq-spec">/'+escapeHtml(o.unit)+'</span>':''}`
+    + (o.ju.length ? `<div class="kq-line">売値: ${o.ju.map(r=>one(r, r.moto)).join(' ')}</div>` : '')
+    + (o.ha.length ? `<div class="kq-line">発注: ${o.ha.map(r=>one(r, r.gyosha)).join(' ')}</div>` : '') + `</div>`;
+}
+// 🌐 Dropbox の Web で開く(v1.30.909): 過去分=「Dropbox-共有フォルダ/」からの相対、台帳=Windowsのフルパス(…共有フォルダ Dropbox\…)
+function kqDbxUrl_(f){
+  let rel = '';
+  if(f.src==='jisseki') rel = String(f.path||'');
+  else { const m = String(f.path||'').match(/共有フォルダ Dropbox[\\\/](.+)$/) || String(f.path||'').match(/Dropbox[^\\\/]*[\\\/](.+)$/); rel = m ? m[1] : ''; }
+  rel = rel.replace(/^[\\\/]+/,''); if(!rel) return '';
+  return 'https://www.dropbox.com/home/' + rel.split(/[\\\/]+/).filter(Boolean).map(encodeURIComponent).join('/');
+}
+// 👍👎(v1.30.909・1): koji-ask が返す log_id に評価を書く(koji_ask_feedback)。log_id が来ない版ではボタンを出さない
+function kqLogId_(){
+  if(__kq.refine.length) return __kq.refine[__kq.refine.length-1].logId || null;
+  return __kq.sumLogId || (__kq.ai && __kq.ai.log_id) || null;
+}
+async function kqFeedback_(good){
+  const id = kqLogId_(); if(!id) return;
+  let note = null;
+  if(!good){ try{ note = prompt('どこが違ったか一言あれば教えてにゃ(空でもOK)', '') ; }catch(_){} if(note === null) note = ''; }
+  try{
+    await calRpcRaw_('koji_ask_feedback', { p_log_id:id, p_good:!!good, p_note:note||null });
+    (__kq.fb = __kq.fb || {})[id] = good ? 'good' : 'bad';
+    if(typeof showAutoSyncToast==='function') showAutoSyncToast(good ? '👍 ありがとにゃ' : '👎 ありがとにゃ。直すのに使うにゃ');
+  }catch(e){ alert('送れませんでした: '+((e&&e.message)||e)); }
+  kqRender_();
+}
 function kqLocalView_(){
   const refined = __kq.refine.length ? kqLocalMatch_(__kq.groups, __kq.refine) : (__kq.localAll||[]);
   const by = {}; refined.forEach(it=>{ (by[it.kind] = by[it.kind] || []).push(it); });
@@ -24814,7 +24872,7 @@ function kqLocalView_(){
 function kqGroupHtml_(g){
   const kinds = Array.from(g.kinds).map(k=>kqBadge_(g.cost?'請求':k)).join('');
   const lines = g.lines.slice(0,8).map(l=>`<div class="kq-line">${l.refineHit?'<b class="kq-tag">＋'+escapeHtml(l.refineHit)+'</b> ':''}${l.line_room?'<span class="kq-room">'+escapeHtml(l.line_room)+'</span>':''}${escapeHtml(l.item||'')}${l.spec?' <span class="kq-spec">'+escapeHtml(l.spec)+'</span>':''} <span class="kq-yen">${l.qty?escapeHtml(String(l.qty))+'×':''}${kqYen_(l.tanka)}${l.kingaku?' = '+kqYen_(l.kingaku):''}${l.order_price?' / 発注'+kqYen_(l.order_price):''}</span></div>`).join('') + (g.lines.length>8?`<div class="kq-line kq-spec">ほか${g.lines.length-8}行</div>`:'');
-  const fol = g.folders.slice(0,2).map(f=>`<button class="kq-fol" data-path="${escapeHtml(kqFolderFull_(f))}" title="押すと場所をコピーします\n${escapeHtml(kqFolderFull_(f))}">📁 ${escapeHtml(kqFolderName_(f))}</button>`).join('');
+  const fol = g.folders.slice(0,2).map(f=>{ const u = kqDbxUrl_(f); return `<button class="kq-fol" data-path="${escapeHtml(kqFolderFull_(f))}" title="押すと場所をコピーします\n${escapeHtml(kqFolderFull_(f))}">📁 ${escapeHtml(kqFolderName_(f))}</button>${u?`<a class="kq-fol" href="${escapeHtml(u)}" target="_blank" rel="noopener" title="DropboxのWebでこのフォルダを開く">🌐 開く</a>`:''}`; }).join('');
   const who = [Array.from(g.motos).join('・'), g.gyosha.size?'業者 '+Array.from(g.gyosha).slice(0,3).join('・'):'', g.creators.size?'作成 '+Array.from(g.creators).join('・'):''].filter(Boolean).join(' / ');
   return `<div class="kq-g"><div class="kq-h">${kinds}<span class="kq-d">${escapeHtml((g.date||String(g.year||'')).slice(0,10))}</span> <b>${escapeHtml(g.bukken||'(物件名なし)')}</b> ${escapeHtml(g.room||'')}</div>${who?'<div class="kq-meta">'+escapeHtml(who)+'</div>':''}${lines}${fol?'<div>'+fol+'</div>':''}</div>`;
 }
@@ -24845,6 +24903,7 @@ function kqRender_(){
   const v = kqView_(), loc = kqLocalView_(), man = __kq.man;
   const cnt = { all:0, koji:v.special.length + v.teiban.length, 請求:v.cost.length, マニュアル:(man||[]).length };
   ['原状回復','修繕','立会','予定'].forEach(k=>cnt[k] = (loc[k]||[]).length);
+  const tk = kqTankaView_(); cnt['相場'] = tk.length;
   cnt.all = Object.keys(cnt).reduce((s,k)=>k==='all'?s:s+cnt[k],0);
   const tab = __kq.tab || 'all';
   if(tabsEl) tabsEl.innerHTML = KQ_TABS.filter(([k])=>k==='all' || cnt[k] || (k==='マニュアル' && man===null)).map(([k,l])=>`<button class="kq-tab${k===tab?' on':''}" data-tab="${k}">${l} <span>${k==='マニュアル'&&man===null?'…':cnt[k]}</span></button>`).join('');
@@ -24852,7 +24911,9 @@ function kqRender_(){
   const chain = [__kq.q].concat(__kq.refine.map(f=>f.w)).map(escapeHtml).join(' → ');
   const how = (__kq.ai || __kq.refine.some(f=>f.kw)) ? '🤖 AIで言い換え' : '📖 辞書で言い換え';
   const used = (__kq.used||[]).map(u=>escapeHtml(u.w)+'('+u.v.length+'語)').join('・');
-  let h = (lastSum ? `<div class="kq-say"><img class="kq-cat-s" src="./kurasuke.png" alt=""><div>${escapeHtml(lastSum)}</div></div>` : (__kq.sumPending && !__kq.refine.length ? '<div class="kq-say"><img class="kq-cat-s" src="./kurasuke.png" alt=""><div style="color:#92400e">まとめてるにゃ…</div></div>' : ''))
+  const lid = kqLogId_(), fbd = lid && __kq.fb && __kq.fb[lid];
+  const fbHtml = lid ? (fbd ? `<div class="kq-fb">${fbd==='good'?'👍':'👎'} ありがとにゃ</div>` : `<div class="kq-fb">役に立ったにゃ？ <button type="button" data-fb="1">👍</button><button type="button" data-fb="0">👎</button></div>`) : '';
+  let h = (lastSum ? `<div class="kq-say"><img class="kq-cat-s" src="./kurasuke.png" alt=""><div>${escapeHtml(lastSum)}${fbHtml}</div></div>` : (__kq.sumPending && !__kq.refine.length ? '<div class="kq-say"><img class="kq-cat-s" src="./kurasuke.png" alt=""><div style="color:#92400e">まとめてるにゃ…</div></div>' : ''))
     + (__kq.aiNote ? `<div class="kq-spec" style="padding:4px 10px">⚠ ${escapeHtml(__kq.aiNote)}</div>` : '')
     + `<div class="kq-sum">「${chain}」 ${how}${(!__kq.refine.length && __kq.ai && __kq.ai.sites_before)?' ・条件で絞る前は'+__kq.ai.sites_before+'現場':''}<div class="kq-spec">言い換え: ${used}${__kq.ex&&__kq.ex.length?' ／除外: '+escapeHtml(__kq.ex.join('・')):''}${__kq.capped?' ／⚠1語で200件を超えたので古い分が切れています。言葉を足してください':''}</div></div>`;
   const openers = []; const items = (arr,n)=>arr.slice(0,n).map(it=>{ openers.push(it.open); return kqItemHtml_(it, openers.length-1); }).join('');
@@ -24861,12 +24922,14 @@ function kqRender_(){
   const kojiBody = (lim)=> v.special.slice(0,lim).map(kqGroupHtml_).join('') + (v.teiban.length ? `<div class="kq-sec2">定番の行だけの現場 ${v.teiban.length}件 <span class="kq-spec">(${v.teibanItems.slice(0,4).map(t=>escapeHtml(t.name)+' '+t.n+'件').join('・')})</span> <button class="kq-fol" id="kq-teiban">${__kq.showTeiban?'畳む':'見る'}</button></div>` + (__kq.showTeiban ? v.teiban.map(kqGroupHtml_).join('') : '') : '');
   if(tab==='all'){
     if(v.special.length || v.teiban.length) h += sec('koji','💴 見積・工事', kojiBody(6) + more('koji', v.special.length-6));
+    if(tk.length) h += sec('相場','💹 相場(全期間の中央値)', tk.slice(0,3).map(kqTankaHtml_).join('') + more('相場', tk.length-3));
     ['原状回復','修繕','立会','予定'].forEach(k=>{ const a = loc[k]||[]; if(a.length) h += sec(k, KQ_TABS.find(t=>t[0]===k)[1], items(a,4) + more(k, a.length-4)); });
     if(man && man.length) h += sec('マニュアル','📖 マニュアル', man.slice(0,4).map(kqManHtml_).join('') + more('マニュアル', man.length-4));
     if(v.cost.length) h += sec('請求','🧾 業者からの請求(原価・売値の相場とは別)', v.cost.slice(0,4).map(kqGroupHtml_).join('') + more('請求', v.cost.length-4));
     if(!cnt.all && man!==null) h += '<div class="sch-empty">見つからなかったにゃ。言葉を変えてみてにゃ</div>';
   } else if(tab==='koji') h += kojiBody(200) || '<div class="sch-empty">なかったにゃ</div>';
   else if(tab==='請求') h += v.cost.map(kqGroupHtml_).join('');
+  else if(tab==='相場') h += tk.map(kqTankaHtml_).join('') + '<div class="kq-note">売値=元請けへの見積の単価、発注=業者に出した単価。全期間の中央値(かっこ内は件数と幅)にゃ。</div>';
   else if(tab==='マニュアル') h += man===null ? '<div class="sch-empty">マニュアルを探してるにゃ…</div>' : (man.map(kqManHtml_).join('') || '<div class="sch-empty">なかったにゃ</div>');
   else h += items(loc[tab]||[], 200) || '<div class="sch-empty">なかったにゃ</div>';
   h += `<div class="kq-note">${escapeHtml(KQ_SINCE_NOTE)} 修繕・原状回復・立会・予定はこの端末にある分から探しています。</div>`;
@@ -24875,6 +24938,7 @@ function kqRender_(){
   const setTab = k=>{ __kq.tab = k; kqRender_(); box.scrollTop = 0; };
   if(tabsEl) tabsEl.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>setTab(b.getAttribute('data-tab')));
   box.querySelectorAll('.kq-more[data-tab]').forEach(b=>b.onclick=()=>setTab(b.getAttribute('data-tab')));
+  box.querySelectorAll('[data-fb]').forEach(b=>b.onclick=()=>kqFeedback_(b.getAttribute('data-fb')==='1'));
   box.querySelectorAll('.kq-fol[data-path]').forEach(b=>b.onclick=()=>{ const p=b.getAttribute('data-path'); try{ navigator.clipboard.writeText(p); }catch(_){} if(typeof showAutoSyncToast==='function') showAutoSyncToast('📁 フォルダの場所をコピーしたにゃ'); });
   box.querySelectorAll('[data-oi]').forEach(b=>b.onclick=()=>{ const f = openers[+b.getAttribute('data-oi')]; if(f){ const ov=document.getElementById('kojiAskModal'); if(ov) ov.classList.remove('show'); try{ f(); }catch(_){} } });
   box.querySelectorAll('[data-man]').forEach(b=>b.onclick=async()=>{ const ov=document.getElementById('kojiAskModal'); if(ov) ov.classList.remove('show'); try{ await manOpen_(); await manOpenPage_(b.getAttribute('data-man')); }catch(_){} });
