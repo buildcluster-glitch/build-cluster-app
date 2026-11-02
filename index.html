@@ -3038,7 +3038,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.896</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.897</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -37636,6 +37636,41 @@ function manRelCats_(kind, ci){
   const all = []; ci.byId.forEach(c => all.push(c));
   return names.map(n => all.find(c => c.name === n)).filter(Boolean);
 }
+// 🔎 v1.30.897(山田11/2「これだと拾えない」): 予定の題名をまるごと検索すると0件になる
+//   (例「セジュールつかさA101 原状回復工事 ジェイエイ・オーナー打ち合わせ」)。
+//   題名から物件名と号室を取り出す: ①知っている物件名(物件台帳・原状回復・修繕)で一番長く当たるもの
+//   ②無ければ先頭の語から号室(A101・101号室など)を外したもの。
+const MAN_REL_ROOM_RE = /[\s　]*([A-Za-zＡ-Ｚａ-ｚ]?[-－]?[0-9０-９]{2,4})(号室)?$/;
+function manRelGuess_(title){
+  const raw = String(title || '').normalize('NFKC').replace(/[【】\[\]（）()「」]/g, ' ').trim();
+  if(!raw) return { bukken:'', room:'' };
+  const flat = raw.replace(/[\s　]+/g, '');
+  const names = new Set();
+  const addN = n => { const v = String(n || '').normalize('NFKC').replace(/[\s　]+/g, ''); if(v.length >= 3) names.add(v); };
+  try{ ((__man.bk && __man.bk.rows) || []).forEach(b => addN(b && b.name)); }catch(_){}
+  try{ (state.bukken || []).forEach(b => addN(b && b.name)); }catch(_){}
+  try{ (state.restorations || []).forEach(r => addN(r && r.name)); }catch(_){}
+  try{ (state.repairs || []).forEach(r => addN(r && r.name)); }catch(_){}
+  let best = '';
+  names.forEach(n => { if(n.length > best.length && flat.includes(n)) best = n; });
+  if(best){
+    const after = flat.slice(flat.indexOf(best) + best.length);
+    const m = /^[-－]?([A-Za-z]?[-]?[0-9]{2,4})(号室)?/.exec(after);
+    return { bukken: best, room: m ? m[1] : '' };
+  }
+  const first = raw.split(/[\s　、,・\/／]+/).filter(Boolean)[0] || '';
+  const m = MAN_REL_ROOM_RE.exec(first);
+  const b = m ? first.slice(0, m.index) : first;
+  return b.length >= 3 ? { bukken: b, room: m ? m[1] : '' } : { bukken:'', room:'' };
+}
+// 題名の言葉 → 足すカテゴリの種類(打合などの予定でも 原状回復/修繕/立会 の手引きを出す)
+function manRelKindsFromTitle_(title){
+  const t = String(title || ''); const out = [];
+  if(/原状回復|退去/.test(t)) out.push('resto');
+  if(/修繕|水漏れ|交換|補修/.test(t)) out.push('repair');
+  if(/立会/.test(t)) out.push('taikyo');
+  return out;
+}
 function manRelQuery_(ctx){
   const b = String(ctx.bukken || '').replace(/[\s　]+/g, ' ').trim();
   if(b.length >= 2) return b.slice(0, 40);
@@ -37721,7 +37756,13 @@ async function manOpenRelated_(ctx){
   manNavRecord_('rel', ctx);
   manShowMain_(true);
   const byId = manBuildTree_(__man.tree).byId, ci = manCatIndex_(__man.tree);
+  if(!ctx.bukken && ctx.title){
+    if(!__man.bk && typeof manBkLoad_ === 'function'){ try{ await manBkLoad_(); }catch(_){} }   // 物件名を当てるために台帳を読む(10分使い回し)
+    const g = manRelGuess_(ctx.title);
+    if(g.bukken) ctx = Object.assign({}, ctx, { bukken: g.bukken, room: ctx.room || g.room });
+  }
   const cats = manRelCats_(ctx.kind, ci);
+  manRelKindsFromTitle_(ctx.title).forEach(k => manRelCats_(k, ci).forEach(c => { if(!cats.includes(c)) cats.push(c); }));
   const seen = new Set();
   const fromCat = [];
   cats.forEach(c => ci.pagesOf(c.id).forEach(p => { if(!seen.has(p.id)){ seen.add(p.id); fromCat.push(p); } }));
