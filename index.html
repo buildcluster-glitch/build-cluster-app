@@ -3083,7 +3083,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.913</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.914</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24596,7 +24596,13 @@ function kqGroup_(rows){
   });
   return Array.from(m.values()).sort((a,b)=> (b.date||String(b.year)).localeCompare(a.date||String(a.year)));
 }
-function kqFolderFull_(f){ return /^[A-Za-z]:[\\\/]/.test(String(f.path||'')) ? f.path : 'Dropbox-共有フォルダ/'+f.path; }
+// 📋 コピーする場所(v1.30.914・山田「Dropbox-共有フォルダ/… だと微妙」): Windows はエクスプローラーにそのまま貼れる形
+function kqFolderFull_(f){
+  const rel = kqDbxRel_(f);
+  if(!rel) return String(f.path||'');
+  const win = /Win/i.test((typeof navigator!=='undefined' && (navigator.userAgentData && navigator.userAgentData.platform || navigator.platform)) || '');
+  return win ? '%USERPROFILE%\\共有フォルダ Dropbox\\' + rel.replace(/\//g,'\\') : 'Dropbox-共有フォルダ/' + rel;
+}
 function kqFolderName_(f){ const p = String(f.path||'').split(/[\\/]/).filter(Boolean); return p[p.length-1]||f.path; }
 function kqYen_(n){ return (n==null||n==='') ? '' : '¥'+Number(n).toLocaleString(); }
 
@@ -24845,16 +24851,19 @@ function kqTankaHtml_(o){
     + (o.ha.length ? `<div class="kq-line">発注: ${o.ha.map(r=>one(r, r.gyosha)).join(' ')}</div>` : '') + `</div>`;
 }
 // 🌐 Dropbox の Web で開く(v1.30.909): 過去分=「Dropbox-共有フォルダ/」からの相対、台帳=Windowsのフルパス(…共有フォルダ Dropbox\…)
-function kqDbxUrl_(f){
+function kqDbxRel_(f){
   let rel = '';
   const isWin = /^[A-Za-z]:[\\\/]/.test(String(f.path||''));   // 台帳で引き直せなかった分だけ Windows のフルパス(111以降)
   if(!isWin) rel = String(f.path||'');
   else { const m = String(f.path||'').match(/共有フォルダ Dropbox[\\\/](.+)$/) || String(f.path||'').match(/Dropbox[^\\\/]*[\\\/](.+)$/); rel = m ? m[1] : ''; }
   rel = rel.replace(/^[\\\/]+/,''); if(!rel) return '';
   // 👥 スタッフのChromeは共用アカウント(株式会社ビルドクラスタ)。山田さんの垢から見たパスを共用垢の場所に読み替える(台帳DBセッション調べ 11/2)
-  rel = rel.replace(/\\/g,'/')
+  return rel.replace(/\\/g,'/')
     .replace(/^Yamada Hiroki\/ビルドクラスタ\/業者請求書\//, '株式会社ビルドクラスタ/業者請求書/')
     .replace(/^Yamada Hiroki\/ビルドクラスタ\/ビルドクラスタ自社工事\//, '株式会社ビルドクラスタ/自社工事/');
+}
+function kqDbxUrl_(f){
+  const rel = kqDbxRel_(f); if(!rel) return '';
   return 'https://www.dropbox.com/home/' + rel.split(/[\\\/]+/).filter(Boolean).map(encodeURIComponent).join('/');
 }
 // 📷 写真(v1.30.912・山田「写真もひらければ」): koji_photos(台帳DB 111)で、答えに出た書類・台帳の見積の写真の場所をまとめて引く
@@ -24907,7 +24916,9 @@ function kqLocalView_(){
 function kqGroupHtml_(g){
   const kinds = Array.from(g.kinds).map(k=>kqBadge_(g.cost?'請求':k)).join('');
   const lines = g.lines.slice(0,8).map(l=>`<div class="kq-line">${l.refineHit?'<b class="kq-tag">＋'+escapeHtml(l.refineHit)+'</b> ':''}${l.line_room?'<span class="kq-room">'+escapeHtml(l.line_room)+'</span>':''}${escapeHtml(l.item||'')}${l.spec?' <span class="kq-spec">'+escapeHtml(l.spec)+'</span>':''} <span class="kq-yen">${l.qty?escapeHtml(String(l.qty))+'×':''}${kqYen_(l.tanka)}${l.kingaku?' = '+kqYen_(l.kingaku):''}${l.order_price?' / 発注'+kqYen_(l.order_price):''}</span></div>`).join('') + (g.lines.length>8?`<div class="kq-line kq-spec">ほか${g.lines.length-8}行</div>`:'');
-  const fol = g.folders.slice(0,2).map(f=>{ const u = kqDbxUrl_(f); return `<button class="kq-fol" data-path="${escapeHtml(kqFolderFull_(f))}" title="押すと場所をコピーします\n${escapeHtml(kqFolderFull_(f))}">📁 ${escapeHtml(kqFolderName_(f))}</button>${u?`<a class="kq-fol" href="${escapeHtml(u)}" target="_blank" rel="noopener" title="DropboxのWebでこのフォルダを開く">🌐 開く</a>`:''}`; }).join('');
+  const fol = g.folders.slice(0,2).map(f=>{ const u = kqDbxUrl_(f), lp = kqFolderFull_(f);
+    return (u ? `<a class="kq-fol" href="${escapeHtml(u)}" target="_blank" rel="noopener" title="DropboxのWebでこのフォルダを開く">📁 ${escapeHtml(kqFolderName_(f))}</a>` : `<span class="kq-fol">📁 ${escapeHtml(kqFolderName_(f))}</span>`)
+      + `<button class="kq-fol" data-path="${escapeHtml(lp)}" title="パソコンのフォルダの場所をコピー(エクスプローラーのアドレス欄に貼る)\n${escapeHtml(lp)}">📋</button>`; }).join('');
   const pdf = (g.pdfs||[]).slice(0,3).map(f=>{ const u = kqDbxFileUrl_(f); return u ? `<a class="kq-fol" href="${escapeHtml(u)}" target="_blank" rel="noopener" title="${escapeHtml(f.path)}">📄 ${escapeHtml(f.kind==='発注'?'発注書':f.kind==='請求'?'請求書':'見積')}PDF</a>` : ''; }).join('');
   const who = [Array.from(g.motos).join('・'), g.gyosha.size?'業者 '+Array.from(g.gyosha).slice(0,3).join('・'):'', g.creators.size?'作成 '+Array.from(g.creators).join('・'):''].filter(Boolean).join(' / ');
   return `<div class="kq-g"><div class="kq-h">${kinds}<span class="kq-d">${escapeHtml((g.date||String(g.year||'')).slice(0,10))}</span> <b>${escapeHtml(g.bukken||'(物件名なし)')}</b> ${escapeHtml(g.room||'')}</div>${who?'<div class="kq-meta">'+escapeHtml(who)+'</div>':''}${lines}${(fol||pdf)?'<div>'+pdf+fol+'</div>':''}${(()=>{ const ph = kqPhotoHtml_(g); return ph ? '<div>'+ph+'</div>' : ''; })()}</div>`;
@@ -24975,7 +24986,7 @@ function kqRender_(){
   if(tabsEl) tabsEl.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>setTab(b.getAttribute('data-tab')));
   box.querySelectorAll('.kq-more[data-tab]').forEach(b=>b.onclick=()=>setTab(b.getAttribute('data-tab')));
   box.querySelectorAll('[data-fb]').forEach(b=>b.onclick=()=>kqFeedback_(b.getAttribute('data-fb')==='1'));
-  box.querySelectorAll('.kq-fol[data-path]').forEach(b=>b.onclick=()=>{ const p=b.getAttribute('data-path'); try{ navigator.clipboard.writeText(p); }catch(_){} if(typeof showAutoSyncToast==='function') showAutoSyncToast('📁 フォルダの場所をコピーしたにゃ'); });
+  box.querySelectorAll('.kq-fol[data-path]').forEach(b=>b.onclick=()=>{ const p=b.getAttribute('data-path'); try{ navigator.clipboard.writeText(p); }catch(_){} if(typeof showAutoSyncToast==='function') showAutoSyncToast('📋 フォルダの場所をコピーしたにゃ(エクスプローラーのアドレス欄に貼ってにゃ)'); });
   box.querySelectorAll('[data-oi]').forEach(b=>b.onclick=()=>{ const f = openers[+b.getAttribute('data-oi')]; if(f){ const ov=document.getElementById('kojiAskModal'); if(ov) ov.classList.remove('show'); try{ f(); }catch(_){} } });
   box.querySelectorAll('[data-man]').forEach(b=>b.onclick=async()=>{ const ov=document.getElementById('kojiAskModal'); if(ov) ov.classList.remove('show'); try{ await manOpen_(); await manOpenPage_(b.getAttribute('data-man')); }catch(_){} });
   const rf = document.getElementById('kq-refine-row'); if(rf) rf.style.display = cnt.all ? '' : 'none';
