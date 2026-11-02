@@ -1319,6 +1319,10 @@
   .kq-ctx button{border:0;background:transparent;color:#64748b;font-size:11px;cursor:pointer;text-decoration:underline}
   .kq-ctxbtn{padding:5px 10px;border:1px solid #fcd34d;background:#fffbeb;color:#92400e;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:4px;vertical-align:middle}
   .kq-ctxbtn img{border-radius:50%}
+  .kq-sugs{display:flex;flex-direction:column;gap:6px;padding:8px 10px}
+  .kq-sug{text-align:left;border:1px solid var(--border);background:#fff;border-radius:10px;padding:8px 10px;font-size:13px;color:#0f172a;cursor:pointer}
+  .kq-sug:hover{background:#fffbeb;border-color:#fcd34d}
+  .kq-sug .kq-spec{display:block;margin-top:2px}
   .kq-sec2{padding:8px 10px;font-size:12.5px;color:#475569}
   .kq-more{display:block;width:100%;border:0;background:transparent;color:#2563eb;font-size:12px;padding:6px;cursor:pointer;text-align:center}
   /* ジャンプ先の列をフラッシュ */
@@ -3074,7 +3078,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.907</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.908</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24664,7 +24668,7 @@ async function kqRun_(q){
     __kq.used = [{ w:'AI', v:(ai.keywords||[]).concat(ai.synonyms||[]) }]; __kq.ex = ai.exclude||[];
     const aiGroups = (Array.isArray(ai.must) && ai.must.length) ? ai.must : [(ai.keywords||[]).concat(ai.synonyms||[])];
     // 物件だけの質問(語が物件名だけ)なら手元は物件名だけで絞る
-    const onlyBk = ctx && !q;
+    const onlyBk = ctx && (!q || Object.values(KQ_SUG_ASK).indexOf(q)>=0);   // 候補の聞き方も「物件まるごと」扱い
     const manP = kqSideSearch_(onlyBk ? ctxGroup : aiGroups.filter(g=>g && g.length).concat(ctxGroup));
     const v4 = (ai.summary === null);   // v4=見立てを後回しにした印。旧版は1回目で summary(文字列)が返る
     __kq.sumPending = v4;
@@ -24826,7 +24830,18 @@ function kqRender_(){
   const tabsEl = document.getElementById('kq-tabs');
   if(__kq.busy){ box.innerHTML = '<div class="sch-empty"><img src="./kurasuke.png" width="56" height="56" style="border-radius:50%" alt=""><br>探してるにゃ…</div>'; if(tabsEl) tabsEl.innerHTML=''; return; }
   if(__kq.err){ box.innerHTML = `<div class="sch-empty">⚠ ${escapeHtml(__kq.err)}</div>`; __kq.err=''; return; }
-  if(!__kq.words.length){ if(tabsEl) tabsEl.innerHTML=''; box.innerHTML = `<div class="sch-empty"><img src="./kurasuke.png" width="64" height="64" style="border-radius:50%" alt=""><br>何を探すにゃ？<br>例: <b>便器脱着を伴うトイレ床は？</b> / <b>ラミネート天井の直近は？</b><br>見積・発注・業者請求・修繕・原状回復・立会・予定・マニュアルから探すにゃ<br><span style="font-size:11px">${escapeHtml(KQ_SINCE_NOTE)}</span></div>`; return; }
+  if(!__kq.words.length){
+    if(tabsEl) tabsEl.innerHTML='';
+    const sug = __kqCtx ? [] : kqSuggest_(); __kqSug = sug;
+    const chips = sug.map((x,i)=>`<button type="button" class="kq-sug" data-sug="${i}">${kqBadge_(x.kind)}<span class="kq-d">${escapeHtml(x.dlabel)}</span> ${escapeHtml(x.label)}<span class="kq-spec">${escapeHtml(x.ask)}</span></button>`).join('');
+    box.innerHTML = `<div class="sch-empty" style="padding:18px 16px 8px"><img src="./kurasuke.png" width="64" height="64" style="border-radius:50%" alt=""><br>何を探すにゃ？</div>`
+      + (chips ? `<div class="kq-sec">これからの自分の予定から聞くにゃ</div><div class="kq-sugs">${chips}</div>` : '')
+      + `<div class="kq-sec">たとえば</div><div class="kq-sugs">${KQ_SUG_FIXED.map((t,i)=>`<button type="button" class="kq-sug" data-fix="${i}">💬 ${escapeHtml(t)}</button>`).join('')}</div>`
+      + `<div class="kq-note">見積・発注・業者請求・修繕・原状回復・立会・予定・マニュアルから探すにゃ。${escapeHtml(KQ_SINCE_NOTE)}</div>`;
+    box.querySelectorAll('[data-sug]').forEach(b=>b.onclick=()=>{ const x = __kqSug[+b.getAttribute('data-sug')]; if(x) openKojiAsk_(x.q, { bukken:x.bukken, room:x.room }); });
+    box.querySelectorAll('[data-fix]').forEach(b=>b.onclick=()=>{ const t = KQ_SUG_FIXED[+b.getAttribute('data-fix')]; const i = document.getElementById('kq-input'); if(i) i.value = t; kqRun_(t); });
+    return;
+  }
   const v = kqView_(), loc = kqLocalView_(), man = __kq.man;
   const cnt = { all:0, koji:v.special.length + v.teiban.length, 請求:v.cost.length, マニュアル:(man||[]).length };
   ['原状回復','修繕','立会','予定'].forEach(k=>cnt[k] = (loc[k]||[]).length);
@@ -24867,6 +24882,44 @@ function kqRender_(){
 }
 
 
+// 💡 候補(v1.30.908・山田「直近の自分の予定から聞く内容を候補でボタンに」): 今日から7日の自分の予定・立会・修繕から物件を拾い、
+//   種類に合った聞き方を添える(立会→前回の原状回復/修繕→過去の修繕/ほか→過去の工事)。押すと物件を決めて聞く。
+const KQ_SUG_FIXED = ['便器脱着を伴うトイレ床工事は？', 'ラミネート天井の見積をした現場、直近は？', 'キッチン交換はいくらでやった？', '給湯器交換の発注単価は？'];
+let __kqSug = [];
+const KQ_SUG_ASK = { 立会:'前回この部屋でやった原状回復は？', 修繕:'この物件の過去の修繕は？', 予定:'この物件で過去にやった工事は？' };
+function kqSuggest_(){
+  const me = (typeof getMyself==='function') ? getMyself() : '';
+  const today = new Date(); today.setHours(0,0,0,0);
+  const end = new Date(today); end.setDate(end.getDate()+7);
+  const ds = d=>(typeof fmtDate==='function') ? fmtDate(d) : d.toISOString().slice(0,10);
+  const t0 = ds(today), t1 = ds(end);
+  const inRange = d=>{ d = String(d||'').slice(0,10); return d>=t0 && d<=t1; };
+  const mine = (staff, parts)=> !me || staff===me || (Array.isArray(parts) && parts.indexOf(me)>=0);
+  const guess = t=>(typeof manRelGuess_==='function') ? (manRelGuess_(String(t||'').split(/\r?\n/)[0]) || {}) : {};
+  const ask = KQ_SUG_ASK;
+  const out = [], seen = new Set();
+  const add = (kind, date, bukken, room)=>{
+    bukken = String(bukken||'').trim(); if(bukken.length < 2) return;
+    const k = kqNorm_(bukken)+'|'+kqNorm_(room); if(seen.has(k)) return; seen.add(k);
+    const d = String(date||'').slice(0,10);
+    out.push({ kind, date:d, dlabel:d ? (+d.slice(5,7))+'/'+(+d.slice(8,10)) : '', bukken, room:String(room||'').trim(), label:`${bukken} ${room||''}`.trim(), ask:ask[kind]||ask['予定'], q:(kind==='予定' ? '' : ask[kind]) });
+  };
+  try{ ((typeof buildTaikyoVirtuals_==='function') ? buildTaikyoVirtuals_() : []).forEach(v=>{ if(v && inRange(v.date) && mine(v.staff)) add('立会', v.date, v._bukken || guess(v.title).bukken, v._room || guess(v.title).room); }); }catch(_){}
+  (state.repairs||[]).forEach(r=>{
+    if(!r) return; const d = r.responseDate || ''; if(!inRange(d)) return;
+    const who = String([r.worker, r.contactPerson].join(' '));
+    if(me && who.indexOf(me)<0) return;
+    add('修繕', d, r.name, r.room);
+  });
+  (state.events||[]).forEach(ev=>{
+    if(!ev || !inRange(ev.date) || !mine(ev.staff, ev.participants)) return;
+    const g = guess(ev.title); if(!g.bukken) return;
+    const cat = String(ev.category||'');
+    add(cat.indexOf('立会')>=0 ? '立会' : (cat.indexOf('修繕')>=0 ? '修繕' : '予定'), ev.date, g.bukken, g.room);
+  });
+  out.sort((a,b)=>a.date.localeCompare(b.date));
+  return out.slice(0,6);
+}
 function kqCtxRender_(){
   const el = document.getElementById('kq-ctx'); if(!el) return;
   const c = __kqCtx;
@@ -24884,7 +24937,7 @@ function openKojiAsk_(initial, ctx){
   const c = (ctx && String(ctx.bukken||'').trim()) ? { bukken:String(ctx.bukken).trim(), room:String(ctx.room||'').trim() } : null;
   __kqCtx = c;   // ヘッダーなど物件なしで開いたら、前の物件指定は外す
   kqCtxRender_();
-  if(c){ if(inp) inp.value = ''; kqRun_(''); }
+  if(c){ if(inp) inp.value = initial||''; kqRun_(initial||''); }
   else if(initial && inp && !__kq.words.length){ inp.value = initial; }
   kqRender_();
   setTimeout(()=>{ try{ inp && inp.focus(); }catch(_){} }, 50);
