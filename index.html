@@ -3052,7 +3052,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.900</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.901</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24563,11 +24563,14 @@ async function kqAsk_(question, history){
       res = await fetch(`${SB_AUTH.url}/functions/v1/koji-ask`, { method:'POST',
         headers:{ 'apikey':SB_AUTH.key, 'Authorization':'Bearer '+s.access_token, 'Content-Type':'application/json' },
         body: JSON.stringify({ question, history:(history||[]).slice(-3) }) });
-    }catch(_){ return null; }
+    }catch(_){ __kq.aiNote = 'AIにつながりませんでした(通信)→辞書で探しました'; return null; }
     if(res.status===401 && t===0){ try{ await sbRefresh_(); }catch(_){} s = sbSession_(); if(!s || !s.access_token) return null; continue; }
     let j = null; try{ j = await res.json(); }catch(_){}
     if(j && j.ok && Array.isArray(j.rows)) return j;
+    // 🔎 v1.30.901: AIが使えなかった理由を画面に出す(401=ログインを断られた/503 ai=鍵がまだ等)。本番の入口確認にも使う
     if(j && j.code==='limit') __kq.aiNote = '今日のAIの回数を使い切ったので、辞書で探しました';
+    else if(res.status===404) __kq.aiNote = '';   // 関数が無い=AIなしの運用。黙って辞書で
+    else __kq.aiNote = `AIは使えませんでした(${res.status}${j&&j.code?' '+j.code:''}${j&&j.message?'・'+String(j.message).slice(0,60):''})→辞書で探しました`;
     return null;
   }
   return null;
