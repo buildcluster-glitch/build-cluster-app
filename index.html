@@ -1313,7 +1313,8 @@
   .kq-click:hover{background:#f8fafc}
   .kq-room{display:inline-block;font-size:10.5px;color:#475569;background:#f1f5f9;border-radius:4px;padding:0 4px;margin-right:4px}
   .kq-say{display:flex;gap:8px;align-items:flex-start;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:8px 10px;margin:4px 0 8px;font-size:13px;color:#1f2937;line-height:1.6}
-  .kq-cat-s{font-size:20px;line-height:1}
+  .kq-cat-s{width:28px;height:28px;border-radius:50%;flex:0 0 auto}
+  img.kq-cat{border-radius:50%;object-fit:cover}
   .kq-sec2{padding:8px 10px;font-size:12.5px;color:#475569}
   .kq-more{display:block;width:100%;border:0;background:transparent;color:#2563eb;font-size:12px;padding:6px;cursor:pointer;text-align:center}
   /* ジャンプ先の列をフラッシュ */
@@ -3069,7 +3070,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.904</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.905</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -3080,7 +3081,7 @@
   <button class="nav-btn" id="authLoginBtn" style="display:none;background:#fef3c7;border-color:#f59e0b;color:#92400e;font-weight:700" title="新システムの準備：一度ログインしてください（アプリの動きは今までと同じです）">🔐 ログイン</button>
   <button class="nav-btn" id="cloudSyncBtn" title="☁ 全同期 — クラウド(予定/休暇) + Drive(最終確認・立会・事前など) をまとめて今すぐ同期。設定は⚙"><span id="cloudSyncIcon">☁</span><span id="cloudSyncBadge" class="hidden"></span></button>
   <button class="nav-btn icon-only" id="searchBtn" title="🔍 予定・立会・修繕・最終確認・休暇を横断検索 (/)">🔍</button>
-  <button class="nav-btn icon-only" id="kurasukeBtn" title="🐱 クラ助に聞く — 過去の見積・修繕・原状回復・立会・マニュアルから探す"><svg class="kq-cat" viewBox="0 0 32 32" width="22" height="22" aria-hidden="true"><path d="M5 12 L7 3 L13 9 Q16 8 19 9 L25 3 L27 12 Q29 16 27 21 Q24 28 16 28 Q8 28 5 21 Q3 16 5 12Z" fill="#fbbf24" stroke="#92400e" stroke-width="1.3"/><circle cx="11.5" cy="16" r="1.8" fill="#1f2937"/><circle cx="20.5" cy="16" r="1.8" fill="#1f2937"/><path d="M14.5 20 L16 21.3 L17.5 20" fill="none" stroke="#92400e" stroke-width="1.2" stroke-linecap="round"/><path d="M2.5 18 L9 19 M2.5 21.5 L9 20.5 M29.5 18 L23 19 M29.5 21.5 L23 20.5" stroke="#92400e" stroke-width="0.9" stroke-linecap="round"/></svg></button>
+  <button class="nav-btn icon-only" id="kurasukeBtn" title="クラ助に聞く — 過去の見積・修繕・原状回復・立会・マニュアルから探す"><img class="kq-cat" src="./kurasuke.png" width="22" height="22" alt="クラ助"></button>
   <button class="nav-btn" id="todayBtn">今日</button>
   <button class="nav-btn" id="prevBtn">‹</button>
   <button class="nav-btn" id="nextBtn">›</button>
@@ -3144,14 +3145,14 @@
       <button class="sch-close-btn" id="sch-close">閉じる</button>
     </div>
     <div class="sch-results" id="sch-results"></div>
-    <button class="kq-open" id="kojiAskOpen" type="button"><svg class="kq-cat" viewBox="0 0 32 32" width="22" height="22" aria-hidden="true"><path d="M5 12 L7 3 L13 9 Q16 8 19 9 L25 3 L27 12 Q29 16 27 21 Q24 28 16 28 Q8 28 5 21 Q3 16 5 12Z" fill="#fbbf24" stroke="#92400e" stroke-width="1.3"/><circle cx="11.5" cy="16" r="1.8" fill="#1f2937"/><circle cx="20.5" cy="16" r="1.8" fill="#1f2937"/><path d="M14.5 20 L16 21.3 L17.5 20" fill="none" stroke="#92400e" stroke-width="1.2" stroke-linecap="round"/><path d="M2.5 18 L9 19 M2.5 21.5 L9 20.5 M29.5 18 L23 19 M29.5 21.5 L23 20.5" stroke="#92400e" stroke-width="0.9" stroke-linecap="round"/></svg> クラ助に聞く(過去の見積・修繕・原状回復・立会・マニュアルから探す)</button>
+    <button class="kq-open" id="kojiAskOpen" type="button"><img class="kq-cat" src="./kurasuke.png" width="22" height="22" alt="クラ助"> クラ助に聞く(過去の見積・修繕・原状回復・立会・マニュアルから探す)</button>
   </div>
 </div>
 
 <!-- 🗂 過去の見積を探す(v1.30.899): 台帳DBの koji_search。第2段で AI(koji-ask)が言い換えを作る -->
 <div class="modal-overlay" id="kojiAskModal">
   <div class="modal modal-search modal-kq">
-    <div class="kq-head"><svg class="kq-cat" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true"><path d="M5 12 L7 3 L13 9 Q16 8 19 9 L25 3 L27 12 Q29 16 27 21 Q24 28 16 28 Q8 28 5 21 Q3 16 5 12Z" fill="#fbbf24" stroke="#92400e" stroke-width="1.3"/><circle cx="11.5" cy="16" r="1.8" fill="#1f2937"/><circle cx="20.5" cy="16" r="1.8" fill="#1f2937"/><path d="M14.5 20 L16 21.3 L17.5 20" fill="none" stroke="#92400e" stroke-width="1.2" stroke-linecap="round"/><path d="M2.5 18 L9 19 M2.5 21.5 L9 20.5 M29.5 18 L23 19 M29.5 21.5 L23 20.5" stroke="#92400e" stroke-width="0.9" stroke-linecap="round"/></svg><b>クラ助に聞く</b><span class="kq-spec">見積・発注・業者請求・修繕・原状回復・立会・予定・マニュアルから探すにゃ</span></div>
+    <div class="kq-head"><img class="kq-cat" src="./kurasuke.png" width="30" height="30" alt="クラ助"><b>クラ助に聞く</b><span class="kq-spec">見積・発注・業者請求・修繕・原状回復・立会・予定・マニュアルから探すにゃ</span></div>
     <div class="sch-search-box">
       <input id="kq-input" type="text" placeholder="クラ助に聞くにゃ(例: 便器脱着を伴うトイレ床は？)" autocomplete="off" spellcheck="false">
       <button class="sch-close-btn" id="kq-go" style="background:var(--accent);color:#fff">探す</button>
@@ -24784,9 +24785,9 @@ function kqManHtml_(p){
 function kqRender_(){
   const box = document.getElementById('kq-results'); if(!box) return;
   const tabsEl = document.getElementById('kq-tabs');
-  if(__kq.busy){ box.innerHTML = '<div class="sch-empty">🐱 探してるにゃ…</div>'; if(tabsEl) tabsEl.innerHTML=''; return; }
+  if(__kq.busy){ box.innerHTML = '<div class="sch-empty"><img src="./kurasuke.png" width="56" height="56" style="border-radius:50%" alt=""><br>探してるにゃ…</div>'; if(tabsEl) tabsEl.innerHTML=''; return; }
   if(__kq.err){ box.innerHTML = `<div class="sch-empty">⚠ ${escapeHtml(__kq.err)}</div>`; __kq.err=''; return; }
-  if(!__kq.words.length){ if(tabsEl) tabsEl.innerHTML=''; box.innerHTML = `<div class="sch-empty">🐱 何を探すにゃ？<br>例: <b>便器脱着を伴うトイレ床は？</b> / <b>ラミネート天井の直近は？</b><br>見積・発注・業者請求・修繕・原状回復・立会・予定・マニュアルから探すにゃ<br><span style="font-size:11px">${escapeHtml(KQ_SINCE_NOTE)}</span></div>`; return; }
+  if(!__kq.words.length){ if(tabsEl) tabsEl.innerHTML=''; box.innerHTML = `<div class="sch-empty"><img src="./kurasuke.png" width="64" height="64" style="border-radius:50%" alt=""><br>何を探すにゃ？<br>例: <b>便器脱着を伴うトイレ床は？</b> / <b>ラミネート天井の直近は？</b><br>見積・発注・業者請求・修繕・原状回復・立会・予定・マニュアルから探すにゃ<br><span style="font-size:11px">${escapeHtml(KQ_SINCE_NOTE)}</span></div>`; return; }
   const v = kqView_(), loc = kqLocalView_(), man = __kq.man;
   const cnt = { all:0, koji:v.special.length + v.teiban.length, 請求:v.cost.length, マニュアル:(man||[]).length };
   ['原状回復','修繕','立会','予定'].forEach(k=>cnt[k] = (loc[k]||[]).length);
@@ -24797,7 +24798,7 @@ function kqRender_(){
   const chain = [__kq.q].concat(__kq.refine.map(f=>f.w)).map(escapeHtml).join(' → ');
   const how = (__kq.ai || __kq.refine.some(f=>f.kw)) ? '🤖 AIで言い換え' : '📖 辞書で言い換え';
   const used = (__kq.used||[]).map(u=>escapeHtml(u.w)+'('+u.v.length+'語)').join('・');
-  let h = (lastSum ? `<div class="kq-say"><span class="kq-cat-s">🐱</span><div>${escapeHtml(lastSum)}</div></div>` : (__kq.sumPending && !__kq.refine.length ? '<div class="kq-say"><span class="kq-cat-s">🐱</span><div style="color:#92400e">まとめてるにゃ…</div></div>' : ''))
+  let h = (lastSum ? `<div class="kq-say"><img class="kq-cat-s" src="./kurasuke.png" alt=""><div>${escapeHtml(lastSum)}</div></div>` : (__kq.sumPending && !__kq.refine.length ? '<div class="kq-say"><img class="kq-cat-s" src="./kurasuke.png" alt=""><div style="color:#92400e">まとめてるにゃ…</div></div>' : ''))
     + (__kq.aiNote ? `<div class="kq-spec" style="padding:4px 10px">⚠ ${escapeHtml(__kq.aiNote)}</div>` : '')
     + `<div class="kq-sum">「${chain}」 ${how}${(!__kq.refine.length && __kq.ai && __kq.ai.sites_before)?' ・条件で絞る前は'+__kq.ai.sites_before+'現場':''}<div class="kq-spec">言い換え: ${used}${__kq.ex&&__kq.ex.length?' ／除外: '+escapeHtml(__kq.ex.join('・')):''}${__kq.capped?' ／⚠1語で200件を超えたので古い分が切れています。言葉を足してください':''}</div></div>`;
   const openers = []; const items = (arr,n)=>arr.slice(0,n).map(it=>{ openers.push(it.open); return kqItemHtml_(it, openers.length-1); }).join('');
@@ -24809,7 +24810,7 @@ function kqRender_(){
     ['原状回復','修繕','立会','予定'].forEach(k=>{ const a = loc[k]||[]; if(a.length) h += sec(k, KQ_TABS.find(t=>t[0]===k)[1], items(a,4) + more(k, a.length-4)); });
     if(man && man.length) h += sec('マニュアル','📖 マニュアル', man.slice(0,4).map(kqManHtml_).join('') + more('マニュアル', man.length-4));
     if(v.cost.length) h += sec('請求','🧾 業者からの請求(原価・売値の相場とは別)', v.cost.slice(0,4).map(kqGroupHtml_).join('') + more('請求', v.cost.length-4));
-    if(!cnt.all && man!==null) h += '<div class="sch-empty">🐱 見つからなかったにゃ。言葉を変えてみてにゃ</div>';
+    if(!cnt.all && man!==null) h += '<div class="sch-empty">見つからなかったにゃ。言葉を変えてみてにゃ</div>';
   } else if(tab==='koji') h += kojiBody(200) || '<div class="sch-empty">なかったにゃ</div>';
   else if(tab==='請求') h += v.cost.map(kqGroupHtml_).join('');
   else if(tab==='マニュアル') h += man===null ? '<div class="sch-empty">マニュアルを探してるにゃ…</div>' : (man.map(kqManHtml_).join('') || '<div class="sch-empty">なかったにゃ</div>');
