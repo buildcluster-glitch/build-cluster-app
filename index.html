@@ -1314,6 +1314,15 @@
   .kq-room{display:inline-block;font-size:10.5px;color:#475569;background:#f1f5f9;border-radius:4px;padding:0 4px;margin-right:4px}
   .kq-say{display:flex;gap:8px;align-items:flex-start;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:8px 10px;margin:4px 0 8px;font-size:13px;color:#1f2937;line-height:1.6}
   .kq-cat-s{width:28px;height:28px;border-radius:50%;flex:0 0 auto}
+  .kq-load{display:flex;flex-direction:column;align-items:center;gap:6px;padding:22px 12px;color:#92400e;font-size:13px}
+  .kq-load img{width:56px;height:56px;border-radius:50%;animation:kqHop 1.1s ease-in-out infinite}
+  .kq-load.s{flex-direction:row;padding:0;gap:6px}
+  .kq-load.s img{width:22px;height:22px}
+  .kq-load .kq-lt{transition:opacity .25s}
+  .kq-dots::after{content:'';display:inline-block;width:1.4em;text-align:left;animation:kqDots 1.2s steps(4) infinite}
+  @keyframes kqHop{0%,100%{transform:translateY(0) rotate(0)}30%{transform:translateY(-6px) rotate(-6deg)}60%{transform:translateY(0) rotate(5deg)}}
+  @keyframes kqDots{0%{content:''}25%{content:'・'}50%{content:'・・'}75%,100%{content:'・・・'}}
+  @media (prefers-reduced-motion:reduce){.kq-load img,.kq-dots::after{animation:none}.kq-dots::after{content:'…'}}
   img.kq-cat{border-radius:50%;object-fit:cover}
   .kq-ctx{margin:8px 16px 0;padding:6px 10px;background:#ecfeff;border:1px solid #a5f3fc;border-radius:8px;font-size:13px;color:#0e7490}
   .kq-ctx button{border:0;background:transparent;color:#64748b;font-size:11px;cursor:pointer;text-decoration:underline}
@@ -3086,7 +3095,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.916</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.917</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24724,7 +24733,7 @@ async function kqRun_(q){
 // 続けて絞る: 「この中で○○を伴うのは？」= ○○の行がある現場(物件+号室+年)だけ残し、その行も足して見せる
 async function kqRefine_(w){
   w = String(w||'').trim(); if(!w || (!__kq.rows.length && !(__kq.localAll||[]).length)) return;
-  __kq.busy = true; kqRender_();
+  __kq.busy = true; __kq.refining = true; kqRender_(); __kq.refining = false;
   const hist = [{ question:__kq.q, keywords:(__kq.ai && __kq.ai.keywords) || (__kq.used||[]).map(u=>u.w) }]
     .concat(__kq.refine.map(f=>({ question:f.w, keywords:f.kw||[f.w] })));
   const ai = await kqAsk_(w, hist);
@@ -24933,7 +24942,7 @@ function kqManHtml_(p){
   const sn = String(p.snippet||'').replace(/<[^>]*>/g,'').slice(0,90);
   return `<div class="kq-g kq-click" data-man="${escapeHtml(String(p.id))}">${kqBadge_('マニュアル')}<b>${escapeHtml(p.title||'')}</b>${sn?'<div class="kq-meta">'+escapeHtml(sn)+'</div>':''}</div>`;
 }
-// 💬 こう答えてほしかった(v1.30.916・山田「各自のフィードバックも吸収できるように」): koji_ask_wish(台帳DB 112)。
+// 💬 こう答えてほしかった(v1.30.917・山田「各自のフィードバックも吸収できるように」): koji_ask_wish(台帳DB 112)。
 //   集まった声は山田さんが「📝 みんなの声」で見て、採用したものだけクラ助の決まり(koji_ask_rules)になる=koji-ask v7 が毎回読む。
 async function kqWish_(text){
   text = String(text||'').trim(); const id = kqLogId_(); if(!text || !id) return;
@@ -24966,11 +24975,12 @@ async function kqVoicesLoad_(){
 }
 function kqVoicesRender_(box){
   const V = __kqVoices;
-  if(V.rows === null){ box.innerHTML = '<div class="sch-empty">みんなの声を読んでるにゃ…</div>'; return; }
+  if(V.rows === null){ box.innerHTML = kqLoadHtml_('voice'); kqLoadStart_(); return; }
   let h = `<div class="kq-sum">📝 みんなの声(この14日・👎/0件/失敗/「こう答えてほしかった」がある問い合わせ)。採用した文はクラ助の決まりになって、次の問い合わせから効くにゃ。</div>`;
   if(V.err) h += `<div class="kq-spec" style="padding:6px 10px">⚠ 読めませんでした: ${escapeHtml(V.err)}(準備中かもしれません)</div>`;
   const rules = V.rules || [];
-  h += `<div class="kq-sec">✅ いまの決まり ${rules.filter(r=>r.active).length}件</div>` + (rules.length ? rules.map(r=>`<div class="kq-g"><span class="kq-b" style="background:${r.active?'#16a34a':'#94a3b8'}">${r.active?'有効':'止めた'}</span>${escapeHtml(r.rule||'')} <button type="button" class="kq-fol" data-rule="${escapeHtml(String(r.id))}" data-act="${r.active?'0':'1'}">${r.active?'止める':'戻す'}</button></div>`).join('') : '<div class="kq-spec" style="padding:6px 10px">まだ決まりはないにゃ</div>');
+  h += `<div class="kq-sec">✅ いまの決まり ${rules.filter(r=>r.active).length}件</div>` + (rules.length ? rules.map(r=>`<div class="kq-g"><span class="kq-b" style="background:${r.active?'#16a34a':'#94a3b8'}">${r.active?'有効':'止めた'}</span>${escapeHtml(r.rule||'')} <button type="button" class="kq-fol" data-rule="${escapeHtml(String(r.id))}" data-act="${r.active?'0':'1'}">${r.active?'止める':'戻す'}</button></div>`).join('') : '<div class="kq-spec" style="padding:6px 10px">まだ決まりはないにゃ</div>')
+    + `<div class="kq-wish"><input type="text" maxlength="200" id="kq-rule-new" placeholder="✍ 決まりを書き足す(例: 「キッチン交換」はキッチン本体の入替。パネル・吊元灯・フックは含めない)"><button type="button" id="kq-rule-new-add">✅ 足す</button></div>`;
   const rows = V.rows || [];
   h += `<div class="kq-sec">💬 声 ${rows.length}件</div>` + (rows.length ? rows.map((r,i)=>{
     const tag = r.good===true ? '👍' : r.good===false ? '👎' : (r.ok===false ? '⚠失敗' : (Number(r.n_rows)===0 ? '0件' : ''));
@@ -24989,18 +24999,50 @@ function kqVoicesRender_(box){
     catch(e){ alert('採用できませんでした: '+((e&&e.message)||e)); }
     kqVoicesLoad_();
   });
+  { const nb = box.querySelector('#kq-rule-new-add'); if(nb) nb.onclick = async()=>{   // v917: 声が無くても山田さんが直接書き足せる
+    const inp = box.querySelector('#kq-rule-new'); const rule = String((inp && inp.value) || '').trim(); if(!rule) return;
+    if(!confirm(`この文をクラ助の決まりにしますか？\n\n「${rule}」`)) return;
+    try{ await calRpcRaw_('koji_rule_add', { p_rule: rule.slice(0,200), p_from_log_id: null }); if(typeof showAutoSyncToast==='function') showAutoSyncToast('✅ 決まりにしたにゃ'); }
+    catch(e){ alert('足せませんでした: '+((e&&e.message)||e)); }
+    kqVoicesLoad_();
+  }; }
   box.querySelectorAll('[data-rule]').forEach(b=>b.onclick=async()=>{
     try{ await calRpcRaw_('koji_rule_set_active', { p_id: Number(b.getAttribute('data-rule')), p_active: b.getAttribute('data-act')==='1' }); }
     catch(e){ alert('変えられませんでした: '+((e&&e.message)||e)); }
     kqVoicesLoad_();
   });
 }
+// 🐱 v1.30.917(山田「探してるにゃ…まとめてるにゃ…みたいなロード中の言い方」): 待ち時間に一言ずつ入れ替える
+const KQ_LOAD_MSG = {
+  search: ['探してるにゃ','見積をめくってるにゃ','言い換えでも探してるにゃ','発注書も見てるにゃ','業者さんの請求も見てるにゃ','もうちょっとにゃ'],
+  sum:    ['まとめてるにゃ','修繕の記録も見てるにゃ','立会の記録も見てるにゃ','マニュアルをめくってるにゃ','言葉を選んでるにゃ','もうちょっとにゃ'],
+  refine: ['しぼってるにゃ','その中から探してるにゃ','もうちょっとにゃ'],
+  man:    ['マニュアルを探してるにゃ','ページをめくってるにゃ'],
+  voice:  ['みんなの声を読んでるにゃ','決まりを確かめてるにゃ']
+};
+let __kqLoadT = null;
+function kqLoadHtml_(kind, small){
+  const m = KQ_LOAD_MSG[kind] || KQ_LOAD_MSG.search;
+  return `<div class="kq-load${small?' s':''}" data-kq-load="${kind}" data-i="0"><img src="./kurasuke.png" alt=""><span><span class="kq-lt">${escapeHtml(m[0])}</span><span class="kq-dots"></span></span></div>`;
+}
+function kqLoadTick_(){
+  const els = document.querySelectorAll('[data-kq-load]');
+  if(!els.length){ clearInterval(__kqLoadT); __kqLoadT = null; return; }
+  els.forEach(el=>{
+    const m = KQ_LOAD_MSG[el.getAttribute('data-kq-load')] || KQ_LOAD_MSG.search;
+    const i = Math.min(+el.getAttribute('data-i') + 1, m.length - 1);   // 最後(もうちょっとにゃ)で止める
+    if(String(i) === el.getAttribute('data-i')) return;
+    el.setAttribute('data-i', i);
+    const t = el.querySelector('.kq-lt'); if(t){ t.style.opacity = 0; setTimeout(()=>{ t.textContent = m[i]; t.style.opacity = 1; }, 250); }
+  });
+}
+function kqLoadStart_(){ if(!__kqLoadT) __kqLoadT = setInterval(kqLoadTick_, 1800); }
 function kqRender_(){
   const box = document.getElementById('kq-results'); if(!box) return;
   const tabsEl = document.getElementById('kq-tabs');
   { const vb = document.getElementById('kq-voices'); if(vb){ vb.style.display = kqIsAdmin_() ? '' : 'none'; vb.textContent = __kqVoices.open ? '← クラ助に戻る' : '📝 みんなの声'; } }
   if(__kqVoices.open){ if(tabsEl) tabsEl.innerHTML=''; kqVoicesRender_(box); return; }
-  if(__kq.busy){ box.innerHTML = '<div class="sch-empty"><img src="./kurasuke.png" width="56" height="56" style="border-radius:50%" alt=""><br>探してるにゃ…</div>'; if(tabsEl) tabsEl.innerHTML=''; return; }
+  if(__kq.busy){ box.innerHTML = kqLoadHtml_(__kq.refine && __kq.refine.length || __kq.refining ? 'refine' : 'search'); if(tabsEl) tabsEl.innerHTML=''; kqLoadStart_(); return; }
   if(__kq.err){ box.innerHTML = `<div class="sch-empty">⚠ ${escapeHtml(__kq.err)}</div>`; __kq.err=''; return; }
   if(!__kq.words.length){
     if(tabsEl) tabsEl.innerHTML='';
@@ -25029,7 +25071,7 @@ function kqRender_(){
   const wsent = lid && __kq.wish && __kq.wish[lid];
   const fbHtml = lid ? ((fbd ? `<div class="kq-fb">${fbd==='good'?'👍':'👎'} ありがとにゃ</div>` : `<div class="kq-fb">役に立ったにゃ？ <button type="button" data-fb="1">👍</button><button type="button" data-fb="0">👎</button></div>`)
     + (wsent ? `<div class="kq-fb">💬 声を受け取ったにゃ。山田さんが見て決まりにするにゃ</div>` : `<div class="kq-wish"><input type="text" id="kq-wish-in" maxlength="500" placeholder="💬 こう答えてほしかった(任意・例: 税込も出してほしい)"><button type="button" id="kq-wish-go">送る</button></div>`)) : '';
-  let h = (lastSum ? `<div class="kq-say"><img class="kq-cat-s" src="./kurasuke.png" alt=""><div>${escapeHtml(lastSum)}${fbHtml}</div></div>` : (__kq.sumPending && !__kq.refine.length ? '<div class="kq-say"><img class="kq-cat-s" src="./kurasuke.png" alt=""><div style="color:#92400e">まとめてるにゃ…</div></div>' : ''))
+  let h = (lastSum ? `<div class="kq-say"><img class="kq-cat-s" src="./kurasuke.png" alt=""><div>${escapeHtml(lastSum)}${fbHtml}</div></div>` : (__kq.sumPending && !__kq.refine.length ? '<div class="kq-say">'+(kqLoadStart_(), kqLoadHtml_('sum', true))+'</div>' : ''))
     + (__kq.aiNote ? `<div class="kq-spec" style="padding:4px 10px">⚠ ${escapeHtml(__kq.aiNote)}</div>` : '')
     + `<div class="kq-sum">「${chain}」 ${how}${(!__kq.refine.length && __kq.ai && __kq.ai.sites_before)?' ・条件で絞る前は'+__kq.ai.sites_before+'現場':''}<div class="kq-spec">言い換え: ${used}${__kq.ex&&__kq.ex.length?' ／除外: '+escapeHtml(__kq.ex.join('・')):''}${__kq.capped?' ／⚠1語で200件を超えたので古い分が切れています。言葉を足してください':''}</div></div>`;
   const openers = []; const items = (arr,n)=>arr.slice(0,n).map(it=>{ openers.push(it.open); return kqItemHtml_(it, openers.length-1); }).join('');
@@ -25046,7 +25088,7 @@ function kqRender_(){
   } else if(tab==='koji') h += kojiBody(200) || '<div class="sch-empty">なかったにゃ</div>';
   else if(tab==='請求') h += v.cost.map(kqGroupHtml_).join('');
   else if(tab==='相場') h += tk.map(kqTankaHtml_).join('') + '<div class="kq-note">売値=元請けへの見積の単価、発注=業者に出した単価。全期間の中央値(かっこ内は件数と幅)にゃ。</div>';
-  else if(tab==='マニュアル') h += man===null ? '<div class="sch-empty">マニュアルを探してるにゃ…</div>' : (man.map(kqManHtml_).join('') || '<div class="sch-empty">なかったにゃ</div>');
+  else if(tab==='マニュアル') h += man===null ? (kqLoadStart_(), kqLoadHtml_('man')) : (man.map(kqManHtml_).join('') || '<div class="sch-empty">なかったにゃ</div>');
   else h += items(loc[tab]||[], 200) || '<div class="sch-empty">なかったにゃ</div>';
   h += `<div class="kq-note">${escapeHtml(KQ_SINCE_NOTE)} 修繕・原状回復・立会・予定はこの端末にある分から探しています。</div>`;
   box.innerHTML = h;
