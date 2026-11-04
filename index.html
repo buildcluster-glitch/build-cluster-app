@@ -3095,7 +3095,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.917</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.918</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -14019,12 +14019,19 @@ function parseCompletionDate_(meta){
   return d;
 }
 // 🗂 自動アーカイブ: 完了から7日経過した完了タスクを 📦 へ移す(全チェックリストイベント対象)
+// 🛡 v1.30.918(11/4 山田の箱が10/31の中身に戻った事故): 何日も閉じていた端末は、起動3秒後の掃除の時点でまだDBを読めていない。
+//   古い本文のまま 📦 を付けて updatedAt を今にして送るので、「古い変更」の判定(v913)を素通りして上書きしていた。
+//   ⇒ この起動でDBを読めた直後(10分以内)だけ掃除する。同期を使わない端末は従来どおり。
+const CAL_SWEEP_FRESH_MS = 10*60*1000;
+function calSweepReady_(){ return !cloudSync.url || (Date.now() - (window.__calPullOkAt||0)) < CAL_SWEEP_FRESH_MS; }
 function sweepTaskArchive_(days){
+  if(!calSweepReady_()) return false;
   const limit = (typeof days === 'number') ? days : 7;
   const now = new Date(); now.setHours(0,0,0,0);
   let changed = false;
   (state.events||[]).forEach(ev=>{
     if(!ev || !ev.title || ev.title.indexOf("\n")<0) return;
+    if(ev.category!=='事務' && typeof eventsWindowFrom_==='function' && String(ev.date||'') < eventsWindowFrom_()) return;   // v918: 窓の外はDBから読んでいない=古いかもしれない
     const items = parseTasks_(ev.title);
     if(!items.some(x=>x.isTask)) return;   // チェックリスト以外はスキップ
     let title = ev.title, touched = false;
@@ -24942,7 +24949,7 @@ function kqManHtml_(p){
   const sn = String(p.snippet||'').replace(/<[^>]*>/g,'').slice(0,90);
   return `<div class="kq-g kq-click" data-man="${escapeHtml(String(p.id))}">${kqBadge_('マニュアル')}<b>${escapeHtml(p.title||'')}</b>${sn?'<div class="kq-meta">'+escapeHtml(sn)+'</div>':''}</div>`;
 }
-// 💬 こう答えてほしかった(v1.30.917・山田「各自のフィードバックも吸収できるように」): koji_ask_wish(台帳DB 112)。
+// 💬 こう答えてほしかった(v1.30.918・山田「各自のフィードバックも吸収できるように」): koji_ask_wish(台帳DB 112)。
 //   集まった声は山田さんが「📝 みんなの声」で見て、採用したものだけクラ助の決まり(koji_ask_rules)になる=koji-ask v7 が毎回読む。
 async function kqWish_(text){
   text = String(text||'').trim(); const id = kqLogId_(); if(!text || !id) return;
@@ -25012,7 +25019,7 @@ function kqVoicesRender_(box){
     kqVoicesLoad_();
   });
 }
-// 🐱 v1.30.917(山田「探してるにゃ…まとめてるにゃ…みたいなロード中の言い方」): 待ち時間に一言ずつ入れ替える
+// 🐱 v1.30.918(山田「探してるにゃ…まとめてるにゃ…みたいなロード中の言い方」): 待ち時間に一言ずつ入れ替える
 const KQ_LOAD_MSG = {
   search: ['探してるにゃ','見積をめくってるにゃ','言い換えでも探してるにゃ','発注書も見てるにゃ','業者さんの請求も見てるにゃ','もうちょっとにゃ'],
   sum:    ['まとめてるにゃ','修繕の記録も見てるにゃ','立会の記録も見てるにゃ','マニュアルをめくってるにゃ','言葉を選んでるにゃ','もうちょっとにゃ'],
@@ -25627,6 +25634,7 @@ function queueCloudOp(action, data, meta){
     action,
     data: JSON.parse(JSON.stringify(data)),
     ts: new Date().toISOString(),
+    pulledAt: cloudSync.lastSyncAt || null,   // v918: 積んだ時点でこの端末がDBを最後に読めた時刻
   }, meta || {}));
   updateCloudSyncBadge();
   saveState();
@@ -25771,6 +25779,7 @@ async function cloudSyncPull({ replace=false, signal=null, prefetched=null, forc
     state.cloudLogs.length = 80;
   }
   cloudSync.lastSyncAt = new Date().toISOString();
+  window.__calPullOkAt = Date.now();   // v918: この起動でDBを読めた時刻(自動の掃除はこのあとだけ)
   saveCloudSyncConfig();
   // 🧹 事前(jizen)の二重を「毎回の同期取得後」にも統合(v1.30.323・山田「謎に事前が増えるタイミングがある」)
   //   多端末では同じ物件でも ev.id が端末ごとに違うため、id基準マージ(cloudMergeById_)では集約できない。
@@ -25780,6 +25789,11 @@ async function cloudSyncPull({ replace=false, signal=null, prefetched=null, forc
   try{ if(typeof dedupeJizenEvents_==='function') __jzDedup = dedupeJizenEvents_(); }catch(_){}
   saveState();
   if(__jzDedup>0 && typeof render==='function'){ try{ render(); }catch(_){} }
+  // 🗂 v918: 完了タスクの掃除は読み終えた直後に(1時間に1回)
+  if(Date.now() - (window.__calSweepAt||0) > 60*60*1000){
+    window.__calSweepAt = Date.now();
+    try{ if(typeof sweepTaskArchive_==='function' && sweepTaskArchive_() && typeof render==='function') render(); }catch(_){}
+  }
   return data;
 }
 
@@ -26115,13 +26129,25 @@ async function calServerDoc_(id){
 }
 const CAL_STALE_MARGIN_MS = 10*60*1000;
 const CAL_GAS_HOLD_MS = 6*60*60*1000;   // v1.30.915: DBが読めない時、これより古い変更はGASで送らない
+// v918: 送らない/合わせた時は端末の中身もDB側にそろえる(手元の updatedAt が新しいままだと、次の読み込みでDBを受け取らず古いまま残る)
+function calAdoptServerDoc_(id, doc){
+  if(!doc) return;
+  const ev = (state.events||[]).find(e=>e && e.id===id);
+  if(ev){ Object.assign(ev, doc); }
+}
 function calStaleDecide_(op, sv){
   if(!sv || !sv.doc || sv.deleted) return 'send';
   // 変更をした時刻=積んだ時刻(ts)を優先(updatedAt を付け直さない編集経路があっても誤って止めない)。端末の時計のずれを見て10分の余裕
   const sT = Date.parse(sv.doc.updatedAt || ''), oT = Date.parse(op.ts || (op.data && op.data.updatedAt) || '');
-  if(!isFinite(sT) || !isFinite(oT) || sT <= oT + CAL_STALE_MARGIN_MS) return 'send';
   const d = op.data || {};
-  const isJimu = (d.category==='事務' || sv.doc.category==='事務') && (String(d.title||'').indexOf('\n')>=0 || String(sv.doc.title||'').indexOf('\n')>=0);
+  const multi = (String(d.title||'').indexOf('\n')>=0 || String(sv.doc.title||'').indexOf('\n')>=0);
+  // v918: 山田の箱は10月中旬から種類が空欄。空欄でもタスク行があれば箱として扱う
+  const isJimu = multi && ((d.category==='事務' || sv.doc.category==='事務')
+    || (!d.category && !sv.doc.category && typeof taskTextKey_==='function' && String(d.title||'').split(/\r?\n/).some(l=>taskTextKey_(l))));
+  // v918: 今した変更でも、土台が古いことがある。この端末が最後にDBを読んだ時刻より後にDBが直されていたら、箱は行を合わせる
+  const pT = Date.parse(op.pulledAt || '');
+  const staleByPull = isJimu && isFinite(sT) && isFinite(pT) && sT > pT + CAL_STALE_MARGIN_MS;
+  if(!staleByPull && (!isFinite(sT) || !isFinite(oT) || sT <= oT + CAL_STALE_MARGIN_MS)) return 'send';
   if(isJimu && typeof mergeJimuTitle_==='function'){
     const merged = mergeJimuTitle_(sv.doc.title, d.title, sv.doc.staff || d.staff);
     if(merged === String(sv.doc.title||'')) return 'skip';
@@ -26156,8 +26182,8 @@ async function pushEventsToDb_(){
       try{ sv = await calServerDoc_(id); }
       catch(e){ return { ok:false, reason:(e && e.evKind)||'error', message:(e&&e.message)||'', pushed:flush_() }; }
       const dec = calStaleDecide_(op, sv);
-      if(dec === 'skip'){ done.add(op); pulled = true; console.warn('[events-write] DBの方が新しいので古い変更は送りません:', id, op.ts); continue; }
-      if(dec === 'merged'){ pulled = true; console.warn('[events-write] DBの方が新しいので行を合わせて送ります:', id, op.ts); }
+      if(dec === 'skip'){ calAdoptServerDoc_(id, sv && sv.doc); done.add(op); pulled = true; console.warn('[events-write] DBの方が新しいので古い変更は送りません:', id, op.ts); continue; }
+      if(dec === 'merged'){ calAdoptServerDoc_(id, op.data); pulled = true; console.warn('[events-write] DBの方が新しいので行を合わせて送ります:', id, op.ts); }
     }
     let tries = 0, result = '';
     for(;;){
@@ -26267,7 +26293,8 @@ async function cloudSyncPush(){
     let sv, readOk = false;
     try{ sv = await calServerDoc_(String(op.data.id)); readOk = true; }catch(_){}
     if(readOk){
-      if(calStaleDecide_(op, sv) === 'skip'){ __drop.add(op); console.warn('[cloud] DBの方が新しいので古い変更は送りません(GAS経路):', op.data.id, op.ts); continue; }
+      const __dec = calStaleDecide_(op, sv); if(__dec === 'merged') calAdoptServerDoc_(String(op.data.id), op.data);
+      if(__dec === 'skip'){ calAdoptServerDoc_(String(op.data.id), sv && sv.doc); __drop.add(op); console.warn('[cloud] DBの方が新しいので古い変更は送りません(GAS経路):', op.data.id, op.ts); continue; }
       sendSnap.push(op); continue;
     }
     const age = Date.now() - Date.parse(op.ts || '');
