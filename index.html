@@ -1046,6 +1046,13 @@
   .quick-pop.task-pop .tp-row input[type=checkbox]{margin-top:2px;width:16px;height:16px;cursor:pointer;flex:0 0 auto}
   .quick-pop.task-pop .tp-row .tp-text{font-size:13px;line-height:1.4;word-break:break-word;flex:1;cursor:text}
   .quick-pop.task-pop .tp-row.done .tp-text{text-decoration:line-through;color:#94a3b8}
+  /* v919: スマホは幅が足りず、タスク名が1文字ずつ縦に並んでいた → 名前を1行目に全幅で、操作を2行目に */
+  @media (max-width:767px){
+    .quick-pop.task-pop .tp-row{flex-wrap:wrap;row-gap:6px;column-gap:4px}
+    .quick-pop.task-pop .tp-row .tp-text{order:-1;flex:1 0 100%;font-size:15px;min-width:0}
+    .quick-pop.task-pop .tp-row .tp-prio-sel,.quick-pop.task-pop .tp-row .tp-status-sel{font-size:13px;padding:5px 2px}
+    .quick-pop.task-pop .tp-row button{min-width:32px;min-height:32px;padding-left:2px;padding-right:2px}
+  }
   .quick-pop.task-pop .tp-row .tp-comment-btn{flex:0 0 auto;border:1px solid var(--border);background:#fff;color:#64748b;font-size:10px;font-weight:700;line-height:1;cursor:pointer;padding:2px 5px;border-radius:5px}
   .quick-pop.task-pop .tp-row .tp-comment-btn.has{background:#dbeafe;color:#1d4ed8;border-color:#bfdbfe}
   .quick-pop.task-pop .tp-row .tp-comment-btn:hover{border-color:#94a3b8}
@@ -2042,6 +2049,9 @@
   .resto-detail-head{display:flex;align-items:center;gap:8px;margin-bottom:2px}
   .rd-title{font-weight:700;font-size:15px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .rd-sub{font-size:11px;color:var(--muted);margin-bottom:5px}
+  .addr-copy{margin-left:6px;padding:3px 9px;min-height:26px;border:1px solid var(--border-strong);background:#fff;color:#1f2937;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;vertical-align:middle;touch-action:manipulation}
+  .addr-copy:hover{background:#f3f4f6}
+  @media (max-width:767px){.addr-copy{min-height:32px;padding:5px 11px;font-size:12px}}
   /* KV: 横並びインラインフロー(コンパクト) */
   /* 📊 v1.30.798 業者別 売上/発注/材料費/粗利(見積アプリ1105の発注書タブと同じ表) */
   .rd-gp{margin:4px 0 2px;font-size:11px}
@@ -3095,7 +3105,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.918</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.919</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -3303,7 +3313,7 @@
         <div class="field"><label>物件名</label><input id="rs-name" readonly></div>
         <div class="field" style="max-width:120px"><label>号室</label><input id="rs-room" readonly></div>
       </div>
-      <div class="field"><label>住所</label><input id="rs-address" readonly></div>
+      <div class="field"><label>住所<button type="button" class="addr-copy" id="rs-address-copy">📋 住所をコピー</button></label><input id="rs-address" readonly></div>
       <div class="field-row">
         <div class="field" style="max-width:200px"><label>依頼日</label><input id="rs-reqdate" type="date" readonly></div>
       </div>
@@ -14018,8 +14028,24 @@ function parseCompletionDate_(meta){
   if(d - now > 0) d = new Date(now.getFullYear()-1, (+m[1])-1, (+m[2]));
   return d;
 }
+// 📋 v1.30.919(山田「住所をコピーボタン PC・スマホで」): httpsでない時や古いiPhoneでも写せるよう、だめなら選択してコピーに落とす
+async function copyAddress_(text, btn){
+  text = String(text||'').trim(); if(!text) return false;
+  let ok = false;
+  try{ await navigator.clipboard.writeText(text); ok = true; }
+  catch(_){
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.readOnly = true; ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;font-size:16px';
+    (btn && btn.closest('dialog') || document.body).appendChild(ta);
+    ta.focus(); ta.select(); try{ ta.setSelectionRange(0, text.length); }catch(_){}
+    try{ ok = document.execCommand('copy'); }catch(_){}
+    ta.remove();
+  }
+  if(btn){ btn.textContent = ok ? '✅ コピーしました' : '⚠ コピーできません'; setTimeout(()=>{ btn.textContent = '📋 住所をコピー'; }, 1500); }
+  return ok;
+}
 // 🗂 自動アーカイブ: 完了から7日経過した完了タスクを 📦 へ移す(全チェックリストイベント対象)
-// 🛡 v1.30.918(11/4 山田の箱が10/31の中身に戻った事故): 何日も閉じていた端末は、起動3秒後の掃除の時点でまだDBを読めていない。
+// 🛡 v1.30.919(11/4 山田の箱が10/31の中身に戻った事故): 何日も閉じていた端末は、起動3秒後の掃除の時点でまだDBを読めていない。
 //   古い本文のまま 📦 を付けて updatedAt を今にして送るので、「古い変更」の判定(v913)を素通りして上書きしていた。
 //   ⇒ この起動でDBを読めた直後(10分以内)だけ掃除する。同期を使わない端末は従来どおり。
 const CAL_SWEEP_FRESH_MS = 10*60*1000;
@@ -14142,13 +14168,18 @@ function getStaffJimuEvents_(staff){
   return (state.events||[]).filter(e=> e && e.category==='事務' && e.staff===staff && getTaskInfo_(e));
 }
 // 📖 表示専用: スタッフの事務イベントを副作用なしで1件返す(統合・保存はしない)。render中から安全に呼べる
+// ⚠ v1.30.919(山田「スマホでもワンタップで」): 山田の箱は10月中旬から種類が空欄で、ここでは事務の箱しか見ていなかったので
+//   📋タスクを開くと、使っていない古い箱(未完了2件)が出ていた。種類が空欄でもタスク5行以上(📦🗑込み)なら本人の箱とみなし、
+//   今の行がいちばん多い箱を出す。表示だけで統合はしない(getOrConsolidateJimuEvent_ は事務だけのまま)
 function peekStaffJimuEvent_(staff){
-  const evs = getStaffJimuEvents_(staff);
-  if(evs.length<=1) return evs[0] || null;
-  return evs.slice().sort((a,b)=>{
-    const ta=getTaskInfo_(a), tb=getTaskInfo_(b);
-    return (tb.tasks.length+tb.trash.length+tb.archive.length) - (ta.tasks.length+ta.trash.length+ta.archive.length);
-  })[0];
+  const evs = (state.events||[]).map(e=>{
+    if(!e || e.staff!==staff || !(e.category==='事務' || !e.category)) return null;
+    const ti = getTaskInfo_(e); if(!ti) return null;
+    const all = ti.tasks.length + ti.trash.length + ti.archive.length;
+    return (e.category==='事務' || all>=5) ? { e, ti, all } : null;
+  }).filter(Boolean);
+  if(evs.length<=1) return evs[0] ? evs[0].e : null;
+  return evs.sort((a,b)=> (b.ti.tasks.length-a.ti.tasks.length) || (b.all-a.all) || String(b.e.updatedAt||'').localeCompare(String(a.e.updatedAt||'')))[0].e;
 }
 // 📋 スタッフの事務タスクを開く(無ければ作成)。バンドのバッジ・タスクビュー両方から使う共通入口
 function openStaffJimuTasks_(staff, anchorEl){
@@ -24049,6 +24080,7 @@ document.querySelectorAll('#mobileNav button').forEach(b=>{
     if(k === 'gantt'){ openGanttModal_(); return; }   // 📊 進捗ガントも同様にモーダル
     if(k === 'material'){ openMaterialModal_(); return; }   // 🧾 材料注文の報告(v1.30.540)
     if(k === 'search'){ const sb = document.getElementById('searchBtn'); if(sb) sb.click(); return; }   // 🔍 上の検索と同じ(v1.30.862)
+    if(k === 'task' && typeof setTaskViewMode_==='function') setTaskViewMode_('mine');   // v919: 下の📋はいつも自分のタスクから
     currentView = (k === 'cal') ? 'month' : k;
     render();
   };
@@ -24949,7 +24981,7 @@ function kqManHtml_(p){
   const sn = String(p.snippet||'').replace(/<[^>]*>/g,'').slice(0,90);
   return `<div class="kq-g kq-click" data-man="${escapeHtml(String(p.id))}">${kqBadge_('マニュアル')}<b>${escapeHtml(p.title||'')}</b>${sn?'<div class="kq-meta">'+escapeHtml(sn)+'</div>':''}</div>`;
 }
-// 💬 こう答えてほしかった(v1.30.918・山田「各自のフィードバックも吸収できるように」): koji_ask_wish(台帳DB 112)。
+// 💬 こう答えてほしかった(v1.30.919・山田「各自のフィードバックも吸収できるように」): koji_ask_wish(台帳DB 112)。
 //   集まった声は山田さんが「📝 みんなの声」で見て、採用したものだけクラ助の決まり(koji_ask_rules)になる=koji-ask v7 が毎回読む。
 async function kqWish_(text){
   text = String(text||'').trim(); const id = kqLogId_(); if(!text || !id) return;
@@ -25019,7 +25051,7 @@ function kqVoicesRender_(box){
     kqVoicesLoad_();
   });
 }
-// 🐱 v1.30.918(山田「探してるにゃ…まとめてるにゃ…みたいなロード中の言い方」): 待ち時間に一言ずつ入れ替える
+// 🐱 v1.30.919(山田「探してるにゃ…まとめてるにゃ…みたいなロード中の言い方」): 待ち時間に一言ずつ入れ替える
 const KQ_LOAD_MSG = {
   search: ['探してるにゃ','見積をめくってるにゃ','言い換えでも探してるにゃ','発注書も見てるにゃ','業者さんの請求も見てるにゃ','もうちょっとにゃ'],
   sum:    ['まとめてるにゃ','修繕の記録も見てるにゃ','立会の記録も見てるにゃ','マニュアルをめくってるにゃ','言葉を選んでるにゃ','もうちょっとにゃ'],
@@ -29917,6 +29949,7 @@ function openRepairSheet(id){
   document.getElementById("rs-name").value     = r.name || "";
   document.getElementById("rs-room").value     = r.room || "";
   document.getElementById("rs-address").value  = r.address || "";
+  { const b = document.getElementById("rs-address-copy"); if(b){ const ad = String(r.address||'').trim(); b.style.display = ad ? '' : 'none'; b.onclick = ev=>{ ev.preventDefault(); copyAddress_(ad, b); }; } }
   document.getElementById("rs-reqdate").value  = r.requestDate || "";
   document.getElementById("rs-respdate").value = r.responseDate || "";
   // 🔄 変更理由欄はr側に保持しない一時入力なので毎回クリア(v1.30.351)
@@ -31038,7 +31071,9 @@ function renderRestoDetail(){
     ? `<span style="background:${bg};color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:6px;vertical-align:middle">${escapeHtml(text)}</span>`
     : "";
   tEl.innerHTML = escapeHtml(p.name + (p.room?" "+p.room:"")) + badge(saStatus, saColor);
-  document.getElementById("rdSub").textContent = [p.client,p.layout,p.address].filter(Boolean).join(" ・ ");
+  { const sub = document.getElementById("rdSub"); sub.textContent = [p.client,p.layout,p.address].filter(Boolean).join(" ・ ");
+    const ad = String(p.address||'').trim();
+    if(ad){ const b = document.createElement('button'); b.type='button'; b.className='addr-copy'; b.textContent='📋 住所をコピー'; b.onclick = ()=>copyAddress_(ad, b); sub.appendChild(b); } }
   // KV
   const kv = [];
   if(p.client || p.contractor) kv.push(["元請",p.client || p.contractor]);  // 元請(山一地所等)を明示
