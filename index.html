@@ -3105,7 +3105,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.919</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.920</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -14028,7 +14028,7 @@ function parseCompletionDate_(meta){
   if(d - now > 0) d = new Date(now.getFullYear()-1, (+m[1])-1, (+m[2]));
   return d;
 }
-// 📋 v1.30.919(山田「住所をコピーボタン PC・スマホで」): httpsでない時や古いiPhoneでも写せるよう、だめなら選択してコピーに落とす
+// 📋 v1.30.920(山田「住所をコピーボタン PC・スマホで」): httpsでない時や古いiPhoneでも写せるよう、だめなら選択してコピーに落とす
 async function copyAddress_(text, btn){
   text = String(text||'').trim(); if(!text) return false;
   let ok = false;
@@ -14045,7 +14045,7 @@ async function copyAddress_(text, btn){
   return ok;
 }
 // 🗂 自動アーカイブ: 完了から7日経過した完了タスクを 📦 へ移す(全チェックリストイベント対象)
-// 🛡 v1.30.919(11/4 山田の箱が10/31の中身に戻った事故): 何日も閉じていた端末は、起動3秒後の掃除の時点でまだDBを読めていない。
+// 🛡 v1.30.920(11/4 山田の箱が10/31の中身に戻った事故): 何日も閉じていた端末は、起動3秒後の掃除の時点でまだDBを読めていない。
 //   古い本文のまま 📦 を付けて updatedAt を今にして送るので、「古い変更」の判定(v913)を素通りして上書きしていた。
 //   ⇒ この起動でDBを読めた直後(10分以内)だけ掃除する。同期を使わない端末は従来どおり。
 const CAL_SWEEP_FRESH_MS = 10*60*1000;
@@ -14168,7 +14168,7 @@ function getStaffJimuEvents_(staff){
   return (state.events||[]).filter(e=> e && e.category==='事務' && e.staff===staff && getTaskInfo_(e));
 }
 // 📖 表示専用: スタッフの事務イベントを副作用なしで1件返す(統合・保存はしない)。render中から安全に呼べる
-// ⚠ v1.30.919(山田「スマホでもワンタップで」): 山田の箱は10月中旬から種類が空欄で、ここでは事務の箱しか見ていなかったので
+// ⚠ v1.30.920(山田「スマホでもワンタップで」): 山田の箱は10月中旬から種類が空欄で、ここでは事務の箱しか見ていなかったので
 //   📋タスクを開くと、使っていない古い箱(未完了2件)が出ていた。種類が空欄でもタスク5行以上(📦🗑込み)なら本人の箱とみなし、
 //   今の行がいちばん多い箱を出す。表示だけで統合はしない(getOrConsolidateJimuEvent_ は事務だけのまま)
 function peekStaffJimuEvent_(staff){
@@ -20846,10 +20846,19 @@ function lookupAddrForTitle_(title, bukkenHint){
   }catch(_){}
   return '';
 }
+function addrCopyBtnHtml_(addr){
+  return addr ? `<button type="button" class="addr-copy" data-addr-copy="${escapeHtml(addr)}">📋 住所をコピー</button>` : '';
+}
 function addrLinkHtml_(addr){
   if(!addr) return '';
-  return `<div style="margin-top:2px"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}" target="_blank" rel="noopener" style="color:#93c5fd;font-size:11.5px;text-decoration:underline">📍 ${escapeHtml(addr)}</a></div>`;
+  return `<div style="margin-top:2px"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}" target="_blank" rel="noopener" style="color:#93c5fd;font-size:11.5px;text-decoration:underline">📍 ${escapeHtml(addr)}</a>${addrCopyBtnHtml_(addr)}</div>`;
 }
+// 📋 v1.30.920(山田「吹き出しにもボタン」): 吹き出しは作り直されるので、押した時に上で拾う(下の予定まで押さない)
+document.addEventListener('click', e=>{
+  const b = e.target && e.target.closest && e.target.closest('[data-addr-copy]'); if(!b) return;
+  e.preventDefault(); e.stopPropagation();
+  copyAddress_(b.getAttribute('data-addr-copy'), b);
+}, true);
 // 📝 予定の「誰がいつ登録したか」表示(v1.30.616・山田要望)
 //   createdBy/createdAt はクラウド同期の列として元から往復している(denormalize/normalize両対応・GAS setup.gsに列あり)。
 //   ただし従来は「push時に getMyself() で埋める」だけで、アプリ内では作っても表示してもいなかった。
@@ -21151,7 +21160,7 @@ function showRepairTip(r, mouseX, mouseY){
     let addr=String(r.address||"").trim();
     if(!addr) addr=lookupAddrForTitle_(`${r.name||''} ${r.room||''}`, r.name);   // v1.30.636で共通化
     const parts=[];
-    if(addr) parts.push(`<div style="margin-top:2px"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}" target="_blank" rel="noopener" style="color:#93c5fd;font-size:11.5px;text-decoration:underline">📍 ${escapeHtml(addr)}</a></div>`);
+    if(addr) parts.push(addrLinkHtml_(addr));
     if(r.requestDesc) parts.push(`<div style="font-size:11px;color:#e5e7eb;margin-top:2px">📝 ${escapeHtml(String(r.requestDesc).slice(0,60))}${String(r.requestDesc).length>60?'…':''}</div>`);
     if(r.customerName||r.customerTel){
       const tel=String(r.customerTel||'').trim();
@@ -24981,7 +24990,7 @@ function kqManHtml_(p){
   const sn = String(p.snippet||'').replace(/<[^>]*>/g,'').slice(0,90);
   return `<div class="kq-g kq-click" data-man="${escapeHtml(String(p.id))}">${kqBadge_('マニュアル')}<b>${escapeHtml(p.title||'')}</b>${sn?'<div class="kq-meta">'+escapeHtml(sn)+'</div>':''}</div>`;
 }
-// 💬 こう答えてほしかった(v1.30.919・山田「各自のフィードバックも吸収できるように」): koji_ask_wish(台帳DB 112)。
+// 💬 こう答えてほしかった(v1.30.920・山田「各自のフィードバックも吸収できるように」): koji_ask_wish(台帳DB 112)。
 //   集まった声は山田さんが「📝 みんなの声」で見て、採用したものだけクラ助の決まり(koji_ask_rules)になる=koji-ask v7 が毎回読む。
 async function kqWish_(text){
   text = String(text||'').trim(); const id = kqLogId_(); if(!text || !id) return;
@@ -25051,7 +25060,7 @@ function kqVoicesRender_(box){
     kqVoicesLoad_();
   });
 }
-// 🐱 v1.30.919(山田「探してるにゃ…まとめてるにゃ…みたいなロード中の言い方」): 待ち時間に一言ずつ入れ替える
+// 🐱 v1.30.920(山田「探してるにゃ…まとめてるにゃ…みたいなロード中の言い方」): 待ち時間に一言ずつ入れ替える
 const KQ_LOAD_MSG = {
   search: ['探してるにゃ','見積をめくってるにゃ','言い換えでも探してるにゃ','発注書も見てるにゃ','業者さんの請求も見てるにゃ','もうちょっとにゃ'],
   sum:    ['まとめてるにゃ','修繕の記録も見てるにゃ','立会の記録も見てるにゃ','マニュアルをめくってるにゃ','言葉を選んでるにゃ','もうちょっとにゃ'],
@@ -38838,7 +38847,7 @@ function manBkDetailHtml_(b){
       <div style="font-size:11px;color:var(--muted);margin-bottom:4px"><a href="#" data-home="1">🏠</a> › <a href="#" data-bklist="1">🏢 物件一覧</a> › ${esc(b.name)}</div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:20px">🏢 ${esc(b.name)}</b>${manBkPill_(b.motouke)}
         ${v(b.type) ? `<span class="man-chip">${esc(v(b.type))}</span>` : ''}${b.isOwnerProperty ? '<span class="man-chip">山一自社</span>' : ''}${v(b.no) ? `<span style="font-size:11px;color:var(--muted)">No.${esc(v(b.no))}</span>` : ''}</div>
-      ${addr ? `<div style="margin-top:6px;font-size:14px">📍 ${esc(addr)} <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}" target="_blank" rel="noopener" style="font-size:12px;margin-left:4px">🗺 地図</a></div>`
+      ${addr ? `<div style="margin-top:6px;font-size:14px">📍 ${esc(addr)} <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}" target="_blank" rel="noopener" style="font-size:12px;margin-left:4px">🗺 地図</a>${addrCopyBtnHtml_(addr)}</div>`
              : `<div style="margin-top:6px;font-size:12px;color:var(--muted)">📍 住所は台帳に入っていません${[v(b.city), v(b.area)].filter(Boolean).length ? '(' + esc([v(b.city), v(b.area)].filter(Boolean).join(' ')) + ')' : ''}</div>`}
       ${b.lastEditedAt ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">台帳を最後に直した人: ${esc(b.lastEditor || '')} ${esc(typeof manAgo_ === 'function' ? manAgo_(b.lastEditedAt) : '')}・直すのは見積アプリの物件台帳で</div>` : ''}
       <div style="font-size:11px;color:var(--muted);margin-top:4px">${__man.bk ? manBkAgo_(__man.bk.at) + '読んだ台帳です' : ''} <button class="btn man-mini" data-bkreload="1" title="物件台帳を今すぐ読み直す(ふだんは10分ごと)">🔄 読み直す</button></div>
