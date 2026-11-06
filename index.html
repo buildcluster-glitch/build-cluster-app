@@ -3105,7 +3105,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.924</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.925</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -14028,7 +14028,7 @@ function parseCompletionDate_(meta){
   if(d - now > 0) d = new Date(now.getFullYear()-1, (+m[1])-1, (+m[2]));
   return d;
 }
-// 📋 v1.30.924(山田「住所をコピーボタン PC・スマホで」): httpsでない時や古いiPhoneでも写せるよう、だめなら選択してコピーに落とす
+// 📋 v1.30.919(山田「住所をコピーボタン PC・スマホで」): httpsでない時や古いiPhoneでも写せるよう、だめなら選択してコピーに落とす
 async function copyAddress_(text, btn){
   text = String(text||'').trim(); if(!text) return false;
   let ok = false;
@@ -14044,15 +14044,16 @@ async function copyAddress_(text, btn){
   if(btn){ btn.textContent = ok ? '✅ コピーしました' : '⚠ コピーできません'; setTimeout(()=>{ btn.textContent = '📋 住所をコピー'; }, 1500); }
   return ok;
 }
-// 🗂 自動アーカイブ: 完了から7日経過した完了タスクを 📦 へ移す(全チェックリストイベント対象)
-// 🛡 v1.30.924(11/4 山田の箱が10/31の中身に戻った事故): 何日も閉じていた端末は、起動3秒後の掃除の時点でまだDBを読めていない。
+// 🗂 自動アーカイブ: 完了した日が過ぎたタスクを 📦 へ移す(全チェックリストイベント対象)
+//   v1.30.925(山田「その日のタスクだけに・完了済みは翌日には消えてほしい・分母が無限に増える」): 7日 → 翌日。残り/全部 の全部 = 未完了+今日の完了
+// 🛡 v1.30.918(11/4 山田の箱が10/31の中身に戻った事故): 何日も閉じていた端末は、起動3秒後の掃除の時点でまだDBを読めていない。
 //   古い本文のまま 📦 を付けて updatedAt を今にして送るので、「古い変更」の判定(v913)を素通りして上書きしていた。
 //   ⇒ この起動でDBを読めた直後(10分以内)だけ掃除する。同期を使わない端末は従来どおり。
 const CAL_SWEEP_FRESH_MS = 10*60*1000;
 function calSweepReady_(){ return !cloudSync.url || (Date.now() - (window.__calPullOkAt||0)) < CAL_SWEEP_FRESH_MS; }
 function sweepTaskArchive_(days){
   if(!calSweepReady_()) return false;
-  const limit = (typeof days === 'number') ? days : 7;
+  const limit = (typeof days === 'number') ? days : 0;   // 0 = 完了した日の翌日から
   const now = new Date(); now.setHours(0,0,0,0);
   let changed = false;
   const __pend = new Set((state.cloudPending||[]).map(p=>p && p.data && p.data.id).filter(Boolean));
@@ -14170,7 +14171,7 @@ function getStaffJimuEvents_(staff){
   return (state.events||[]).filter(e=> e && e.category==='事務' && e.staff===staff && getTaskInfo_(e));
 }
 // 📖 表示専用: スタッフの事務イベントを副作用なしで1件返す(統合・保存はしない)。render中から安全に呼べる
-// ⚠ v1.30.924(山田「スマホでもワンタップで」): 山田の箱は10月中旬から種類が空欄で、ここでは事務の箱しか見ていなかったので
+// ⚠ v1.30.919(山田「スマホでもワンタップで」): 山田の箱は10月中旬から種類が空欄で、ここでは事務の箱しか見ていなかったので
 //   📋タスクを開くと、使っていない古い箱(未完了2件)が出ていた。種類が空欄でもタスク5行以上(📦🗑込み)なら本人の箱とみなし、
 //   今の行がいちばん多い箱を出す。表示だけで統合はしない(getOrConsolidateJimuEvent_ は事務だけのまま)
 function peekStaffJimuEvent_(staff){
@@ -14381,7 +14382,7 @@ function showTaskChecklistPopup(el, ev, opts){
   opts = opts || {};
   const inlineHost = opts.host || null;
   document.querySelectorAll(".quick-pop.task-pop").forEach(p=>{ if(!p.classList.contains("task-pop-inline")) p.remove(); });   // 埋め込み版は消さない
-  if(typeof sweepTaskArchive_==='function') sweepTaskArchive_();   // 開く前に7日経過分を自動アーカイブ
+  if(typeof sweepTaskArchive_==='function') sweepTaskArchive_();   // 開く前に前日までの完了を自動アーカイブ
   const build = ()=>{
     const cur = (state.events||[]).find(e=>e.id===ev.id) || ev;
     return { cur, ti: getTaskInfo_(cur) };
@@ -14661,8 +14662,8 @@ function showTaskChecklistPopup(el, ev, opts){
           : (doneTasks.length ? '<div class="tp-empty">未完了なし 🎉</div>'
           : '<div class="tp-empty">タスクなし — 下の入力で追加できます</div>')
         )}
-        ${doneTasks.length ? `<div class="tp-done-head" data-sec="done" role="button">${collapsed?'▸':'▾'} 完了 ${doneTasks.length}件 <span style="font-weight:400;color:#9ca3af;font-size:10px">(完了タスクは1週間でアーカイブされます)</span></div>${collapsed?'':doneTasks.map(rowHtml).join("")}` : ""}
-        ${archive.length ? `<div class="tp-done-head" data-sec="archive" role="button">${archiveCollapsed?'▸':'▾'} 🗂 アーカイブ ${archive.length}件 <span style="font-weight:400;color:#9ca3af;font-size:10px">(完了7日経過)</span></div>${archiveCollapsed?'':archive.map(archiveRowHtml).join("")}` : ""}
+        ${doneTasks.length ? `<div class="tp-done-head" data-sec="done" role="button">${collapsed?'▸':'▾'} 完了 ${doneTasks.length}件 <span style="font-weight:400;color:#9ca3af;font-size:10px">(翌日にアーカイブへ移ります)</span></div>${collapsed?'':doneTasks.map(rowHtml).join("")}` : ""}
+        ${archive.length ? `<div class="tp-done-head" data-sec="archive" role="button">${archiveCollapsed?'▸':'▾'} 🗂 アーカイブ ${archive.length}件 <span style="font-weight:400;color:#9ca3af;font-size:10px">(前日までの完了)</span></div>${archiveCollapsed?'':archive.map(archiveRowHtml).join("")}` : ""}
         ${trash.length ? `<div class="tp-done-head" data-sec="trash" role="button">${trashCollapsed?'▸':'▾'} 🗑 ゴミ箱 ${trash.length}件</div>${trashCollapsed?'':trash.map(trashRowHtml).join("")}` : ""}
       </div>
       <div class="tp-add">
@@ -20848,20 +20849,20 @@ function lookupAddrForTitle_(title, bukkenHint){
   }catch(_){}
   return '';
 }
-// v1.30.924(山田の箱の吹き出しに「casa luminosa の物件情報」が出た): 事務の箱、または見出しなしのタスク行だけの予定。
+// v1.30.921(山田の箱の吹き出しに「casa luminosa の物件情報」が出た): 事務の箱、または見出しなしのタスク行だけの予定。
 //   「A荘 修繕」のように1行目が見出しのチェックリストは、その物件の予定なので今までどおり
 function isMultiBukkenTaskBox_(ev){
   const ti = ev && typeof getTaskInfo_==='function' ? getTaskInfo_(ev) : null;
   return !!ti && (ev.category==='事務' || !ti.headerText);
 }
-// v1.30.924(山田「完了済みのタスクの表示がいらない」): 箱の吹き出しは未完了だけ。完了・📦・🗑 は数だけ
+// v1.30.922(山田「完了済みのタスクの表示がいらない」): 箱の吹き出しは未完了だけ。完了・📦・🗑 は数だけ
 function tipTitleText_(ev){
   const raw = (ev && ev.title) || "(無題)";
   if(!isMultiBukkenTaskBox_(ev)) return raw;
   const lines = String(raw).split(/\r?\n/);
   const items = parseTasks_(raw);
   const shown = items.filter(x=> x.isTask ? !x.done : (!x.isTrash && !x.isArchive && x.text)).map(x=>lines[x.index]);
-  const done = items.filter(x=>x.isTask && x.done).length + items.filter(x=>x.isArchive).length;
+  const done = items.filter(x=>x.isTask && x.done).length;   // v925: 📦 は数えない(増え続けるので)
   return shown.concat(done ? [`(完了 ${done}件)`] : []).join("\n") || raw;
 }
 function addrCopyBtnHtml_(addr){
@@ -20871,7 +20872,7 @@ function addrLinkHtml_(addr){
   if(!addr) return '';
   return `<div style="margin-top:2px"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}" target="_blank" rel="noopener" style="color:#93c5fd;font-size:11.5px;text-decoration:underline">📍 ${escapeHtml(addr)}</a>${addrCopyBtnHtml_(addr)}</div>`;
 }
-// 📋 v1.30.924(山田「吹き出しにもボタン」): 吹き出しは作り直されるので、押した時に上で拾う(下の予定まで押さない)
+// 📋 v1.30.920(山田「吹き出しにもボタン」): 吹き出しは作り直されるので、押した時に上で拾う(下の予定まで押さない)
 document.addEventListener('click', e=>{
   const b = e.target && e.target.closest && e.target.closest('[data-addr-copy]'); if(!b) return;
   e.preventDefault(); e.stopPropagation();
@@ -25009,7 +25010,7 @@ function kqManHtml_(p){
   const sn = String(p.snippet||'').replace(/<[^>]*>/g,'').slice(0,90);
   return `<div class="kq-g kq-click" data-man="${escapeHtml(String(p.id))}">${kqBadge_('マニュアル')}<b>${escapeHtml(p.title||'')}</b>${sn?'<div class="kq-meta">'+escapeHtml(sn)+'</div>':''}</div>`;
 }
-// 💬 こう答えてほしかった(v1.30.924・山田「各自のフィードバックも吸収できるように」): koji_ask_wish(台帳DB 112)。
+// 💬 こう答えてほしかった(v1.30.916・山田「各自のフィードバックも吸収できるように」): koji_ask_wish(台帳DB 112)。
 //   集まった声は山田さんが「📝 みんなの声」で見て、採用したものだけクラ助の決まり(koji_ask_rules)になる=koji-ask v7 が毎回読む。
 async function kqWish_(text){
   text = String(text||'').trim(); const id = kqLogId_(); if(!text || !id) return;
@@ -25079,7 +25080,7 @@ function kqVoicesRender_(box){
     kqVoicesLoad_();
   });
 }
-// 🐱 v1.30.924(山田「探してるにゃ…まとめてるにゃ…みたいなロード中の言い方」): 待ち時間に一言ずつ入れ替える
+// 🐱 v1.30.917(山田「探してるにゃ…まとめてるにゃ…みたいなロード中の言い方」): 待ち時間に一言ずつ入れ替える
 const KQ_LOAD_MSG = {
   search: ['探してるにゃ','見積をめくってるにゃ','言い換えでも探してるにゃ','発注書も見てるにゃ','業者さんの請求も見てるにゃ','もうちょっとにゃ'],
   sum:    ['まとめてるにゃ','修繕の記録も見てるにゃ','立会の記録も見てるにゃ','マニュアルをめくってるにゃ','言葉を選んでるにゃ','もうちょっとにゃ'],
@@ -25689,7 +25690,7 @@ async function runCloudOpenSync(opts={}){
 // pending キューに mutation を追加
 function queueCloudOp(action, data, meta){
   if(!state.cloudPending) state.cloudPending = [];
-  // v1.30.924: 同じ予定に未送信が残っていれば、手元の本文はDBを読み直しても置き換わらない(送信待ちを守るため)。
+  // v1.30.923: 同じ予定に未送信が残っていれば、手元の本文はDBを読み直しても置き換わらない(送信待ちを守るため)。
   //   だから「最後に読めた時刻」は、残っている未送信のいちばん古い時刻を引き継ぐ(読み直した直後の時刻にすると古い本文が素通りする)
   let __pulledAt = cloudSync.lastSyncAt || null;
   { const __id = data && data.id;
@@ -34202,7 +34203,7 @@ setTimeout(()=>afterOpenSync_(()=>{
       setInterval(()=>fetchNaisoThumbs_({silent:true}).catch(()=>{}), 30*60*1000);
     }
   }
-  // 🗂 完了タスクの自動アーカイブ(7日経過)を起動時+1時間ごとに掃除
+  // 🗂 完了タスクの自動アーカイブ(翌日)を起動時+1時間ごとに掃除
   try{ if(typeof sweepTaskArchive_==='function' && sweepTaskArchive_() && typeof render==='function') render(); }catch(e){}
   setInterval(()=>{ try{ if(typeof sweepTaskArchive_==='function' && sweepTaskArchive_() && typeof render==='function') render(); }catch(e){} }, 60*60*1000);
 }), 3000);
