@@ -3105,7 +3105,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.925</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.926</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -19653,7 +19653,7 @@ function renderCalendar(){
         const bar = `<span class="tp-chip-bar"><i style="width:${pct}%;background:${allDone?'#16a34a':'#3b82f6'}"></i></span>`;
         compactTaskHtml = allDone
           ? `📋 <b style="color:#16a34a">✓ ${taskInfo.done}/${taskInfo.total}</b> ${bar} <span style="opacity:.8">${escapeHtml(label)} 完了</span>`
-          : `${hiPrio}📋 <b>残${taskInfo.total-taskInfo.done}/${taskInfo.total}</b> ${bar} <span style="opacity:.9">${escapeHtml(label)}</span>`;
+          : `${hiPrio}📋 <b>${taskInfo.done}/${taskInfo.total}</b> ${bar} <span style="opacity:.9">${escapeHtml(label)}</span>`;
       }
       // ホバーtooltip(改行表示には title属性で十分)
       const __ttStaff = (ev.source === "taikyo-shared")
