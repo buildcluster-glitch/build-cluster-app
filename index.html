@@ -3105,7 +3105,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.927</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.928</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -12306,8 +12306,31 @@ const ANNOUNCE_MAX = 3;   // 📢 表示中の連絡事項は最大3件(v1.30.30
 // 🐞 v1.30.844(まどか🐞10/23「3件あるから出せない」): 上限が全員共通だったので、山田の連絡3件でまどかが何も出せなかった。
 //   **出した人ごとに**3件まで(他の人の連絡は消せないため)。
 function announceMyActiveCount_(me){ return announceActiveItems_().filter(it=> it && it.by===me).length; }
-function addAnnounce_(text, to){
-  text=String(text||'').trim(); if(!text) return;
+// 📷 v1.30.928(山田「連絡に写真を添付・ドラッグドロップでも」): 写真は it.photos に参照だけ持つ(本体は photos バケット calendar/announce/)。
+//   写真だけの連絡は本文を「📷 写真」にする=写真を知らない古い版でも空の連絡にならない
+const ANNOUNCE_PHOTO_MAX = 5;
+function announcePhotoList_(it){
+  return (it && Array.isArray(it.photos)) ? it.photos.filter(p=> typeof p==='string' && (sbPhotoRef_(p) || /^https:\/\//.test(p))) : [];
+}
+function announcePhotosHtml_(it, size){
+  const ps = announcePhotoList_(it); if(!ps.length) return '';
+  return `<div class="announce-photos" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${ps.map(p=>`<img src="${escapeHtml(p)}" data-announce-photo="1" alt="添付写真" title="押すと拡大" style="width:${size}px;height:${size}px;object-fit:cover;border-radius:8px;border:1px solid #e5e7eb;background:#f1f5f9;cursor:zoom-in">`).join('')}</div>`;
+}
+document.addEventListener('click', e=>{
+  const img = e.target && e.target.closest ? e.target.closest('img[data-announce-photo]') : null;
+  if(!img || img.hasAttribute('data-sb-wait')) return;
+  if(typeof restoShowPhotoZoom==='function') restoShowPhotoZoom(img.src);
+});
+// 読めない形式(PCのChromeのHEICなど)は null(restoCompressImage は読めないと返ってこないので先に確かめる)
+async function announcePrepPhoto_(file){
+  const url = URL.createObjectURL(file);
+  const ok = await new Promise(r=>{ const i=new Image(); i.onload=()=>r(true); i.onerror=()=>r(false); i.src=url; });
+  URL.revokeObjectURL(url);
+  return ok ? restoCompressImage(file, 400000, 1600) : null;
+}
+function addAnnounce_(text, to, photos){
+  const __photos = Array.isArray(photos) ? photos.filter(Boolean) : [];
+  text=String(text||'').trim() || (__photos.length ? '📷 写真' : ''); if(!text) return;
   if(announceMyActiveCount_((typeof getMyself==='function')?getMyself():"") >= ANNOUNCE_MAX) return;   // 上限ガード(ボタン側でもチェック)・1人あたり v1.30.844
   const me=(typeof getMyself==='function')?getMyself():"";
   const __all=announceStaffAll_();
@@ -12318,7 +12341,8 @@ function addAnnounce_(text, to){
   //    新版の集計(確認 n/N・自動消滅)は announceTargets_ ベースなのでこの先行acked は影響しない。
   const __preAcked = __to.length ? __all.filter(s=> !__to.includes(s)) : [];
   const acked = Array.from(new Set([...(me?[me]:[]), ...__preAcked]));
-  const it={ id:uid(), text, to:__to, by:me, at:new Date().toISOString(), acked, deleted:false, updatedAt:new Date().toISOString() };   // 投稿者は自動で確認済み
+  const it={ id:uid(), text, to:__to, by:me, at:new Date().toISOString(), acked, deleted:false, updatedAt:new Date().toISOString() };
+  if(__photos.length) it.photos = __photos;   // 投稿者は自動で確認済み
   mutateAnnounce_(map=>{ map.items=(map.items||[]).concat([it]); return map; });
 }
 function ackAnnounce_(id){
@@ -12412,6 +12436,7 @@ function renderAnnouncePopup_(){
     const dt=isNaN(d)?'':`${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
     return `<div class="ap-item" data-aid="${escapeHtml(it.id)}" style="border:2px solid #f59e0b;background:#fffbeb;border-radius:10px;padding:12px 14px;margin-bottom:10px">
       <div style="font-size:16px;font-weight:800;color:#78350f;white-space:pre-wrap;word-break:break-word;line-height:1.6">${escapeHtml(it.text)}</div>
+      ${announcePhotosHtml_(it, 140)}
       <div style="font-size:11px;color:#92700e;margin-top:6px">${escapeHtml(disp(it.by||''))} ${dt}${it.editedAt?' (編集済)':''}</div>
       <button class="btn primary" data-ap-ack="${escapeHtml(it.id)}" style="margin-top:10px;width:100%;padding:11px;font-size:15px;font-weight:800;background:#16a34a;border-color:#16a34a">✓ 確認しました</button>
     </div>`;
@@ -12473,6 +12498,7 @@ function renderAnnounceBar_(){
       <span class="announce-icon">📢</span>
       ${toTag}
       <span class="announce-text">${escapeHtml(it.text)}</span>
+      ${announcePhotosHtml_(it, 44)}
       <span class="announce-meta">${escapeHtml(disp(it.by||''))} ${dt}${it.editedAt?' (編集済)':''} ・ 確認 ${ackN}/${tg.length}</span>
       ${announceAllAcked_(it) ? `<span class="announce-acked" style="background:#dcfce7;color:#166534;padding:1px 8px;border-radius:8px" title="宛先全員が確認しました。🗑で消してください">✅ 全員確認済み → 🗑で消す</span>` : ''}
       ${notYet.length?`<span class="announce-notyet-wrap">未:${notYet.map(s=>`<span class="announce-badge" title="${escapeHtml(disp(s))} 未確認">${escapeHtml(surnameOf_(s))}</span>`).join('')}</span>`:''}
@@ -23166,6 +23192,14 @@ function openAnnounceCompose_(){
         <div class="field">
           <label>本文</label>
           <textarea id="ac-text" rows="3" placeholder="例: 明日は8時集合です" style="width:100%;box-sizing:border-box;font-size:14px;padding:8px;border:1px solid var(--border-strong);border-radius:8px;resize:vertical"></textarea>
+          <div id="ac-drop" style="margin-top:6px;border:2px dashed transparent;border-radius:8px;padding:2px">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <button type="button" class="btn" id="ac-photo-btn" style="font-size:12px;padding:4px 12px">📷 写真を追加</button>
+              <span style="font-size:11px;color:var(--muted)">ドラッグでも入れられます(${ANNOUNCE_PHOTO_MAX}枚まで)</span>
+              <input type="file" id="ac-photo-input" accept="image/*" multiple style="display:none">
+            </div>
+            <div id="ac-photos" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
+          </div>
         </div>
         <div class="field">
           <label>宛先 <span style="font-weight:400;color:var(--muted);font-size:11px">(選んだ人だけに出ます／未選択=全員)</span></label>
@@ -23190,9 +23224,37 @@ function openAnnounceCompose_(){
         <button class="btn primary" id="ac-post">📢 出す</button>
       </div></div>`;
     document.body.appendChild(ov);
-    ov.onclick=e=>{ if(e.target===ov) ov.classList.remove('show'); };
+    ov.onclick=e=>{ if(e.target===ov && !ov.__acSending) ov.classList.remove('show'); };
     ov.querySelector('#ac-cancel').onclick=()=>ov.classList.remove('show');
     ov.querySelector('#ac-hist-all').onclick=()=>openAnnounceHistory_();
+    // 📷 写真: ボタンでもドラッグでも(この画面のどこに落としてもよい=外して落としてもファイルが開かない)
+    const __isFiles=e=> e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+    const __drop=ov.querySelector('#ac-drop');
+    const __mark=on=>{ __drop.style.borderColor = on ? '#3b82f6' : 'transparent'; __drop.style.background = on ? '#eff6ff' : ''; };
+    ov.addEventListener('dragover', e=>{ if(__isFiles(e)){ e.preventDefault(); e.stopPropagation(); __mark(true); } });
+    ov.addEventListener('dragleave', e=>{ if(!e.relatedTarget || !ov.contains(e.relatedTarget)) __mark(false); });
+    ov.addEventListener('drop', e=>{ if(!__isFiles(e)) return; e.preventDefault(); e.stopPropagation(); __mark(false); ov.__acAddFiles(e.dataTransfer.files); });
+    const __input=ov.querySelector('#ac-photo-input');
+    ov.querySelector('#ac-photo-btn').onclick=()=>__input.click();
+    __input.onchange=()=>{ const f=[...__input.files]; __input.value=''; ov.__acAddFiles(f); };
+    ov.__acPhotos=[];
+    ov.__acPaint=()=>{
+      const box=ov.querySelector('#ac-photos');
+      box.innerHTML=ov.__acPhotos.map((d,i)=>`<div style="position:relative;width:72px;height:72px"><img src="${d}" alt="添付する写真" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"><button type="button" data-ac-photo-del="${i}" title="外す" style="position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;border:0;background:#334155;color:#fff;font-size:12px;line-height:1;cursor:pointer">✕</button></div>`).join('');
+      box.querySelectorAll('[data-ac-photo-del]').forEach(b=> b.onclick=()=>{ ov.__acPhotos.splice(Number(b.dataset.acPhotoDel),1); ov.__acPaint(); });
+    };
+    ov.__acAddFiles=async files=>{
+      const imgs=[...files].filter(f=> /^image\//.test(f.type) || /\.(hei[cf]|jpe?g|png|webp)$/i.test(f.name||''));
+      if(!imgs.length){ alert('写真のファイルを入れてください'); return; }
+      const room=ANNOUNCE_PHOTO_MAX-ov.__acPhotos.length;
+      if(imgs.length>room) alert(`写真は${ANNOUNCE_PHOTO_MAX}枚までです`);
+      let bad=0;
+      for(const f of imgs.slice(0,Math.max(room,0))){
+        const d=await announcePrepPhoto_(f);
+        if(d){ ov.__acPhotos.push(d); ov.__acPaint(); } else bad++;
+      }
+      if(bad) alert(`${bad}枚は読み込めませんでした(HEICの写真はJPEGにしてから入れてください)`);
+    };
   }
   const sel=new Set();
   const staffBox=ov.querySelector('#ac-staff');
@@ -23214,6 +23276,7 @@ function openAnnounceCompose_(){
   ov.querySelector('#ac-all').onclick=()=>{ sel.clear(); paint(); };
   ov.querySelector('#ac-clear').onclick=()=>{ sel.clear(); paint(); };
   ov.querySelector('#ac-text').value='';
+  ov.__acPhotos=[]; ov.__acPaint();
   paint();
   // 📜 これまでの連絡(自分が出したぶん)。データは🗑後も deleted:true で残っているのでそのまま履歴になる(v1.30.585)
   {
@@ -23244,6 +23307,7 @@ function openAnnounceCompose_(){
           <span style="margin-left:auto">${escapeHtml(toLabel)} ・ 確認 ${ackN}/${tg.length}</span>
         </div>
         <div style="font-size:13px;margin-top:3px;white-space:pre-wrap;word-break:break-word;color:#0f172a">${escapeHtml(it.text||'')}</div>
+        ${announcePhotosHtml_(it, 64)}
       </div>`;
     }).join('') : `<div style="font-size:12px;color:var(--muted);padding:6px">まだ出したことがありません</div>`;
   }
@@ -23257,11 +23321,27 @@ function openAnnounceCompose_(){
     mx.style.display = __overMax ? 'block' : 'none';
     mx.textContent = __overMax ? `あなたが出している連絡が${ANNOUNCE_MAX}件表示中のため、新しくは出せません。確認が済んだ自分の連絡を🗑で消してからどうぞ（下の履歴は見られます）。` : '';
   }
-  ov.querySelector('#ac-post').onclick=()=>{
-    if(__overMax) return;
+  ov.querySelector('#ac-post').onclick=async()=>{
+    if(__overMax || ov.__acSending) return;
     const t=(ov.querySelector('#ac-text').value||'').trim();
-    if(!t){ alert('本文を入力してください'); return; }
-    if(typeof addAnnounce_==='function') addAnnounce_(t, [...sel]);
+    const shots=ov.__acPhotos.slice();
+    if(!t && !shots.length){ alert('本文か写真を入れてください'); return; }
+    // 写真を全部上げてから出す。1枚でも上がらなければ出さない(写真が抜けた連絡を全員に出さない・入力はそのまま残す)
+    const post=ov.querySelector('#ac-post'), cancel=ov.querySelector('#ac-cancel'), label=post.textContent;
+    const urls=[];
+    ov.__acSending=true; post.disabled=true; cancel.disabled=true;
+    try{
+      for(let i=0;i<shots.length;i++){
+        post.textContent=`写真を送信中 ${i+1}/${shots.length}…`;
+        const r=await restoUploadToDrive(shots[i], '連絡事項', '');
+        if(!r || !r.ok || !r.url) throw new Error((r && r.error) || '送信に失敗');
+        urls.push(r.url);
+      }
+    }catch(e){
+      alert(`写真を送れなかったので、連絡は出していません。\nログインと電波を確かめて、もう一度「出す」を押してください。\n(${(e&&e.message)||e})`);
+      return;
+    }finally{ ov.__acSending=false; post.disabled=false; cancel.disabled=false; post.textContent=label; }
+    if(typeof addAnnounce_==='function') addAnnounce_(t, [...sel], urls);
     ov.classList.remove('show');
   };
   ov.classList.add('show');
@@ -23330,6 +23410,7 @@ function openAnnounceHistory_(){
           <span style="margin-left:auto">${escapeHtml(toLabel)} ・ 確認 ${ackN}/${tg.length}</span>
         </div>
         <div style="font-size:14px;margin-top:4px;white-space:pre-wrap;word-break:break-word;color:#0f172a">${escapeHtml(it.text||'')}</div>
+        ${announcePhotosHtml_(it, 80)}
       </div>`;
     }).join('') : `<div style="font-size:12px;color:var(--muted);padding:8px">該当する連絡はありません</div>`;
   };
@@ -31972,6 +32053,7 @@ function __photoKindOf_(propName){
   const n = String(propName||'');
   if(n === 'アルコールチェック') return 'alcohol';
   if(n === 'バグ報告') return 'bugreport';
+  if(n === '連絡事項') return 'announce';
   return 'progress';
 }
 // 戻り: {ok:true, url:'sb:photos/…'} / null(=Driveへ)
