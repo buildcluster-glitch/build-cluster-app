@@ -3105,7 +3105,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.926</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.927</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -14045,7 +14045,8 @@ async function copyAddress_(text, btn){
   return ok;
 }
 // 🗂 自動アーカイブ: 完了した日が過ぎたタスクを 📦 へ移す(全チェックリストイベント対象)
-//   v1.30.925(山田「その日のタスクだけに・完了済みは翌日には消えてほしい・分母が無限に増える」): 7日 → 翌日。残り/全部 の全部 = 未完了+今日の完了
+//   v1.30.925(山田「その日のタスクだけに・完了済みは翌日には消えてほしい・分母が無限に増える」): 7日 → 翌日。
+//   v1.30.927(山田「前日分からじゃなくて前々日分から」): 翌日 → 翌々日。全部 = 未完了+今日と昨日の完了
 // 🛡 v1.30.918(11/4 山田の箱が10/31の中身に戻った事故): 何日も閉じていた端末は、起動3秒後の掃除の時点でまだDBを読めていない。
 //   古い本文のまま 📦 を付けて updatedAt を今にして送るので、「古い変更」の判定(v913)を素通りして上書きしていた。
 //   ⇒ この起動でDBを読めた直後(10分以内)だけ掃除する。同期を使わない端末は従来どおり。
@@ -14053,7 +14054,7 @@ const CAL_SWEEP_FRESH_MS = 10*60*1000;
 function calSweepReady_(){ return !cloudSync.url || (Date.now() - (window.__calPullOkAt||0)) < CAL_SWEEP_FRESH_MS; }
 function sweepTaskArchive_(days){
   if(!calSweepReady_()) return false;
-  const limit = (typeof days === 'number') ? days : 0;   // 0 = 完了した日の翌日から
+  const limit = (typeof days === 'number') ? days : 1;   // 1 = 完了した日の翌々日から(昨日の完了は残す)
   const now = new Date(); now.setHours(0,0,0,0);
   let changed = false;
   const __pend = new Set((state.cloudPending||[]).map(p=>p && p.data && p.data.id).filter(Boolean));
@@ -14382,7 +14383,7 @@ function showTaskChecklistPopup(el, ev, opts){
   opts = opts || {};
   const inlineHost = opts.host || null;
   document.querySelectorAll(".quick-pop.task-pop").forEach(p=>{ if(!p.classList.contains("task-pop-inline")) p.remove(); });   // 埋め込み版は消さない
-  if(typeof sweepTaskArchive_==='function') sweepTaskArchive_();   // 開く前に前日までの完了を自動アーカイブ
+  if(typeof sweepTaskArchive_==='function') sweepTaskArchive_();   // 開く前に前々日までの完了を自動アーカイブ
   const build = ()=>{
     const cur = (state.events||[]).find(e=>e.id===ev.id) || ev;
     return { cur, ti: getTaskInfo_(cur) };
@@ -14662,8 +14663,8 @@ function showTaskChecklistPopup(el, ev, opts){
           : (doneTasks.length ? '<div class="tp-empty">未完了なし 🎉</div>'
           : '<div class="tp-empty">タスクなし — 下の入力で追加できます</div>')
         )}
-        ${doneTasks.length ? `<div class="tp-done-head" data-sec="done" role="button">${collapsed?'▸':'▾'} 完了 ${doneTasks.length}件 <span style="font-weight:400;color:#9ca3af;font-size:10px">(翌日にアーカイブへ移ります)</span></div>${collapsed?'':doneTasks.map(rowHtml).join("")}` : ""}
-        ${archive.length ? `<div class="tp-done-head" data-sec="archive" role="button">${archiveCollapsed?'▸':'▾'} 🗂 アーカイブ ${archive.length}件 <span style="font-weight:400;color:#9ca3af;font-size:10px">(前日までの完了)</span></div>${archiveCollapsed?'':archive.map(archiveRowHtml).join("")}` : ""}
+        ${doneTasks.length ? `<div class="tp-done-head" data-sec="done" role="button">${collapsed?'▸':'▾'} 完了 ${doneTasks.length}件 <span style="font-weight:400;color:#9ca3af;font-size:10px">(翌々日にアーカイブへ移ります)</span></div>${collapsed?'':doneTasks.map(rowHtml).join("")}` : ""}
+        ${archive.length ? `<div class="tp-done-head" data-sec="archive" role="button">${archiveCollapsed?'▸':'▾'} 🗂 アーカイブ ${archive.length}件 <span style="font-weight:400;color:#9ca3af;font-size:10px">(前々日までの完了)</span></div>${archiveCollapsed?'':archive.map(archiveRowHtml).join("")}` : ""}
         ${trash.length ? `<div class="tp-done-head" data-sec="trash" role="button">${trashCollapsed?'▸':'▾'} 🗑 ゴミ箱 ${trash.length}件</div>${trashCollapsed?'':trash.map(trashRowHtml).join("")}` : ""}
       </div>
       <div class="tp-add">
@@ -34203,7 +34204,7 @@ setTimeout(()=>afterOpenSync_(()=>{
       setInterval(()=>fetchNaisoThumbs_({silent:true}).catch(()=>{}), 30*60*1000);
     }
   }
-  // 🗂 完了タスクの自動アーカイブ(翌日)を起動時+1時間ごとに掃除
+  // 🗂 完了タスクの自動アーカイブ(翌々日)を起動時+1時間ごとに掃除
   try{ if(typeof sweepTaskArchive_==='function' && sweepTaskArchive_() && typeof render==='function') render(); }catch(e){}
   setInterval(()=>{ try{ if(typeof sweepTaskArchive_==='function' && sweepTaskArchive_() && typeof render==='function') render(); }catch(e){} }, 60*60*1000);
 }), 3000);
