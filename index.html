@@ -3105,7 +3105,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.930</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.931</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -16702,7 +16702,7 @@ function restoSyncTasks(existingTasks, serverTasks){
       statusBy: kept?.statusBy || "", statusAt: kept?.statusAt || null,
       checkWork: kept?.checkWork || false, checkWorkBy: kept?.checkWorkBy || "", checkWorkAt: kept?.checkWorkAt || null,
       checkAmount: kept?.checkAmount || false, checkAmountBy: kept?.checkAmountBy || "", checkAmountAt: kept?.checkAmountAt || null,
-      logs: kept?.logs || [], note: kept?.note || "",
+      logs: kept?.logs || [], note: kept?.note || "", noteBy: kept?.noteBy || "", noteAt: kept?.noteAt || null,
       // ➕ 追加工事マーカー: 再構築で消すと「＋追加」バッジが同期のたびに消える(v1.30.416)。
       //   st.* = 将来GAS射影がextraId/addedByを載せた時に全端末で出る / kept.* = 今の自端末フォールバック。
       extraId: st.extraId || kept?.extraId || "",
@@ -16756,7 +16756,15 @@ function restoApplyProgress(prop, serverProgress){
       }
       // 作業ログ: 多い方を残す(ローカルで追加直後にサーバーの少ない版で消えない)
       t.logs = (sp.logs && sp.logs.length >= (t.logs||[]).length) ? sp.logs : (t.logs||[]);
-      t.note = sp.note || t.note;
+      // 📝 v1.30.931(山田「メモの横に名前と日時を出して」): 書いた人と日時が付いたメモは新しい方を採る(消したのも他の端末へ届く)。
+      //   名前の無い古いメモは従来どおり。文面が変わったら前の人の名前は引き継がない
+      if(!((t.noteAt||0) > (sp.noteAt||0))){
+        if(sp.noteAt){ t.note = sp.note || ""; t.noteBy = sp.noteBy || ""; t.noteAt = sp.noteAt; }
+        else {
+          if(sp.note && sp.note !== t.note){ t.noteBy = ""; t.noteAt = null; }
+          t.note = sp.note || t.note;
+        }
+      }
     });
   }
 }
@@ -30809,7 +30817,7 @@ async function restoPushProgressNow(propId){
       status:t.status, doneAt:t.doneAt||null, statusBy:t.statusBy||"", statusAt:t.statusAt||null,
       checkWork:t.checkWork||false, checkWorkBy:t.checkWorkBy||"", checkWorkAt:t.checkWorkAt||null,
       checkAmount:t.checkAmount||false, checkAmountBy:t.checkAmountBy||"", checkAmountAt:t.checkAmountAt||null,
-      logs:t.logs||[], note:t.note||"",
+      logs:t.logs||[], note:t.note||"", noteBy:t.noteBy||"", noteAt:t.noteAt||null,
     };
   });
   const progress = {tasks, comments:prop.comments||[], updatedAt:Date.now(), updatedBy:getMyself()||""};
@@ -31726,7 +31734,7 @@ function renderRestoTaskRow(t, cat){
   const extraBtnHtml = t.extraId
     ? `<button class="rt-logbtn" data-role="extra-edit" title="追加工事を編集・削除" style="background:#fff7ed;border-color:#f59e0b;color:#b45309;font-weight:700">✎</button>`
     : "";
-  const noteHtml = t.note ? `<div class="rt-sub rt-keep" style="background:#fef3c7;padding:4px 8px;border-radius:6px;margin-top:3px">📝 ${escapeHtml(t.note)}</div>` : "";
+  const noteHtml = t.note ? `<div class="rt-sub rt-keep" style="background:#fef3c7;padding:4px 8px;border-radius:6px;margin-top:3px">📝 ${escapeHtml(t.note)}${t.noteBy||t.noteAt?` <span style="font-size:10px;color:#92400e;white-space:nowrap;margin-left:4px">${escapeHtml(t.noteBy||"")} ${restoFmtDateTime(t.noteAt)}</span>`:""}</div>` : "";
   return `
     <div class="rtask ${t.status} ${cat==="reduced"?"reduced":""}" data-id="${t.id}">
       <div class="rt-top">
@@ -31982,7 +31990,9 @@ function restoEditTaskNote(taskId){
   if(!t) return;
   const next = prompt(`「${t.name}」のメモ`, t.note||"");
   if(next===null) return;
+  if(next.trim() === (t.note||"")) return;   // 変えずにOKなら書いた人も日時も動かさない(v1.30.931)
   t.note = next.trim();
+  t.noteBy = getMyself() || ""; t.noteAt = Date.now();
   restoSave(); renderRestoDetail();
 }
 function restoAddLog(taskId, text, photo){
@@ -32584,7 +32594,9 @@ async function submitExtraWork_(){
         t.name = name; t.room = room; t.qty = qty; t.unit = unit;
         t.amount = billable ? qty*unitPrice : 0;
         t.category = supplier ? "outsource" : "inhouse";
-        t.contractor = supplier; t.note = note;
+        t.contractor = supplier;
+        if((note||"") !== (t.note||"")){ t.noteBy = getMyself() || ""; t.noteAt = Date.now(); }   // v1.30.931
+        t.note = note;
         saveState();
       }
       closeExtraWorkModal_();
@@ -32625,7 +32637,7 @@ async function submitExtraWork_(){
         doneAt:null, statusBy:"", statusAt:null,
         checkWork:false, checkWorkBy:"", checkWorkAt:null,
         checkAmount:false, checkAmountBy:"", checkAmountAt:null,
-        logs:[], note,
+        logs:[], note, noteBy: note ? (getMyself()||"") : "", noteAt: note ? Date.now() : null,
         extraId: __xwExtraId, extraAddedAt: Date.now(),    // restoSyncTasks 24h保護マーカー
         addedBy: payload.addedBy || "",                    // 「＋追加」バッジのツールチップ用(v1.30.416)
       });
