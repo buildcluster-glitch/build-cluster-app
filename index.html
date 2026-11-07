@@ -3105,7 +3105,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.929</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.930</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -12328,7 +12328,85 @@ async function announcePrepPhoto_(file){
   URL.revokeObjectURL(url);
   return ok ? restoCompressImage(file, 400000, 1600) : null;
 }
-function addAnnounce_(text, to, photos){
+// 📝 v1.30.930(山田「確認ページを連絡に組み込みたい」案B): 連絡に確認ページへの入口と回答の集計を付ける。
+//   ⚠問いの中身は連絡に入れない(連絡データは全端末に配られるため)。it.kakunin={topic,url,due,total} だけ持つ。中身は今の暗号化ページのまま。
+//   「確認」(acked)と「回答」は別物。回答済みかどうかは staff_kakunin_latest_v だけで見る。
+const KAKUNIN_PRESETS = [
+  { topic:'koizumi-2026-11', label:'小泉の単価改定案', url:'https://buildcluster-glitch.github.io/kakunin-b11756e3/koizumi-2026-11.html', due:'2026-11-10', total:18,
+    to:['大村将史','南部大我','木村優作','鈴木悠平','最上登生','まどか'],
+    text:'小泉の単価改定案について、みなさんの確認をお願いします。\n下のボタンから開いて、品目ごとに「OK」か「検討したい」を押し、最後に「送信」まで押してください。パスワードは月初確認と同じです。\n期限は11/10(火)です。' },
+];
+// カレンダーの名前 → 回答の名前(空白は無視して比べる)
+const KAKUNIN_NAME_ALIAS = { 'まどか':'大村まどか' };
+function kakuninNameKey_(s){ s=String(s||'').replace(/[\s　]/g,''); return KAKUNIN_NAME_ALIAS[s] || s; }
+function kakuninOf_(it){
+  const k = it && it.kakunin;
+  return (k && k.topic && /^https:\/\//.test(String(k.url||'')) && Number(k.total)>0) ? k : null;
+}
+// rows(回答の行) → その人の 答えた数 / 検討したいの数
+function kakuninCount_(rows, staff){
+  const key=kakuninNameKey_(staff), ids=new Set(); let ask=0;
+  (rows||[]).forEach(r=>{ if(r && kakuninNameKey_(r.tantou)===key && !ids.has(r.item_id)){ ids.add(r.item_id); if(r.answer==='ask') ask++; } });
+  return { n:ids.size, ask };
+}
+const __kakuninRows = new Map();   // topic -> {at, rows}
+async function kakuninFetchRows_(topic, fresh){
+  const c=__kakuninRows.get(topic);
+  if(!fresh && c && Date.now()-c.at<60000) return c.rows;
+  let s=(typeof sbSession_==='function')?sbSession_():null;
+  if(!s || !s.access_token) return null;
+  const url=`${SB_AUTH.url}/rest/v1/staff_kakunin_latest_v?topic=eq.${encodeURIComponent(topic)}&select=tantou,item_id,answer`;
+  for(let i=0;i<2;i++){
+    const res=await fetch(url,{ headers:{ apikey:SB_AUTH.key, Authorization:'Bearer '+s.access_token, Accept:'application/json' } });
+    if((res.status===401||res.status===403) && i===0){ try{ await sbRefresh_(); }catch(_){} s=sbSession_(); if(!s||!s.access_token) return null; continue; }
+    if(!res.ok) return null;
+    const rows=await res.json();
+    __kakuninRows.set(topic,{at:Date.now(),rows});
+    return rows;
+  }
+  return null;
+}
+// 入口のボタン + 期限。出した人と管理者にだけ「回答 n/N」の場所を付ける(中身は後から埋める)
+function announceKakuninHtml_(it){
+  const k=kakuninOf_(it); if(!k) return '';
+  const me=(typeof getMyself==='function')?getMyself():'';
+  const canSee=(me && it.by===me) || (typeof kqIsAdmin_==='function' && kqIsAdmin_());
+  if(canSee) kakuninScheduleFill_();
+  const due=String(k.due||'').match(/^\d{4}-(\d{2})-(\d{2})$/);
+  return `<div class="announce-kakunin" style="flex-basis:100%;margin-top:6px">
+    <a href="${escapeHtml(k.url)}" target="_blank" rel="noopener" style="display:inline-block;background:#2563eb;color:#fff;font-weight:800;font-size:14px;padding:8px 14px;border-radius:8px;text-decoration:none">📝 開いて答える</a>
+    ${due?`<span style="font-size:12px;color:#92400e;font-weight:700;margin-left:6px">期限 ${Number(due[1])}/${Number(due[2])}</span>`:''}
+    ${canSee?`<div data-kakunin-status="${escapeHtml(it.id)}" style="font-size:12px;color:#475569;margin-top:5px">回答を読み込み中…</div>`:''}
+  </div>`;
+}
+let __kakuninFillT=null;
+function kakuninScheduleFill_(){ if(!__kakuninFillT) __kakuninFillT=setTimeout(()=>{ __kakuninFillT=null; kakuninFillStatus_(); },30); }
+async function kakuninFillStatus_(){
+  const items=(loadAnnounceMap_().items||[]);
+  for(const el of document.querySelectorAll('[data-kakunin-status]')){
+    const it=items.find(x=>x && x.id===el.dataset.kakuninStatus), k=kakuninOf_(it); if(!k) continue;
+    let rows=null; try{ rows=await kakuninFetchRows_(k.topic); }catch(_){}
+    if(!el.isConnected) continue;
+    if(!rows){ el.textContent='回答を読めませんでした(ログインしているか確認してください)'; continue; }
+    const list=announceTargets_(it).map(s=>Object.assign({staff:s},kakuninCount_(rows,s)));
+    const done=list.filter(x=>x.n>=k.total).length;
+    el.innerHTML=`<b>📝 回答 ${done}/${list.length}人</b> `+list.map(x=>{
+      const c=x.n>=k.total?'#166534':(x.n?'#92400e':'#b91c1c'), bg=x.n>=k.total?'#dcfce7':(x.n?'#fef3c7':'#fee2e2');
+      return `<span style="display:inline-block;background:${bg};color:${c};border-radius:6px;padding:1px 6px;margin:2px 2px 0 0;font-weight:700">${escapeHtml(surnameOf_(x.staff))} ${x.n}/${k.total}${x.ask?` 検討${x.ask}`:''}</span>`;
+    }).join('');
+  }
+}
+// ✓を押した時: 回答が届いていなければ一度聞く。読めない時(未ログインなど)は本人の言葉を信じて通す(閉じられなくしない)
+async function announceKakuninConfirm_(it){
+  const k=kakuninOf_(it); if(!k) return true;
+  const me=(typeof getMyself==='function')?getMyself():'';
+  let rows=null; try{ rows=await kakuninFetchRows_(k.topic,true); }catch(_){}
+  if(!rows) return true;
+  const n=kakuninCount_(rows,me).n;
+  if(n>=k.total) return true;
+  return confirm(`回答がまだ届いていません(${n}/${k.total})。\nページの最後の「送信」まで押しましたか？\n\nこのまま閉じますか？(閉じても、出した人には未回答のまま表示されます)`);
+}
+function addAnnounce_(text, to, photos, kakunin){
   const __photos = Array.isArray(photos) ? photos.filter(Boolean) : [];
   text=String(text||'').trim() || (__photos.length ? '📷 写真' : ''); if(!text) return;
   if(announceMyActiveCount_((typeof getMyself==='function')?getMyself():"") >= ANNOUNCE_MAX) return;   // 上限ガード(ボタン側でもチェック)・1人あたり v1.30.844
@@ -12342,7 +12420,9 @@ function addAnnounce_(text, to, photos){
   const __preAcked = __to.length ? __all.filter(s=> !__to.includes(s)) : [];
   const acked = Array.from(new Set([...(me?[me]:[]), ...__preAcked]));
   const it={ id:uid(), text, to:__to, by:me, at:new Date().toISOString(), acked, deleted:false, updatedAt:new Date().toISOString() };
-  if(__photos.length) it.photos = __photos;   // 投稿者は自動で確認済み
+  if(__photos.length) it.photos = __photos;
+  if(kakunin && kakunin.topic) it.kakunin = { topic:kakunin.topic, url:kakunin.url, due:kakunin.due, total:kakunin.total };
+    // 投稿者は自動で確認済み
   mutateAnnounce_(map=>{ map.items=(map.items||[]).concat([it]); return map; });
 }
 function ackAnnounce_(id){
@@ -12437,8 +12517,9 @@ function renderAnnouncePopup_(){
     return `<div class="ap-item" data-aid="${escapeHtml(it.id)}" style="border:2px solid #f59e0b;background:#fffbeb;border-radius:10px;padding:12px 14px;margin-bottom:10px">
       <div style="font-size:16px;font-weight:800;color:#78350f;white-space:pre-wrap;word-break:break-word;line-height:1.6">${escapeHtml(it.text)}</div>
       ${announcePhotosHtml_(it, 140)}
+      ${announceKakuninHtml_(it)}
       <div style="font-size:11px;color:#92700e;margin-top:6px">${escapeHtml(disp(it.by||''))} ${dt}${it.editedAt?' (編集済)':''}</div>
-      <button class="btn primary" data-ap-ack="${escapeHtml(it.id)}" style="margin-top:10px;width:100%;padding:11px;font-size:15px;font-weight:800;background:#16a34a;border-color:#16a34a">✓ 確認しました</button>
+      <button class="btn primary" data-ap-ack="${escapeHtml(it.id)}" style="margin-top:10px;width:100%;padding:11px;font-size:15px;font-weight:800;background:#16a34a;border-color:#16a34a">${kakuninOf_(it)?'✓ 送信まで済ませました':'✓ 確認しました'}</button>
     </div>`;
   }).join('');
   // ⏰ v1.30.615: 「あとで確認する」= この端末だけ ANNOUNCE_SNOOZE_LABEL 先送り(確認済みにはしない)
@@ -12446,8 +12527,11 @@ function renderAnnouncePopup_(){
   foot.innerHTML=`<button class="btn" id="apLater" style="flex:1 1 100%;font-size:13px;padding:9px 12px">⏰ あとで確認する<span style="font-weight:400;opacity:.75">（${ANNOUNCE_SNOOZE_LABEL}後にまた出ます）</span></button>`
     + `<span style="flex:1 1 100%;font-size:11px;color:var(--muted);text-align:center">※ ⏰あとで は「確認」になりません</span>`;
   body.querySelectorAll('[data-ap-ack]').forEach(b=>{
-    b.onclick=()=>{
+    b.onclick=async()=>{
+      const __label=b.textContent;
       b.disabled=true; b.textContent='確認中…';
+      const __it=(loadAnnounceMap_().items||[]).find(x=>x && x.id===b.dataset.apAck);
+      if(!(await announceKakuninConfirm_(__it))){ b.disabled=false; b.textContent=__label; return; }
       if(typeof ackAnnounce_==='function') ackAnnounce_(b.dataset.apAck);
       const card=b.closest('.ap-item'); if(card) card.remove();
       if(!body.querySelector('.ap-item')) ov.classList.remove('show');   // 全部確認したら閉じる
@@ -12499,6 +12583,7 @@ function renderAnnounceBar_(){
       ${toTag}
       <span class="announce-text">${escapeHtml(it.text)}</span>
       ${announcePhotosHtml_(it, 44)}
+      ${announceKakuninHtml_(it)}
       <span class="announce-meta">${escapeHtml(disp(it.by||''))} ${dt}${it.editedAt?' (編集済)':''} ・ 確認 ${ackN}/${tg.length}</span>
       ${announceAllAcked_(it) ? `<span class="announce-acked" style="background:#dcfce7;color:#166534;padding:1px 8px;border-radius:8px" title="宛先全員が確認しました。🗑で消してください">✅ 全員確認済み → 🗑で消す</span>` : ''}
       ${notYet.length?`<span class="announce-notyet-wrap">未:${notYet.map(s=>`<span class="announce-badge" title="${escapeHtml(disp(s))} 未確認">${escapeHtml(surnameOf_(s))}</span>`).join('')}</span>`:''}
@@ -12516,7 +12601,10 @@ function renderAnnounceBar_(){
   const tg=bar.querySelector('.announce-toggle-float');
   if(tg) tg.onclick=()=>{ try{ localStorage.setItem('bc_announce_collapsed', collapsed?'0':'1'); }catch(_){} renderAnnounceBar_(); };
   if(!collapsed){
-    bar.querySelectorAll('.announce-ack').forEach(b=>b.onclick=()=>ackAnnounce_(b.dataset.aid));
+    bar.querySelectorAll('.announce-ack').forEach(b=>b.onclick=async()=>{
+      const __it=(loadAnnounceMap_().items||[]).find(x=>x && x.id===b.dataset.aid);
+      if(await announceKakuninConfirm_(__it)) ackAnnounce_(b.dataset.aid);
+    });
     // ⏰ あとで確認する を解除して、いま確認画面を出す(v1.30.615)
     bar.querySelectorAll('.announce-later').forEach(b=>b.onclick=()=>{ if(typeof unsnoozeAnnounce_==='function') unsnoozeAnnounce_(b.dataset.aid); renderAnnounceBar_(); });
     bar.querySelectorAll('.announce-del').forEach(b=>b.onclick=()=>{ if(confirm('この連絡事項を削除しますか？(全員から消えます)')) deleteAnnounce_(b.dataset.aid); });
@@ -23201,6 +23289,10 @@ function openAnnounceCompose_(){
             <div id="ac-photos" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
           </div>
         </div>
+        <div class="field" id="ac-kakunin-wrap" style="display:none">
+          <label>確認ページを付ける <span style="font-weight:400;color:var(--muted);font-size:11px">(選ぶと本文と宛先が入ります)</span></label>
+          <select id="ac-kakunin" style="width:100%;box-sizing:border-box;font-size:14px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px"></select>
+        </div>
         <div class="field">
           <label>宛先 <span style="font-weight:400;color:var(--muted);font-size:11px">(選んだ人だけに出ます／未選択=全員)</span></label>
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
@@ -23288,6 +23380,17 @@ function openAnnounceCompose_(){
   ov.querySelector('#ac-text').value='';
   ov.__acPhotos=[]; ov.__acPaint();
   paint();
+  // 📝 確認ページ(v1.30.930): 管理者だけ。選ぶと本文と宛先を入れる(直してから出せる)
+  const __kkWrap=ov.querySelector('#ac-kakunin-wrap'), __kk=ov.querySelector('#ac-kakunin');
+  const __kkOn=(typeof kqIsAdmin_==='function' && kqIsAdmin_());
+  __kkWrap.style.display=__kkOn?'':'none';
+  __kk.innerHTML='<option value="">付けない</option>'+KAKUNIN_PRESETS.map(p=>`<option value="${escapeHtml(p.topic)}">${escapeHtml(p.label)}(期限 ${escapeHtml(p.due)})</option>`).join('');
+  __kk.value='';
+  __kk.onchange=()=>{
+    const p=KAKUNIN_PRESETS.find(x=>x.topic===__kk.value); if(!p) return;
+    const ta=ov.querySelector('#ac-text'); if(!ta.value.trim()) ta.value=p.text;
+    sel.clear(); p.to.forEach(s=>{ if(STAFF.includes(s)) sel.add(s); }); paint();
+  };
   // 📜 これまでの連絡(自分が出したぶん)。データは🗑後も deleted:true で残っているのでそのまま履歴になる(v1.30.585)
   {
     const all = ((typeof loadAnnounceMap_==='function' ? loadAnnounceMap_() : {}).items) || [];
@@ -23318,6 +23421,7 @@ function openAnnounceCompose_(){
         </div>
         <div style="font-size:13px;margin-top:3px;white-space:pre-wrap;word-break:break-word;color:#0f172a">${escapeHtml(it.text||'')}</div>
         ${announcePhotosHtml_(it, 64)}
+        ${announceKakuninHtml_(it)}
       </div>`;
     }).join('') : `<div style="font-size:12px;color:var(--muted);padding:6px">まだ出したことがありません</div>`;
   }
@@ -23351,7 +23455,8 @@ function openAnnounceCompose_(){
       alert(`写真を送れなかったので、連絡は出していません。\nログインと電波を確かめて、もう一度「出す」を押してください。\n(${(e&&e.message)||e})`);
       return;
     }finally{ ov.__acSending=false; post.disabled=false; cancel.disabled=false; post.textContent=label; }
-    if(typeof addAnnounce_==='function') addAnnounce_(t, [...sel], urls);
+    const __kkSel=KAKUNIN_PRESETS.find(x=>x.topic===ov.querySelector('#ac-kakunin').value) || null;
+    if(typeof addAnnounce_==='function') addAnnounce_(t, [...sel], urls, __kkSel);
     ov.classList.remove('show');
   };
   ov.classList.add('show');
@@ -23421,6 +23526,7 @@ function openAnnounceHistory_(){
         </div>
         <div style="font-size:14px;margin-top:4px;white-space:pre-wrap;word-break:break-word;color:#0f172a">${escapeHtml(it.text||'')}</div>
         ${announcePhotosHtml_(it, 80)}
+        ${announceKakuninHtml_(it)}
       </div>`;
     }).join('') : `<div style="font-size:12px;color:var(--muted);padding:8px">該当する連絡はありません</div>`;
   };
