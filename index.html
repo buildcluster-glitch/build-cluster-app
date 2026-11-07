@@ -3107,7 +3107,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.932</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.933</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -3414,7 +3414,7 @@
       <span style="flex:1"></span>
       <button class="nav-btn" id="rdAddExtraBtn" style="display:none" title="追加工事を台帳に登録">＋ 追加工事</button>
       <button class="nav-btn" id="rdHatchushoBtn" style="display:none" title="発注書">📄 発注書</button>
-      <button class="nav-btn" id="rdHiroidashiBtn" title="この部屋の拾い出しをタップで入力(見積の下書きになります)">📝拾い出し</button>
+      <button class="nav-btn" id="rdHiroidashiBtn" style="display:none" title="この部屋の拾い出しをタップで入力(見積の下書きになります)">📝拾い出し</button>
       <button class="nav-btn" id="rdRelManBtn" title="この物件に関係する社内マニュアル(特殊見積など＋物件名で検索)">📖</button>
       <button class="nav-btn icon-only" id="rdKuraBtn" title="この物件で過去にやった工事・修繕・立会をクラ助に聞く"><img class="kq-cat" src="./kurasuke.png" width="20" height="20" alt="クラ助"></button>
       <!-- 完了ボタンは下部の大きな緑ボタンに移動 (v1.8.5) -->
@@ -21220,7 +21220,7 @@ function showChipTip(ev, mouseX, mouseY){
       else if(ev.start && ev.timeMode!=='anytime') parts.push(`<div style="font-size:11px;color:#e5e7eb;margin-top:2px">🕐 ${escapeHtml(ev.start)}${ev.end?`〜${escapeHtml(ev.end)}`:''}</div>`);
       if(ev._motouke) parts.push(`<div style="font-size:10.5px;color:#9ca3af;margin-top:2px">元請け: ${escapeHtml(ev._motouke)}</div>`);
       // 📝 v1.30.932 拾い出し(立会には見積idを渡さない・ページ側で候補から人が選ぶ)
-      if(ev._bukken) parts.push(`<div style="margin-top:6px"><button type="button" class="tt-hiroidashi" data-bukken="${escapeHtml(ev._bukken)}" data-room="${escapeHtml(ev._room||'')}" data-motouke="${escapeHtml(ev._motouke||'')}" style="background:#0f766e;color:#fff;border:0;border-radius:6px;font-size:12px;font-weight:700;padding:5px 10px;cursor:pointer">📝拾い出し</button></div>`);
+      if(ev._bukken && hiroidashiOn_()) parts.push(`<div style="margin-top:6px"><button type="button" class="tt-hiroidashi" data-bukken="${escapeHtml(ev._bukken)}" data-room="${escapeHtml(ev._room||'')}" data-motouke="${escapeHtml(ev._motouke||'')}" style="background:#0f766e;color:#fff;border:0;border-radius:6px;font-size:12px;font-weight:700;padding:5px 10px;cursor:pointer">📝拾い出し</button></div>`);
       __tkInfo = parts.join('');
     }
     buildTipChat_(tip, titleHtml + __tipAlertHtml + __tkInfo + (function(){ const __h = chlogFor_(tkId, '立会', (typeof taikyoLabelForLog_==='function' && taikyoLabelForLog_(tkId)) || ''); return __h.length ? chlogHistHtml_(__h) : whoSetHtml_((typeof loadTaikyoOverrides_==='function' ? loadTaikyoOverrides_() : {})[tkId], '担当・日時'); })(), api);   // 🕘 v1.30.775 履歴(無ければ最後に変えた人)   // 🎨 v1.30.770   // 立会=タイトル+⚠アラート(v1.30.763)+住所/時刻/元請け+コメント(v1.30.633)
@@ -24290,6 +24290,16 @@ function openTankaModal_(){
 //   iPhoneのホーム画面から別タブに出すとログインが共有されないので枠の中で開く。部屋ごとに src を入れ直す(入力はページ側がスマホ内に保存)。
 //   anken は原状回復の進捗からだけ渡す。立会には見積idが無く、物件名+号室で引くと前の入居者の案件に当たるので渡さない。修繕には出さない。
 const HIROIDASHI_PAGE_URL = 'https://buildcluster-glitch.github.io/hiroidashi/';
+// 🚩 v1.30.933(山田「絞って」): 試す人だけに出す。calendar_flags.hiroidashi = 名前の並び(公開なしで足せる)/ true=全員 / false。
+//   未ログイン・名前なし・スイッチを一度も読めていない時は出さない。読めない時は前回の名簿を保つ(__calFlags は前回の値を持っている)
+function hiroidashiOn_(){
+  try{
+    const s = (typeof sbSession_==='function') ? sbSession_() : null;
+    if(!s || !s.access_token) return false;
+    const f = (typeof __calFlags!=='undefined' && __calFlags) ? __pickWriteFlag_(__calFlags.hiroidashi) : null;
+    return f === true;
+  }catch(_){ return false; }
+}
 function hiroidashiAnkenOf_(p){
   const a = String((p && p.extEstimateId) || '').trim(); if(a) return a;
   const f = String((p && p.extDriveFileId) || '').trim();
@@ -31351,6 +31361,7 @@ function renderRestoDetail(){
   const __rdKeep = rdCaptureInputs_();   // 📝 入力中の作業ログ/未送信写真を退避(v1.30.462)
   // 📷 別物件に切り替わったら未確定の現場メモ下書き(写真/本文)を破棄。
   //    ダイアログのDOMは全物件共有のため、放置すると他物件でも表示され続ける(鈴木報告 v1.30.440)
+  { const __hb = document.getElementById('rdHiroidashiBtn'); if(__hb) __hb.style.display = hiroidashiOn_() ? '' : 'none'; }   // 🚩 v1.30.933 開くたびに見る
   if(p.id !== __rdLastDetailId){ resetRdCommentDraft_(); __rdLastDetailId = p.id; __rdRemarksOpen = false; }   // 📝 備考は物件を開くたびに畳む(v1.30.845)
   // 📋 営業/工事ステータスバッジ付きタイトル (v1.9.3〜)
   const tEl = document.getElementById("rdTitle");
