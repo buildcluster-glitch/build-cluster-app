@@ -3107,7 +3107,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.935</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.936</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -25269,7 +25269,7 @@ function kqGroupHtml_(g){
   const fol = g.folders.slice(0,2).map(f=>{ const u = kqDbxUrl_(f), lp = kqFolderFull_(f);
     return (u ? `<a class="kq-fol" href="${escapeHtml(u)}" target="_blank" rel="noopener" title="DropboxのWebでこのフォルダを開く">📁 ${escapeHtml(kqFolderName_(f))}</a>` : `<span class="kq-fol">📁 ${escapeHtml(kqFolderName_(f))}</span>`)
       + `<button class="kq-fol" data-path="${escapeHtml(lp)}" title="パソコンのフォルダの場所をコピー(エクスプローラーのアドレス欄に貼る)\n${escapeHtml(lp)}">📋</button>`; }).join('');
-  const pdf = (g.pdfs||[]).slice(0,3).map(f=>{ const u = kqDbxFileUrl_(f); return u ? `<a class="kq-fol" href="${escapeHtml(u)}" target="_blank" rel="noopener" title="${escapeHtml(f.path)}">📄 ${escapeHtml(f.kind==='発注'?'発注書':f.kind==='請求'?'請求書':'見積')}PDF</a>` : ''; }).join('');
+  const pdf = (g.pdfs||[]).slice(0,3).map(f=>{ const u = kqDbxFileUrl_(f); return u ? `<a class="kq-fol" href="${escapeHtml(u)}" target="_blank" rel="noopener" title="${escapeHtml(f.path)}">📄 ${escapeHtml(f.kind==='発注'?'発注書':f.kind==='請求'?'請求書':f.kind==='受付'?'受付表':'見積')}PDF</a>` : ''; }).join('');
   const who = [Array.from(g.motos).join('・'), g.gyosha.size?'業者 '+Array.from(g.gyosha).slice(0,3).join('・'):'', g.creators.size?'作成 '+Array.from(g.creators).join('・'):''].filter(Boolean).join(' / ');
   return `<div class="kq-g"><div class="kq-h">${kinds}<span class="kq-d">${escapeHtml((g.date||String(g.year||'')).slice(0,10))}</span> <b>${escapeHtml(g.bukken||'(物件名なし)')}</b> ${escapeHtml(g.room||'')}</div>${who?'<div class="kq-meta">'+escapeHtml(who)+'</div>':''}${lines}${(fol||pdf)?'<div>'+pdf+fol+'</div>':''}${(()=>{ const ph = kqPhotoHtml_(g); return ph ? '<div>'+ph+'</div>' : ''; })()}</div>`;
 }
