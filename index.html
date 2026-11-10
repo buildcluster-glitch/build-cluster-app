@@ -3107,7 +3107,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.934</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.935</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -25107,7 +25107,7 @@ function kqView_(){
 // 🐱 v1.30.903(山田「クラ助アイコンに」「立会・修繕・工事履歴・マニュアルも」「バッジで見やすく」):
 //   見積(koji_search/AI)に加えて、手元の修繕・原状回復・立会・予定と、マニュアル(manual_search2)も同じ語で探して並べる。
 //   語の組(groups)=AIの must(全部の組を満たす)、無ければ AIの語+言い換え1組、辞書なら語ごとの言い換えの組。
-const KQ_KIND = { 見積:['💴','#2563eb'], 発注:['📦','#7c3aed'], 台帳:['📒','#0284c7'], 請求:['🧾','#b45309'], 修繕:['🔧','#dc2626'], 原状回復:['🏠','#16a34a'], 立会:['🚪','#ea580c'], 予定:['🗓','#64748b'], マニュアル:['📖','#0f766e'], 相場:['💹','#0d9488'] };
+const KQ_KIND = { 見積:['💴','#2563eb'], 発注:['📦','#7c3aed'], 台帳:['📒','#0284c7'], 請求:['🧾','#b45309'], 受付:['📞','#be123c'], 修繕:['🔧','#dc2626'], 原状回復:['🏠','#16a34a'], 立会:['🚪','#ea580c'], 予定:['🗓','#64748b'], マニュアル:['📖','#0f766e'], 相場:['💹','#0d9488'] };
 const KQ_TABS = [['all','すべて'],['koji','💴 見積・工事'],['相場','💹 相場'],['原状回復','🏠 原状回復'],['修繕','🔧 修繕'],['立会','🚪 立会'],['予定','🗓 予定'],['マニュアル','📖 マニュアル'],['請求','🧾 業者請求']];
 function kqBadge_(k){ const x = KQ_KIND[k] || ['', '#94a3b8']; return `<span class="kq-b" style="background:${x[1]}">${x[0]} ${escapeHtml(k)}</span>`; }
 function kqLocalPool_(){
