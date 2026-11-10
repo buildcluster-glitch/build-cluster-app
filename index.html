@@ -3107,7 +3107,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.933</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.934</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24887,11 +24887,12 @@ const KQ_TEIBAN_MIN = 15;   // 15現場以上に出る品名=定番(毎回入る
 const KQ_SINCE_NOTE = '過去の書類は2020〜2021年頃から・台帳は2026年5月頃から・業者請求は2026年4月分から。作成者=見積を作った人で、施工した人とは限りません。';
 let __kq = { q:'', words:[], rows:[], refine:[], showTeiban:false, busy:false };
 
-function kqNorm_(s){ return String(s||'').normalize('NFKC').toLowerCase().replace(/[\s　]+/g,''); }
+function kqNorm_(s){ return String(s||'').normalize('NFKC').toLowerCase().replace(/[\s　]+/g,'').replace(/[\u3041-\u3096]/g, c=>String.fromCharCode(c.charCodeAt(0)+0x60)); }   // 🔤 v1.30.934(木村「ありすとこーと小田原でHITしない」11/10): ひらがなはカタカナにそろえて比べる
 // 1語→言い換えの一覧(辞書+「張/貼」「替/換」の入れ替え)。除外語も返す
 function kqVariants_(w){
   const n = kqNorm_(w); if(!n) return { v:[], ex:[] };
   const set = new Set([w.trim()]); const ex = new Set();
+  if(/[\u3041-\u3096]/.test(w)) set.add(w.trim().replace(/[\u3041-\u3096]/g, c=>String.fromCharCode(c.charCodeAt(0)+0x60)));   // 🔤 v1.30.934: ひらがなの語はカタカナでも引く(ありすとこーと→アリストコート)
   KQ_SYN.forEach(([list, exl])=>{
     if(list.some(x=>{ const k=kqNorm_(x); return k===n || (n.length>=3 && k.indexOf(n)>=0) || (k.length>=3 && n.indexOf(k)>=0); })){
       list.forEach(x=>set.add(x)); exl.forEach(x=>ex.add(x));
