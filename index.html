@@ -3107,7 +3107,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.937</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.938</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -12431,7 +12431,7 @@ async function announceKakuninConfirm_(it){
   if(n>=k.total) return true;
   return confirm(`回答がまだ届いていません(${n}/${k.total})。\nページの最後の「送信」まで押しましたか？\n\nこのまま閉じますか？(閉じても、出した人には未回答のまま表示されます)`);
 }
-function addAnnounce_(text, to, photos, kakunin, files){
+function addAnnounce_(text, to, photos, kakunin, files, keep){
   const __photos = Array.isArray(photos) ? photos.filter(Boolean) : [];
   const __files = Array.isArray(files) ? files.filter(f=> f && f.ref) : [];
   text=String(text||'').trim() || (__photos.length ? '📷 写真' : (__files.length ? '📄 資料' : '')); if(!text) return;
@@ -12447,6 +12447,7 @@ function addAnnounce_(text, to, photos, kakunin, files){
   const acked = Array.from(new Set([...(me?[me]:[]), ...__preAcked]));
   const it={ id:uid(), text, to:__to, by:me, at:new Date().toISOString(), acked, deleted:false, updatedAt:new Date().toISOString() };
   if(__photos.length) it.photos = __photos;
+  if(keep) it.keep = true;   // 📖 マニュアルに残す(v1.30.938)
   if(__files.length) it.files = __files.map(f=>({ name:String(f.name||'資料'), ref:f.ref, size:Number(f.size)||0 }));
   if(kakunin && kakunin.topic) it.kakunin = { topic:kakunin.topic, url:kakunin.url, due:kakunin.due, total:kakunin.total };
     // 投稿者は自動で確認済み
@@ -23345,6 +23346,7 @@ function openAnnounceCompose_(){
           </div>
           <div id="ac-staff" class="qp-worker-pick" style="display:flex;gap:5px;flex-wrap:wrap"></div>
         </div>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;font-weight:700;color:#334155;cursor:pointer"><input type="checkbox" id="ac-keep" style="width:18px;height:18px"> 📖 マニュアルに残す <span style="font-weight:400;color:var(--muted);font-size:11px">(あとで読み返したい連絡だけ・マニュアルの📢過去の連絡に載ります)</span></label>
         <div id="ac-note" style="font-size:11px;color:#92400e;font-weight:700;margin-top:6px"></div>
         <div id="ac-max-note" style="display:none;font-size:12px;color:#b91c1c;font-weight:700;margin-top:6px;background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:6px 9px"></div>
         <!-- 📜 v1.30.585(山田「自分が過去にいつどんな内容を出したか振り返れるように・邪魔にならないように」):
@@ -23445,6 +23447,7 @@ function openAnnounceCompose_(){
   ov.querySelector('#ac-text').value='';
   ov.__acPhotos=[]; ov.__acPaint();
   ov.__acFiles=[]; ov.__acFilePaint();
+  ov.querySelector('#ac-keep').checked=false;
   paint();
   // 📝 確認ページ(v1.30.930): 管理者だけ。選ぶと本文と宛先を入れる(直してから出せる)
   const __kkWrap=ov.querySelector('#ac-kakunin-wrap'), __kk=ov.querySelector('#ac-kakunin');
@@ -23529,7 +23532,7 @@ function openAnnounceCompose_(){
       return;
     }finally{ ov.__acSending=false; post.disabled=false; cancel.disabled=false; post.textContent=label; }
     const __kkSel=KAKUNIN_PRESETS.find(x=>x.topic===ov.querySelector('#ac-kakunin').value) || null;
-    if(typeof addAnnounce_==='function') addAnnounce_(t, [...sel], urls, __kkSel, fileRefs);
+    if(typeof addAnnounce_==='function') addAnnounce_(t, [...sel], urls, __kkSel, fileRefs, ov.querySelector('#ac-keep').checked);
     ov.classList.remove('show');
   };
   ov.classList.add('show');
@@ -23551,6 +23554,31 @@ function announceHistoryItems_(me, mode){
   }).sort((a,b)=> String(b.at||'').localeCompare(String(a.at||'')));
 }
 // 📜 1件ぶんの表示(v1.30.937: 過去の連絡の画面とマニュアルの📢過去の連絡で共用)
+// 📖 マニュアルに残す(v1.30.938・山田「なんでもかんでもじゃなくて残すにチェックしたやつだけ」)
+//   出した本人と管理者は、あとからでも付け外しできる
+function announceCanKeep_(it, me){ return !!it && ((!!me && it.by===me) || (typeof kqIsAdmin_==='function' && kqIsAdmin_())); }
+function setAnnounceKeep_(id, on){
+  return mutateAnnounce_(map=>{ (map.items||[]).forEach(it=>{ if(it.id===id){ it.keep=!!on; it.updatedAt=new Date().toISOString(); } }); return map; });
+}
+document.addEventListener('click', async e=>{
+  const b = e.target && e.target.closest ? e.target.closest('[data-announce-keep]') : null;
+  if(!b) return;
+  e.preventDefault(); e.stopPropagation();
+  const on = b.getAttribute('data-on') !== '1';
+  b.disabled = true;
+  try{ await setAnnounceKeep_(b.getAttribute('data-announce-keep'), on); }catch(_){}
+  b.setAttribute('data-on', on?'1':'0');
+  b.textContent = on ? '📖 マニュアルに残す ✓' : '📖 マニュアルに残す';
+  b.style.background = on ? '#dbeafe' : '#fff';
+  b.disabled = false;
+  if(typeof showAutoSyncToast==='function') showAutoSyncToast(on ? '📖 マニュアルの📢過去の連絡に残しました' : '📖 マニュアルから外しました');
+  try{ if(typeof __man!=='undefined' && __man.mode==='ann' && typeof manRenderAnnounce_==='function'){ manRenderList_(); } }catch(_){}
+}, true);
+function announceKeepBtnHtml_(it, me){
+  if(!announceCanKeep_(it, me)) return it && it.keep ? `<span style="font-size:11px;color:#1d4ed8;font-weight:700">📖 マニュアルに残す</span>` : '';
+  const on = !!it.keep;
+  return `<button type="button" data-announce-keep="${escapeHtml(it.id)}" data-on="${on?'1':'0'}" title="押すと付け外し" style="font-size:11px;font-weight:700;color:#1d4ed8;border:1px solid #93c5fd;background:${on?'#dbeafe':'#fff'};border-radius:6px;padding:1px 7px;cursor:pointer">${on?'📖 マニュアルに残す ✓':'📖 マニュアルに残す'}</button>`;
+}
 function announceHistItemHtml_(it, me){
   const disp=s=>(typeof getStaffDisplayName==='function')?getStaffDisplayName(s):s;
       const d=new Date(it.at);
@@ -23567,7 +23595,7 @@ function announceHistItemHtml_(it, me){
         : `<span>📥 ${escapeHtml(disp(it.by||'?'))}から</span>${iAcked?'':' <span style="color:#b91c1c;font-weight:700">未確認</span>'}`;
       return `<div class="ah-item" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;margin-bottom:6px;background:#fff">
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--muted)">
-          <span>${escapeHtml(ds)}</span>${state}${meTag}
+          <span>${escapeHtml(ds)}</span>${state}${meTag}${announceKeepBtnHtml_(it, me)}
           <span style="margin-left:auto">${escapeHtml(toLabel)} ・ 確認 ${ackN}/${tg.length}</span>
         </div>
         <div style="font-size:14px;margin-top:4px;white-space:pre-wrap;word-break:break-word;color:#0f172a">${escapeHtml(it.text||'')}</div>
@@ -39063,7 +39091,7 @@ async function manOpenRelated_(ctx){
 function manAnnItems_(){
   const me = (typeof getMyself==='function') ? getMyself() : '';
   const all = ((typeof loadAnnounceMap_==='function' ? loadAnnounceMap_() : {}).items) || [];
-  return all.filter(it=> it && it.id && (!(Array.isArray(it.to) && it.to.length) || (me && (it.by===me || announceIsForMe_(it, me)))))
+  return all.filter(it=> it && it.id && it.keep && (!(Array.isArray(it.to) && it.to.length) || (me && (it.by===me || announceIsForMe_(it, me)))))
     .sort((a,b)=> String(b.at||'').localeCompare(String(a.at||'')));
 }
 async function manRenderAnnounce_(){
@@ -39079,7 +39107,7 @@ async function manRenderAnnounce_(){
     <div class="man-hero" style="border-left-color:#f59e0b">
       <div style="font-size:11px;color:var(--muted);margin-bottom:4px"><a href="#" data-home="1">🏠</a> › 📢 過去の連絡</div>
       <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap"><b style="font-size:19px">📢 過去の連絡</b>
-        <span style="font-size:12px;color:var(--muted)">カレンダーの📢連絡で出したものが、ここに自動でたまります(消した連絡も残ります)</span></div>
+        <span style="font-size:12px;color:var(--muted)">📢連絡で「📖 マニュアルに残す」にチェックしたものだけが、ここにたまります(バーから消した連絡も残ります)</span></div>
       <div class="man-bk-bar"><input id="man-ann-q" type="search" placeholder="本文・出した人で絞り込み" value="${escapeHtml(q0)}" autocomplete="off"></div>
     </div>
     <div id="man-ann-list" style="margin-top:10px"></div>`;
