@@ -1169,9 +1169,9 @@
     max-width:100%;overflow:hidden;
   }
   /* バッジ(修繕/状態)は縮めず常に表示。物件名だけを…省略で縮める(v1.30.48) */
-  .repair-appt-chip .rac-row{display:inline-flex;align-items:center;gap:2px;min-width:0;max-width:100%;overflow:hidden}
+  .repair-appt-chip .rac-row{display:inline-flex;align-items:center;gap:2px;flex-wrap:wrap;min-width:0;max-width:100%;overflow:hidden}   /* v1.30.939 並びきらないバッジは次の行へ(物件名が0幅にならない) */
   .repair-appt-chip .rac-row > *{flex-shrink:0}
-  .repair-appt-chip .rac-label{flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .repair-appt-chip .rac-label{flex-shrink:1;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   /* 複数担当は立会チップと同じく2行目に丸バッジ行(v1.30.49) / 依頼内容も2行目に(v1.30.158) */
   .repair-appt-chip.has-staffs,.repair-appt-chip.has-desc{flex-direction:column;align-items:flex-start;gap:2px}
   .repair-appt-chip .rac-desc{font-size:11.5px;font-weight:600;opacity:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;line-height:1.3}
@@ -3107,7 +3107,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.938</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.939</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -20130,7 +20130,7 @@ function renderCalendar(){
           : "";
         // 仮置き(時刻未記録)は時刻ピル自体を出さない(破線ボーダーで仮置きは明示済)。「仮」ラベルは不要(v1.30.171)
         const __timeBox = tentative ? '' : `<span class="chip-time">${escapeHtml(r.responseTime||timeStr)}</span>`;
-        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span style="display:flex;align-items:center;gap:4px;white-space:nowrap;max-width:100%;overflow:hidden">${tagHtml}<span class="rg-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto">${escapeHtml(label)}</span>${__doneBadge}${__vendorBadge}${(typeof repairProgBadge_==='function')?repairProgBadge_(r):''}${__repCmt}${__repRem}${__repCommute}</span>${__descLine}</span>${__timeBox}${__repBottom}${__repAlert}`;
+        el.innerHTML = `<span class="chip-title" style="flex-direction:column;align-items:flex-start;gap:1px;background:${wColor};color:${wFg}"><span class="rg-row" style="display:flex;align-items:center;gap:2px 4px;flex-wrap:wrap;white-space:nowrap;max-width:100%;overflow:hidden">${tagHtml}<span class="rg-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:100%;flex:0 1 auto">${escapeHtml(label)}</span>${__doneBadge}${__vendorBadge}${(typeof repairProgBadge_==='function')?repairProgBadge_(r):''}${__repCmt}${__repRem}${__repCommute}</span>${__descLine}</span>${__timeBox}${__repBottom}${__repAlert}`;
         if(__repBottom || __repAlert){ el.classList.add('chip-has-staffs'); el.style.setProperty('--card-bg', wColor); } // 担当色で全面着色(v1.30.51)
         attachRepairChipHover(el, r); // リッチtooltip
         // 1クリック=詳細シート / ダブルクリック=作業担当ピッカー(v1.30.181)
@@ -37343,8 +37343,11 @@ function bindEvents(){
   $('#inv-rec-member').onclick = e=>{
     const b = e.target.closest('button');
     if(!b) return;
-    $$('#rec-member button').forEach(x=>x.classList.remove('on'));
-    b.classList.add('on');
+    // 🐞 v1.30.939(最上🐞11/11「担当者を押すと選べるが、もう一度押しても元に戻らない」): 消す先が '#rec-member'(無い)で
+    //   前の選択が外れず、押した人がどんどん増えていた。→ 1人だけ選ぶ・同じ人をもう一度押すと外す
+    const was = b.classList.contains('on');
+    $$('#inv-rec-member button').forEach(x=>x.classList.remove('on'));
+    if(!was) b.classList.add('on');
   };
   $('#inv-rec-submit').onclick = submitRecord;
 
@@ -37352,13 +37355,13 @@ function bindEvents(){
   $('#inv-it-cat').onclick = e=>{
     const b = e.target.closest('button');
     if(!b) return;
-    $$('#it-cat button').forEach(x=>x.classList.remove('on'));
+    $$('#inv-it-cat button').forEach(x=>x.classList.remove('on'));
     b.classList.add('on');
   };
   $('#inv-it-loc').onclick = e=>{
     const b = e.target.closest('button');
     if(!b) return;
-    $$('#it-loc button').forEach(x=>x.classList.remove('on'));
+    $$('#inv-it-loc button').forEach(x=>x.classList.remove('on'));
     b.classList.add('on');
   };
   $('#inv-item-submit').onclick = submitItem;
