@@ -3107,7 +3107,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.936</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.937</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -12315,9 +12315,31 @@ const ANNOUNCE_PHOTO_MAX = 5;
 function announcePhotoList_(it){
   return (it && Array.isArray(it.photos)) ? it.photos.filter(p=> typeof p==='string' && (sbPhotoRef_(p) || /^https:\/\//.test(p))) : [];
 }
+// 📎 v1.30.937(山田「連絡にPDFと通知・マニュアルに過去の連絡も」): PDFは it.files=[{name,ref,size}](本体はマニュアルの置き場 sb:manuals/upload/…)。
+//   写真の欄と一緒に出す(バー・ポップアップ・履歴・マニュアルの📢過去の連絡すべて)。押した時に署名して開く
+const ANNOUNCE_FILE_MAX = 3;
+function announceFileList_(it){
+  return (it && Array.isArray(it.files)) ? it.files.filter(f=> f && typeof f.ref==='string' && f.ref.indexOf('sb:manuals/upload/')===0) : [];
+}
+function announceFilesHtml_(it){
+  const fs = announceFileList_(it); if(!fs.length) return '';
+  return `<div class="announce-files" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;flex-basis:100%">${fs.map(f=>`<a href="#" data-announce-file="${escapeHtml(f.ref)}" title="押すと開きます" style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1px solid #fbbf24;color:#92400e;border-radius:8px;padding:5px 10px;font-size:13px;font-weight:700;text-decoration:none">📄 ${escapeHtml(f.name||'資料')}</a>`).join('')}</div>`;
+}
+document.addEventListener('click', async e=>{
+  const a = e.target && e.target.closest ? e.target.closest('a[data-announce-file]') : null;
+  if(!a) return;
+  e.preventDefault(); e.stopPropagation();
+  const ref = a.getAttribute('data-announce-file');
+  const w = window.open('', '_blank');   // 先に開く(待ってから開くとポップアップ扱いで止められる)
+  try{
+    await manSign_([ref]);
+    const u = manSigned_(ref); if(!u) throw new Error('開けませんでした');
+    if(w) w.location.href = u; else location.href = u;
+  }catch(err){ if(w) w.close(); alert('資料を開けませんでした。ログインしているか確かめてください。\n('+((err&&err.message)||err)+')'); }
+}, true);
 function announcePhotosHtml_(it, size){
-  const ps = announcePhotoList_(it); if(!ps.length) return '';
-  return `<div class="announce-photos" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${ps.map(p=>`<img src="${escapeHtml(p)}" data-announce-photo="1" alt="添付写真" title="押すと拡大" style="width:${size}px;height:${size}px;object-fit:cover;border-radius:8px;border:1px solid #e5e7eb;background:#f1f5f9;cursor:zoom-in">`).join('')}</div>`;
+  const ps = announcePhotoList_(it); if(!ps.length) return announceFilesHtml_(it);
+  return `<div class="announce-photos" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${ps.map(p=>`<img src="${escapeHtml(p)}" data-announce-photo="1" alt="添付写真" title="押すと拡大" style="width:${size}px;height:${size}px;object-fit:cover;border-radius:8px;border:1px solid #e5e7eb;background:#f1f5f9;cursor:zoom-in">`).join('')}</div>` + announceFilesHtml_(it);
 }
 document.addEventListener('click', e=>{
   const img = e.target && e.target.closest ? e.target.closest('img[data-announce-photo]') : null;
@@ -12409,9 +12431,10 @@ async function announceKakuninConfirm_(it){
   if(n>=k.total) return true;
   return confirm(`回答がまだ届いていません(${n}/${k.total})。\nページの最後の「送信」まで押しましたか？\n\nこのまま閉じますか？(閉じても、出した人には未回答のまま表示されます)`);
 }
-function addAnnounce_(text, to, photos, kakunin){
+function addAnnounce_(text, to, photos, kakunin, files){
   const __photos = Array.isArray(photos) ? photos.filter(Boolean) : [];
-  text=String(text||'').trim() || (__photos.length ? '📷 写真' : ''); if(!text) return;
+  const __files = Array.isArray(files) ? files.filter(f=> f && f.ref) : [];
+  text=String(text||'').trim() || (__photos.length ? '📷 写真' : (__files.length ? '📄 資料' : '')); if(!text) return;
   if(announceMyActiveCount_((typeof getMyself==='function')?getMyself():"") >= ANNOUNCE_MAX) return;   // 上限ガード(ボタン側でもチェック)・1人あたり v1.30.844
   const me=(typeof getMyself==='function')?getMyself():"";
   const __all=announceStaffAll_();
@@ -12424,6 +12447,7 @@ function addAnnounce_(text, to, photos, kakunin){
   const acked = Array.from(new Set([...(me?[me]:[]), ...__preAcked]));
   const it={ id:uid(), text, to:__to, by:me, at:new Date().toISOString(), acked, deleted:false, updatedAt:new Date().toISOString() };
   if(__photos.length) it.photos = __photos;
+  if(__files.length) it.files = __files.map(f=>({ name:String(f.name||'資料'), ref:f.ref, size:Number(f.size)||0 }));
   if(kakunin && kakunin.topic) it.kakunin = { topic:kakunin.topic, url:kakunin.url, due:kakunin.due, total:kakunin.total };
     // 投稿者は自動で確認済み
   mutateAnnounce_(map=>{ map.items=(map.items||[]).concat([it]); return map; });
@@ -23302,8 +23326,11 @@ function openAnnounceCompose_(){
               <button type="button" class="btn" id="ac-photo-btn" style="font-size:12px;padding:4px 12px">📷 写真を追加</button>
               <span style="font-size:11px;color:var(--muted)">ドラッグや貼り付けでも入ります(${ANNOUNCE_PHOTO_MAX}枚まで)</span>
               <input type="file" id="ac-photo-input" accept="image/*" multiple style="display:none">
+              <button type="button" class="btn" id="ac-file-btn" style="font-size:12px;padding:4px 12px">📎 PDFを付ける</button>
+              <input type="file" id="ac-file-input" accept="application/pdf,.pdf" multiple style="display:none">
             </div>
             <div id="ac-photos" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
+            <div id="ac-files" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
           </div>
         </div>
         <div class="field" id="ac-kakunin-wrap" style="display:none">
@@ -23362,9 +23389,30 @@ function openAnnounceCompose_(){
       box.innerHTML=ov.__acPhotos.map((d,i)=>`<div style="position:relative;width:72px;height:72px"><img src="${d}" alt="添付する写真" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"><button type="button" data-ac-photo-del="${i}" title="外す" style="position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;border:0;background:#334155;color:#fff;font-size:12px;line-height:1;cursor:pointer">✕</button></div>`).join('');
       box.querySelectorAll('[data-ac-photo-del]').forEach(b=> b.onclick=()=>{ ov.__acPhotos.splice(Number(b.dataset.acPhotoDel),1); ov.__acPaint(); });
     };
+    // 📎 PDF(v1.30.937): 出すまでは端末に持つだけ。出す時にマニュアルの置き場へ上げる
+    ov.__acFiles=[];
+    const __finput=ov.querySelector('#ac-file-input');
+    ov.querySelector('#ac-file-btn').onclick=()=>__finput.click();
+    __finput.onchange=()=>{ const f=[...__finput.files]; __finput.value=''; ov.__acAddPdfs(f); };
+    ov.__acFilePaint=()=>{
+      const box=ov.querySelector('#ac-files');
+      box.innerHTML=ov.__acFiles.map((f,i)=>`<span style="display:inline-flex;align-items:center;gap:4px;background:#fffbeb;border:1px solid #fbbf24;border-radius:8px;padding:4px 8px;font-size:12px;font-weight:700;color:#92400e">📄 ${escapeHtml(f.name)} <button type="button" data-ac-file-del="${i}" title="外す" style="border:0;background:transparent;cursor:pointer;color:#334155;font-size:12px">✕</button></span>`).join('');
+      box.querySelectorAll('[data-ac-file-del]').forEach(b=> b.onclick=()=>{ ov.__acFiles.splice(Number(b.dataset.acFileDel),1); ov.__acFilePaint(); });
+    };
+    ov.__acAddPdfs=files=>{
+      const pdfs=[...files].filter(f=> f.type==='application/pdf' || /\.pdf$/i.test(f.name||''));
+      if(!pdfs.length) return false;
+      const room=ANNOUNCE_FILE_MAX-ov.__acFiles.length;
+      if(pdfs.length>room) alert(`PDFは${ANNOUNCE_FILE_MAX}つまでです`);
+      pdfs.slice(0,Math.max(room,0)).forEach(f=>{ if(f.size>50*1024*1024){ alert(`${f.name} は50MBを超えているので付けられません`); return; } ov.__acFiles.push(f); });
+      ov.__acFilePaint();
+      return true;
+    };
     ov.__acAddFiles=async files=>{
+      const __pdfIn=[...files].filter(f=> f.type==='application/pdf' || /\.pdf$/i.test(f.name||''));
+      if(__pdfIn.length){ ov.__acAddPdfs(__pdfIn); files=[...files].filter(f=> !__pdfIn.includes(f)); if(!files.length) return; }
       const imgs=[...files].filter(f=> /^image\//.test(f.type) || /\.(hei[cf]|jpe?g|png|webp)$/i.test(f.name||''));
-      if(!imgs.length){ alert('写真のファイルを入れてください'); return; }
+      if(!imgs.length){ alert('写真かPDFのファイルを入れてください'); return; }
       const room=ANNOUNCE_PHOTO_MAX-ov.__acPhotos.length;
       if(imgs.length>room) alert(`写真は${ANNOUNCE_PHOTO_MAX}枚までです`);
       let bad=0;
@@ -23396,6 +23444,7 @@ function openAnnounceCompose_(){
   ov.querySelector('#ac-clear').onclick=()=>{ sel.clear(); paint(); };
   ov.querySelector('#ac-text').value='';
   ov.__acPhotos=[]; ov.__acPaint();
+  ov.__acFiles=[]; ov.__acFilePaint();
   paint();
   // 📝 確認ページ(v1.30.930): 管理者だけ。選ぶと本文と宛先を入れる(直してから出せる)
   const __kkWrap=ov.querySelector('#ac-kakunin-wrap'), __kk=ov.querySelector('#ac-kakunin');
@@ -23456,10 +23505,11 @@ function openAnnounceCompose_(){
     if(__overMax || ov.__acSending) return;
     const t=(ov.querySelector('#ac-text').value||'').trim();
     const shots=ov.__acPhotos.slice();
-    if(!t && !shots.length){ alert('本文か写真を入れてください'); return; }
+    const pdfs=(ov.__acFiles||[]).slice();
+    if(!t && !shots.length && !pdfs.length){ alert('本文か写真を入れてください'); return; }
     // 写真を全部上げてから出す。1枚でも上がらなければ出さない(写真が抜けた連絡を全員に出さない・入力はそのまま残す)
     const post=ov.querySelector('#ac-post'), cancel=ov.querySelector('#ac-cancel'), label=post.textContent;
-    const urls=[];
+    const urls=[], fileRefs=[];
     ov.__acSending=true; post.disabled=true; cancel.disabled=true;
     try{
       for(let i=0;i<shots.length;i++){
@@ -23468,12 +23518,18 @@ function openAnnounceCompose_(){
         if(!r || !r.ok || !r.url) throw new Error((r && r.error) || '送信に失敗');
         urls.push(r.url);
       }
+      for(let i=0;i<pdfs.length;i++){
+        post.textContent=`PDFを送信中 ${i+1}/${pdfs.length}…`;
+        const r=await manUpload_(pdfs[i]);
+        if(!r || !r.ref) throw new Error('PDFの送信に失敗');
+        fileRefs.push({ name:pdfs[i].name, ref:r.ref, size:pdfs[i].size });
+      }
     }catch(e){
-      alert(`写真を送れなかったので、連絡は出していません。\nログインと電波を確かめて、もう一度「出す」を押してください。\n(${(e&&e.message)||e})`);
+      alert(`写真やPDFを送れなかったので、連絡は出していません。\nログインと電波を確かめて、もう一度「出す」を押してください。\n(${(e&&e.message)||e})`);
       return;
     }finally{ ov.__acSending=false; post.disabled=false; cancel.disabled=false; post.textContent=label; }
     const __kkSel=KAKUNIN_PRESETS.find(x=>x.topic===ov.querySelector('#ac-kakunin').value) || null;
-    if(typeof addAnnounce_==='function') addAnnounce_(t, [...sel], urls, __kkSel);
+    if(typeof addAnnounce_==='function') addAnnounce_(t, [...sel], urls, __kkSel, fileRefs);
     ov.classList.remove('show');
   };
   ov.classList.add('show');
@@ -23493,6 +23549,31 @@ function announceHistoryItems_(me, mode){
     if(mode === 'recv') return forMe;
     return mine || forMe;
   }).sort((a,b)=> String(b.at||'').localeCompare(String(a.at||'')));
+}
+// 📜 1件ぶんの表示(v1.30.937: 過去の連絡の画面とマニュアルの📢過去の連絡で共用)
+function announceHistItemHtml_(it, me){
+  const disp=s=>(typeof getStaffDisplayName==='function')?getStaffDisplayName(s):s;
+      const d=new Date(it.at);
+      const ds=isNaN(d)?'':`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      const tg=announceTargets_(it);
+      const toLabel=(it.to && it.to.length) ? `🎯${it.to.map(disp).join('・')}` : '👥全員';
+      const ackN=((it.acked||[]).filter(s=> tg.includes(s))).length;
+      const mine=it.by===me;
+      const iAcked=(it.acked||[]).includes(me);
+      const state = it.deleted
+        ? `<span style="background:#e2e8f0;color:#64748b;font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px">済(消去)</span>`
+        : `<span style="background:#dcfce7;color:#166534;font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px">表示中</span>`;
+      const meTag = mine ? `<span style="color:#1d4ed8;font-weight:700">📤 自分が出した</span>`
+        : `<span>📥 ${escapeHtml(disp(it.by||'?'))}から</span>${iAcked?'':' <span style="color:#b91c1c;font-weight:700">未確認</span>'}`;
+      return `<div class="ah-item" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;margin-bottom:6px;background:#fff">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--muted)">
+          <span>${escapeHtml(ds)}</span>${state}${meTag}
+          <span style="margin-left:auto">${escapeHtml(toLabel)} ・ 確認 ${ackN}/${tg.length}</span>
+        </div>
+        <div style="font-size:14px;margin-top:4px;white-space:pre-wrap;word-break:break-word;color:#0f172a">${escapeHtml(it.text||'')}</div>
+        ${announcePhotosHtml_(it, 80)}
+        ${announceKakuninHtml_(it)}
+      </div>`;
 }
 function openAnnounceHistory_(){
   const me=(typeof getMyself==='function')?getMyself():"";
@@ -23523,29 +23604,7 @@ function openAnnounceHistory_(){
     const q=(ov.querySelector('#ah-q').value||'').trim().toLowerCase();
     const items=announceHistoryItems_(me, mode).filter(it=> !q || String(it.text||'').toLowerCase().includes(q) || String(it.by||'').toLowerCase().includes(q) || String(disp(it.by||'')).toLowerCase().includes(q));
     const box=ov.querySelector('#ah-list');
-    box.innerHTML = items.length ? items.map(it=>{
-      const d=new Date(it.at);
-      const ds=isNaN(d)?'':`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-      const tg=announceTargets_(it);
-      const toLabel=(it.to && it.to.length) ? `🎯${it.to.map(disp).join('・')}` : '👥全員';
-      const ackN=((it.acked||[]).filter(s=> tg.includes(s))).length;
-      const mine=it.by===me;
-      const iAcked=(it.acked||[]).includes(me);
-      const state = it.deleted
-        ? `<span style="background:#e2e8f0;color:#64748b;font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px">済(消去)</span>`
-        : `<span style="background:#dcfce7;color:#166534;font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px">表示中</span>`;
-      const meTag = mine ? `<span style="color:#1d4ed8;font-weight:700">📤 自分が出した</span>`
-        : `<span>📥 ${escapeHtml(disp(it.by||'?'))}から</span>${iAcked?'':' <span style="color:#b91c1c;font-weight:700">未確認</span>'}`;
-      return `<div class="ah-item" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;margin-bottom:6px;background:#fff">
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--muted)">
-          <span>${escapeHtml(ds)}</span>${state}${meTag}
-          <span style="margin-left:auto">${escapeHtml(toLabel)} ・ 確認 ${ackN}/${tg.length}</span>
-        </div>
-        <div style="font-size:14px;margin-top:4px;white-space:pre-wrap;word-break:break-word;color:#0f172a">${escapeHtml(it.text||'')}</div>
-        ${announcePhotosHtml_(it, 80)}
-        ${announceKakuninHtml_(it)}
-      </div>`;
-    }).join('') : `<div style="font-size:12px;color:var(--muted);padding:8px">該当する連絡はありません</div>`;
+    box.innerHTML = items.length ? items.map(it=> announceHistItemHtml_(it, me)).join('') : `<div style="font-size:12px;color:var(--muted);padding:8px">該当する連絡はありません</div>`;
   };
   ov.querySelectorAll('[data-ah-mode]').forEach(b=> b.onclick=()=>{ mode=b.dataset.ahMode; render(); });
   ov.querySelector('#ah-q').value='';
@@ -38638,6 +38697,7 @@ function manRenderList_(){
     };
     const bkN = (__man.bk && __man.bk.rows) ? __man.bk.rows.length + '件' : '';   // 🏢 物件一覧(v879): フォルダと同じ並びの一番上に
     host.innerHTML = `<div class="man-row man-bk-side${__man.mode === 'bk' ? ' on' : ''}" data-bkside="1" title="物件台帳から(キーボックス・間取り図など)"><span style="width:12px;display:inline-block"></span>🏢 物件一覧<span class="man-ct">${bkN}</span></div>` +
+      `<div class="man-row man-bk-side${__man.mode === 'ann' ? ' on' : ''}" data-annside="1" title="これまでに出た📢連絡(PDFや写真も)"><span style="width:12px;display:inline-block"></span>📢 過去の連絡<span class="man-ct">${manAnnItems_().length}件</span></div>` +
       t.roots.map(f => row(f, 0)).join('') +
       (t.orphan.length ? `<div style="font-size:11px;color:var(--muted);padding:8px 6px 2px">フォルダの見つからないページ</div>` + t.orphan.map(p=>`<div class="man-row" data-pid="${escapeHtml(p.id)}">📄 ${escapeHtml(p.title)}</div>`).join('') : '') +
       `<div style="padding:10px 6px"><button class="btn man-mini" id="man-new-root">＋ 最上位にフォルダ</button></div>`;
@@ -38656,6 +38716,7 @@ function manRenderList_(){
   });
   host.querySelectorAll('[data-fmenu]').forEach(b => b.onclick = e => { e.stopPropagation(); manFolderMenu_(b.dataset.fmenu); });
   const bks = host.querySelector('[data-bkside]'); if(bks) bks.onclick = () => manRenderBukkenList_();
+  const ans = host.querySelector('[data-annside]'); if(ans) ans.onclick = () => manRenderAnnounce_();
 }
 function manFilterActive_(){ const f = __man.filt; return !!(f.folder || f.user || f.days || f.sort || f.cat); }
 function manMarkFilter_(){ const b = document.getElementById('man-filt-toggle'); if(b){ b.textContent = manFilterActive_() ? '絞込●' : '絞込▾'; b.style.cssText = manFilterActive_() ? 'background:#fef3c7' : ''; } }
@@ -38714,6 +38775,7 @@ async function manLoadHome_(){
       <b style="font-size:17px">🏠 トップ</b>
       <button class="btn man-mini" id="man-h-tree" style="display:${window.innerWidth<=760?'':'none'}">📚 フォルダ一覧</button>
       <button class="btn man-mini" id="man-h-bk" title="物件台帳から">🏢 物件一覧</button>
+      <button class="btn man-mini" id="man-h-ann" title="これまでに出た📢連絡(PDFや写真も)">📢 過去の連絡</button>
       <button class="btn man-mini" id="man-h-new" style="margin-left:auto;background:var(--accent);color:#fff;font-weight:700">＋ 新しいページ</button>
     </div>
     <div class="man-home">
@@ -38740,6 +38802,7 @@ async function manLoadHome_(){
   if(q('#man-h-tree')) q('#man-h-tree').onclick = () => manShowMain_(false);
   if(q('#man-h-stale')) q('#man-h-stale').onclick = () => manRenderStale_();
   if(q('#man-h-bk')) q('#man-h-bk').onclick = () => manRenderBukkenList_();
+  if(q('#man-h-ann')) q('#man-h-ann').onclick = () => manRenderAnnounce_();
   main.querySelectorAll('[data-today]').forEach(a => a.onclick = e => { e.preventDefault(); const c = (__man.todayCtx || [])[Number(a.dataset.today)]; if(c) manOpenRelated_(c); });
   q('#man-h-new').onclick = () => manNewFromHome_();
 }
@@ -38993,6 +39056,45 @@ async function manOpenRelated_(ctx){
   const hm = main.querySelector('[data-home]'); if(hm) hm.onclick = e => { e.preventDefault(); __man.mode = 'view'; __man.cur = null; manRenderHome_(); };
   if(ctx.bukken){ try{ manBkLinkInto_(main.querySelector('.man-hero'), ctx.bukken); }catch(_){} }   // 🏢 物件のページへ(v878)
   main.scrollTop = 0;
+}
+// ---- 📢 過去の連絡(v1.30.937・山田「マニュアルに過去の通知もストックされるように」) ----
+//   連絡のデータ(calendar_announce)は🗑後も deleted:true で残るので、それをそのまま読む=新しく保存する物はない。
+//   見せるのは「全員宛」と「自分宛・自分が出した」個別連絡だけ(他人宛の個別連絡は出さない=📜過去の連絡と同じ決まり)
+function manAnnItems_(){
+  const me = (typeof getMyself==='function') ? getMyself() : '';
+  const all = ((typeof loadAnnounceMap_==='function' ? loadAnnounceMap_() : {}).items) || [];
+  return all.filter(it=> it && it.id && (!(Array.isArray(it.to) && it.to.length) || (me && (it.by===me || announceIsForMe_(it, me)))))
+    .sort((a,b)=> String(b.at||'').localeCompare(String(a.at||'')));
+}
+async function manRenderAnnounce_(){
+  const ov0 = document.getElementById('manualModal');
+  if(__man.mode === 'edit' && ov0 && ov0.classList.contains('show') && !confirm('編集中です。下書きを残して過去の連絡を開きますか？')) return;
+  if(!ov0 || !ov0.classList.contains('show')) await manOpen_();
+  const main = document.getElementById('man-main'); if(!main) return;
+  __man.mode = 'ann'; __man.cur = null; __man.folderView = ''; __man.bkCur = '';
+  manNavRecord_('ann', ''); manShowMain_(true); manRenderList_();
+  const me = (typeof getMyself==='function') ? getMyself() : '';
+  const q0 = __man.annQ || '';
+  main.innerHTML = `
+    <div class="man-hero" style="border-left-color:#f59e0b">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px"><a href="#" data-home="1">🏠</a> › 📢 過去の連絡</div>
+      <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap"><b style="font-size:19px">📢 過去の連絡</b>
+        <span style="font-size:12px;color:var(--muted)">カレンダーの📢連絡で出したものが、ここに自動でたまります(消した連絡も残ります)</span></div>
+      <div class="man-bk-bar"><input id="man-ann-q" type="search" placeholder="本文・出した人で絞り込み" value="${escapeHtml(q0)}" autocomplete="off"></div>
+    </div>
+    <div id="man-ann-list" style="margin-top:10px"></div>`;
+  const disp = s=>(typeof getStaffDisplayName==='function')?getStaffDisplayName(s):s;
+  const paint = ()=>{
+    if(__man.mode !== 'ann') return;
+    const box = main.querySelector('#man-ann-list'); if(!box) return;
+    const q = (__man.annQ || '').trim().toLowerCase();
+    const items = manAnnItems_().filter(it=> !q || String(it.text||'').toLowerCase().includes(q) || String(it.by||'').toLowerCase().includes(q) || String(disp(it.by||'')).toLowerCase().includes(q) || announceFileList_(it).some(f=> String(f.name||'').toLowerCase().includes(q)));
+    box.innerHTML = items.length ? items.map(it=> announceHistItemHtml_(it, me)).join('') : `<div style="font-size:12px;color:var(--muted);padding:8px">${q ? '該当する連絡はありません' : 'まだ連絡はありません'}</div>`;
+  };
+  const qi = main.querySelector('#man-ann-q'); qi.oninput = ()=>{ __man.annQ = qi.value; paint(); };
+  const hm = main.querySelector('[data-home]'); if(hm) hm.onclick = e=>{ e.preventDefault(); const b=document.getElementById('man-home'); if(b) b.click(); };
+  paint();
+  try{ if(typeof fetchAnnounce_==='function'){ await fetchAnnounce_({silent:true}); paint(); manRenderList_(); } }catch(_){}
 }
 // ---- 🏢 物件一覧(v878) ----
 //   物件台帳(DB bukken・見積アプリが本体)を読むだけ。マニュアルのメモリに10分置く(state.bukken・localStorage には書かない)。
@@ -39299,6 +39401,7 @@ async function manNavGo_(d){
     else if(st.t === 'stale') manRenderStale_();
     else if(st.t === 'rel') await manOpenRelated_(st.id);
     else if(st.t === 'bk') await (st.id ? manRenderBukken_(st.id) : manRenderBukkenList_());
+    else if(st.t === 'ann') await manRenderAnnounce_();
     else { __man.mode = 'view'; __man.folderView = ''; __man.cur = null; manRenderList_(); await manLoadHome_(); manShowMain_(true); }
   } finally { __man.navLock = false; manNavButtons_(); }
 }
