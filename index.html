@@ -3107,7 +3107,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.939</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.940</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -12330,6 +12330,11 @@ document.addEventListener('click', async e=>{
   if(!a) return;
   e.preventDefault(); e.stopPropagation();
   const ref = a.getAttribute('data-announce-file');
+  const __inMan = a.closest('#man-ann-list');   // v1.30.940: マニュアルの📢過去の連絡では下のプレビューへ
+  if(__inMan){
+    const pv = [...__inMan.querySelectorAll('.man-pdf')].find(x=> x.dataset.pdf===ref);
+    if(pv){ pv.scrollIntoView({ behavior:'smooth', block:'start' }); const g = pv.querySelector('[data-pdfgo]'); if(g) g.click(); return; }
+  }
   const w = window.open('', '_blank');   // 先に開く(待ってから開くとポップアップ扱いで止められる)
   try{
     await manSign_([ref]);
@@ -39121,6 +39126,19 @@ async function manRenderAnnounce_(){
     const q = (__man.annQ || '').trim().toLowerCase();
     const items = manAnnItems_().filter(it=> !q || String(it.text||'').toLowerCase().includes(q) || String(it.by||'').toLowerCase().includes(q) || String(disp(it.by||'')).toLowerCase().includes(q) || announceFileList_(it).some(f=> String(f.name||'').toLowerCase().includes(q)));
     box.innerHTML = items.length ? items.map(it=> announceHistItemHtml_(it, me)).join('') : `<div style="font-size:12px;color:var(--muted);padding:8px">${q ? '該当する連絡はありません' : 'まだ連絡はありません'}</div>`;
+    // 📄 v1.30.940(山田「過去の連絡のPDF マニュアルの中で見れるように・新しい画面に行かずとも」):
+    //   マニュアルのページと同じ pdf.js のプレビュー(manPdfBox_)を連絡のすぐ下に並べる(見えたら描く・別の画面は「↗ 開く」だけ)
+    const sizeOf = {}; items.forEach(it=> announceFileList_(it).forEach(f=>{ sizeOf[f.ref] = Number(f.size)||0; }));
+    box.querySelectorAll('.announce-files').forEach(fw=>{
+      let after = fw;
+      fw.querySelectorAll('a[data-announce-file]').forEach(a=>{
+        const r = a.getAttribute('data-announce-file');
+        if(typeof manExtOf_==='function' && manExtOf_(r) !== 'pdf') return;
+        const pb = manPdfBox_(r, (a.textContent||'').replace(/^📄\s*/,'') || r.split('/').pop(), sizeOf[r]||0);
+        pb.style.marginTop = '8px';
+        after.after(pb); after = pb;
+      });
+    });
   };
   const qi = main.querySelector('#man-ann-q'); qi.oninput = ()=>{ __man.annQ = qi.value; paint(); };
   const hm = main.querySelector('[data-home]'); if(hm) hm.onclick = e=>{ e.preventDefault(); const b=document.getElementById('man-home'); if(b) b.click(); };
