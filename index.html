@@ -3109,7 +3109,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.942</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.943</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -25526,7 +25526,18 @@ function kqRender_(){
   const more = (k,n)=> n>0 ? `<button class="kq-more" data-tab="${k}">もっと見る(あと${n}件)</button>` : '';
   const sec = (k,title,body)=> body ? `<div class="kq-sec">${title}</div>${body}` : '';
   const kojiBody = (lim)=> v.special.slice(0,lim).map(kqGroupHtml_).join('') + (v.teiban.length ? `<div class="kq-sec2">定番の行だけの現場 ${v.teiban.length}件 <span class="kq-spec">(${v.teibanItems.slice(0,4).map(t=>escapeHtml(t.name)+' '+t.n+'件').join('・')})</span> <button class="kq-fol" id="kq-teiban">${__kq.showTeiban?'畳む':'見る'}</button></div>` + (__kq.showTeiban ? v.teiban.map(kqGroupHtml_).join('') : '') : '');
-  if(tab==='all'){
+  // ✂ v1.30.943(山田「AIクラ助検索 もっと出てくる情報 絞り込んでいいのではという声がある」→「最初は答えと見積だけ」):
+  //   「すべて」は クラ助の答え+見積・工事の上位3現場 だけ。相場・原状回復・修繕・立会・予定・マニュアル・業者請求は
+  //   件数のボタンだけ並べて、押したらそのタブで見る。見積・工事が0件の時だけ従来どおり全部の種類を並べる(何も出ないのを防ぐ)。
+  const __kojiN = v.special.length + v.teiban.length;
+  if(tab==='all' && __kojiN){
+    h += sec('koji','💴 見積・工事', v.special.slice(0,3).map(kqGroupHtml_).join('')
+      + (v.special.length ? '' : kojiBody(0))
+      + more('koji', Math.max(0, v.special.length-3) + (v.special.length ? v.teiban.length : 0)));
+    const others = KQ_TABS.filter(([k])=>k!=='all' && k!=='koji' && cnt[k]).map(([k,l])=>`<button class="kq-more" data-tab="${k}" style="display:inline-block;width:auto;margin:3px 4px 0 0">${l} ${cnt[k]}</button>`).join('');
+    if(others) h += `<div class="kq-sec">ほかにも見つかったにゃ</div><div>${others}</div>`;
+    else if(man===null) h += `<div class="kq-spec" style="padding:4px 10px">📖 マニュアルを探しているにゃ…</div>`;
+  } else if(tab==='all'){
     if(v.special.length || v.teiban.length) h += sec('koji','💴 見積・工事', kojiBody(6) + more('koji', v.special.length-6));
     if(tk.length) h += sec('相場','💹 相場(全期間の中央値)', tk.slice(0,3).map(kqTankaHtml_).join('') + more('相場', tk.length-3));
     ['原状回復','修繕','立会','予定'].forEach(k=>{ const a = loc[k]||[]; if(a.length) h += sec(k, KQ_TABS.find(t=>t[0]===k)[1], items(a,4) + more(k, a.length-4)); });
