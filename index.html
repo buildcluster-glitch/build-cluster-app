@@ -3109,7 +3109,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.941</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.942</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -20056,6 +20056,22 @@ function renderCalendar(){
         } else {
           targetCol.appendChild(el); // フォールバック
         }
+      } else if(isMonth && isFree){
+        // 🐞 v1.30.942(まどか🐞11/13「11/24 9時の立会がVIPの家具処分と被って見えない」):
+        //   終日は sub-col に絶対配置(freeTop)だったので、9時台の枠の上に浮いて同じ時間の予定を隠していた。
+        //   → 月ビューでは freeTop の高さに当たる時間の枠に入れて縦積みに参加させる(置いた位置=freeTopは従来どおり)
+        const __ft = (typeof ev.freeTop === "number" && ev.freeTop > 0) ? ev.freeTop : 0;
+        let __fh = HOUR_START + Math.floor(__ft / HOUR_PX);
+        if(__fh >= HOUR_END) __fh = HOUR_END - 1;
+        const cell = dayCol && dayCol.querySelector(`.hour-cell[data-hour="${__fh}"]`);
+        if(cell){
+          el.style.top = ""; el.style.left = ""; el.style.right = ""; el.style.marginTop = "";
+          // 一番上に置いた終日(freeTop=0)は、その枠の先頭に並べる(-0.01=枠より前の扱い)
+          el.dataset.startMin = __ft > 0 ? String(Math.round((__ft % HOUR_PX) / HOUR_PX * 60) + (__fh - HOUR_START) * 60) : "-0.01";
+          cell.appendChild(el);
+        } else {
+          targetCol.appendChild(el);
+        }
       } else {
         targetCol.appendChild(el);
       }
@@ -33196,7 +33212,8 @@ async function saveKaniModal_(){
       __kaniTotal_();
     };
   });
-  m.onclick = (e)=>{ if(e.target===m && !__kaniSending) closeKaniModal_(); };
+  // 🐞 v1.30.942(鈴木🐞11/14「簡易見積入力する時、枠外クリックしたときに閉じないで欲しい」): 背景クリックでは閉じない(「閉じる」ボタンだけ)
+  m.onclick = null;
 })();
 
 // ===========================================================
