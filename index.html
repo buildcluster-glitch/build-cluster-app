@@ -3109,7 +3109,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.944</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.945</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -12341,6 +12341,17 @@ document.addEventListener('click', async e=>{
   try{
     await manSign_([ref]);
     const u = manSigned_(ref); if(!u) throw new Error('開けませんでした');
+    // 🐞 v1.30.945(鈴木「山一議事録のPDFが開けない・白いまま」11/19): 置き場の形式が application/pdf でないと
+    //   Chrome は表示せずダウンロードに回し、先に開いたタブは白いまま残る。→ PDFは中身を取ってきて「PDF」として開き直す
+    if(w && /\.pdf$/i.test(ref)){
+      try{
+        try{ w.document.title = '読み込み中…'; w.document.body.innerHTML = '<p style="font:16px sans-serif;padding:20px;color:#475569">📄 資料を読み込んでいます…</p>'; }catch(_){}
+        const res = await fetch(u); if(!res.ok) throw new Error('HTTP '+res.status);
+        const blob = new Blob([await res.arrayBuffer()], { type:'application/pdf' });
+        w.location.href = URL.createObjectURL(blob);
+        return;
+      }catch(_){ /* 取れなければ従来どおり直接開く */ }
+    }
     if(w) w.location.href = u; else location.href = u;
   }catch(err){ if(w) w.close(); alert('資料を開けませんでした。ログインしているか確かめてください。\n('+((err&&err.message)||err)+')'); }
 }, true);
