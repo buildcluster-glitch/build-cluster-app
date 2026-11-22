@@ -3109,7 +3109,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.945</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.946</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -25008,6 +25008,83 @@ const KQ_SYN = [
 const KQ_TEIBAN_MIN = 15;   // 15現場以上に出る品名=定番(毎回入る行)
 const KQ_SINCE_NOTE = '過去の書類は2020〜2021年頃から・台帳は2026年5月頃から・業者請求は2026年4月分から。作成者=見積を作った人で、施工した人とは限りません。';
 let __kq = { q:'', words:[], rows:[], refine:[], showTeiban:false, busy:false };
+// 🔤 v1.30.946(山田「あいまいOK」11/22): AIで物件名が0件だった時、物件台帳の名前から近いものを探して寄せる。
+//   記録(koji_ask_log)で「アリスコート小田原」「Pastraru河原町」「Pastorale河原町」が0件→諦めていた。
+//   1つに決まれば自動でその名前で探し直して「〇〇で探したにゃ」と出す。候補が複数・棟記号が違う時はボタンで選ぶだけ。
+// KQ_FZ_BEGIN
+const KQ_ROMA_ = (()=>{ const m = {}; const V = 'aiueo';
+  const rows = { '':'アイウエオ', k:'カキクケコ', s:'サシスセソ', t:'タチツテト', n:'ナニヌネノ', h:'ハヒフヘホ', m:'マミムメモ', y:'ヤイユエヨ', r:'ラリルレロ', w:'ワウィウウェヲ', g:'ガギグゲゴ', z:'ザジズゼゾ', d:'ダヂヅデド', b:'バビブベボ', p:'パピプペポ', f:'ファフィフフェフォ', j:'ジャジジュジェジョ', v:'ヴァヴィヴヴェヴォ', l:'ラリルレロ', c:'カシクセコ', q:'クァクィククェクォ', x:'クサクシクスクセクソ' };
+  for(const k in rows){ const s = rows[k]; if(s.length===5){ for(let i=0;i<5;i++) m[k+V[i]] = s[i]; } }
+  Object.assign(m, { wa:'ワ', wi:'ウィ', wu:'ウ', we:'ウェ', wo:'ヲ', fa:'ファ', fi:'フィ', fu:'フ', fe:'フェ', fo:'フォ', ja:'ジャ', ji:'ジ', ju:'ジュ', je:'ジェ', jo:'ジョ', va:'ヴァ', vi:'ヴィ', vu:'ヴ', ve:'ヴェ', vo:'ヴォ',
+    shi:'シ', chi:'チ', tsu:'ツ', ti:'ティ', di:'ディ', tu:'トゥ', du:'ドゥ', si:'シ', zi:'ジ', hu:'フ', qu:'ク', xa:'クサ', xi:'クシ', xu:'クス', xe:'クセ', xo:'クソ', ce:'セ', ci:'シ' });
+  ['k','g','s','z','t','d','n','h','b','p','m','r','l'].forEach(c=>{ const base = m[c+'i']; const ya=['ャ','ュ','ョ']; ['a','u','o'].forEach((v,i)=>{ m[c+'y'+v] = base + ya[i]; }); });
+  [['sh','シ'],['ch','チ'],['j','ジ']].forEach(([c,b])=>{ const ya=['ャ','ュ','ェ','ョ']; ['a','u','e','o'].forEach((v,i)=>{ m[c+v] = b + ya[i]; }); });
+  m.ji='ジ'; m.shi='シ'; m.chi='チ'; m.je='ジェ';
+  return m; })();
+function kqRomaToKana_(w){   // 🔤 v1.30.946: ローマ字の物件名(Pastorale)をカタカナ(パストラレ)に。英語の綴りもだいたい読みに寄る
+  let s = String(w||'').toLowerCase(), out = '', i = 0;
+  while(i < s.length){
+    const c = s[i];
+    if(!/[a-z]/.test(c)){ out += c; i++; continue; }
+    let hit = '';
+    for(let L=3; L>=1; L--){ const t = s.substr(i, L); if(KQ_ROMA_[t]){ hit = t; break; } }
+    if(hit){ out += KQ_ROMA_[hit]; i += hit.length; continue; }
+    const nx = s[i+1] || '';
+    if(c === 'n'){ out += 'ン'; i++; continue; }
+    if(nx === c && !/[aiueo]/.test(c)){ out += 'ッ'; i++; continue; }
+    if(/[aiueo]/.test(c)){ out += KQ_ROMA_[c]; i++; continue; }
+    out += ({ t:'ト', d:'ド' })[c] || (KQ_ROMA_[c+'u'] || ''); i++;
+  }
+  return out;
+}
+function kqFzNorm_(s){
+  s = String(s||'').replace(/[Ⅰ-Ⅻ]/g, c=>String(c.charCodeAt(0)-0x215F)).replace(/[ⅰ-ⅻ]/g, c=>String(c.charCodeAt(0)-0x216F));   // ⅠⅡⅢ→123(ローマ字読みにしない)
+  s = s.normalize('NFKC').toLowerCase().replace(/[ぁ-ゖ]/g, c=>String.fromCharCode(c.charCodeAt(0)+0x60));
+  s = s.replace(/[a-z]+/g, kqRomaToKana_);
+  return s.replace(/[\s　\-‐－ー〜~・.．,、()（）\[\]【】「」'’"”]/g,'')
+          .replace(/[ァィゥェォッャュョヮ]/g, c=>({'ァ':'ア','ィ':'イ','ゥ':'ウ','ェ':'エ','ォ':'オ','ッ':'ツ','ャ':'ヤ','ュ':'ユ','ョ':'ヨ','ヮ':'ワ'})[c])
+          .replace(/ヴ/g,'ブ').replace(/ヂ/g,'ジ').replace(/ヅ/g,'ズ').replace(/ヲ/g,'オ');
+}
+// 名前の中のどこかに近い形で入っているか(ずれの数)。近似部分一致(Sellers)
+function kqFzDist_(q, t){
+  const m = q.length, n = t.length; if(!m) return 0; if(!n) return m;
+  let prev = new Array(n+1).fill(0), cur = new Array(n+1);
+  for(let i=1;i<=m;i++){ cur[0] = i;
+    for(let j=1;j<=n;j++){ cur[j] = Math.min(prev[j]+1, cur[j-1]+1, prev[j-1] + (q[i-1]===t[j-1]?0:1)); }
+    [prev, cur] = [cur, prev]; }
+  return Math.min.apply(null, prev);
+}
+// 見つからなかった物件名に近い物件を探す → { best:'名前' } (1つに決まる時) か { alts:[…] } (候補が2〜3) か null
+function kqFzBukken_(name, names){
+  const q = kqFzNorm_(name); if(q.length < 3) return null;
+  const lim = Math.max(1, Math.floor(q.length * 0.25));
+  const seen = new Set(), hits = [];
+  (names||[]).forEach(nm=>{ nm = String(nm||'').trim(); if(!nm) return; const k = kqFzNorm_(nm); if(!k || seen.has(k)) return; seen.add(k);
+    const d = kqFzDist_(q, k); if(d <= lim) hits.push({ nm, d, extra: Math.abs(k.length - q.length) }); });
+  if(!hits.length) return null;
+  hits.sort((a,b)=>a.d-b.d || a.extra-b.extra);
+  const d1 = hits[0].d, top = hits.filter(h=>h.d===d1);
+  // 棟・号の記号(N棟・A・2号館の「N」「A」「2」)が違う物件へは勝手に寄せない(サンヒルズN棟→S棟を防ぐ)→候補として出すだけ
+  const up = t=>String(t||'').normalize('NFKC').toUpperCase();
+  const marks = (up(name).match(/(?:^|[^A-Z0-9])([A-Z]{1,4}|\d+)(?=[^A-Z0-9]|$)/g)||[]).map(t=>t.replace(/^[^A-Z0-9]/,''));
+  const keep = h=>marks.every(mk=>up(h.nm).indexOf(mk)>=0);
+  if(top.length === 1 && keep(top[0])) return { best: top[0].nm, d: d1 };
+  return { alts: top.slice(0,3).map(h=>h.nm), d: d1 };
+}
+// KQ_FZ_END
+function kqBukkenNames_(){
+  const out = [];
+  try{ (state.bukken||[]).forEach(b=>b && out.push(b.name)); }catch(_){}
+  try{ ((typeof __man!=='undefined' && __man.bk && __man.bk.rows)||[]).forEach(b=>b && out.push(b.name)); }catch(_){}
+  try{ (state.repairs||[]).forEach(r=>r && out.push(r.name)); (state.restorations||[]).forEach(r=>r && out.push(r.name)); }catch(_){}
+  return out;
+}
+function kqFzQuestion_(q, from, to){   // 質問の中の物件名(空白ゆれ込み)を差し替える。見つからなければ頭に付ける
+  const parts = String(from||'').normalize('NFKC').split(/[\s　]+/).filter(Boolean).map(t=>t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'));
+  const qq = String(q||'').normalize('NFKC');
+  if(parts.length){ const re = new RegExp(parts.join('[\\s　]*'), 'i'); if(re.test(qq)) return qq.replace(re, to); }
+  return to + ' ' + qq;
+}
 
 function kqNorm_(s){ return String(s||'').normalize('NFKC').toLowerCase().replace(/[\s　]+/g,'').replace(/[\u3041-\u3096]/g, c=>String.fromCharCode(c.charCodeAt(0)+0x60)); }   // 🔤 v1.30.934(木村「ありすとこーと小田原でHITしない」11/10): ひらがなはカタカナにそろえて比べる
 // 1語→言い換えの一覧(辞書+「張/貼」「替/換」の入れ替え)。除外語も返す
@@ -25116,6 +25193,7 @@ async function kqAsk_(question, history, more){
     if(res.status===401 && t===0){ try{ await sbRefresh_(); }catch(_){} s = sbSession_(); if(!s || !s.access_token) return null; continue; }
     let j = null; try{ j = await res.json(); }catch(_){}
     if(j && j.ok && Array.isArray(j.rows)) return j;
+    if(j && j.code==='db' && t===0) continue;   // 🔁 v1.30.946: 記録では db エラーは言い直すと通っていた→1回だけ自動で送り直す
     // 🔎 v1.30.901: AIが使えなかった理由を画面に出す(401=ログインを断られた/503 ai=鍵がまだ等)。本番の入口確認にも使う
     if(j && j.code==='limit') __kq.aiNote = '今日のAIの回数を使い切ったので、辞書で探しました';
     else if(res.status===404) __kq.aiNote = '';   // 関数が無い=AIなしの運用。黙って辞書で
@@ -25147,7 +25225,19 @@ async function kqRun_(q){
   const exUser0 = kqSplit_((document.getElementById('kq-ex')||{}).value||'');
   const qBase = ctx ? `${ctx.bukken}${ctx.room?' '+ctx.room:''}で、${q||'過去にやった工事は？'}` : q;
   const q2 = exUser0.length ? qBase+'(除外: '+exUser0.join('・')+')' : qBase;
-  const ai = await kqAsk_(q2, [], ctx ? { summary:false, bukken:ctx.bukken, room:ctx.room||null } : { summary:false });
+  let ai = await kqAsk_(q2, [], ctx ? { summary:false, bukken:ctx.bukken, room:ctx.room||null } : { summary:false });
+  if(ai && !ctx && ai.bukken && !(ai.rows||[]).length){   // 🔤 v1.30.946 物件名のあいまい探し
+    let fz = null; try{ fz = kqFzBukken_(ai.bukken, kqBukkenNames_()); }catch(_){}
+    if(fz && kqFzNorm_(fz.best||'') === kqFzNorm_(ai.bukken)) fz = null;   // 同じ名前なら物件はあって工事が無いだけ
+    if(fz){
+      __kq.fz = { from: ai.bukken, q: q2, best: fz.best||'', alts: fz.alts||[], used:false };
+      if(fz.best){
+        const ai2 = await kqAsk_(kqFzQuestion_(q2, ai.bukken, fz.best), [], { summary:false, bukken:fz.best, room:ai.room||null });
+        if(ai2 && (ai2.rows||[]).length){ ai = ai2; __kq.fz.used = true; }
+        else { __kq.fz.alts = [fz.best]; __kq.fz.best = ''; }
+      }
+    }
+  }
   if(ai){
     __kq.ai = ai; __kq.rows = (ai.rows||[]).filter(kqCtxRow_); __kq.capped = false;
     __kq.used = [{ w:'AI', v:(ai.keywords||[]).concat(ai.synonyms||[]) }]; __kq.ex = ai.exclude||[];
@@ -25531,7 +25621,11 @@ function kqRender_(){
   const wsent = lid && __kq.wish && __kq.wish[lid];
   const fbHtml = lid ? ((fbd ? `<div class="kq-fb">${fbd==='good'?'👍':'👎'} ありがとにゃ</div>` : `<div class="kq-fb">役に立ったにゃ？ <button type="button" data-fb="1">👍</button><button type="button" data-fb="0">👎</button></div>`)
     + (wsent ? `<div class="kq-fb">💬 声を受け取ったにゃ。山田さんが見て決まりにするにゃ</div>` : `<div class="kq-wish"><input type="text" id="kq-wish-in" maxlength="500" placeholder="💬 こう答えてほしかった(任意・例: 税込も出してほしい)"><button type="button" id="kq-wish-go">送る</button></div>`)) : '';
-  let h = (lastSum ? `<div class="kq-say"><img class="kq-cat-s" src="./kurasuke.png" alt=""><div>${escapeHtml(lastSum)}${fbHtml}</div></div>` : (__kq.sumPending && !__kq.refine.length ? '<div class="kq-say">'+(kqLoadStart_(), kqLoadHtml_('sum', true))+'</div>' : ''))
+  const fzv = !__kq.refine.length && __kq.fz;
+  const fzHtml = !fzv ? '' : (fzv.used
+    ? `<div class="kq-spec" style="padding:4px 10px">🔤 「${escapeHtml(fzv.from)}」は見つからなかったので「${escapeHtml(fzv.best)}」で探したにゃ(違ったら言い直してにゃ)</div>`
+    : (fzv.alts.length ? `<div class="kq-spec" style="padding:4px 10px">🔤 「${escapeHtml(fzv.from)}」は見つからなかったにゃ。もしかして: ${fzv.alts.map((a,i)=>`<button class="kq-more" data-fz="${i}" style="display:inline-block;width:auto;margin:2px 4px 0 0">${escapeHtml(a)}</button>`).join('')}</div>` : ''));
+  let h = fzHtml + (lastSum ? `<div class="kq-say"><img class="kq-cat-s" src="./kurasuke.png" alt=""><div>${escapeHtml(lastSum)}${fbHtml}</div></div>` : (__kq.sumPending && !__kq.refine.length ? '<div class="kq-say">'+(kqLoadStart_(), kqLoadHtml_('sum', true))+'</div>' : ''))
     + (__kq.aiNote ? `<div class="kq-spec" style="padding:4px 10px">⚠ ${escapeHtml(__kq.aiNote)}</div>` : '')
     + `<div class="kq-sum">「${chain}」 ${how}${(!__kq.refine.length && __kq.ai && __kq.ai.sites_before)?' ・条件で絞る前は'+__kq.ai.sites_before+'現場':''}<div class="kq-spec">言い換え: ${used}${__kq.ex&&__kq.ex.length?' ／除外: '+escapeHtml(__kq.ex.join('・')):''}${__kq.capped?' ／⚠1語で200件を超えたので古い分が切れています。言葉を足してください':''}</div></div>`;
   const openers = []; const items = (arr,n)=>arr.slice(0,n).map(it=>{ openers.push(it.open); return kqItemHtml_(it, openers.length-1); }).join('');
@@ -25568,6 +25662,8 @@ function kqRender_(){
   if(tabsEl) tabsEl.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>setTab(b.getAttribute('data-tab')));
   box.querySelectorAll('.kq-more[data-tab]').forEach(b=>b.onclick=()=>setTab(b.getAttribute('data-tab')));
   box.querySelectorAll('[data-fb]').forEach(b=>b.onclick=()=>kqFeedback_(b.getAttribute('data-fb')==='1'));
+  box.querySelectorAll('[data-fz]').forEach(b=>b.onclick=()=>{ const f = __kq.fz; if(!f) return; const nm = f.alts[+b.getAttribute('data-fz')]; if(!nm) return;
+    const nq = kqFzQuestion_(f.q.replace(/\(除外: [^)]*\)$/,''), f.from, nm); const i = document.getElementById('kq-input'); if(i) i.value = nq; kqRun_(nq); });
   { const wg = document.getElementById('kq-wish-go'), wi = document.getElementById('kq-wish-in'); if(wg && wi){ wg.onclick = ()=>kqWish_(wi.value); wi.onkeydown = e=>{ if(e.key==='Enter' && !e.isComposing) kqWish_(wi.value); }; } }
   box.querySelectorAll('.kq-fol[data-path]').forEach(b=>b.onclick=()=>{ const p=b.getAttribute('data-path'); try{ navigator.clipboard.writeText(p); }catch(_){} if(typeof showAutoSyncToast==='function') showAutoSyncToast('📋 フォルダの場所をコピーしたにゃ(エクスプローラーのアドレス欄に貼ってにゃ)'); });
   box.querySelectorAll('[data-oi]').forEach(b=>b.onclick=()=>{ const f = openers[+b.getAttribute('data-oi')]; if(f){ const ov=document.getElementById('kojiAskModal'); if(ov) ov.classList.remove('show'); try{ f(); }catch(_){} } });
