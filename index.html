@@ -3109,7 +3109,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.950</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.951</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24424,13 +24424,8 @@ function stepParse_(title){
 function stepBarHtml_(title){
   const p = stepParse_(title); if(!p) return '';
   const pct = Math.round(p.n/p.all*100);
-  let bar;
-  if(p.all <= 24){
-    bar = Array.from({length:p.all},(_,i)=>`<span style="flex:1 1 0;min-width:2px;height:6px;border-radius:2px;background:currentColor;opacity:${i<p.n?'.9':'.2'}"></span>`).join('');
-    bar = `<span style="display:flex;gap:1px;flex:1 1 auto;min-width:0">${bar}</span>`;
-  } else {
-    bar = `<span style="position:relative;flex:1 1 auto;min-width:0;height:6px;border-radius:3px;overflow:hidden"><span style="position:absolute;inset:0;background:currentColor;opacity:.2"></span><span style="position:absolute;left:0;top:0;bottom:0;width:${pct}%;background:currentColor;opacity:.9"></span></span>`;
-  }
+  // v1.30.951(山田「無段階のバーにできない?」): マス目をやめて、いつも1本の連続した棒に
+  const bar = `<span style="position:relative;flex:1 1 auto;min-width:0;height:6px;border-radius:3px;overflow:hidden"><span style="position:absolute;inset:0;background:currentColor;opacity:.2"></span><span style="position:absolute;left:0;top:0;bottom:0;width:${pct}%;background:currentColor;opacity:.9;border-radius:3px"></span></span>`;
   return `<span class="chip-step-bar" style="display:flex;align-items:center;gap:4px;width:100%;margin-top:2px;font-size:9px;font-weight:800;line-height:10px" title="${p.all}回中${p.n}回目(${pct}%)">${bar}<span style="flex-shrink:0">${p.n}/${p.all}</span></span>`;
 }
 // 📝 v1.30.932 拾い出し(山田「紙の拾い出しシートをスマホのタップに」・別ページ hiroidashi)。単価表と同じ全画面モーダル+iframe。
