@@ -3109,7 +3109,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.948</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.949</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -11337,7 +11337,7 @@ function alcRenderModal_(){
   else{
     const am=alcTodayOf_(me,'am'), pm=alcTodayOf_(me,'pm');
     const fmtT=e=>{ const d=new Date(e.at); return isNaN(d)?'':`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
-    const needPhotoAm = (localStorage.getItem('bc_alc_photo_required')!=='0');   // 📷 朝は写真必須(既定on・'0'で解除)
+    const needPhotoAm = (localStorage.getItem('bc_alc_photo_required')!=='0');   // 📷 朝も夕も写真必須(既定on・'0'で解除)・v1.30.949 山田「帰りも写真必須にして」
     const btn=(when,label,done)=> done
       ? `<div style="flex:1;background:#dcfce7;border:1.5px solid #86efac;border-radius:12px;padding:14px 10px;text-align:center"><div style="font-size:14px;font-weight:800;color:#166534">${done.masked?'●':'✅'} ${label}済み</div><div style="font-size:11px;color:#15803d;margin-top:2px">${fmtT(done)} ・ ${escapeHtml(done.car||'')}</div></div>`
       : `<button data-alc-when="${when}" style="flex:1;background:var(--accent);color:#fff;border:0;border-radius:12px;padding:16px 10px;font-size:15px;font-weight:800;cursor:pointer">🍺✕ 酒気なし・体調OK<div style="font-size:11px;font-weight:600;opacity:.9;margin-top:2px">${label}チェックを記録${(when==='am'&&needPhotoAm)?' <span style="color:#fecaca">📷写真必須</span>':''}</div></button>`;
@@ -11349,7 +11349,7 @@ function alcRenderModal_(){
       <div style="margin-top:6px;display:flex;gap:6px;align-items:center">
         <input id="alc-memo" type="text" placeholder="指示事項・特記(任意)" style="flex:1;min-width:0;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px">
         <input id="alc-photo-in" type="file" accept="image/*" capture="environment" style="display:none">
-        <button id="alc-photo-btn" class="btn" style="flex-shrink:0;font-size:11px;padding:6px 10px" title="検知器の結果写真(任意)。直帰の日に添えると遠隔チェックの補強になります">📷<span id="alc-photo-mark" style="display:none">✓</span></button>
+        <button id="alc-photo-btn" class="btn" style="flex-shrink:0;font-size:11px;padding:6px 10px" title="検知器の結果写真(朝も夕も必須)。数値が見えるように撮ってください">📷<span id="alc-photo-mark" style="display:none">✓</span></button>
       </div>`;
     // 📷 任意の写真(v1.30.603・山田「写真まではいらない?」→任意添付を用意・直帰時の遠隔チェック補強用)
     //   検知器の画面を撮る想定。圧縮(60KB)→Drive退避してURLだけ記録=月シャードを太らせない
@@ -11382,8 +11382,9 @@ function alcRenderModal_(){
     const __alcDo = async(b, when, result, health, extraMemo)=>{
         // 📷 v1.30.606(山田): 朝は検知器写真を必須に。記録の信憑性(「本当に測ったのか」)を担保する。
         //   運用が回らない時は ⚙車両名 の案内どおり bc_alc_photo_required='0' で解除できる。
-        if(when==='am' && needPhotoAm && !window.__alcPhoto){
-          alert('📷 朝は検知器の写真が必須です。\n\n「📷」ボタンから検知器の表示(数値が見えるように)を撮ってから、もう一度押してください。');
+        //   v1.30.949(11/24 山田「夕も写真必須で」・クラ助@110と合わせる): 夕(運転終了)も同じく必須。
+        if(needPhotoAm && !window.__alcPhoto){
+          alert('📷 '+(when==='am'?'出発前(朝)':'運転終了(夕)')+'は検知器の写真が必須です。\n\n「📷」ボタンから検知器の表示(数値が見えるように)を撮ってから、もう一度押してください。');
           const pb=self.querySelector('#alc-photo-btn'); if(pb){ pb.style.outline='2px solid #dc2626'; setTimeout(()=>{ try{ pb.style.outline=''; }catch(_){} },2500); pb.click(); }
           return;
         }
