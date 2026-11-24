@@ -3109,7 +3109,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.952</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.953</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -26705,14 +26705,14 @@ const CAL_RESULT_DONE = ['deleted','forbidden','not_found','rejected_virtual']; 
 async function calServerDoc_(id){
   let s = sbSession_(); if(!s || !s.access_token) throw Object.assign(new Error('未ログイン'), { evKind:'no-session' });
   let res;
-  try{ res = await fetch(`${SB_AUTH.url}/rest/v1/calendar_events?select=doc,version,is_deleted&id=eq.${encodeURIComponent(id)}&limit=1`, { headers:{ 'apikey':SB_AUTH.key, 'Authorization':'Bearer '+s.access_token, 'Accept':'application/json' }, cache:'no-store' }); }
+  try{ res = await fetch(`${SB_AUTH.url}/rest/v1/calendar_events?select=doc,source_version,is_deleted&id=eq.${encodeURIComponent(id)}&limit=1`, { headers:{ 'apikey':SB_AUTH.key, 'Authorization':'Bearer '+s.access_token, 'Accept':'application/json' }, cache:'no-store' }); }
   catch(e){ throw Object.assign(new Error((e&&e.message)||'通信できません'), { evKind:'network' }); }
   if(res.status===401 || res.status===403) throw Object.assign(new Error('auth'), { evKind:'auth' });
   if(!res.ok) throw Object.assign(new Error('HTTP '+res.status), { evKind:'http' });
   const rows = await res.json().catch(()=>null);
   if(!Array.isArray(rows) || !rows.length) return null;
   const doc = (typeof __parseJsonSafe_==='function') ? __parseJsonSafe_(rows[0].doc) : rows[0].doc;
-  return { doc: doc || null, version: rows[0].version, deleted: !!rows[0].is_deleted };
+  return { doc: doc || null, version: rows[0].source_version, deleted: !!rows[0].is_deleted };   // v1.30.953: 列名は source_version(913〜952は version で毎回400→GAS経路に落ちていた)
 }
 const CAL_STALE_MARGIN_MS = 10*60*1000;
 const CAL_GAS_HOLD_MS = 6*60*60*1000;   // v1.30.915: DBが読めない時、これより古い変更はGASで送らない
