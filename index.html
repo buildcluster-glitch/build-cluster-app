@@ -861,8 +861,9 @@
   .event-allday.event-chip .chip-title{
     box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);
   }
+  /* v1.30.954(山田「終日が南部カラーと似ていてわかりにくい」): 南部さんの担当色と同じ薄黄(#fde68a)だった→どの担当色とも被らない濃い灰紺+白文字に */
   .event-allday .chip-time{
-    background:#fde68a;color:#92400e;border-color:#f59e0b;font-weight:700;
+    background:#334155;color:#fff;border-color:#0f172a;font-weight:700;
   }
   .event.dragging-source{opacity:.3}
   .event-ghost{
@@ -3109,7 +3110,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.953</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.954</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
