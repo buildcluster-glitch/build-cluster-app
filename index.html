@@ -3109,7 +3109,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.951</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.952</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -24415,7 +24415,8 @@ function openTankaModal_(){
 // 📊 v1.30.950 予定の題の（n/m）→ 進み具合の棒(山田「消防設備士講習 1/18 グラフっぽく」)
 function stepParse_(title){
   const t = String(title||'').normalize('NFKC').split('\n')[0];
-  const m = t.match(/\(\s*(\d{1,2})\s*\/\s*(\d{1,2})\s*\)/);
+  // v1.30.952(山田「ほかの予定に出るのは困る」): 合図は「回」付きの（n/m回）だけ。(11/24)のような日付には出さない
+  const m = t.match(/\(\s*(\d{1,2})\s*\/\s*(\d{1,2})\s*回\s*\)/);
   if(!m) return null;
   const n = +m[1], all = +m[2];
   if(!(n>=1 && all>=2 && n<=all && all<=60)) return null;
