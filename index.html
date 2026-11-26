@@ -3110,7 +3110,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.955</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.956</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -38389,12 +38389,14 @@ function manSigned_(ref){ const c = __man.signed.get(ref); return c ? c.url : ''
 // 本文を入れた後: 画像/動画/リンクの sb:manuals を署名URLへ。#manual: はアプリ内で開く。外へのリンクは新しいタブ
 async function manWireBody_(host){
   const refs = [];
+  const __vidSeen = new Set();   // 🎬 v1.30.956(山田「マニュアルに余計な動画いっぱい」): 本文で再生できる動画は、下の📎添付の欄では再生画面を重ねない
   host.querySelectorAll('img').forEach(img => { const v = img.getAttribute('src'); if(manIsRef_(v)){ img.setAttribute('data-mref', v); img.removeAttribute('src'); img.style.minHeight='40px'; img.style.background='#f1f5f9'; refs.push(v); } img.loading='lazy'; img.style.maxWidth='100%'; img.style.height='auto'; });
   host.querySelectorAll('a[href]').forEach(a => {
     const h = a.getAttribute('href');
     if(manIsRef_(h)){
       a.setAttribute('data-mref', h); a.setAttribute('href', '#'); refs.push(h);
-      if(MAN_VIDEO_EXT.test(manExtOf_(h))){   // 動画はその場で再生できるように
+      if(MAN_VIDEO_EXT.test(manExtOf_(h)) && !__vidSeen.has(h)){   // 動画はその場で再生できるように(同じ動画は1回だけ)
+        __vidSeen.add(h);
         const v = document.createElement('video'); v.controls = true; v.preload = 'none'; v.setAttribute('data-mref', h); v.style.cssText='display:block;max-width:100%;max-height:60vh;margin:6px 0;background:#000';
         a.after(v);
       }
