@@ -3110,7 +3110,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.956</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.957</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -12959,7 +12959,9 @@ function buildTaikyoVirtualEvent_(r){
   // 🎨 上書き優先 (担当・日時。全員共有のtaikyo_overrides → 無ければ元レコード)
   const __ovMap = loadTaikyoOverrides_();
   const __ovEntry = __ovMap[r.id];
-  const effectiveStaff = (__ovEntry && String(__ovEntry.staff||'').trim()) ? __ovEntry.staff : (r.staff || "");
+  // 🐞 v1.30.957(まどか「手動で作った立会が私の担当になって未設定の白に変更できない」): 上書きの担当が空だと元の担当(作った人)に戻っていた
+  //   → 「未指定」を選んだ時は '-'(=はっきり未設定)を入れ、元の担当より優先する
+  const effectiveStaff = (__ovEntry && String(__ovEntry.staff||'').trim()==='-') ? "" : (__ovEntry && String(__ovEntry.staff||'').trim()) ? __ovEntry.staff : (r.staff || "");
   const effDate = (__ovEntry && String(__ovEntry.date||'').trim()) ? __ovEntry.date : r.date;
   // 時刻: 上書きtimeが非空ならそれを採用。空なら元レコードの時刻(=日付だけ変えても時刻は保持)
   const effTime = (__ovEntry && String(__ovEntry.time||'').trim()) ? __ovEntry.time : (r.time||"");
@@ -13115,7 +13117,7 @@ function showTaikyoStaffPicker(el, ev){
       const s = btn.dataset.staff;
       if(s===""){ __tkcur=[]; } else if(__tkcur.includes(s)){ __tkcur=__tkcur.filter(x=>x!==s); } else { __tkcur.push(s); }
       if(taikyoId){
-        setTaikyoStaffOverride_(taikyoId, joinWorkers_(__tkcur));
+        setTaikyoStaffOverride_(taikyoId, __tkcur.length ? joinWorkers_(__tkcur) : (origStaff ? '-' : ''));   // v1.30.957 元の担当がある時の「未指定」は '-'
       }else{
         // 🛡 rawId無し(=state.eventsに紛れたゴースト等)はoverride先が無いので、イベント自体を直接更新
         const real = (state.events||[]).find(x=>x.id===ev.id);
