@@ -3110,7 +3110,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.954</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.955</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -12326,9 +12326,23 @@ function announceFileList_(it){
   return (it && Array.isArray(it.files)) ? it.files.filter(f=> f && typeof f.ref==='string' && f.ref.indexOf('sb:manuals/upload/')===0) : [];
 }
 function announceFilesHtml_(it){
-  const fs = announceFileList_(it); if(!fs.length) return '';
+  // 📖 v1.30.955(山田「連絡にマニュアルに更新がありますと出るように」): マニュアルのページを開くボタン
+  const mp = (it && it.manPage && /^[A-Za-z0-9_-]{6,40}$/.test(String(it.manPage.id||''))) ? it.manPage : null;
+  const mpHtml = mp ? `<div style="margin-top:6px;flex-basis:100%"><a href="#" data-announce-man="${escapeHtml(mp.id)}" title="押すとマニュアルのページが開きます" style="display:inline-flex;align-items:center;gap:4px;background:#1e3a8a;color:#fff;border-radius:8px;padding:5px 12px;font-size:13px;font-weight:700;text-decoration:none">📖 ${escapeHtml(mp.title||'マニュアル')} を開く</a></div>` : '';
+  const fs = announceFileList_(it); if(!fs.length) return mpHtml;
+  return mpHtml + __announceFilesOnly_(fs);
+}
+function __announceFilesOnly_(fs){
   return `<div class="announce-files" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;flex-basis:100%">${fs.map(f=>`<a href="#" data-announce-file="${escapeHtml(f.ref)}" title="押すと開きます" style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1px solid #fbbf24;color:#92400e;border-radius:8px;padding:5px 10px;font-size:13px;font-weight:700;text-decoration:none">📄 ${escapeHtml(f.name||'資料')}</a>`).join('')}</div>`;
 }
+document.addEventListener('click', async e=>{   // 📖 連絡からマニュアルのページへ(v1.30.955)
+  const a = e.target && e.target.closest ? e.target.closest('a[data-announce-man]') : null;
+  if(!a) return;
+  e.preventDefault(); e.stopPropagation();
+  const id = a.getAttribute('data-announce-man');
+  const pop = a.closest('#announcePopup'); if(pop) pop.classList.remove('show');   // ✓確認はしていないので、あとでまた出る
+  try{ await manOpen_(); if(__man.tree) await manOpenPage_(id); }catch(err){ alert('マニュアルを開けませんでした。ログインしているか確かめてください。'); }
+}, true);
 document.addEventListener('click', async e=>{
   const a = e.target && e.target.closest ? e.target.closest('a[data-announce-file]') : null;
   if(!a) return;
@@ -12451,7 +12465,7 @@ async function announceKakuninConfirm_(it){
   if(n>=k.total) return true;
   return confirm(`回答がまだ届いていません(${n}/${k.total})。\nページの最後の「送信」まで押しましたか？\n\nこのまま閉じますか？(閉じても、出した人には未回答のまま表示されます)`);
 }
-function addAnnounce_(text, to, photos, kakunin, files, keep){
+function addAnnounce_(text, to, photos, kakunin, files, keep, extra){
   const __photos = Array.isArray(photos) ? photos.filter(Boolean) : [];
   const __files = Array.isArray(files) ? files.filter(f=> f && f.ref) : [];
   text=String(text||'').trim() || (__photos.length ? '📷 写真' : (__files.length ? '📄 資料' : '')); if(!text) return;
@@ -12468,6 +12482,7 @@ function addAnnounce_(text, to, photos, kakunin, files, keep){
   const it={ id:uid(), text, to:__to, by:me, at:new Date().toISOString(), acked, deleted:false, updatedAt:new Date().toISOString() };
   if(__photos.length) it.photos = __photos;
   if(keep) it.keep = true;   // 📖 マニュアルに残す(v1.30.938)
+  if(extra && extra.manPage && /^[A-Za-z0-9_-]{6,40}$/.test(String(extra.manPage.id||''))) it.manPage = { id:String(extra.manPage.id), title:String(extra.manPage.title||'') };   // 📖 マニュアルの更新の連絡(v1.30.955)
   if(__files.length) it.files = __files.map(f=>({ name:String(f.name||'資料'), ref:f.ref, size:Number(f.size)||0 }));
   if(kakunin && kakunin.topic) it.kakunin = { topic:kakunin.topic, url:kakunin.url, due:kakunin.due, total:kakunin.total };
     // 投稿者は自動で確認済み
@@ -40063,6 +40078,7 @@ function manStartEdit_(){
         <span class="man-seg"><button class="btn man-mini" id="man-m-rich" title="見たままの画面で直す(ワープロのように)">✍ 見たまま</button><button class="btn man-mini" id="man-m-md" title="記号(マークダウン)で直す">&lt;/&gt; 記号</button></span>
         <button class="btn man-mini" id="man-prev">👁 見た目</button>
         <button class="btn man-mini" id="man-cancel">やめる</button>
+        <label title="保存した時に、全員宛の📢連絡で「マニュアルに更新があります」と知らせます(打ち間違いの直しなどでは付けない)" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:#334155;cursor:pointer;padding:0 4px"><input type="checkbox" id="man-ann" style="width:16px;height:16px;margin:0"> 📢 連絡にも出す</label>
         <button class="btn man-mini" id="man-save" style="background:var(--accent);color:#fff;font-weight:700">保存</button>
       </span>
     </div>
@@ -40294,7 +40310,15 @@ function manStartEdit_(){
                          if(!cr || cr.result !== 'applied') alert('本文は保存しましたが、カテゴリを付けられませんでした: ' + ((cr && cr.result) || '')); }
                     catch(e){ alert('本文は保存しましたが、カテゴリを付けられませんでした: ' + (e.message||e)); } }
       try{ localStorage.removeItem(MAN_DRAFT_PREFIX + p.id); }catch(_){}
-      __man.mode = 'view'; if(typeof showAutoSyncToast==='function') showAutoSyncToast('📖 保存しました(版' + r.version + ')');
+      // 📢 v1.30.955: 「連絡にも出す」を付けた時だけ、全員宛の連絡を出す
+      let __annMsg = '';
+      try{ if(q('#man-ann') && q('#man-ann').checked){
+        const me = (typeof getMyself==='function') ? getMyself() : '';
+        if(!me) __annMsg = '\n(👤自分が未設定のため📢連絡は出していません)';
+        else if(announceMyActiveCount_(me) >= ANNOUNCE_MAX) __annMsg = '\n(📢連絡は1人' + ANNOUNCE_MAX + '件までのため出していません。古い連絡を消してから📢から出してください)';
+        else { addAnnounce_(`📖 マニュアルに${p.isNew ? '新しいページ' : '更新'}があります\n「${title}」`, [], [], null, [], false, { manPage:{ id:p.id, title } }); __annMsg = '・📢連絡にも出しました'; }
+      } }catch(e){ __annMsg = '\n(📢連絡は出せませんでした)'; }
+      __man.mode = 'view'; if(typeof showAutoSyncToast==='function') showAutoSyncToast('📖 保存しました(版' + r.version + ')' + __annMsg);
       await manLoadTree_(); await manOpenPage_(p.id); return;
     }
     saveDraft();
