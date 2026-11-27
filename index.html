@@ -3110,7 +3110,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.957</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.958</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -4497,6 +4497,7 @@
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="btn primary" id="all-auth-login" style="font-size:12px;padding:5px 14px">ログイン</button>
           <button class="btn" id="all-auth-logout" style="font-size:12px;padding:5px 14px;display:none">ログアウト</button>
+          <button class="btn" id="all-auth-pwchange" style="font-size:12px;padding:5px 14px;display:none">🔑 パスワードを変える</button>
         </div>
         <div style="font-size:11px;color:var(--muted);margin-top:8px">
           9月の新システム切替に向けた準備です。<b>いまはログインしてもアプリの動きは今までと全く同じ</b>（データは従来どおり）。<br>
@@ -28129,11 +28130,13 @@ function renderAuthState_(){
       <span style="margin-left:6px">${escapeHtml(em)}${s&&s.role?`（${escapeHtml(s.role)}）`:''}</span>`;
     if(btnIn) btnIn.style.display = 'none';
     if(btnOut) btnOut.style.display = '';
+    { const bp=document.getElementById('all-auth-pwchange'); if(bp) bp.style.display=''; }
   }else{
     box.innerHTML = `<span style="background:#fef3c7;color:#92400e;font-weight:700;padding:2px 8px;border-radius:6px">⚠ 未ログイン</span>
       <span style="margin-left:6px;color:var(--muted)">切替日までに一度ログインしてください</span>`;
     if(btnIn) btnIn.style.display = '';
     if(btnOut) btnOut.style.display = 'none';
+    { const bp=document.getElementById('all-auth-pwchange'); if(bp) bp.style.display='none'; }
   }
 }
 // ログイン画面(JS生成・「あとで」で閉じられる=8/17時点ではブロックしない)
@@ -28227,12 +28230,95 @@ document.addEventListener('visibilitychange', ()=>{
     if(s && s.expires_at && (s.expires_at*1000 - Date.now()) < 300000) sbRefresh_().catch(()=>{});
   }
 });
+// 🔑 v1.30.958(山田「俺のカレンダーのパスワードわからなくなってしまった」11/27): ログイン中の人が自分で新しいパスワードに変える。
+//   古いパスワードは要らない(ログイン中であることが本人の証明)。Supabase auth の PUT /auth/v1/user に本人の access_token で送る。
+//   パスワードはどこにも記録しない(ログ・控え・localStorage いずれも)。変えたあとも今のログインはそのまま。
+function pwChangeCheck_(p1, p2){
+  if(!p1 || !p2) return '新しいパスワードを2回入れてください';
+  if(p1 !== p2) return '2回のパスワードが違います';
+  if(p1.length < 8) return '8文字以上にしてください';
+  if(/\s/.test(p1)) return '空白は使えません';
+  return '';
+}
+async function sbChangePassword_(pw){
+  let s = sbSession_(); if(!s) throw new Error('ログインしていません');
+  if(!s.expires_at || (s.expires_at*1000 - Date.now()) < 120000){ await sbRefresh_(); s = sbSession_(); if(!s) throw new Error('ログインが切れました。ログインし直してください'); }
+  const res = await fetch(`${SB_AUTH.url}/auth/v1/user`, {
+    method:'PUT',
+    headers:{ 'Content-Type':'application/json', 'apikey': SB_AUTH.key, 'Authorization':'Bearer '+s.access_token },
+    body: JSON.stringify({ password: String(pw) })
+  });
+  let d = null; try{ d = await res.json(); }catch(_){}
+  if(!res.ok){
+    const msg = (d && (d.error_description || d.msg || d.error || d.message)) || ('HTTP '+res.status);
+    const e = new Error(msg); e.status = res.status; throw e;
+  }
+  return true;
+}
+function openPwChangeModal_(){
+  let ov = document.getElementById('sbPwModal');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.className = 'modal-overlay'; ov.id = 'sbPwModal'; ov.style.zIndex = 900;
+    ov.innerHTML = `
+      <div class="modal" style="max-width:380px">
+        <div class="modal-header">🔑 パスワードを変える</div>
+        <div class="modal-body">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:10px" id="sb-pw-who"></div>
+          <div class="field"><label>新しいパスワード(8文字以上)</label><input id="sb-pw-1" type="password" autocomplete="new-password"></div>
+          <div class="field"><label>もう一度</label><input id="sb-pw-2" type="password" autocomplete="new-password"></div>
+          <label style="font-size:12px;display:flex;gap:6px;align-items:center;margin-top:4px"><input type="checkbox" id="sb-pw-show"> 入れた文字を見る</label>
+          <div id="sb-pw-err" style="display:none;color:#dc2626;font-size:12px;font-weight:600;white-space:pre-wrap;margin-top:6px"></div>
+          <div style="font-size:11px;color:var(--muted);margin-top:10px">今のログインはそのままです。ほかの端末で次にログインする時から新しいパスワードを使います。</div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn" id="sb-pw-cancel">やめる</button>
+          <span style="flex:1"></span>
+          <button class="btn primary" id="sb-pw-go">変える</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const clear = ()=>{ ov.querySelector('#sb-pw-1').value=''; ov.querySelector('#sb-pw-2').value=''; ov.querySelector('#sb-pw-show').checked=false; ov.querySelector('#sb-pw-1').type=ov.querySelector('#sb-pw-2').type='password'; };
+    ov.querySelector('#sb-pw-cancel').onclick = ()=>{ clear(); ov.classList.remove('show'); };
+    ov.querySelector('#sb-pw-show').onchange = e=>{ const t = e.target.checked ? 'text' : 'password'; ov.querySelector('#sb-pw-1').type=t; ov.querySelector('#sb-pw-2').type=t; };
+    const go = async ()=>{
+      const p1 = ov.querySelector('#sb-pw-1').value, p2 = ov.querySelector('#sb-pw-2').value;
+      const err = ov.querySelector('#sb-pw-err'), btn = ov.querySelector('#sb-pw-go');
+      err.style.display='none'; err.textContent='';
+      const bad = pwChangeCheck_(p1, p2);
+      if(bad){ err.textContent = bad; err.style.display='block'; return; }
+      btn.disabled = true; btn.textContent = '変更中…';
+      try{
+        await sbChangePassword_(p1);
+        clear(); ov.classList.remove('show');
+        alert('🔑 パスワードを変えました。\n次にログインする時から新しいパスワードを使ってください。');
+      }catch(e){
+        const m = String((e && e.message) || e);
+        err.textContent = /same|different from the old/i.test(m) ? '今と同じパスワードです。別のものにしてください'
+          : /weak|at least|characters/i.test(m) ? 'パスワードが簡単すぎます。英字と数字を混ぜて長めにしてください'
+          : /reauthenticat|nonce/i.test(m) ? 'この変更には確認コードが必要な設定になっています。山田さんへ伝えてください'
+          : /Failed to fetch|NetworkError/i.test(m) ? '通信できませんでした。電波の良い所でもう一度お試しください'
+          : (e && (e.status===401||e.status===403)) ? 'ログインが切れています。ログインし直してから変えてください'
+          : ('変えられませんでした: ' + m);
+        err.style.display = 'block';
+      }finally{ btn.disabled = false; btn.textContent = '変える'; }
+    };
+    ov.querySelector('#sb-pw-go').onclick = go;
+    ov.querySelector('#sb-pw-2').onkeydown = e=>{ if(e.key==='Enter' && !e.isComposing) go(); };
+  }
+  ov.querySelector('#sb-pw-who').textContent = 'ログイン中: ' + (sbLoggedInEmail_() || '');
+  ov.querySelector('#sb-pw-err').style.display = 'none';
+  ov.classList.add('show');
+  setTimeout(()=>{ try{ ov.querySelector('#sb-pw-1').focus(); }catch(_){} }, 60);
+}
 // ⚙全体設定のボタン配線 + 起動
 {
   const bIn = document.getElementById('all-auth-login');
   const bOut = document.getElementById('all-auth-logout');
   if(bIn)  bIn.onclick  = ()=> openLoginModal_({lead:'新システム(9月切替)の準備です。会社のメールアドレスでログインしてください。'});
   if(bOut) bOut.onclick = ()=>{ if(confirm('ログアウトしますか？\n（アプリの機能は今までどおり使えます）')) sbLogout_(); };
+  const bPw = document.getElementById('all-auth-pwchange');
+  if(bPw) bPw.onclick = ()=> openPwChangeModal_();
 }
 initSupabaseAuth_();
 document.getElementById('all-settings-cancel').onclick = closeAllSettings;
