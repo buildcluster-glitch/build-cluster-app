@@ -117,6 +117,8 @@
   .view-switch{display:flex;border:1px solid var(--border-strong);border-radius:6px;overflow:hidden;flex-shrink:0}
   .view-switch button{border:0;background:#fff;padding:5px 9px;color:var(--text);font-size:13px;white-space:nowrap}
   .view-switch button.active{background:var(--accent);color:#fff}
+  .view-switch button.hd-entry{color:#0f766e;font-weight:700}
+  @media (max-width:700px){ .view-switch button.hd-entry{display:none !important} }
   /* 🔍 カレンダー縮小表示スイッチ(PCのみ・v1.30.253) */
   .cal-zoom-switch{display:flex;border:1px solid var(--border-strong);border-radius:6px;overflow:hidden;flex-shrink:0}
   .cal-zoom-switch button{border:0;background:#fff;padding:5px 7px;color:var(--text);font-size:11px;white-space:nowrap;cursor:pointer}
@@ -3110,7 +3112,7 @@
 <header class="app-header">
   <!-- 版番号: PCは非表示(📅v表示は邪魔・山田 v1.30.364)。📱スマホはタブ名が見えないのでヘッダー先頭に出す(v1.30.496)。
        ⚠ 版番号の記載はこの1箇所だけ。他(タブ名・バグ報告)は .app-title span を読む -->
-  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.958</span></div>
+  <div class="app-title" id="appVerChip"><span style="font-size:9px;color:#94a3b8;font-weight:400">v1.30.959</span></div>
   <!-- 📱 表示倍率(スマホのみ・v1.30.497): ピンチが効かない/ずれる時でも確実に拡大縮小できる手段 -->
   <div class="cal-zoom-mobile" id="calZoomMobile" title="カレンダーの表示倍率(タップで拡大・縮小／%をタップで100%に戻す)">
     <button type="button" data-zstep="-1">−</button><span id="calZoomLabel">100%</span><button type="button" data-zstep="1">＋</button>
@@ -3141,6 +3143,9 @@
     <button data-view="inventory">📦 在庫管理</button>
     <button data-view="__material__" id="materialBtn" title="🧾 材料注文の報告 — 注文した材料を全員で共有(LINE WORKS掲示板の引っ越し先)">🧾 材料</button>
     <button data-view="__tanka__" id="tankaBtn" title="💴 単価表 — スマホ単価表と同じ内容(検索・元請切替)をアプリ内で開く">💴 単価表</button>
+    <!-- 📝 v1.30.959(山田 11/27「PCIPAD PCものちのちけす」・11/28「公開して」): スマホ見積もりの入口。PC・iPadだけ(スマホ幅は出さない)。PCから消す時は HD_ENTRY_ON_PC=false -->
+    <button class="hd-entry" id="hdEntryBtn" style="display:none" title="📝 スマホ見積もり — 予定が無い現場でも、物件名・号室・原状回復/修繕を選んで始める">📝 スマホ見積もり</button>
+    <button class="hd-entry" id="hdDemoBtn" style="display:none" title="🧪 見本で試す — 練習用の見本マンション(本物の台帳には何も書きません)">🧪 見本で試す</button>
     <!-- 🔕 v1.30.584(山田「一回消していいや」): GANTT_NAV_OFF=false に戻せば即復活する -->
     <button data-view="__gantt__" id="ganttBtn" title="📊 工事進捗ガント — 見積アプリの工事進捗タブ(Web閲覧版・表示のみ)をアプリ内で開く">📊 進捗</button>
   </div>
@@ -3313,7 +3318,7 @@
   <div class="modal" style="max-width:680px;width:96vw">
     <div class="modal-header" id="rs-title">修繕案件</div>
     <div class="modal-body" style="max-height:75vh;overflow-y:auto">
-      <div style="text-align:right;margin-bottom:4px"><button type="button" id="rs-relman" style="padding:5px 10px;border:1px solid #c4b5fd;background:#f5f3ff;color:#6d28d9;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer" title="この修繕に関係する社内マニュアル(水回り工事など＋物件名で検索)">📖 関連マニュアル</button> <button type="button" id="rs-kura" class="kq-ctxbtn" title="この物件で過去にやった工事・修繕・立会をクラ助に聞く"><img src="./kurasuke.png" width="16" height="16" alt="">過去の工事</button></div>
+      <div style="text-align:right;margin-bottom:4px"><button type="button" id="rs-relman" style="padding:5px 10px;border:1px solid #c4b5fd;background:#f5f3ff;color:#6d28d9;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer" title="この修繕に関係する社内マニュアル(水回り工事など＋物件名で検索)">📖 関連マニュアル</button> <button type="button" id="rs-kura" class="kq-ctxbtn" title="この物件で過去にやった工事・修繕・立会をクラ助に聞く"><img src="./kurasuke.png" width="16" height="16" alt="">過去の工事</button> <button type="button" id="rs-hiroidashi" style="display:none;padding:5px 10px;border:0;background:#0f766e;color:#fff;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer" title="この修繕のスマホ見積もり(修繕として開きます)">📝スマホ見積もり</button></div>
       <div class="field-row">
         <div class="field"><label>物件名</label><input id="rs-name" readonly></div>
         <div class="field" style="max-width:120px"><label>号室</label><input id="rs-room" readonly></div>
@@ -18609,6 +18614,7 @@ function renderHeader(){
   document.querySelectorAll(".view-switch button").forEach(b=>{
     b.classList.toggle("active", b.dataset.view===currentView);
   });
+  try{ if(typeof hdEntryShow_==='function') hdEntryShow_(); }catch(_){}
   renderLeaveSummary();
 }
 
@@ -21397,6 +21403,7 @@ function showRepairTip(r, mouseX, mouseY){
       const tel=String(r.customerTel||'').trim();
       parts.push(`<div style="font-size:11px;color:#e5e7eb;margin-top:2px">👤 ${escapeHtml(r.customerName||'')}${tel?` <a href="tel:${escapeHtml(tel.replace(/[^0-9+]/g,''))}" style="color:#93c5fd;text-decoration:underline">${escapeHtml(tel)}</a>`:''}</div>`);
     }
+    if(r.name && hiroidashiOn_()) parts.push(`<div style="margin-top:6px"><button type="button" class="tt-hiroidashi" data-bukken="${escapeHtml(r.name)}" data-room="${escapeHtml(r.room||'')}" data-motouke="${escapeHtml(r.contractor||r.client||'')}" data-koji="修繕工事" data-anken="${escapeHtml(hiroidashiAnkenOf_(r))}" style="background:#0f766e;color:#fff;border:0;border-radius:6px;font-size:12px;font-weight:700;padding:5px 10px;cursor:pointer;white-space:nowrap">📝スマホ見積もり(修繕)</button></div>`);   // 📝 v1.30.959
     __rpInfo = parts.join('');
   }
   buildTipChat_(tip, titleHtml + tipAlertHtml_(r.id) + __rpInfo + (function(){ const __h = chlogFor_(r.id, '修繕', (r.name||r.bukken) ? `${r.name||r.bukken}${r.room?' '+r.room:''}` : ''); return __h.length ? chlogHistHtml_(__h) : whoSetHtml_((typeof loadRepairOverrides_==='function' ? loadRepairOverrides_() : {})[r.id], '作業担当'); })(), apiR);   // 🕘 v1.30.775   // 🎨 v1.30.770   // 修繕=タイトル+⚠アラート(v1.30.763)+住所/依頼/お客様+コメント(v1.30.635)
@@ -22918,6 +22925,10 @@ function wireRelatedManualBtns_(){
   });
   // 🐱 この物件の過去をクラ助に聞く(v1.30.906・山田「過去この物件でこの工事なにやったっけ？」)
   on('rs-kura', ()=> openKojiAsk_('', { bukken: v('rs-name'), room: v('rs-room') }));
+  on('rs-hiroidashi', ()=>{   // 📝 v1.30.959 修繕として開く(koji=修繕工事)
+    const r = (state.repairs||[]).find(x=>x.id===editingRepairId) || {};
+    openHiroidashi_({ anken: hiroidashiAnkenOf_(r), bukken: r.name||v('rs-name'), room: r.room||v('rs-room'), motouke: r.contractor||r.client||'', koji:'修繕工事' });
+  });
   on('rdKuraBtn', ()=>{ const p = (state.restorations||[]).find(x=>x.id===restoDetailId) || {}; openKojiAsk_('', { bukken: p.name||'', room: p.room||'' }); });
   on('ev-kura', ()=>{
     const t = v('ev-title').split(/\r?\n/)[0];
@@ -24469,7 +24480,7 @@ function hiroidashiAnkenOf_(p){
 }
 function hiroidashiUrl_(o){
   const q = [];
-  ['anken','bukken','room','motouke'].forEach(k=>{ const v = String((o && o[k]) || '').trim(); if(v) q.push(k + '=' + encodeURIComponent(v)); });
+  ['anken','bukken','room','motouke','koji','demo'].forEach(k=>{ const v = String((o && o[k]) || '').trim(); if(v) q.push(k + '=' + encodeURIComponent(v)); });
   const chip = document.getElementById('appVerChip');
   const ver = ((chip && chip.textContent) || '').match(/v1\.30\.\d+/);
   if(ver) q.push('v=' + encodeURIComponent(ver[0]));   // github.io の残り(約10分)を避ける。ページはこの値を読まない
@@ -24490,7 +24501,7 @@ function openHiroidashi_(o){
     document.body.appendChild(ov);
     document.getElementById('hiroidashiClose').onclick = ()=>{ ov.style.display='none'; };
   }
-  document.getElementById('hiroidashiTitle').textContent = '📝 スマホ見積もり ' + [o&&o.bukken, o&&o.room].filter(Boolean).join(' ');
+  document.getElementById('hiroidashiTitle').textContent = '📝 スマホ見積もり' + (o&&o.demo?'（見本）':'') + (o&&o.koji?'（修繕）':'') + ' ' + [o&&o.bukken, o&&o.room].filter(Boolean).join(' ');
   const fr = ov.querySelector('#hiroidashiFrame'), url = hiroidashiUrl_(o);
   if(fr.getAttribute('src') !== url) fr.setAttribute('src', url);   // 同じ部屋を開き直す時は読み直さない
   ov.style.display = 'flex';
@@ -24500,8 +24511,19 @@ document.addEventListener('click', e=>{
   const b = e.target && e.target.closest ? e.target.closest('.tt-hiroidashi') : null;
   if(!b) return;
   e.preventDefault(); e.stopPropagation();
-  openHiroidashi_({ bukken:b.dataset.bukken||'', room:b.dataset.room||'', motouke:b.dataset.motouke||'' });
+  openHiroidashi_({ bukken:b.dataset.bukken||'', room:b.dataset.room||'', motouke:b.dataset.motouke||'', koji:b.dataset.koji||'', anken:b.dataset.anken||'' });
 }, true);
+// 📝 v1.30.959 上の並びの入口(PC・iPad)。HD_ENTRY_ON_PC=false にするとマウスの端末(PC)では出さない=iPadだけ
+const HD_ENTRY_ON_PC = true;
+function hdEntryShow_(){
+  try{
+    let on = hiroidashiOn_();
+    if(on && !HD_ENTRY_ON_PC && window.matchMedia && matchMedia('(hover:hover) and (pointer:fine)').matches) on = false;
+    ['hdEntryBtn','hdDemoBtn'].forEach(id=>{ const b=document.getElementById(id); if(b) b.style.display = on ? '' : 'none'; });
+  }catch(_){}
+}
+{ const b1=document.getElementById('hdEntryBtn'); if(b1) b1.onclick = ()=> openHiroidashi_({});
+  const b2=document.getElementById('hdDemoBtn'); if(b2) b2.onclick = ()=> openHiroidashi_({ demo:'1' }); }
 // PCの💴単価表ボタンは view-switch 内に置き、その配線(下の.view-switch forEach)でモーダルを開く。
 
 // 📊 工事進捗ガント(見積アプリ progress.html のWeb閲覧版)をアプリ内モーダルで表示 v1.30.442
@@ -24546,6 +24568,7 @@ document.querySelectorAll('#mobileNav button').forEach(b=>{
   };
 });
 document.querySelectorAll(".view-switch button").forEach(b=>{
+  if(b.classList.contains('hd-entry')) return;   // 📝 v1.30.959 スマホ見積もりの入口は下で配線(ビュー切替でない)
   b.onclick = ()=>{
     if(b.dataset.view==='__dash__'){ openDashboard_(); return; }    // 📊 全体進捗はモーダル(ビュー切替でない・v1.30.619)
     if(b.dataset.view==='__tanka__'){ openTankaModal_(); return; }   // 💴 単価表はモーダル(ビュー切替でない)
@@ -30604,6 +30627,7 @@ function openRepairSheet(id){
   if(!r) return;
   __gpOpenNow = false;   // v1.30.807 業者別粗利は毎回折りたたみから
   editingRepairId = id;
+  { const __hb = document.getElementById('rs-hiroidashi'); if(__hb) __hb.style.display = hiroidashiOn_() ? '' : 'none'; }   // 📝 v1.30.959
   document.getElementById("rs-title").textContent = `🔧 ${r.name}${r.room?" "+r.room:""}`;
   document.getElementById("rs-name").value     = r.name || "";
   document.getElementById("rs-room").value     = r.room || "";
